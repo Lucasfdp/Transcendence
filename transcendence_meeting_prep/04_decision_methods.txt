@@ -1,0 +1,60 @@
+WAYS TO DECIDE IF THE TEAM IS STUCK
+
+1. Elimination Voting
+Everyone writes:
+- Top 3 ideas
+- Bottom 3 ideas
+Remove ideas that repeatedly appear in bottom lists.
+
+2. Four-Question Scoring
+Rate each idea 1-5:
+- Fun
+- Technical Interest
+- Portfolio Value
+- Realistic Completion
+Highest score wins.
+
+3. Module Mapping
+Before discussing an idea deeply ask:
+'Can we reach 14+ points coherently?'
+
+4. Risk Assessment
+Ask:
+'What could kill this project?'
+Compare risks between ideas.
+
+5. Category Voting
+Vote on categories before specific projects:
+- Gaming
+- Social
+- Collaboration
+- Productivity
+- AI
+etc.
+
+6. 100 Point Distribution
+Each person distributes 100 points among:
+- Competitive
+- Social
+- Casual
+- Progression
+The combined result shows team priorities.
+
+7. Dream vs Safe Project
+Create:
+- Dream Project
+- Safe Project
+Choose a middle ground.
+
+8. Time Estimation
+Estimate:
+- Best case
+- Expected case
+- Worst case
+Avoid ideas with huge worst-case risks.
+
+9. Majority Vote After Discussion
+After every idea has been discussed:
+- One anonymous vote
+- Highest vote wins
+- Team commits to the decision
