@@ -19,6 +19,7 @@
 import Phaser from 'phaser';
 import { api, MiniGameDefinition } from './api';
 import { THEME } from './theme';
+import { ProfilePanel } from './ProfilePanel';
 
 const HUB_BG = '/assets/hub-background.png';
 
@@ -60,12 +61,23 @@ export class HubScene extends Phaser.Scene {
   // Set true when the background image loads — skip the procedural bg if so
   private bgImageLoaded = false;
 
+  // Continuously running petal emitter — one at a time, replaced on each hover
+  private activeEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+
+  // Profile overlay
+  private profilePanel: ProfilePanel | null = null;
+
   // Letterbox transform
   private bgOffX  = 0;
   private bgOffY  = 0;
   private bgScale = 1;
 
   constructor() { super({ key: 'HubScene' }); }
+
+  shutdown() {
+    this.profilePanel?.destroy();
+    this.profilePanel = null;
+  }
 
   // ── preload ──────────────────────────────────────────────────────────────────
 
@@ -265,12 +277,17 @@ export class HubScene extends Phaser.Scene {
         labelBg.lineStyle(1, available ? THEME.gold : 0x555555, 0.45);
         labelBg.strokeRoundedRect(r.x, r.y, r.w, r.h, 4);
 
-        this.add.text(r.cx, r.cy, hs.name, {
-          fontSize: `${Math.max(9, Math.floor(r.h * 0.38))}px`,
+        // Shorten "Shell Smash Arena" → "Arena"; put every word on its own line
+        const rawName = hs.id === 'shell-smash-arena' ? 'Arena' : hs.name;
+        const labelText = rawName.split(' ').join('\n');
+
+        this.add.text(r.cx, r.cy, labelText, {
+          fontSize: '24px',
           color: available ? THEME.textGold : '#888888',
           fontFamily: THEME.font,
+          fontStyle: 'bold',
           align: 'center',
-          wordWrap: { width: r.w - 8 },
+          lineSpacing: 2,
         }).setOrigin(0.5);
       }
 
@@ -279,7 +296,7 @@ export class HubScene extends Phaser.Scene {
         .zone(r.cx, r.cy, r.w, r.h)
         .setInteractive({ useHandCursor: true });
 
-      // Hover in: gold glow + cherry blossom burst
+      // Hover in: gold glow + continuous cherry blossom fall
       zone.on('pointerover', () => {
         this.glowGfx.clear();
         if (available) {
@@ -295,11 +312,14 @@ export class HubScene extends Phaser.Scene {
           this.glowGfx.lineStyle(1.5, 0xaaaaaa, 0.55);
           this.glowGfx.strokeRect(r.x, r.y, r.w, r.h);
         }
-        this.burstPetals(r.cx, r.cy, r.w, r.h);
+        this.startPetals(r.cx, r.cy, r.w, r.h);
       });
 
-      // Hover out: clear glow
-      zone.on('pointerout', () => this.glowGfx.clear());
+      // Hover out: clear glow + stop petals
+      zone.on('pointerout', () => {
+        this.glowGfx.clear();
+        this.stopPetals();
+      });
 
       // Click
       zone.on('pointerup', () => {
@@ -315,35 +335,43 @@ export class HubScene extends Phaser.Scene {
     });
   }
 
-  // ── Cherry blossom burst ─────────────────────────────────────────────────────
+  // ── Cherry blossom continuous fall ──────────────────────────────────────────
 
   /**
-   * Emit a short burst of cherry blossom petals centred on (cx, cy).
-   * Uses Phaser 3.60 ParticleEmitter — the 'petal' texture is generated in preload().
+   * Start a continuously falling petal shower over the hovered zone.
+   * Any previously running emitter is gracefully stopped first.
    */
-  private burstPetals(cx: number, cy: number, zoneW: number, zoneH: number) {
-    // Spread petals across the full zone width so they feel attached to the button
-    const emitter = this.add.particles(cx, cy, 'petal', {
-      x:         { min: -zoneW * 0.45, max: zoneW * 0.45 },
-      y:         { min: -zoneH * 0.45, max: zoneH * 0.45 },
-      speed:     { min: 25,  max: 70 },
-      angle:     { min: -140, max: -40 },   // spread upward
-      gravityY:  45,
-      scale:     { start: 0.9, end: 0.1 },
-      alpha:     { start: 0.92, end: 0 },
-      rotate:    { start: 0, end: 540 },
-      tint:      PETAL_COLOURS,
-      lifespan:  { min: 900, max: 1400 },
-      quantity:  10,
+  private startPetals(cx: number, cy: number, zoneW: number, zoneH: number) {
+    this.stopPetals();
+
+    // Spawn petals from the top half of the zone so they visibly fall through it
+    this.activeEmitter = this.add.particles(cx, cy - zoneH * 0.3, 'petal', {
+      x:        { min: -zoneW * 0.55, max: zoneW * 0.55 },
+      y:        { min: -zoneH * 0.3,  max: 0 },
+      angle:    { min: 75, max: 105 },    // mostly straight down, gentle spread
+      speed:    { min: 30, max: 65 },
+      gravityY: 18,                       // soft extra pull
+      scale:    { start: 0.75, end: 0.2 },
+      alpha:    { start: 0.88, end: 0 },
+      rotate:   { start: 0, end: 480 },  // each petal tumbles as it falls
+      tint:     PETAL_COLOURS,
+      lifespan: { min: 1000, max: 1700 },
+      frequency: 55,                      // new petal every ~55 ms
+      quantity:  1,
       depth:     50,
-      emitting:  false,               // don't auto-emit — we explode manually
     });
+  }
 
-    emitter.explode(10);
-
-    // Clean up emitter once all particles have died
-    this.time.delayedCall(1500, () => {
-      if (emitter && emitter.active) emitter.destroy();
+  /**
+   * Stop the current emitter: halt new particles but let existing ones finish.
+   */
+  private stopPetals() {
+    if (!this.activeEmitter) return;
+    const emitter = this.activeEmitter;
+    this.activeEmitter = null;
+    emitter.stop();   // no more new particles
+    this.time.delayedCall(1800, () => {
+      if (emitter?.active) emitter.destroy();
     });
   }
 
@@ -468,6 +496,40 @@ export class HubScene extends Phaser.Scene {
     });
 
     this.renderLeaderboard();
+
+    // ── Profile button (top-right of HUD bar) ─────────────────────────────────
+    const btnW  = 110;
+    const btnH  = 30;
+    const btnX  = width - PAD - btnW / 2;
+    const btnY  = BAR_H / 2;
+
+    const btnGfx = this.add.graphics();
+    const paintBtn = (hovered: boolean) => {
+      btnGfx.clear();
+      btnGfx.fillStyle(hovered ? THEME.gold : 0x2a2218, 0.9);
+      btnGfx.fillRoundedRect(btnX - btnW / 2, btnY - btnH / 2, btnW, btnH, 5);
+      btnGfx.lineStyle(1, THEME.gold, hovered ? 0 : 0.55);
+      btnGfx.strokeRoundedRect(btnX - btnW / 2, btnY - btnH / 2, btnW, btnH, 5);
+    };
+    paintBtn(false);
+
+    const btnHit = this.add
+      .rectangle(btnX, btnY, btnW, btnH, 0x000000, 0)
+      .setInteractive({ useHandCursor: true });
+    const btnTxt = this.add.text(btnX, btnY, '👤  Profile', {
+      fontSize: '13px', color: THEME.text,
+      fontFamily: THEME.font, fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    btnHit.on('pointerover', () => { paintBtn(true);  btnTxt.setColor('#1a1410'); });
+    btnHit.on('pointerout',  () => { paintBtn(false); btnTxt.setColor(THEME.text); });
+    btnHit.on('pointerup',   () => {
+      if (!this.profilePanel) {
+        // Create panel first time it's opened — positioned just below the HUD bar
+        this.profilePanel = new ProfilePanel(this, this.user, PAD, BAR_H + 8);
+      }
+      this.profilePanel.toggle();
+    });
   }
 
   // ── Login prompt ─────────────────────────────────────────────────────────────
@@ -529,9 +591,13 @@ export class HubScene extends Phaser.Scene {
     hitArea.on('pointerover', () => {
       paint(true);
       text.setColor('#1a1410');
-      this.burstPetals(x, y, w, h);
+      this.startPetals(x, y, w, h);
     });
-    hitArea.on('pointerout',  () => { paint(false); text.setColor('#ffffff'); });
+    hitArea.on('pointerout',  () => {
+      paint(false);
+      text.setColor('#ffffff');
+      this.stopPetals();
+    });
 
     return { graphics: g, hitArea, text };
   }
