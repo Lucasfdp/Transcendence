@@ -17,8 +17,8 @@ LABEL maintainer="Shell Smash"
 LABEL description="NestJS backend API for the Shell Smash gaming hub"
 ARG BACKEND_ENV=production
 ENV NODE_ENV=${BACKEND_ENV}
-RUN apk update && apk add --no-cache wget curl ca-certificates netcat-openbsd && rm -rf /var/cache/apk/*
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN apk update && apk add --no-cache wget curl ca-certificates netcat-openbsd && rm -rf /var/cache/apk/* \
+    && addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /app
 COPY --from=builder /build/dist ./dist
 COPY --from=builder /build/node_modules ./node_modules

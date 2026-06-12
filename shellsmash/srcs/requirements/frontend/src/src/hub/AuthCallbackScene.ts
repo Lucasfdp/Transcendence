@@ -8,13 +8,13 @@ export class AuthCallbackScene extends Phaser.Scene {
   }
 
   create() {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(globalThis.location.search);
     const token = params.get('token');
 
     if (token) {
       localStorage.setItem('jwt_token', token);
       // Clean the token from the URL without a page reload
-      window.history.replaceState({}, document.title, '/');
+      globalThis.history.replaceState({}, document.title, '/');
     }
 
     this.scene.start('HubScene');

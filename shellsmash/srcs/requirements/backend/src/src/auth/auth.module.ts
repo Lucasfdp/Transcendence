@@ -4,7 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-// import { FortyTwoStrategy } from './strategies/forty-two.strategy'; // TODO: uncomment when 42 OAuth keys are set
+// TODO(#1): Import FortyTwoStrategy once 42 OAuth keys are provisioned.
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users/users.module';
 
@@ -21,7 +21,8 @@ import { UsersModule } from '../users/users.module';
       inject: [ConfigService],
     }),
   ],
-  providers: [AuthService, /* FortyTwoStrategy, */ JwtStrategy], // TODO: restore FortyTwoStrategy when 42 OAuth keys are set
+  // TODO(#1): Add FortyTwoStrategy to providers once 42 OAuth keys are provisioned.
+  providers: [AuthService, JwtStrategy],
   controllers: [AuthController],
   exports: [AuthService],
 })

@@ -19,9 +19,9 @@ LABEL maintainer="Shell Smash"
 LABEL description="Phaser.js + Vite frontend for the Shell Smash gaming hub"
 ARG FRONTEND_ENV=production
 ENV NODE_ENV=${FRONTEND_ENV}
-RUN apk update && apk add --no-cache wget curl && rm -rf /var/cache/apk/*
-RUN npm install -g serve
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN apk update && apk add --no-cache wget curl && rm -rf /var/cache/apk/* \
+    && npm install -g serve \
+    && addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
 RUN chown -R appuser:appgroup /app

@@ -37,8 +37,8 @@ const PH  = 490;  // panel height
 const PAD = 20;   // internal padding
 
 export class ProfilePanel {
-  private scene:     Phaser.Scene;
-  private container: Phaser.GameObjects.Container;
+  private readonly scene:     Phaser.Scene;
+  private readonly container: Phaser.GameObjects.Container;
 
   constructor(scene: Phaser.Scene, user: any, panelX: number, panelY: number) {
     this.scene     = scene;
@@ -189,12 +189,13 @@ export class ProfilePanel {
     // Highlight sheen
     xpGfx.fillStyle(0xffffff, 0.08);
     xpGfx.fillRoundedRect(PAD, xpBarY, xpBarW * xpFill, xpBarH / 2, 4);
-    children.push(xpGfx);
-
-    children.push(this.scene.add.text(PW / 2, xpBarY + xpBarH + 4, `${xp.toLocaleString()} / ${xpMax.toLocaleString()} XP`, {
-      fontSize: '10px', color: THEME.text,
-      fontFamily: THEME.font, align: 'center',
-    }).setOrigin(0.5, 0));
+    children.push(
+      xpGfx,
+      this.scene.add.text(PW / 2, xpBarY + xpBarH + 4, `${xp.toLocaleString()} / ${xpMax.toLocaleString()} XP`, {
+        fontSize: '10px', color: THEME.text,
+        fontFamily: THEME.font, align: 'center',
+      }).setOrigin(0.5, 0),
+    );
 
     // ── 10. Divider ────────────────────────────────────────────────────────────
     const div2Y = xpBarY + xpBarH + 26;
@@ -220,17 +221,17 @@ export class ProfilePanel {
       sg.fillRoundedRect(sx, statsY, slotW, 64, 6);
       sg.lineStyle(1, THEME.gold, 0.30);
       sg.strokeRoundedRect(sx, statsY, slotW, 64, 6);
-      children.push(sg);
-
-      children.push(this.scene.add.text(sx + slotW / 2, statsY + 14, `${stat.value}`, {
-        fontSize: '20px', color: THEME.textGold,
-        fontFamily: THEME.font, fontStyle: 'bold', align: 'center',
-      }).setOrigin(0.5, 0));
-
-      children.push(this.scene.add.text(sx + slotW / 2, statsY + 42, stat.label, {
-        fontSize: '9px', color: THEME.textMutedHex,
-        fontFamily: THEME.font, fontStyle: 'bold', align: 'center',
-      }).setOrigin(0.5, 0));
+      children.push(
+        sg,
+        this.scene.add.text(sx + slotW / 2, statsY + 14, `${stat.value}`, {
+          fontSize: '20px', color: THEME.textGold,
+          fontFamily: THEME.font, fontStyle: 'bold', align: 'center',
+        }).setOrigin(0.5, 0),
+        this.scene.add.text(sx + slotW / 2, statsY + 42, stat.label, {
+          fontSize: '9px', color: THEME.textMutedHex,
+          fontFamily: THEME.font, fontStyle: 'bold', align: 'center',
+        }).setOrigin(0.5, 0),
+      );
     });
 
     // ── 12. Bio / placeholder text ────────────────────────────────────────────

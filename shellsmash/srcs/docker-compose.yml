@@ -196,6 +196,8 @@ services:
       # JWT
       - JWT_SECRET=${JWT_SECRET:-insecure_jwt_secret}
       - JWT_EXPIRY=${JWT_EXPIRY:-3600}
+      # Dev-only login bypass (disabled by default; set ENABLE_DEV_LOGIN=true in .env for local dev)
+      - ENABLE_DEV_LOGIN=${ENABLE_DEV_LOGIN:-false}
       # OAuth (42 bonus)
       - FORTYTWO_CLIENT_ID=${FORTYTWO_CLIENT_ID:-}
       - FORTYTWO_CLIENT_SECRET=${FORTYTWO_CLIENT_SECRET:-}

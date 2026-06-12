@@ -1,29 +1,17 @@
 import { Controller, Get, Query, Req, UseGuards, ForbiddenException } from '@nestjs/common';
-// import { Res } from '@nestjs/common'; // TODO: restore when 42 OAuth is enabled
 import { AuthService } from './auth.service';
-// import { FortyTwoAuthGuard } from './guards/ft-auth.guard'; // TODO: uncomment when 42 OAuth keys are set
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { ApiTags } from '@nestjs/swagger';
+
+// TODO(#1): Restore 42 OAuth routes (fortyTwoLogin, fortyTwoCallback) once
+//           FORTYTWO_CLIENT_ID / FORTYTWO_CLIENT_SECRET are provisioned.
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private readonly authService: AuthService) {}
 
-  // TODO: restore when 42 OAuth keys are configured in .env
-  // @Get('42')
-  // @UseGuards(FortyTwoAuthGuard)
-  // fortyTwoLogin() {}
-
-  // @Get('42/callback')
-  // @UseGuards(FortyTwoAuthGuard)
-  // fortyTwoCallback(@Req() req, @Res() res) {
-  //   const { access_token } = this.authService.issueJwt(req.user);
-  //   const frontendUrl = process.env.ALLOWED_ORIGINS?.split(',')[0] ?? 'https://localhost';
-  //   return res.redirect(`${frontendUrl}/auth/callback?token=${access_token}`);
-  // }
-
-  // GET /api/auth/me — verify token and return user
+  // GET /api/auth/me — verify token and return current user
   @Get('me')
   @UseGuards(JwtAuthGuard)
   getMe(@Req() req) {
@@ -31,11 +19,19 @@ export class AuthController {
   }
 
   // GET /api/auth/dev-login?username=KameMaster
-  // TODO: remove (or keep behind a feature flag) before going to production
+  //
+  // Security hotspot justification: this endpoint is double-gated —
+  //   1. NODE_ENV !== 'production'  (set by Docker Compose; cannot be spoofed externally)
+  //   2. ENABLE_DEV_LOGIN === 'true' (must be explicitly present in .env; absent by default)
+  // The JWT issued is identical in privilege to one issued via 42 OAuth.
+  // Both gates must be true simultaneously; missing either throws 403.
   @Get('dev-login')
   async devLogin(@Query('username') username: string) {
     if (process.env.NODE_ENV === 'production') {
       throw new ForbiddenException('Dev login is disabled in production');
+    }
+    if (process.env.ENABLE_DEV_LOGIN !== 'true') {
+      throw new ForbiddenException('Dev login requires ENABLE_DEV_LOGIN=true');
     }
     return this.authService.devLogin(username ?? 'devturtle');
   }

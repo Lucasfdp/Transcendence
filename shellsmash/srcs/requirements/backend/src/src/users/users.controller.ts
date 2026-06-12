@@ -8,9 +8,9 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 @UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) {}
 
-  // GET /api/users/me — current logged in user
+  // GET /api/users/me — current logged-in user (resolved by JwtAuthGuard)
   @Get('me')
   getMe(@Request() req) {
     return req.user;

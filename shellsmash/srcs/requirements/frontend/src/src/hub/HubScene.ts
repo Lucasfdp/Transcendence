@@ -462,28 +462,21 @@ export class HubScene extends Phaser.Scene {
     const PAD   = 16;
     const BAR_H = 56;
 
+    // ── Bar background ────────────────────────────────────────────────────────
     const bar = this.add.graphics();
     bar.fillStyle(THEME.background, 0.80);
     bar.fillRect(0, 0, width, BAR_H);
     bar.lineStyle(1, THEME.gold, 0.35);
     bar.lineBetween(0, BAR_H, width, BAR_H);
 
-    // Avatar
+    // Avatar ring + turtle silhouette
     bar.fillStyle(THEME.gold, 1);       bar.fillCircle(PAD + 20, BAR_H / 2, 20);
     bar.fillStyle(THEME.background, 1); bar.fillCircle(PAD + 20, BAR_H / 2, 17);
     bar.fillStyle(THEME.gold, 0.55);
     bar.fillCircle(PAD + 20, BAR_H / 2 - 4, 7);
     bar.fillEllipse(PAD + 20, BAR_H / 2 + 10, 14, 8);
 
-    const displayName = this.user.turtleName ?? this.user.username;
-    this.add.text(PAD + 48, 8, displayName, {
-      fontSize: '15px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
-    });
-    this.add.text(PAD + 48, 27, `Lvl ${this.user.level}  ·  Shell: ${this.user.shellSkin ?? 'kanagawa'}`, {
-      fontSize: '11px', color: THEME.text, fontFamily: THEME.font,
-    });
-
-    // XP bar
+    // XP bar track + fill (drawn on bar so it stays below text)
     const xpMax = this.user.level * 1000;
     const xpPct = Math.min(this.user.xp / xpMax, 1);
     const barX  = PAD + 48;
@@ -491,41 +484,46 @@ export class HubScene extends Phaser.Scene {
     const barW  = 130;
     bar.fillStyle(0x3a2e20, 1); bar.fillRect(barX, barY, barW, 5);
     bar.fillStyle(THEME.gold,  1); bar.fillRect(barX, barY, barW * xpPct, 5);
+
+    // ── Hover glow layer (above bar, below text labels) ───────────────────────
+    const PROFILE_HIT_W = 220;
+    const hoverGfx = this.add.graphics();
+    const paintHover = (on: boolean) => {
+      hoverGfx.clear();
+      if (!on) return;
+      // Pulsing ring around avatar
+      hoverGfx.fillStyle(THEME.gold, 0.22);
+      hoverGfx.fillCircle(PAD + 20, BAR_H / 2, 24);
+      // Subtle wash over the whole clickable region
+      hoverGfx.fillStyle(THEME.gold, 0.05);
+      hoverGfx.fillRect(0, 0, PROFILE_HIT_W, BAR_H);
+    };
+
+    // ── Text labels (above hoverGfx so they stay crisp) ──────────────────────
+    const displayName = this.user.turtleName ?? this.user.username;
+    this.add.text(PAD + 48, 8, displayName, {
+      fontSize: '15px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
+    });
+    this.add.text(PAD + 48, 27, `Lvl ${this.user.level}  ·  Shell: ${this.user.shellSkin ?? 'kanagawa'}`, {
+      fontSize: '11px', color: THEME.text, fontFamily: THEME.font,
+    });
     this.add.text(barX + barW + 6, barY - 1, `${this.user.xp} / ${xpMax} XP`, {
       fontSize: '9px', color: THEME.textMutedHex, fontFamily: THEME.font,
     });
 
     this.renderLeaderboard();
 
-    // ── Profile button (top-right of HUD bar) ─────────────────────────────────
-    const btnW  = 110;
-    const btnH  = 30;
-    const btnX  = width - PAD - btnW / 2;
-    const btnY  = BAR_H / 2;
-
-    const btnGfx = this.add.graphics();
-    const paintBtn = (hovered: boolean) => {
-      btnGfx.clear();
-      btnGfx.fillStyle(hovered ? THEME.gold : 0x2a2218, 0.9);
-      btnGfx.fillRoundedRect(btnX - btnW / 2, btnY - btnH / 2, btnW, btnH, 5);
-      btnGfx.lineStyle(1, THEME.gold, hovered ? 0 : 0.55);
-      btnGfx.strokeRoundedRect(btnX - btnW / 2, btnY - btnH / 2, btnW, btnH, 5);
-    };
-    paintBtn(false);
-
-    const btnHit = this.add
-      .rectangle(btnX, btnY, btnW, btnH, 0x000000, 0)
+    // ── Profile trigger — clicking the left avatar area opens the profile panel ─
+    // The panel opens directly below this region (PAD, BAR_H+8), so the button
+    // and the panel are visually aligned on the left.
+    const profileHit = this.add
+      .rectangle(PROFILE_HIT_W / 2, BAR_H / 2, PROFILE_HIT_W, BAR_H, 0x000000, 0)
       .setInteractive({ useHandCursor: true });
-    const btnTxt = this.add.text(btnX, btnY, '👤  Profile', {
-      fontSize: '13px', color: THEME.text,
-      fontFamily: THEME.font, fontStyle: 'bold',
-    }).setOrigin(0.5);
 
-    btnHit.on('pointerover', () => { paintBtn(true);  btnTxt.setColor('#1a1410'); });
-    btnHit.on('pointerout',  () => { paintBtn(false); btnTxt.setColor(THEME.text); });
-    btnHit.on('pointerup',   () => {
+    profileHit.on('pointerover', () => paintHover(true));
+    profileHit.on('pointerout',  () => paintHover(false));
+    profileHit.on('pointerup', () => {
       if (!this.profilePanel) {
-        // Create panel first time it's opened — positioned just below the HUD bar
         this.profilePanel = new ProfilePanel(this, this.user, PAD, BAR_H + 8);
       }
       this.profilePanel.toggle();
@@ -554,8 +552,12 @@ export class HubScene extends Phaser.Scene {
 
     // TODO: swap devLogin() for loginUrl() redirect once 42 OAuth keys are set
     this.drawToriiButton(width / 2, height * 0.67 + 116, 240, 56, 'Enter the Dojo', async () => {
-      await api.devLogin('KameMaster');
-      this.scene.restart();
+      try {
+        await api.devLogin('KameMaster');
+        this.scene.restart();
+      } catch (err) {
+        console.error('[Enter Dojo] Dev login failed:', err);
+      }
     });
   }
 
@@ -587,7 +589,7 @@ export class HubScene extends Phaser.Scene {
       fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    hitArea.on('pointerup',   () => onClick());
+    hitArea.on('pointerup',   () => void onClick());
     hitArea.on('pointerover', () => {
       paint(true);
       text.setColor('#1a1410');
@@ -611,7 +613,7 @@ export class HubScene extends Phaser.Scene {
     api.getAllUsers().then((users: any[]) => {
       if (!users?.length) return;
 
-      const sorted  = users.sort((a, b) => b.xp - a.xp).slice(0, 5);
+      const sorted  = [...users].sort((a, b) => b.xp - a.xp).slice(0, 5);
       const rowH    = 22;
       const panelW  = 232;
       const panelH  = 32 + sorted.length * rowH + 10;
