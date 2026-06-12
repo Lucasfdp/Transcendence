@@ -19,3 +19,10 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 export const game = new Phaser.Game(config);
+
+// Tear down the Phaser instance on Vite HMR updates so the resize listener
+// registered inside HubScene.shutdown() is cleaned up before the module is
+// re-evaluated.  Without this, each hot-reload stacks another listener.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => { game.destroy(true); });
+}

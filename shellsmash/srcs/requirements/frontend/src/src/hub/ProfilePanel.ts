@@ -73,6 +73,14 @@ export class ProfilePanel {
 
   isOpen() { return this.container.visible; }
 
+  /**
+   * Move the panel anchor.  Called by HubScene.applyResize() to clamp the
+   * panel to the viewport when the window is narrower than 400 px.
+   */
+  setPosition(x: number, y: number): void {
+    this.container.setPosition(x, y);
+  }
+
   destroy() { this.container.destroy(); }
 
   // ── Build ────────────────────────────────────────────────────────────────────

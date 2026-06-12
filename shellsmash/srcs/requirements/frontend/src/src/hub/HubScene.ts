@@ -14,6 +14,29 @@
  *   srcs/requirements/frontend/src/public/assets/hub-background.png
  *   If the file is missing or fails to load, the procedural Japanese night
  *   sky renders instead — the game is always fully playable either way.
+ *
+ * ── Resize support ────────────────────────────────────────────────────────────
+ * Phaser is configured with Scale.RESIZE (see main.ts), so this.scale.width /
+ * height track the live canvas size and a 'resize' event fires on every change.
+ * handleResize() is debounced at RESIZE_DEBOUNCE_MS ms, then applyResize() does
+ * a full teardown + redraw of every re-drawable layer:
+ *
+ *   bgLayer      — procedural sky, moon, trees, mist, path, petals
+ *   hotspotLayer — zone rectangles + optional no-bg labels
+ *   hudLayer     — HUD bar, avatar, XP, name text, profile hit zone
+ *   promptLayer  — login title text + Torii button (unauthenticated path)
+ *   lbLayer      — leaderboard panel (async, generation-guarded)
+ *
+ * Stable objects that are NOT in any layer (repositioned, not recreated):
+ *   bgImage       — hub-background.png overlay (setPosition + setScale)
+ *   glowGfx       — hotspot hover glow (auto-redrawn per hover event)
+ *   profilePanel  — Container; position clamped to viewport on resize
+ *   modal         — dismissed + re-opened at new centre coords
+ *
+ * The listener is removed in shutdown() (called on scene stop/transition) and
+ * the in-flight debounce timer is cancelled at the same time, preventing leaks
+ * across HMR hot-reloads (the game itself is destroyed by main.ts's
+ * import.meta.hot.dispose handler before a new module evaluation begins).
  */
 
 import Phaser from 'phaser';
@@ -26,6 +49,17 @@ const HUB_BG = '/assets/hub-background.png';
 // ── Source image reference dimensions ─────────────────────────────────────────
 const SRC_W = 1080;
 const SRC_H = 1080;
+
+// ── Explicit depth constants (z-order preserved across resize redraws) ─────────
+const DEPTH_BG    =   0;   // procedural background graphics
+const DEPTH_IMAGE =   1;   // hub-bg photo overlay
+const DEPTH_HS    =   5;   // hotspot zone labels (above bg, below glow)
+const DEPTH_GLOW  =  10;   // hotspot hover glow
+const DEPTH_HUD   =  20;   // HUD bar + leaderboard
+const DEPTH_MODAL = 200;   // modal overlay (above profile panel at 100)
+
+// ── Resize debounce ────────────────────────────────────────────────────────────
+const RESIZE_DEBOUNCE_MS = 100;
 
 // ── Shrine hotspot definitions ─────────────────────────────────────────────────
 interface HotspotDef {
@@ -61,6 +95,9 @@ export class HubScene extends Phaser.Scene {
   // Set true when the background image loads — skip the procedural bg if so
   private bgImageLoaded = false;
 
+  // Stable background image — repositioned (not recreated) on resize
+  private bgImage: Phaser.GameObjects.Image | null = null;
+
   // Continuously running petal emitter — one at a time, replaced on each hover
   private activeEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
 
@@ -72,16 +109,43 @@ export class HubScene extends Phaser.Scene {
   private bgOffY  = 0;
   private bgScale = 1;
 
+  // ── Drawable layers (destroyed + redrawn on resize) ──────────────────────────
+  private bgLayer:      Phaser.GameObjects.GameObject[] = [];
+  private hudLayer:     Phaser.GameObjects.GameObject[] = [];
+  private promptLayer:  Phaser.GameObjects.GameObject[] = [];
+  private hotspotLayer: Phaser.GameObjects.GameObject[] = [];
+  private lbLayer:      Phaser.GameObjects.GameObject[] = [];
+
+  // ── Resize debounce ───────────────────────────────────────────────────────────
+  private resizeTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+
+  // ── Modal state — stored so the modal can be recentred on resize ──────────────
+  private modalTitle: string | null = null;
+  private modalDesc:  string        = '';
+
+  // ── Leaderboard async generation guard ────────────────────────────────────────
+  // Incremented on every renderLeaderboard() call; the async callback bails out
+  // if its captured generation no longer matches the current one.
+  private lbGeneration = 0;
+
   constructor() { super({ key: 'HubScene' }); }
 
-  shutdown() {
+  shutdown(): void {
+    // Cancel any pending debounce and remove the resize listener so it cannot
+    // fire after the scene has been torn down (important for HMR hot-reloads).
+    if (this.resizeTimer !== null) {
+      globalThis.clearTimeout(this.resizeTimer);
+      this.resizeTimer = null;
+    }
+    this.scale.off('resize', this.handleResize, this);
+
     this.profilePanel?.destroy();
     this.profilePanel = null;
   }
 
   // ── preload ──────────────────────────────────────────────────────────────────
 
-  preload() {
+  preload(): void {
     // Attempt to load background art (gracefully degraded if missing)
     this.load.image('hub-bg', HUB_BG);
     this.load.on('filecomplete-image-hub-bg', () => { this.bgImageLoaded = true; });
@@ -98,7 +162,7 @@ export class HubScene extends Phaser.Scene {
 
   // ── create ───────────────────────────────────────────────────────────────────
 
-  async create() {
+  async create(): Promise<void> {
     const { width, height } = this.scale;
 
     // Letterbox: fit image inside canvas, preserve aspect ratio
@@ -115,11 +179,14 @@ export class HubScene extends Phaser.Scene {
     if (this.bgImageLoaded) {
       const bgCX = this.bgOffX + (SRC_W * this.bgScale) / 2;
       const bgCY = this.bgOffY + (SRC_H * this.bgScale) / 2;
-      this.add.image(bgCX, bgCY, 'hub-bg').setScale(this.bgScale);
+      this.bgImage = this.add
+        .image(bgCX, bgCY, 'hub-bg')
+        .setScale(this.bgScale)
+        .setDepth(DEPTH_IMAGE);
     }
 
-    // Glow graphics layer — sits above background, below HUD
-    this.glowGfx = this.add.graphics();
+    // Glow graphics layer — stable object, sits above bg, below HUD
+    this.glowGfx = this.add.graphics().setDepth(DEPTH_GLOW);
 
     // Fetch API data
     try { this.minigames = await api.getMiniGames(); } catch { this.minigames = []; }
@@ -132,15 +199,100 @@ export class HubScene extends Phaser.Scene {
     } else {
       this.drawLoginPrompt();
     }
+
+    // Register resize listener after the initial layout is complete so an
+    // immediate resize event (fired synchronously by some browsers on creation)
+    // doesn't run applyResize() before create() has finished.
+    this.scale.on('resize', this.handleResize, this);
+  }
+
+  // ── Resize handler ────────────────────────────────────────────────────────────
+
+  private handleResize(): void {
+    if (this.resizeTimer !== null) globalThis.clearTimeout(this.resizeTimer);
+    this.resizeTimer = globalThis.setTimeout(() => {
+      this.resizeTimer = null;
+      this.applyResize();
+    }, RESIZE_DEBOUNCE_MS);
+  }
+
+  private applyResize(): void {
+    const { width, height } = this.scale;
+
+    // 1. Recalculate letterbox transform
+    const sx = width  / SRC_W;
+    const sy = height / SRC_H;
+    this.bgScale = Math.min(sx, sy);
+    this.bgOffX  = (width  - SRC_W * this.bgScale) / 2;
+    this.bgOffY  = (height - SRC_H * this.bgScale) / 2;
+
+    // 2. Reposition stable background image (no recreate — avoids texture reload)
+    if (this.bgImage?.active) {
+      const bgCX = this.bgOffX + (SRC_W * this.bgScale) / 2;
+      const bgCY = this.bgOffY + (SRC_H * this.bgScale) / 2;
+      this.bgImage.setPosition(bgCX, bgCY).setScale(this.bgScale);
+    }
+
+    // 3. Redraw procedural background at new dimensions
+    this.clearLayer(this.bgLayer);
+    this.drawBackground();
+
+    // 4. glowGfx is stable — clear it so a stale highlight isn't left over
+    this.glowGfx.clear();
+
+    // 5. Rebuild hotspot zones with recalculated hit areas
+    this.clearLayer(this.hotspotLayer);
+    this.buildHotspots();
+
+    // 6. Redraw the authenticated HUD or the unauthenticated login prompt
+    if (this.user) {
+      this.clearLayer(this.hudLayer);
+      this.drawHUD();
+      // renderLeaderboard() clears lbLayer internally and re-fetches
+    } else {
+      this.clearLayer(this.promptLayer);
+      this.drawLoginPrompt();
+    }
+
+    // 7. Recentre any open modal at the new screen centre
+    if (this.modal && this.modalTitle !== null) {
+      const title = this.modalTitle;
+      const desc  = this.modalDesc;
+      this.dismissModal();
+      this.showModal(title, desc);
+    }
+
+    // 8. Clamp the ProfilePanel so it doesn't overflow on narrow viewports
+    if (this.profilePanel) {
+      const BAR_H    = 56;
+      const PAD      = 16;
+      const PW       = 320;   // ProfilePanel fixed width
+      const clampedX = Math.max(0, Math.min(PAD, width - PW - 4));
+      this.profilePanel.setPosition(clampedX, BAR_H + 8);
+    }
+  }
+
+  /** Destroy every object in a layer array and empty it. */
+  private clearLayer(layer: Phaser.GameObjects.GameObject[]): void {
+    for (const obj of layer) {
+      if (obj?.active) obj.destroy();
+    }
+    layer.length = 0;
   }
 
   // ── Procedural Japanese night-sky background ──────────────────────────────────
 
-  private drawBackground() {
+  private drawBackground(): void {
     const { width, height } = this.scale;
-    const gfx = this.add.graphics();
+
+    // Helper: register objects in bgLayer so they can be cleared on resize
+    const track = (...objs: Phaser.GameObjects.GameObject[]): void => {
+      this.bgLayer.push(...objs);
+    };
 
     // ── Sky gradient (three bands) ──────────────────────────────────────────────
+    const gfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(gfx);
     // Top: deep midnight navy
     gfx.fillGradientStyle(0x080620, 0x080620, 0x14083A, 0x14083A, 1);
     gfx.fillRect(0, 0, width, height * 0.55);
@@ -174,13 +326,15 @@ export class HubScene extends Phaser.Scene {
     gfx.fillStyle(0xFFF5D6, 0.96); gfx.fillCircle(moonX, moonY, moonR);
 
     // ── Mist / fog at ground level ───────────────────────────────────────────────
-    const mistGfx = this.add.graphics();
+    const mistGfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(mistGfx);
     mistGfx.fillGradientStyle(0x1A0D3A, 0x1A0D3A, 0x1A0D3A, 0x1A0D3A, 0, 0, 0.28, 0.28);
     mistGfx.fillRect(0, height * 0.60, width, height * 0.12);
 
     // ── Stone path (centre lane) ─────────────────────────────────────────────────
-    const pathGfx = this.add.graphics();
-    const pathW   = width * 0.22;
+    const pathGfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(pathGfx);
+    const pathW = width * 0.22;
     pathGfx.fillStyle(0x1E1A12, 0.85);
     pathGfx.fillRect(width / 2 - pathW / 2, height * 0.68, pathW, height * 0.32);
     // Stone joint lines
@@ -192,11 +346,24 @@ export class HubScene extends Phaser.Scene {
     pathGfx.lineBetween(width / 2, height * 0.68, width / 2, height);
 
     // ── Cherry blossom trees (left + right) ──────────────────────────────────────
-    this.drawBlossamTree(width * 0.06, height * 0.72, height * 0.38, true);
-    this.drawBlossamTree(width * 0.94, height * 0.72, height * 0.38, false);
+    // Guard: only draw a tree if its trunk x falls within the letterboxed image
+    // area.  At very wide aspect ratios the image is inset by bgOffX and trees
+    // positioned at width*0.06 / 0.94 would land in the black letterbox bars.
+    const imgLeft  = this.bgOffX;
+    const imgRight = this.bgOffX + SRC_W * this.bgScale;
+    const leftTreeX  = width * 0.06;
+    const rightTreeX = width * 0.94;
+
+    if (leftTreeX >= imgLeft) {
+      this.drawBlossamTree(leftTreeX,  height * 0.72, height * 0.38, true);
+    }
+    if (rightTreeX <= imgRight) {
+      this.drawBlossamTree(rightTreeX, height * 0.72, height * 0.38, false);
+    }
 
     // ── Ambient floating petals (static scene decoration) ────────────────────────
-    const petalGfx = this.add.graphics();
+    const petalGfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(petalGfx);
     for (let i = 0; i < 28; i++) {
       const px = Phaser.Math.Between(0, width);
       const py = Phaser.Math.Between(height * 0.15, height * 0.85);
@@ -209,11 +376,12 @@ export class HubScene extends Phaser.Scene {
     }
   }
 
-  /** Draw a simple cherry blossom tree silhouette. */
-  private drawBlossamTree(x: number, baseY: number, height: number, leansRight: boolean) {
+  /** Draw a simple cherry blossom tree silhouette. Pushes graphics into bgLayer. */
+  private drawBlossamTree(x: number, baseY: number, height: number, leansRight: boolean): void {
     const lean  = leansRight ? 1 : -1;
-    const tGfx  = this.add.graphics();
-    const bGfx  = this.add.graphics(); // blossoms drawn separately (above trunk)
+    const tGfx  = this.add.graphics().setDepth(DEPTH_BG);
+    const bGfx  = this.add.graphics().setDepth(DEPTH_BG); // blossoms above trunk
+    this.bgLayer.push(tGfx, bGfx);
 
     // Trunk
     tGfx.lineStyle(5, 0x0D0800, 0.95);
@@ -263,7 +431,7 @@ export class HubScene extends Phaser.Scene {
 
   // ── Hotspots ─────────────────────────────────────────────────────────────────
 
-  private buildHotspots() {
+  private buildHotspots(): void {
     HOTSPOTS.forEach((hs) => {
       const minigame  = this.minigames.find((m) => m.id === hs.id);
       const available = minigame?.status === 'available';
@@ -271,30 +439,32 @@ export class HubScene extends Phaser.Scene {
 
       // Visible label (helps when no background image is loaded)
       if (!this.bgImageLoaded) {
-        const labelBg = this.add.graphics();
+        const labelBg = this.add.graphics().setDepth(DEPTH_HS);
         labelBg.fillStyle(0x1a1208, 0.65);
         labelBg.fillRoundedRect(r.x, r.y, r.w, r.h, 4);
         labelBg.lineStyle(1, available ? THEME.gold : 0x555555, 0.45);
         labelBg.strokeRoundedRect(r.x, r.y, r.w, r.h, 4);
+        this.hotspotLayer.push(labelBg);
 
         // Shorten "Shell Smash Arena" → "Arena"; put every word on its own line
-        const rawName = hs.id === 'shell-smash-arena' ? 'Arena' : hs.name;
-        const labelText = rawName.split(' ').join('\n');
-
-        this.add.text(r.cx, r.cy, labelText, {
+        const rawName  = hs.id === 'shell-smash-arena' ? 'Arena' : hs.name;
+        const labelText = this.add.text(r.cx, r.cy, rawName.split(' ').join('\n'), {
           fontSize: '24px',
           color: available ? THEME.textGold : '#888888',
           fontFamily: THEME.font,
           fontStyle: 'bold',
           align: 'center',
           lineSpacing: 2,
-        }).setOrigin(0.5);
+        }).setOrigin(0.5).setDepth(DEPTH_HS);
+        this.hotspotLayer.push(labelText);
       }
 
       // Invisible interactive zone
       const zone = this.add
         .zone(r.cx, r.cy, r.w, r.h)
-        .setInteractive({ useHandCursor: true });
+        .setInteractive({ useHandCursor: true })
+        .setDepth(DEPTH_HS);
+      this.hotspotLayer.push(zone);
 
       // Hover in: gold glow + continuous cherry blossom fall
       zone.on('pointerover', () => {
@@ -341,7 +511,7 @@ export class HubScene extends Phaser.Scene {
    * Start a continuously falling petal shower over the hovered zone.
    * Any previously running emitter is gracefully stopped first.
    */
-  private startPetals(cx: number, cy: number, zoneW: number, zoneH: number) {
+  private startPetals(cx: number, cy: number, zoneW: number, zoneH: number): void {
     this.stopPetals();
 
     // Spawn petals from the top half of the zone so they visibly fall through it
@@ -365,7 +535,7 @@ export class HubScene extends Phaser.Scene {
   /**
    * Stop the current emitter: halt new particles but let existing ones finish.
    */
-  private stopPetals() {
+  private stopPetals(): void {
     if (!this.activeEmitter) return;
     const emitter = this.activeEmitter;
     this.activeEmitter = null;
@@ -377,11 +547,15 @@ export class HubScene extends Phaser.Scene {
 
   // ── Coming Soon modal ────────────────────────────────────────────────────────
 
-  private showModal(title: string, description: string) {
+  private showModal(title: string, description: string): void {
     this.dismissModal();
 
+    // Persist title/desc so applyResize() can reopen the modal at the new centre
+    this.modalTitle = title;
+    this.modalDesc  = description;
+
     const { width, height } = this.scale;
-    const container = this.add.container(0, 0);
+    const container = this.add.container(0, 0).setDepth(DEPTH_MODAL);
     this.modal = container;
 
     const panelW = Math.min(440, width * 0.85);
@@ -445,7 +619,10 @@ export class HubScene extends Phaser.Scene {
     this.tweens.add({ targets: container, alpha: 1, duration: 140, ease: 'Power2' });
   }
 
-  private dismissModal() {
+  private dismissModal(): void {
+    this.modalTitle = null;
+    this.modalDesc  = '';
+
     if (!this.modal) return;
     const target = this.modal;
     this.modal = null;
@@ -457,13 +634,14 @@ export class HubScene extends Phaser.Scene {
 
   // ── HUD overlay ──────────────────────────────────────────────────────────────
 
-  private drawHUD() {
+  private drawHUD(): void {
     const { width } = this.scale;
     const PAD   = 16;
     const BAR_H = 56;
 
     // ── Bar background ────────────────────────────────────────────────────────
-    const bar = this.add.graphics();
+    const bar = this.add.graphics().setDepth(DEPTH_HUD);
+    this.hudLayer.push(bar);
     bar.fillStyle(THEME.background, 0.80);
     bar.fillRect(0, 0, width, BAR_H);
     bar.lineStyle(1, THEME.gold, 0.35);
@@ -487,8 +665,9 @@ export class HubScene extends Phaser.Scene {
 
     // ── Hover glow layer (above bar, below text labels) ───────────────────────
     const PROFILE_HIT_W = 220;
-    const hoverGfx = this.add.graphics();
-    const paintHover = (on: boolean) => {
+    const hoverGfx = this.add.graphics().setDepth(DEPTH_HUD);
+    this.hudLayer.push(hoverGfx);
+    const paintHover = (on: boolean): void => {
       hoverGfx.clear();
       if (!on) return;
       // Pulsing ring around avatar
@@ -501,24 +680,29 @@ export class HubScene extends Phaser.Scene {
 
     // ── Text labels (above hoverGfx so they stay crisp) ──────────────────────
     const displayName = this.user.turtleName ?? this.user.username;
-    this.add.text(PAD + 48, 8, displayName, {
+    const nameLabel = this.add.text(PAD + 48, 8, displayName, {
       fontSize: '15px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
-    });
-    this.add.text(PAD + 48, 27, `Lvl ${this.user.level}  ·  Shell: ${this.user.shellSkin ?? 'kanagawa'}`, {
+    }).setDepth(DEPTH_HUD);
+    this.hudLayer.push(nameLabel);
+
+    const levelLabel = this.add.text(PAD + 48, 27, `Lvl ${this.user.level}  ·  Shell: ${this.user.shellSkin ?? 'kanagawa'}`, {
       fontSize: '11px', color: THEME.text, fontFamily: THEME.font,
-    });
-    this.add.text(barX + barW + 6, barY - 1, `${this.user.xp} / ${xpMax} XP`, {
+    }).setDepth(DEPTH_HUD);
+    this.hudLayer.push(levelLabel);
+
+    const xpLabel = this.add.text(barX + barW + 6, barY - 1, `${this.user.xp} / ${xpMax} XP`, {
       fontSize: '9px', color: THEME.textMutedHex, fontFamily: THEME.font,
-    });
+    }).setDepth(DEPTH_HUD);
+    this.hudLayer.push(xpLabel);
 
     this.renderLeaderboard();
 
     // ── Profile trigger — clicking the left avatar area opens the profile panel ─
-    // The panel opens directly below this region (PAD, BAR_H+8), so the button
-    // and the panel are visually aligned on the left.
     const profileHit = this.add
       .rectangle(PROFILE_HIT_W / 2, BAR_H / 2, PROFILE_HIT_W, BAR_H, 0x000000, 0)
-      .setInteractive({ useHandCursor: true });
+      .setInteractive({ useHandCursor: true })
+      .setDepth(DEPTH_HUD);
+    this.hudLayer.push(profileHit);
 
     profileHit.on('pointerover', () => paintHover(true));
     profileHit.on('pointerout',  () => paintHover(false));
@@ -532,33 +716,42 @@ export class HubScene extends Phaser.Scene {
 
   // ── Login prompt ─────────────────────────────────────────────────────────────
 
-  private drawLoginPrompt() {
+  private drawLoginPrompt(): void {
     const { width, height } = this.scale;
 
-    const vignette = this.add.graphics();
+    const vignette = this.add.graphics().setDepth(DEPTH_HUD);
+    this.promptLayer.push(vignette);
     vignette.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0, 0.75, 0.75);
     vignette.fillRect(0, height * 0.55, width, height * 0.45);
 
-    this.add.text(width / 2, height * 0.67, 'SHELL SMASH', {
+    const titleText = this.add.text(width / 2, height * 0.67, 'SHELL SMASH', {
       fontSize: '52px', color: THEME.textGold,
       fontFamily: THEME.font, fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 5,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(DEPTH_HUD);
+    this.promptLayer.push(titleText);
 
-    this.add.text(width / 2, height * 0.67 + 56, 'Sumo Turtle Arena', {
+    const subtitleText = this.add.text(width / 2, height * 0.67 + 56, 'Sumo Turtle Arena', {
       fontSize: '18px', color: THEME.text, fontFamily: THEME.font,
       stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(DEPTH_HUD);
+    this.promptLayer.push(subtitleText);
 
-    // TODO: swap devLogin() for loginUrl() redirect once 42 OAuth keys are set
-    this.drawToriiButton(width / 2, height * 0.67 + 116, 240, 56, 'Enter the Dojo', async () => {
-      try {
-        await api.devLogin('KameMaster');
-        this.scene.restart();
-      } catch (err) {
-        console.error('[Enter Dojo] Dev login failed:', err);
-      }
-    });
+    // TODO(#001): swap devLogin() for loginUrl() redirect once 42 OAuth keys are set
+    const btn = this.drawToriiButton(
+      width / 2, height * 0.67 + 116, 240, 56,
+      'Enter the Dojo',
+      async () => {
+        try {
+          await api.devLogin('KameMaster');
+          this.scene.restart();
+        } catch (err) {
+          console.error('[Enter Dojo] Dev login failed:', err);
+        }
+      },
+    );
+    // Track all three Torii-button objects so they're destroyed on resize
+    this.promptLayer.push(btn.graphics, btn.hitArea, btn.text);
   }
 
   // ── Torii-gate button ────────────────────────────────────────────────────────
@@ -566,10 +759,10 @@ export class HubScene extends Phaser.Scene {
   private drawToriiButton(
     x: number, y: number, w: number, h: number,
     label: string, onClick: () => void,
-  ) {
-    const g = this.add.graphics();
+  ): { graphics: Phaser.GameObjects.Graphics; hitArea: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text } {
+    const g = this.add.graphics().setDepth(DEPTH_HUD);
 
-    const paint = (hovered: boolean) => {
+    const paint = (hovered: boolean): void => {
       g.clear();
       g.fillStyle(hovered ? THEME.gold : THEME.red, 0.92);
       g.fillRect(x - w / 2, y - h / 2, w, h);
@@ -582,12 +775,13 @@ export class HubScene extends Phaser.Scene {
     paint(false);
 
     const hitArea = this.add.rectangle(x, y, w, h, 0x000000, 0)
-      .setInteractive({ useHandCursor: true });
+      .setInteractive({ useHandCursor: true })
+      .setDepth(DEPTH_HUD) as Phaser.GameObjects.Rectangle;
 
     const text = this.add.text(x, y, label, {
       fontSize: '18px', color: '#ffffff',
       fontFamily: THEME.font, fontStyle: 'bold',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(DEPTH_HUD);
 
     hitArea.on('pointerup',   () => void onClick());
     hitArea.on('pointerover', () => {
@@ -606,41 +800,56 @@ export class HubScene extends Phaser.Scene {
 
   // ── Leaderboard ──────────────────────────────────────────────────────────────
 
-  private renderLeaderboard() {
-    const { width, height } = this.scale;
+  private renderLeaderboard(): void {
     const PAD = 16;
 
+    // Increment generation; the async callback captures this value and bails
+    // out if a newer renderLeaderboard() call has superseded it.
+    const gen = ++this.lbGeneration;
+
+    // Clear any previously drawn leaderboard before fetching fresh data
+    this.clearLayer(this.lbLayer);
+
     api.getAllUsers().then((users: any[]) => {
+      if (gen !== this.lbGeneration) return; // superseded by a newer resize
       if (!users?.length) return;
+
+      // Re-read dimensions here — they may have changed since the call was made
+      const { width: w, height: h } = this.scale;
 
       const sorted  = [...users].sort((a, b) => b.xp - a.xp).slice(0, 5);
       const rowH    = 22;
-      const panelW  = 232;
+      // Clamp panel width so it doesn't overflow at narrow viewports (< 500 px)
+      const panelW  = Math.min(232, w * 0.45);
       const panelH  = 32 + sorted.length * rowH + 10;
-      const panelX  = width  - PAD;
-      const panelY  = height - PAD - panelH;
+      const panelX  = w - PAD;
+      const panelY  = h - PAD - panelH;
 
-      const bg = this.add.graphics();
+      const bg = this.add.graphics().setDepth(DEPTH_HUD);
+      this.lbLayer.push(bg);
       bg.fillStyle(THEME.background, 0.80);
       bg.fillRoundedRect(panelX - panelW, panelY, panelW, panelH, 8);
       bg.lineStyle(1, THEME.gold, 0.30);
       bg.strokeRoundedRect(panelX - panelW, panelY, panelW, panelH, 8);
 
-      this.add.text(panelX - panelW / 2, panelY + 10, 'DOJO RANKINGS', {
+      const header = this.add.text(panelX - panelW / 2, panelY + 10, 'DOJO RANKINGS', {
         fontSize: '10px', color: THEME.textGold,
         fontFamily: THEME.font, fontStyle: 'bold',
-      }).setOrigin(0.5, 0);
+      }).setOrigin(0.5, 0).setDepth(DEPTH_HUD);
+      this.lbLayer.push(header);
 
       sorted.forEach((u, i) => {
         const nameStr = (u.turtleName || u.username).substring(0, 14);
         const colour  = i === 0 ? THEME.textGold : THEME.text;
         const rowY    = panelY + 30 + i * rowH;
-        this.add.text(panelX - panelW + 12, rowY, `${i + 1}.  ${nameStr}`, {
+
+        const nameLabel = this.add.text(panelX - panelW + 12, rowY, `${i + 1}.  ${nameStr}`, {
           fontSize: '11px', color: colour, fontFamily: THEME.font,
-        });
-        this.add.text(panelX - 12, rowY, `${u.xp} XP`, {
+        }).setDepth(DEPTH_HUD);
+        const xpLabel = this.add.text(panelX - 12, rowY, `${u.xp} XP`, {
           fontSize: '11px', color: colour, fontFamily: THEME.font,
-        }).setOrigin(1, 0);
+        }).setOrigin(1, 0).setDepth(DEPTH_HUD);
+        this.lbLayer.push(nameLabel, xpLabel);
       });
     }).catch(() => { /* leaderboard is non-critical */ });
   }
