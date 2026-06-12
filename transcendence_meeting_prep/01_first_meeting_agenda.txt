@@ -30,7 +30,7 @@ TRANSCENDENCE - FIRST MEETING AGENDA
 - What part of the project are you most excited about?
 
 3. Decide Product Category
-- Gaming
+- Gaming *
 - Social
 - Collaboration
 - Productivity

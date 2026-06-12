@@ -1,0 +1,327 @@
+GAMING HUB ROADMAP
+
+==================================================
+PHASE 0 - FOUNDATION & ARCHITECTURE
+==================================================
+
+GOAL:
+Define how all games communicate with the hub.
+
+DELIVERABLES:
+
+Shared User System
+- ID
+- Username
+- Email
+- Avatar
+- Level
+- XP
+- Statistics
+
+Shared Database Design
+
+Core Tables:
+- users
+- profiles
+- friends
+- achievements
+- cosmetics
+- games
+- matches
+
+Game Integration Contract
+
+Every game should return data in a standard format.
+
+Example:
+
+{
+  "game": "pong",
+  "winnerId": 15,
+  "players": [15, 22],
+  "duration": 420,
+  "xpEarned": 50
+}
+
+IMPORTANT:
+
+Games should NEVER directly update:
+- XP
+- Achievements
+- Profiles
+- Statistics
+
+Instead:
+
+Game Ends
+-> Result Sent To Hub
+-> Hub Processes Rewards
+-> Database Updated
+
+==================================================
+PHASE 1 - USER PROFILES
+==================================================
+
+GOAL:
+Create a persistent identity across all games.
+
+FEATURES:
+- Profile Page
+- Public Profiles
+- Match History
+- Achievement Display
+- Statistics Display
+
+DATABASE:
+- users
+- profiles
+- match_history
+
+==================================================
+PHASE 2 - AVATAR SYSTEM
+==================================================
+
+GOAL:
+Give players a recognizable identity.
+
+MVP:
+- Hair
+- Face
+- Shirt
+- Color
+
+FUTURE EXPANSION:
+- Hat
+- Aura
+- Pet
+- Background
+- Title
+
+DATABASE:
+- avatars
+- cosmetics
+- user_cosmetics
+
+==================================================
+PHASE 3 - PROGRESSION SYSTEM
+==================================================
+
+GOAL:
+Connect all games together.
+
+XP SYSTEM:
+Win Match: +50 XP
+Loss: +10 XP
+Tournament Win: +200 XP
+
+LEVELS:
+Level 1
+Level 2
+Level 3
+...
+
+REWARDS:
+Level Up
+-> Unlock Cosmetic
+
+==================================================
+PHASE 4 - ACHIEVEMENT SYSTEM
+==================================================
+
+GOAL:
+Reward activity across the platform.
+
+EXAMPLES:
+- First Win
+- 10 Wins
+- 100 Wins
+- Play Every Game
+- Tournament Winner
+- Reach Level 10
+
+ARCHITECTURE:
+Game Ends
+-> Achievement Service Checks Conditions
+-> Unlock Achievement
+-> Reward Cosmetic
+
+DATABASE:
+- achievements
+- user_achievements
+
+==================================================
+PHASE 5 - FRIENDS & SOCIAL
+==================================================
+
+GOAL:
+Turn users into a community.
+
+FEATURES:
+- Add Friend
+- Remove Friend
+- Friend Requests
+- Online Status
+- Match Invites
+- Tournament Invites
+
+DATABASE:
+- friendships
+- friend_requests
+
+==================================================
+PHASE 6 - STATISTICS & LEADERBOARDS
+==================================================
+
+GOAL:
+Create competition across all games.
+
+PER GAME STATISTICS:
+- Wins
+- Losses
+- Win Rate
+
+GLOBAL STATISTICS:
+- Total Wins
+- Total XP
+- Games Played
+
+LEADERBOARDS:
+- Global XP
+- Pong Ranking
+- Trivia Ranking
+
+==================================================
+PHASE 7 - GAME PORTAL SYSTEM
+==================================================
+
+GOAL:
+Allow new games to plug into the platform easily.
+
+CREATE A GAME INTERFACE
+
+Example:
+
+interface HubGame
+{
+    id: string;
+    name: string;
+    icon: string;
+
+    launch(): void;
+    submitMatchResult(): void;
+}
+
+REGISTRATION SYSTEM
+
+Games register themselves.
+
+Example:
+
+registerGame({
+    id: "pong",
+    name: "Pong"
+});
+
+ADDING A NEW GAME SHOULD BE:
+
+Create Game
+-> Register Game
+-> Done
+
+NO HUB MODIFICATIONS REQUIRED.
+
+==================================================
+PHASE 8 - TOURNAMENT SYSTEM
+==================================================
+
+GOAL:
+Connect multiple games through competition.
+
+FEATURES:
+- Create Tournament
+- Join Tournament
+- Tournament Brackets
+- Results
+
+FUTURE:
+Multi-Game Tournament
+- Round 1 -> Trivia
+- Round 2 -> Pong
+- Round 3 -> Connect Four
+
+==================================================
+PHASE 9 - COSMETICS ECONOMY
+==================================================
+
+GOAL:
+Make progression meaningful.
+
+UNLOCK SOURCES:
+- Achievements
+- Level Ups
+- Tournament Wins
+- Special Events
+
+COSMETIC TYPES:
+- Avatar Frames
+- Titles
+- Hats
+- Pets
+- Auras
+- Badges
+
+==================================================
+PHASE 10 - STRETCH GOAL: SOCIAL HUB WORLD
+==================================================
+
+ONLY START THIS IF EVERYTHING ELSE IS STABLE.
+
+MVP:
+- Small Phaser Map
+- Movement
+- Other Players
+- Chat
+- Game Portals
+
+VERSION 2:
+- Cosmetics Visible
+- Player Titles
+- Achievement Badges
+
+VERSION 3:
+- Tournament Area
+- Leaderboard Area
+- Interactive Objects
+
+==================================================
+RECOMMENDED DEVELOPMENT ORDER
+==================================================
+
+1. User Profiles
+2. Avatar System
+3. Game Integration Contract
+4. Progression System
+5. Achievements
+6. Friends
+7. Statistics
+8. Leaderboards
+9. Tournaments
+10. Cosmetics
+11. Social Hub World
+
+==================================================
+KEY PRINCIPLE
+==================================================
+
+Build the systems first.
+Build the world last.
+
+If profiles, cosmetics, achievements,
+XP, friends, statistics, and game integration
+already exist, then the Phaser social space
+becomes mostly a visualization layer rather
+than a critical dependency.
+
+This dramatically reduces project risk while
+still leaving room for a memorable final
+feature if the team finishes ahead of schedule.
