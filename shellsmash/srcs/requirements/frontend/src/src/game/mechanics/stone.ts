@@ -31,9 +31,8 @@ export const STONE_BOUNCE_DAMP = 0.92;
 /** Source px/s below which the stone snaps to rest. */
 export const MIN_SPEED_SRC = 8;
 
-/** Default lateral curl drift (team 0 curves right, team 1 left).
- *  dθ/dt = curlBias * CURL_STRENGTH — a full-power shot drifts ~80 src-px. */
-export const DEFAULT_CURL_BIAS = 1.0;
+/** Default lateral curl drift — 0 means straight, only SPINNING overrides this. */
+export const DEFAULT_CURL_BIAS = 0;
 
 /**
  * Scales how strongly curlBias bends the trajectory.
