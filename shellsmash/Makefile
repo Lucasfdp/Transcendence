@@ -11,13 +11,35 @@ OVERRIDE_FILE	:= srcs/docker-compose.override.yml
 ENV_FILE		:= .env
 PROJECT_NAME	:= transcendence
 
-# Colours for pretty output
-RED		:= \033[0;31m
-GREEN	:= \033[0;32m
-YELLOW	:= \033[0;33m
-CYAN	:= \033[0;36m
-BOLD	:= \033[1m
-RESET	:= \033[0m
+## Colours for pretty output
+# RED		:= \033[0;31m
+# GREEN	:= \033[0;32m
+# YELLOW	:= \033[0;33m
+# CYAN	:= \033[0;36m
+# BOLD	:= \033[1m
+# RESET	:= \033[0m
+
+# --- COLOR DEFINITON ---
+ifeq ($(shell tput colors 2>/dev/null),)
+	GREEN   :=
+	RED     :=
+	YELLOW  :=
+	MAGENTA :=
+	CYAN	:=
+	BLUE    :=
+	NC      :=
+else
+	BOLD    := $(shell tput bold)
+	RESET   := $(shell tput sgr0)
+
+	GREEN   := $(BOLD)$(shell tput setaf 2)
+	RED     := $(BOLD)$(shell tput setaf 1)
+	YELLOW  := $(BOLD)$(shell tput setaf 3)
+	MAGENTA := $(BOLD)$(shell tput setaf 5)
+	CYAN    := $(BOLD)$(shell tput setaf 6)
+	BLUE    := $(BOLD)$(shell tput setaf 4)
+	NC      := $(RESET)
+endif
 
 # Default target
 .DEFAULT_GOAL := help
