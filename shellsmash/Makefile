@@ -155,16 +155,43 @@ check-env:
 		exit 1; \
 	fi
 
+## push: Stage, commit, rebase onto remote, then push. Usage: make push M="your message"
 push:
 	@if [ -z "$(M)" ]; then \
 		printf "$(RED)  Usage: make push M=\"your commit message\"$(RESET)\n"; \
-	else \
-		printf "$(CYAN)$(BOLD)\n  Pushing to remote...$(RESET)\n\n"; \
-		git add . && \
-		git commit -m "$(M)" && \
-		git push && \
-		printf "$(GREEN)$(BOLD)  [Pushed successfully]$(RESET)\n\n"; \
+		exit 1; \
 	fi
+	@printf "$(CYAN)$(BOLD)\n  Checking for uncommitted changes...$(RESET)\n"
+	@# Stage everything (including new files, respects .gitignore)
+	git add .
+	@# Bail out cleanly if there is nothing new to commit
+	@if git diff --cached --quiet; then \
+		printf "$(YELLOW)  Nothing to commit — working tree clean.$(RESET)\n"; \
+	else \
+		git commit -m "$(M)"; \
+	fi
+	@printf "$(CYAN)  Fetching latest remote state...$(RESET)\n"
+	@git fetch origin
+	@# Determine the tracking branch (falls back to main if none is set)
+	$(eval BRANCH := $(shell git rev-parse --abbrev-ref HEAD))
+	$(eval REMOTE_BRANCH := $(shell git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "origin/$(BRANCH)"))
+	@# Check whether the remote has commits we don't have locally
+	@if git merge-base --is-ancestor HEAD $(REMOTE_BRANCH) 2>/dev/null; then \
+		printf "$(YELLOW)  Remote is ahead — rebasing local commits on top...$(RESET)\n"; \
+		git rebase $(REMOTE_BRANCH) || { \
+			printf "$(RED)  Rebase conflict. Resolve conflicts, then run:\n"; \
+			printf "    git rebase --continue\n    make push M=\"$(M)\"$(RESET)\n"; \
+			exit 1; \
+		}; \
+	else \
+		printf "$(GREEN)  Remote is up to date — no rebase needed.$(RESET)\n"; \
+	fi
+	@printf "$(CYAN)  Pushing to remote...$(RESET)\n"
+	@git push origin HEAD || { \
+		printf "$(RED)  Push failed. Run 'git status' to investigate.$(RESET)\n"; \
+		exit 1; \
+	}
+	@printf "$(GREEN)$(BOLD)  [Pushed successfully]$(RESET)\n\n"
 
 ## help: Show this help message
 help:
