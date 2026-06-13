@@ -706,6 +706,10 @@ export class HubScene extends Phaser.Scene {
 
       // Click
       zone.on('pointerup', () => {
+        if (hs.id === 'shell-smash-arena') {
+          this.scene.start('KameKnockScene');
+          return;
+        }
         if (hs.id === 'bamboo-bash') {
           this.scene.start('BambooBashScene');
           return;
