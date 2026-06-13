@@ -13,7 +13,8 @@ import { ArenaPixels } from '../arenas/arena';
 
 const FRICTION_BASE = 0.985;  // per-frame multiplier at 60 fps (compensated below)
 const BOUNCE_DAMP   = 0.80;   // speed retained per wall bounce
-const MIN_SPEED     = 6;      // px/s — ball snaps to rest below this
+const MIN_SPEED_SRC = 6;      // source px/s — ball snaps to rest below this
+                              // (scaled by arena.scale so it's fair at any size)
 
 /** Ball radius in arena source px — scaled by ArenaPixels.scale at render time. */
 export const BALL_SRC_R = 26;
@@ -74,7 +75,7 @@ export function stepBall(b: BallState, deltaMs: number, a: ArenaPixels): boolean
   b.vx *= f;
   b.vy *= f;
 
-  if (Math.sqrt(b.vx * b.vx + b.vy * b.vy) < MIN_SPEED) {
+  if (Math.sqrt(b.vx * b.vx + b.vy * b.vy) < MIN_SPEED_SRC * a.scale) {
     b.vx = 0;
     b.vy = 0;
     return false;

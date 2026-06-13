@@ -18,15 +18,16 @@ import { THEME } from '../../hub/theme';
 
 export interface SlingshotConfig {
   maxDrag: number;       // max pull distance in canvas px
-  launchSpeed: number;   // px/s at full drag
+  launchSpeed: number;   // canvas px/s at full drag — scale with the arena so
+                         // power is fair across window sizes
   grabRadiusFactor?: number;  // grab zone = ball.r × this (default 3.5)
   depth?: number;        // render depth of the aim graphics (default 1)
 }
 
 export class Slingshot {
   public maxDrag: number;
+  public launchSpeed: number;
 
-  private readonly launchSpeed: number;
   private readonly grabRadiusFactor: number;
   private readonly depth: number;
 

@@ -13,9 +13,10 @@ import { BallState, BALL_SRC_R, stepBall, drawShellBall } from '../mechanics/bal
 import { Slingshot } from '../mechanics/slingshot';
 import { buildReturnButton } from '../mechanics/hud';
 
-// Slingshot tuning in arena source px (scaled by the letterbox factor)
-const MAX_DRAG_SRC  = 380;    // max pull distance
-const LAUNCH_SPEED  = 1100;   // px/s at full drag
+// Slingshot tuning in arena source px (scaled by the letterbox factor so the
+// game feels identical at 1080p, 4K, or a tiny window)
+const MAX_DRAG_SRC     = 380;    // max pull distance
+const LAUNCH_SPEED_SRC = 1100;   // source px/s at full drag
 
 export class BambooBashScene extends Phaser.Scene {
   private bgGfx!:   Phaser.GameObjects.Graphics;
@@ -37,7 +38,7 @@ export class BambooBashScene extends Phaser.Scene {
 
     this.slingshot = new Slingshot(this, this.ball, {
       maxDrag: MAX_DRAG_SRC * this.arena.scale,
-      launchSpeed: LAUNCH_SPEED,
+      launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
       depth: 1,
     });
     this.slingshot.attach();
@@ -93,9 +94,10 @@ export class BambooBashScene extends Phaser.Scene {
     const oldArena = this.arena;
     this.arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
 
-    // Cancel any in-flight drag and rescale the pull distance
+    // Cancel any in-flight drag and rescale pull distance + launch power
     this.slingshot.cancel();
-    this.slingshot.maxDrag = MAX_DRAG_SRC * this.arena.scale;
+    this.slingshot.maxDrag     = MAX_DRAG_SRC * this.arena.scale;
+    this.slingshot.launchSpeed = LAUNCH_SPEED_SRC * this.arena.scale;
 
     // Carry the ball to the equivalent spot in the new arena space
     const relX = (this.ball.x - oldArena.cx) / oldArena.rx;
