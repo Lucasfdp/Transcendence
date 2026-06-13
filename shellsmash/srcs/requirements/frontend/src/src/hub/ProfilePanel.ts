@@ -10,20 +10,22 @@
  *   this.profilePanel.toggle();   // open / close
  *   this.profilePanel.destroy();  // on scene shutdown
  *
- * Layout (panel is 320 × 490, anchored 16px from top-left below the HUD):
+ * Layout (panel is 320 × 540, anchored 16px from top-left below the HUD):
  *
  *   ┌──────────────────────────────────┐
  *   │  ╔══════════════╗  [level badge] │
  *   │  ║  TURTLE ART  ║               │
  *   │  ╚══════════════╝  [42 badge]   │
+ *   │  [──── Rank Belt ────]           │
  *   │  KAMEGORO                       │
- *   │  Shell: kanagawa                │
+ *   │  ⬡  kanagawa (hex icon)         │
  *   │  ─────────────────────────────  │
  *   │  XP ██████████░░░  1250/2000    │
  *   │  ─────────────────────────────  │
  *   │  ┌──────┐  ┌──────┐  ┌──────┐  │
  *   │  │ WINS │  │LOSSES│  │PLAYED│  │
  *   │  └──────┘  └──────┘  └──────┘  │
+ *   │  WIN RATE  ██████░░  67%        │
  *   │  [ ✕  Close Profile ]           │
  *   └──────────────────────────────────┘
  */
@@ -33,8 +35,27 @@ import { THEME } from './theme';
 
 // Fixed panel geometry
 const PW  = 320;  // panel width
-const PH  = 490;  // panel height
+const PH  = 540;  // panel height (increased to fit rank belt + win-rate bar)
 const PAD = 20;   // internal padding
+
+// ── Rank belt mapping ─────────────────────────────────────────────────────────
+function getRank(level: number): { label: string; colour: number } {
+  if (level >= 30) return { label: 'Grand Kame',   colour: 0x00e5ff };
+  if (level >= 20) return { label: 'Gold Shell',   colour: 0xd4a843 };
+  if (level >= 10) return { label: 'Silver Fang',  colour: 0xc0c0c0 };
+  if (level >= 5)  return { label: 'Bronze Claw',  colour: 0xcd7f32 };
+  return              { label: 'Novice Shell', colour: 0x8b7355 };
+}
+
+// ── Shell skin accent colours ─────────────────────────────────────────────────
+function skinColour(skin: string): number {
+  switch (skin) {
+    case 'kanagawa': return 0x1a3a5c;
+    case 'dragon':   return 0x8b0000;
+    case 'bamboo':   return 0x2d5a1b;
+    default:         return 0xd4a843;
+  }
+}
 
 export class ProfilePanel {
   private readonly scene:     Phaser.Scene;
@@ -51,19 +72,28 @@ export class ProfilePanel {
   // ── Public API ──────────────────────────────────────────────────────────────
 
   show() {
-    this.container.setVisible(true).setAlpha(0);
+    const targetX = this.container.x;
+    this.container.setX(targetX - 30).setVisible(true).setAlpha(0);
     this.scene.tweens.add({
-      targets: this.container, alpha: 1, duration: 200, ease: 'Power2',
+      targets:  this.container,
+      x:        targetX,
+      alpha:    1,
+      duration: 220,
+      ease:     'Power2.easeOut',
     });
   }
 
   hide() {
+    const startX = this.container.x;
     this.scene.tweens.add({
       targets:    this.container,
+      x:          startX - 30,
       alpha:      0,
-      duration:   150,
-      ease:       'Power1',
-      onComplete: () => this.container.setVisible(false),
+      duration:   160,
+      ease:       'Power1.easeIn',
+      onComplete: () => {
+        this.container.setVisible(false).setX(startX);
+      },
     });
   }
 
@@ -134,9 +164,29 @@ export class ProfilePanel {
     }).setOrigin(0.5);
     children.push(badgeGfx, badgeLabel);
 
-    // ── 5. Player name ────────────────────────────────────────────────────────
+    // ── 5. Rank belt (pill badge above player name) ───────────────────────────
+    const rank      = getRank(user.level ?? 1);
+    const beltY     = avatarCY + frameR + 12;
+    const beltW     = 120;
+    const beltH     = 20;
+    const beltGfx   = this.scene.add.graphics();
+    beltGfx.fillStyle(rank.colour, 0.18);
+    beltGfx.fillRoundedRect(PW / 2 - beltW / 2, beltY, beltW, beltH, beltH / 2);
+    beltGfx.lineStyle(1, rank.colour, 0.70);
+    beltGfx.strokeRoundedRect(PW / 2 - beltW / 2, beltY, beltW, beltH, beltH / 2);
+    const beltText = this.scene.add.text(PW / 2, beltY + beltH / 2, rank.label, {
+      fontSize:   '10px',
+      color:      Phaser.Display.Color.IntegerToColor(rank.colour).rgba,
+      fontFamily: THEME.font,
+      fontStyle:  'bold',
+      align:      'center',
+    }).setOrigin(0.5);
+    children.push(beltGfx, beltText);
+
+    // ── 6. Player name ────────────────────────────────────────────────────────
     const displayName = (user.turtleName ?? user.username ?? 'Unknown').toUpperCase();
-    const nameText = this.scene.add.text(PW / 2, avatarCY + frameR + 18, displayName, {
+    const nameY       = beltY + beltH + 10;
+    const nameText    = this.scene.add.text(PW / 2, nameY, displayName, {
       fontSize:   '20px',
       color:      THEME.textGold,
       fontFamily: THEME.font,
@@ -145,9 +195,9 @@ export class ProfilePanel {
     }).setOrigin(0.5, 0);
     children.push(nameText);
 
-    // ── 6. Level badge (gold circle beside name) ──────────────────────────────
+    // ── 7. Level badge (gold circle beside name) ──────────────────────────────
     const nameRight  = PW / 2 + nameText.width / 2 + 10;
-    const nameMidY   = avatarCY + frameR + 18 + 10;
+    const nameMidY   = nameY + 10;
     const lvlGfx = this.scene.add.graphics();
     lvlGfx.fillStyle(THEME.gold, 1);   lvlGfx.fillCircle(nameRight + 16, nameMidY, 16);
     lvlGfx.fillStyle(THEME.background, 1); lvlGfx.fillCircle(nameRight + 16, nameMidY, 13);
@@ -158,12 +208,29 @@ export class ProfilePanel {
     }).setOrigin(0.5);
     children.push(lvlGfx, lvlText);
 
-    // ── 7. Shell skin subtitle ────────────────────────────────────────────────
-    const skinY = avatarCY + frameR + 44;
-    children.push(this.scene.add.text(PW / 2, skinY, `⬡  ${user.shellSkin ?? 'kanagawa'}`, {
+    // ── 8. Shell skin subtitle with hex icon ──────────────────────────────────
+    const skinName  = user.shellSkin ?? 'kanagawa';
+    const skinY     = nameY + 26;
+    const hexColour = skinColour(skinName);
+    const hexGfx    = this.scene.add.graphics();
+    // Draw a small flat-top hexagon (6 vertices)
+    const hexR  = 7;
+    const hexCX = PW / 2 - 36;
+    const hexCY = skinY + 7;
+    hexGfx.fillStyle(hexColour, 0.85);
+    hexGfx.lineStyle(1, hexColour, 1);
+    const hexPoints: Phaser.Types.Math.Vector2Like[] = [];
+    for (let v = 0; v < 6; v++) {
+      const a = (Math.PI / 3) * v - Math.PI / 6;
+      hexPoints.push({ x: hexCX + Math.cos(a) * hexR, y: hexCY + Math.sin(a) * hexR });
+    }
+    hexGfx.fillPoints(hexPoints, true);
+    hexGfx.strokePoints(hexPoints, true);
+    children.push(hexGfx);
+    children.push(this.scene.add.text(PW / 2 - 24, skinY, skinName, {
       fontSize: '12px', color: THEME.textMutedHex,
-      fontFamily: THEME.font, align: 'center',
-    }).setOrigin(0.5, 0));
+      fontFamily: THEME.font, align: 'left',
+    }).setOrigin(0, 0));
 
     // ── 8. Divider ────────────────────────────────────────────────────────────
     const div1Y = skinY + 24;
@@ -242,14 +309,55 @@ export class ProfilePanel {
       );
     });
 
-    // ── 12. Bio / placeholder text ────────────────────────────────────────────
-    const bioY = statsY + 78;
-    const bioText = profile.bio ?? 'No dojo record yet.';
-    children.push(this.scene.add.text(PW / 2, bioY, `"${bioText}"`, {
-      fontSize: '10px', color: THEME.textMutedHex,
-      fontFamily: THEME.font, fontStyle: 'italic', align: 'center',
-      wordWrap: { width: PW - PAD * 2 },
-    }).setOrigin(0.5, 0));
+    // ── 12. Win-rate bar OR bio placeholder ───────────────────────────────────
+    const winRateY    = statsY + 78;
+    const wins        = profile.totalWins   ?? 0;
+    const losses      = profile.totalLosses ?? 0;
+    const played      = profile.gamesPlayed ?? 0;
+
+    if (played > 0) {
+      const winFrac  = wins   / played;
+      const lossFrac = losses / played;
+      const barW     = PW - PAD * 2;
+      const barH     = 8;
+
+      // Label + percentage right-aligned
+      const winPct = Math.round(winFrac * 100);
+      children.push(this.scene.add.text(PAD, winRateY, 'WIN RATE', {
+        fontSize: '9px', color: THEME.textMutedHex,
+        fontFamily: THEME.font, fontStyle: 'bold',
+      }).setOrigin(0, 0));
+      children.push(this.scene.add.text(PW - PAD, winRateY, `${winPct}%`, {
+        fontSize: '9px', color: THEME.textGold,
+        fontFamily: THEME.font, fontStyle: 'bold',
+      }).setOrigin(1, 0));
+
+      const wrGfx = this.scene.add.graphics();
+      // Track (grey)
+      wrGfx.fillStyle(0x2a2218, 1);
+      wrGfx.fillRoundedRect(PAD, winRateY + 14, barW, barH, 4);
+      // Win segment (gold)
+      if (winFrac > 0) {
+        wrGfx.fillStyle(THEME.gold, 1);
+        wrGfx.fillRoundedRect(PAD, winRateY + 14, barW * winFrac, barH, 4);
+      }
+      // Loss segment (red, appended after win)
+      if (lossFrac > 0) {
+        wrGfx.fillStyle(THEME.red, 0.85);
+        wrGfx.fillRect(PAD + barW * winFrac, winRateY + 14, barW * lossFrac, barH);
+      }
+      // Sheen
+      wrGfx.fillStyle(0xffffff, 0.06);
+      wrGfx.fillRoundedRect(PAD, winRateY + 14, barW, barH / 2, 4);
+      children.push(wrGfx);
+    } else {
+      const bioText = profile.bio ?? 'No dojo record yet.';
+      children.push(this.scene.add.text(PW / 2, winRateY, `"${bioText}"`, {
+        fontSize: '10px', color: THEME.textMutedHex,
+        fontFamily: THEME.font, fontStyle: 'italic', align: 'center',
+        wordWrap: { width: PW - PAD * 2 },
+      }).setOrigin(0.5, 0));
+    }
 
     // ── 13. Close button ──────────────────────────────────────────────────────
     const closeBtnY = PH - 38;

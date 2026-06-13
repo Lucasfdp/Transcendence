@@ -151,7 +151,8 @@ export class HubScene extends Phaser.Scene {
     this.load.on('filecomplete-image-hub-bg', () => { this.bgImageLoaded = true; });
 
     // Generate a petal texture programmatically — no asset file required
-    const g = this.make.graphics({ x: 0, y: 0, add: false });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const g = this.make.graphics({ x: 0, y: 0 } as any, false);
     g.fillStyle(0xFFB7C5, 1);
     g.fillEllipse(10, 6, 20, 12);   // outer petal shape
     g.fillStyle(0xFFE4EC, 0.75);
@@ -165,10 +166,9 @@ export class HubScene extends Phaser.Scene {
   async create(): Promise<void> {
     const { width, height } = this.scale;
 
-    // Letterbox: fit image inside canvas, preserve aspect ratio
-    const sx = width  / SRC_W;
-    const sy = height / SRC_H;
-    this.bgScale = Math.min(sx, sy);
+    // Cover-and-crop: scale image so it always fills the canvas completely.
+    // bgOffX / bgOffY may be negative — that means the image is cropped at the edges.
+    this.bgScale = Math.max(width / SRC_W, height / SRC_H);
     this.bgOffX  = (width  - SRC_W * this.bgScale) / 2;
     this.bgOffY  = (height - SRC_H * this.bgScale) / 2;
 
@@ -219,10 +219,8 @@ export class HubScene extends Phaser.Scene {
   private applyResize(): void {
     const { width, height } = this.scale;
 
-    // 1. Recalculate letterbox transform
-    const sx = width  / SRC_W;
-    const sy = height / SRC_H;
-    this.bgScale = Math.min(sx, sy);
+    // 1. Recalculate cover-and-crop letterbox transform
+    this.bgScale = Math.max(width / SRC_W, height / SRC_H);
     this.bgOffX  = (width  - SRC_W * this.bgScale) / 2;
     this.bgOffY  = (height - SRC_H * this.bgScale) / 2;
 
@@ -343,6 +341,41 @@ export class HubScene extends Phaser.Scene {
     gfx.fillStyle(0xFFF5D6, 0.13); gfx.fillCircle(moonX, moonY, moonR * 1.35);
     // Moon face
     gfx.fillStyle(0xFFF5D6, 0.96); gfx.fillCircle(moonX, moonY, moonR);
+    // Soft moonlight cone pointing downward
+    gfx.fillGradientStyle(0xFFF5D6, 0xFFF5D6, 0x14083A, 0x14083A, 0.04, 0.04, 0, 0);
+    gfx.fillTriangle(
+      moonX, moonY + moonR,
+      moonX - width * 0.22, height * 0.75,
+      moonX + width * 0.22, height * 0.75,
+    );
+
+    // ── Mountain silhouettes (distant peaks, behind trees) ───────────────────────
+    const mtGfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(mtGfx);
+    // Far range — darker, taller
+    mtGfx.fillStyle(0x0e0e22, 0.38);
+    mtGfx.fillTriangle(
+      0,           height * 0.72,
+      width * 0.28, height * 0.34,
+      width * 0.55, height * 0.72,
+    );
+    mtGfx.fillTriangle(
+      width * 0.42, height * 0.72,
+      width * 0.70, height * 0.42,
+      width,        height * 0.72,
+    );
+    // Near range — slightly lighter, overlapping
+    mtGfx.fillStyle(0x12122a, 0.32);
+    mtGfx.fillTriangle(
+      0,            height * 0.72,
+      width * 0.18, height * 0.50,
+      width * 0.38, height * 0.72,
+    );
+    mtGfx.fillTriangle(
+      width * 0.60, height * 0.72,
+      width * 0.82, height * 0.46,
+      width,        height * 0.72,
+    );
 
     // ── Mist / fog at ground level ───────────────────────────────────────────────
     const mistGfx = this.add.graphics().setDepth(DEPTH_BG);
@@ -350,35 +383,70 @@ export class HubScene extends Phaser.Scene {
     mistGfx.fillGradientStyle(0x1A0D3A, 0x1A0D3A, 0x1A0D3A, 0x1A0D3A, 0, 0, 0.28, 0.28);
     mistGfx.fillRect(0, height * 0.60, width, height * 0.12);
 
-    // ── Stone path (centre lane) ─────────────────────────────────────────────────
+    // ── Stone path — tapering trapezoid widening toward viewer ───────────────────
     const pathGfx = this.add.graphics().setDepth(DEPTH_BG);
     track(pathGfx);
-    const pathW = width * 0.22;
-    pathGfx.fillStyle(0x1E1A12, 0.85);
-    pathGfx.fillRect(width / 2 - pathW / 2, height * 0.68, pathW, height * 0.32);
-    // Stone joint lines
-    pathGfx.lineStyle(1, 0x0A0806, 0.5);
-    for (let row = 0; row < 6; row++) {
-      const py = height * 0.68 + row * (height * 0.06);
-      pathGfx.lineBetween(width / 2 - pathW / 2, py, width / 2 + pathW / 2, py);
+    // Trapezoid: narrow at top (~65% down), wide at bottom edge
+    const pathTopW  = width * 0.10;
+    const pathBotW  = width * 0.40;
+    const pathTopY  = height * 0.65;
+    const pathBotY  = height;
+    const cx        = width / 2;
+    pathGfx.fillStyle(0x2a2218, 0.88);
+    pathGfx.fillPoints([
+      { x: cx - pathTopW / 2, y: pathTopY },
+      { x: cx + pathTopW / 2, y: pathTopY },
+      { x: cx + pathBotW / 2, y: pathBotY },
+      { x: cx - pathBotW / 2, y: pathBotY },
+    ] as Phaser.Types.Math.Vector2Like[], true);
+    // Stone joint lines — converge toward vanishing point
+    pathGfx.lineStyle(1, 0x0A0806, 0.45);
+    const rows = 7;
+    for (let row = 0; row <= rows; row++) {
+      const t  = row / rows;
+      const py = pathTopY + (pathBotY - pathTopY) * t;
+      const hw = pathTopW / 2 + (pathBotW / 2 - pathTopW / 2) * t;
+      pathGfx.lineBetween(cx - hw, py, cx + hw, py);
     }
-    pathGfx.lineBetween(width / 2, height * 0.68, width / 2, height);
+    // Centre spine
+    pathGfx.lineBetween(cx, pathTopY, cx, pathBotY);
+
+    // ── Hanging stone lanterns ───────────────────────────────────────────────────
+    const lanternGfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(lanternGfx);
+    const lanternPositions = [0.18, 0.38, 0.62, 0.82];
+    lanternPositions.forEach((xFrac) => {
+      const lx  = width  * xFrac;
+      const ly  = height * 0.30;  // body centre
+      const lw  = Math.min(width, height) * 0.022;  // half-width of body
+      const lh  = Math.min(width, height) * 0.040;  // half-height of body
+
+      // Rope from canvas top to lantern top
+      lanternGfx.lineStyle(1, 0x3a2e1a, 0.70);
+      lanternGfx.lineBetween(lx, 0, lx, ly - lh);
+
+      // Lantern body — warm amber oval
+      lanternGfx.fillStyle(0x8b4513, 0.85);
+      lanternGfx.fillEllipse(lx, ly, lw * 2, lh * 2);
+
+      // Inner glow fill
+      lanternGfx.fillStyle(0xff8c00, 0.30);
+      lanternGfx.fillEllipse(lx, ly, lw * 1.4, lh * 1.4);
+
+      // Top and bottom caps
+      lanternGfx.fillStyle(0x5a2e10, 0.90);
+      lanternGfx.fillRect(lx - lw * 0.7, ly - lh - 3, lw * 1.4, 5);
+      lanternGfx.fillRect(lx - lw * 0.7, ly + lh - 2, lw * 1.4, 5);
+
+      // Point light for warm glow (cast downward)
+      const light = this.add.pointlight(lx, ly + lh * 0.5, 0xff6600, 60, 0.40, 0.06);
+      track(light);
+    });
 
     // ── Cherry blossom trees (left + right) ──────────────────────────────────────
-    // Guard: only draw a tree if its trunk x falls within the letterboxed image
-    // area.  At very wide aspect ratios the image is inset by bgOffX and trees
-    // positioned at width*0.06 / 0.94 would land in the black letterbox bars.
-    const imgLeft  = this.bgOffX;
-    const imgRight = this.bgOffX + SRC_W * this.bgScale;
-    const leftTreeX  = width * 0.06;
-    const rightTreeX = width * 0.94;
-
-    if (leftTreeX >= imgLeft) {
-      this.drawBlossamTree(leftTreeX,  height * 0.72, height * 0.38, true);
-    }
-    if (rightTreeX <= imgRight) {
-      this.drawBlossamTree(rightTreeX, height * 0.72, height * 0.38, false);
-    }
+    // Cover-and-crop letterbox fills the whole canvas, so no bounds guard needed.
+    this.drawBlossamTree(width * 0.06, height * 0.72, height * 0.38, true);
+    this.drawBlossamTree(width * 0.94, height * 0.72, height * 0.38, false);
 
     // ── Ambient floating petals (static scene decoration) ────────────────────────
     const petalGfx = this.add.graphics().setDepth(DEPTH_BG);
@@ -450,57 +518,179 @@ export class HubScene extends Phaser.Scene {
 
   // ── Hotspots ─────────────────────────────────────────────────────────────────
 
+  /** Draw a small zone icon at (ix, iy) into gfx. Icon fits within 18×18. */
+  private drawZoneIcon(gfx: Phaser.GameObjects.Graphics, id: string, ix: number, iy: number, s: number): void {
+    // s = scale factor (bgScale capped at 1)
+    const u = Math.max(0.5, s);  // avoid sub-pixel invisibility
+    gfx.lineStyle(1.5 * u, 0xd4a843, 0.85);
+    gfx.fillStyle(0xd4a843, 0.80);
+
+    switch (id) {
+      case 'shell-smash-arena': {
+        // Torii arch: two upright posts + two crossbars
+        const pw = 6 * u, ph = 10 * u;
+        gfx.fillRect(ix,          iy + 3 * u, 2 * u, ph);
+        gfx.fillRect(ix + pw,     iy + 3 * u, 2 * u, ph);
+        gfx.fillRect(ix - u,      iy,          pw + 4 * u, 2 * u);
+        gfx.fillRect(ix,          iy + 4 * u,  pw + 2 * u, 1.5 * u);
+        break;
+      }
+      case 'river-rush': {
+        // Two arc-shaped wave strokes
+        gfx.lineStyle(2 * u, 0x7ec8e3, 0.90);
+        gfx.beginPath();
+        gfx.arc(ix + 4 * u, iy + 6 * u, 5 * u, Math.PI, 0, false);
+        gfx.strokePath();
+        gfx.beginPath();
+        gfx.arc(ix + 4 * u, iy + 12 * u, 5 * u, Math.PI, 0, false);
+        gfx.strokePath();
+        break;
+      }
+      case 'bamboo-bash': {
+        // Three vertical bamboo stalks with joint nodes
+        gfx.lineStyle(2 * u, 0x6ab04c, 0.90);
+        [-4, 0, 4].forEach((dx) => {
+          const bx = ix + 4 * u + dx * u;
+          gfx.lineBetween(bx, iy, bx, iy + 14 * u);
+          gfx.fillStyle(0x4a8a2c, 0.70);
+          gfx.fillRect(bx - u, iy + 4 * u, 2 * u, 2 * u);
+          gfx.fillRect(bx - u, iy + 9 * u, 2 * u, 2 * u);
+        });
+        break;
+      }
+      case 'oni-dodge': {
+        // Horned circle: head + two small horn triangles
+        gfx.lineStyle(1.5 * u, 0xd4a843, 0.85);
+        gfx.strokeCircle(ix + 5 * u, iy + 8 * u, 5 * u);
+        gfx.fillStyle(0xd4a843, 0.80);
+        gfx.fillTriangle(ix + 2 * u, iy + 4 * u, ix, iy, ix + 4 * u, iy + 4 * u);
+        gfx.fillTriangle(ix + 7 * u, iy + 4 * u, ix + 6 * u, iy, ix + 10 * u, iy + 4 * u);
+        break;
+      }
+      case 'sakura-sweep': {
+        // 5-petal flower, radially arranged
+        const petals = 5;
+        const pr = 4 * u, cr = 1.5 * u;
+        const fx = ix + 5 * u, fy = iy + 7 * u;
+        for (let p = 0; p < petals; p++) {
+          const angle = (p / petals) * Math.PI * 2 - Math.PI / 2;
+          const px = fx + Math.cos(angle) * pr;
+          const py = fy + Math.sin(angle) * pr;
+          gfx.fillStyle(0xFFB7C5, 0.85);
+          gfx.fillEllipse(px, py, 4 * u, 3 * u);
+        }
+        gfx.fillStyle(0xFFE4EC, 1);
+        gfx.fillCircle(fx, fy, cr);
+        break;
+      }
+      case 'bell-clash': {
+        // Rounded trapezoid bell body + curved top dome
+        gfx.lineStyle(1.5 * u, 0xd4a843, 0.85);
+        gfx.beginPath();
+        gfx.arc(ix + 5 * u, iy + 5 * u, 5 * u, Math.PI, 0, false);
+        gfx.strokePath();
+        gfx.fillStyle(0xd4a843, 0.25);
+        gfx.fillRect(ix, iy + 5 * u, 10 * u, 8 * u);
+        gfx.lineStyle(1.5 * u, 0xd4a843, 0.85);
+        gfx.lineBetween(ix, iy + 5 * u, ix, iy + 13 * u);
+        gfx.lineBetween(ix + 10 * u, iy + 5 * u, ix + 10 * u, iy + 13 * u);
+        gfx.lineBetween(ix - u, iy + 13 * u, ix + 11 * u, iy + 13 * u);
+        break;
+      }
+      case 'shell-cards': {
+        // Small card rectangle with corner pip
+        gfx.lineStyle(1.5 * u, 0xd4a843, 0.85);
+        gfx.strokeRoundedRect(ix, iy + 2 * u, 10 * u, 13 * u, 2 * u);
+        gfx.fillStyle(0xd4a843, 0.70);
+        gfx.fillCircle(ix + 2.5 * u, iy + 4.5 * u, 1.5 * u);
+        break;
+      }
+    }
+  }
+
   private buildHotspots(): void {
+    const s = Math.min(this.bgScale, 1.0);
+
     HOTSPOTS.forEach((hs) => {
       const minigame  = this.minigames.find((m) => m.id === hs.id);
       const available = minigame?.status === 'available';
       const r         = this.toScreen(hs);
+      const glowColour = available ? THEME.gold : THEME.red;
 
-      // Visible label (helps when no background image is loaded)
-      if (!this.bgImageLoaded) {
-        const labelBg = this.add.graphics().setDepth(DEPTH_HS);
-        labelBg.fillStyle(0x1a1208, 0.65);
-        labelBg.fillRoundedRect(r.x, r.y, r.w, r.h, 4);
-        labelBg.lineStyle(1, available ? THEME.gold : 0x555555, 0.45);
-        labelBg.strokeRoundedRect(r.x, r.y, r.w, r.h, 4);
-        this.hotspotLayer.push(labelBg);
+      // ── Shrine-marker frame ──────────────────────────────────────────────────
+      const frameBg = this.add.graphics().setDepth(DEPTH_HS);
+      this.hotspotLayer.push(frameBg);
 
-        // Shorten "Shell Smash Arena" → "Arena"; put every word on its own line
-        const rawName  = hs.id === 'shell-smash-arena' ? 'Arena' : hs.name;
-        const labelText = this.add.text(r.cx, r.cy, rawName.split(' ').join('\n'), {
-          fontSize: this.scaledFont(24),
-          color: available ? THEME.textGold : '#888888',
-          fontFamily: THEME.font,
-          fontStyle: 'bold',
-          align: 'center',
-          lineSpacing: 2,
-        }).setOrigin(0.5).setDepth(DEPTH_HS);
-        this.hotspotLayer.push(labelText);
+      // Dark lacquered wood fill
+      frameBg.fillStyle(0x1a1005, 0.85);
+      frameBg.fillRoundedRect(r.x, r.y, r.w, r.h, 6);
+      // Gold outer border
+      frameBg.lineStyle(2, THEME.gold, available ? 0.80 : 0.30);
+      frameBg.strokeRoundedRect(r.x, r.y, r.w, r.h, 6);
+      // Inner accent border (3 px inset)
+      frameBg.lineStyle(1, THEME.gold, 0.15);
+      frameBg.strokeRoundedRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6, 4);
+
+      // ── Zone icon (top-left, 18×18 area) ────────────────────────────────────
+      const iconGfx = this.add.graphics().setDepth(DEPTH_HS);
+      this.hotspotLayer.push(iconGfx);
+      this.drawZoneIcon(iconGfx, hs.id, r.x + 6, r.y + 4, s);
+
+      // ── Label text (centred in the frame) ────────────────────────────────────
+      const rawName   = hs.id === 'shell-smash-arena' ? 'Arena' : hs.name;
+      const labelText = this.add.text(r.cx, r.cy, rawName.split(' ').join('\n'), {
+        fontSize:    this.scaledFont(13),
+        color:       available ? THEME.textGold : THEME.textMutedHex,
+        fontFamily:  THEME.font,
+        fontStyle:   'bold',
+        align:       'center',
+        lineSpacing: 2,
+      }).setOrigin(0.5).setDepth(DEPTH_HS);
+      this.hotspotLayer.push(labelText);
+
+      // ── Locked overlay (coming-soon) ─────────────────────────────────────────
+      if (!available) {
+        const lockGfx = this.add.graphics().setDepth(DEPTH_HS);
+        this.hotspotLayer.push(lockGfx);
+        // Translucent red wash
+        lockGfx.fillStyle(0x330000, 0.60);
+        lockGfx.fillRoundedRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4, 5);
+        // Padlock icon centred
+        const lx = r.cx, ly = r.cy + r.h * 0.05;
+        const bw = 8 * s, bh = 7 * s, br = 5 * s;
+        lockGfx.fillStyle(0xd4a843, 0.55);
+        lockGfx.fillRoundedRect(lx - bw / 2, ly, bw, bh, 2);
+        lockGfx.lineStyle(2 * s, 0xd4a843, 0.55);
+        lockGfx.beginPath();
+        lockGfx.arc(lx, ly, br, Math.PI, 0, false);
+        lockGfx.strokePath();
       }
 
-      // Invisible interactive zone
+      // ── Interactive zone ──────────────────────────────────────────────────────
       const zone = this.add
         .zone(r.cx, r.cy, r.w, r.h)
         .setInteractive({ useHandCursor: true })
         .setDepth(DEPTH_HS);
       this.hotspotLayer.push(zone);
 
-      // Hover in: gold glow + continuous cherry blossom fall
+      // Hover in: white border + radial glow + petals
       zone.on('pointerover', () => {
         this.glowGfx.clear();
-        if (available) {
-          this.glowGfx.fillStyle(THEME.gold, 0.18);
-          this.glowGfx.fillRect(r.x, r.y, r.w, r.h);
-          this.glowGfx.lineStyle(2.5, THEME.gold, 0.90);
-          this.glowGfx.strokeRect(r.x, r.y, r.w, r.h);
-          this.glowGfx.fillStyle(0xffffff, 0.05);
-          this.glowGfx.fillRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4);
-        } else {
-          this.glowGfx.fillStyle(0xffffff, 0.07);
-          this.glowGfx.fillRect(r.x, r.y, r.w, r.h);
-          this.glowGfx.lineStyle(1.5, 0xaaaaaa, 0.55);
-          this.glowGfx.strokeRect(r.x, r.y, r.w, r.h);
+        // White border on hover
+        this.glowGfx.lineStyle(2, 0xffffff, 0.90);
+        this.glowGfx.strokeRoundedRect(r.x, r.y, r.w, r.h, 6);
+        // Radial-style glow — concentric filled rects fading outward (24px beyond zone)
+        const pad = 24;
+        const steps = 6;
+        for (let i = steps; i >= 1; i--) {
+          const p   = pad * (i / steps);
+          const a   = 0.04 * (i / steps);
+          this.glowGfx.fillStyle(glowColour, a);
+          this.glowGfx.fillRoundedRect(r.x - p, r.y - p, r.w + p * 2, r.h + p * 2, 6 + p * 0.5);
         }
+        // Inner highlight sheen
+        this.glowGfx.fillStyle(0xffffff, 0.04);
+        this.glowGfx.fillRoundedRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4, 4);
         this.startPetals(r.cx, r.cy, r.w, r.h);
       });
 
@@ -551,8 +741,7 @@ export class HubScene extends Phaser.Scene {
       lifespan: { min: 1000, max: 1700 },
       frequency: 55,                      // new petal every ~55 ms
       quantity:  1,
-      depth:     50,
-    });
+    }).setDepth(50);
   }
 
   /**
@@ -659,8 +848,12 @@ export class HubScene extends Phaser.Scene {
 
   private drawHUD(): void {
     const { width } = this.scale;
-    const PAD   = 16;
-    const BAR_H = 56;
+    const PAD    = 16;
+    const BAR_H  = 56;
+    const AVT_CX = PAD + 20;   // avatar circle centre x
+    const AVT_CY = BAR_H / 2;  // avatar circle centre y
+    const AVT_R  = 17;         // inner radius
+    const RING_R = 21;         // outer XP-arc radius
 
     // ── Bar background ────────────────────────────────────────────────────────
     const bar = this.add.graphics().setDepth(DEPTH_HUD);
@@ -670,21 +863,29 @@ export class HubScene extends Phaser.Scene {
     bar.lineStyle(1, THEME.gold, 0.35);
     bar.lineBetween(0, BAR_H, width, BAR_H);
 
-    // Avatar ring + turtle silhouette
-    bar.fillStyle(THEME.gold, 1);       bar.fillCircle(PAD + 20, BAR_H / 2, 20);
-    bar.fillStyle(THEME.background, 1); bar.fillCircle(PAD + 20, BAR_H / 2, 17);
+    // ── Avatar circle + turtle silhouette ─────────────────────────────────────
+    bar.fillStyle(THEME.background, 1); bar.fillCircle(AVT_CX, AVT_CY, RING_R);
     bar.fillStyle(THEME.gold, 0.55);
-    bar.fillCircle(PAD + 20, BAR_H / 2 - 4, 7);
-    bar.fillEllipse(PAD + 20, BAR_H / 2 + 10, 14, 8);
+    bar.fillCircle(AVT_CX, AVT_CY - 4, 7);
+    bar.fillEllipse(AVT_CX, AVT_CY + 10, 14, 8);
 
-    // XP bar track + fill (drawn on bar so it stays below text)
-    const xpMax = this.user.level * 1000;
-    const xpPct = Math.min(this.user.xp / xpMax, 1);
-    const barX  = PAD + 48;
-    const barY  = 43;
-    const barW  = 130;
-    bar.fillStyle(0x3a2e20, 1); bar.fillRect(barX, barY, barW, 5);
-    bar.fillStyle(THEME.gold,  1); bar.fillRect(barX, barY, barW * xpPct, 5);
+    // ── XP arc ring around avatar ─────────────────────────────────────────────
+    // Track (full ring, dim)
+    bar.lineStyle(3, THEME.gold, 0.18);
+    bar.beginPath();
+    bar.arc(AVT_CX, AVT_CY, RING_R, 0, Math.PI * 2);
+    bar.strokePath();
+    // Fill arc (gold, from top, clockwise to xpFraction)
+    const xpMax    = this.user.level * 1000;
+    const xpFrac   = Math.min(this.user.xp / xpMax, 1);
+    if (xpFrac > 0) {
+      const startA = -Math.PI / 2;
+      const endA   = startA + Math.PI * 2 * xpFrac;
+      bar.lineStyle(3, THEME.gold, 1);
+      bar.beginPath();
+      bar.arc(AVT_CX, AVT_CY, RING_R, startA, endA, false);
+      bar.strokePath();
+    }
 
     // ── Hover glow layer (above bar, below text labels) ───────────────────────
     const PROFILE_HIT_W = 220;
@@ -693,34 +894,43 @@ export class HubScene extends Phaser.Scene {
     const paintHover = (on: boolean): void => {
       hoverGfx.clear();
       if (!on) return;
-      // Pulsing ring around avatar
       hoverGfx.fillStyle(THEME.gold, 0.22);
-      hoverGfx.fillCircle(PAD + 20, BAR_H / 2, 24);
-      // Subtle wash over the whole clickable region
+      hoverGfx.fillCircle(AVT_CX, AVT_CY, RING_R + 4);
       hoverGfx.fillStyle(THEME.gold, 0.05);
       hoverGfx.fillRect(0, 0, PROFILE_HIT_W, BAR_H);
     };
 
-    // ── Text labels (above hoverGfx so they stay crisp) ──────────────────────
+    // ── Text labels ───────────────────────────────────────────────────────────
     const displayName = this.user.turtleName ?? this.user.username;
-    const nameLabel = this.add.text(PAD + 48, 8, displayName, {
+    const nameLabel = this.add.text(PAD + 48, 10, displayName, {
       fontSize: this.scaledFont(15), color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
     }).setDepth(DEPTH_HUD);
     this.hudLayer.push(nameLabel);
 
-    const levelLabel = this.add.text(PAD + 48, 27, `Lvl ${this.user.level}  ·  Shell: ${this.user.shellSkin ?? 'kanagawa'}`, {
+    const levelLabel = this.add.text(PAD + 48, 31, `Lvl ${this.user.level}  ·  Shell: ${this.user.shellSkin ?? 'kanagawa'}`, {
       fontSize: this.scaledFont(11), color: THEME.text, fontFamily: THEME.font,
     }).setDepth(DEPTH_HUD);
     this.hudLayer.push(levelLabel);
 
-    const xpLabel = this.add.text(barX + barW + 6, barY - 1, `${this.user.xp} / ${xpMax} XP`, {
-      fontSize: this.scaledFont(9), color: THEME.textMutedHex, fontFamily: THEME.font,
-    }).setDepth(DEPTH_HUD);
-    this.hudLayer.push(xpLabel);
+    // ── One-shot pulse tween on the avatar ring ────────────────────────────────
+    // Wrap bar in a Container so the tween can scale it without affecting width
+    const avatarRingGfx = this.add.graphics().setDepth(DEPTH_HUD);
+    this.hudLayer.push(avatarRingGfx);
+    avatarRingGfx.lineStyle(3, THEME.gold, 0.55);
+    avatarRingGfx.strokeCircle(AVT_CX, AVT_CY, RING_R);
+    this.tweens.add({
+      targets:   avatarRingGfx,
+      scaleX:    1.08,
+      scaleY:    1.08,
+      alpha:     0,
+      duration:  500,
+      ease:      'Sine.easeOut',
+      onComplete: () => { if (avatarRingGfx?.active) avatarRingGfx.destroy(); },
+    });
 
     this.renderLeaderboard();
 
-    // ── Profile trigger — clicking the left avatar area opens the profile panel ─
+    // ── Profile trigger ────────────────────────────────────────────────────────
     const profileHit = this.add
       .rectangle(PROFILE_HIT_W / 2, BAR_H / 2, PROFILE_HIT_W, BAR_H, 0x000000, 0)
       .setInteractive({ useHandCursor: true })
