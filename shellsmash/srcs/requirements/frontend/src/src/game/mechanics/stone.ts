@@ -17,8 +17,10 @@ import { PowerType, HEAVY_MASS_RATIO, FRICTION_SLICK } from './power-system';
 /** Stone radius at source (1920×1080) resolution. */
 export const STONE_SRC_R = 28;
 
-/** Per-frame friction multiplier at 60 fps (very low — ice-like). */
-export const FRICTION_ICE = 0.9982;
+/** Per-frame friction multiplier at 60 fps.
+ *  0.990 → stone starting at 820 px/s travels ~1360 source px before stopping (~4 s).
+ *  Previously 0.9982 which caused >30 s slides. */
+export const FRICTION_ICE = 0.990;
 
 /** Speed fraction retained on side-wall bounce. */
 export const BOUNCE_DAMP = 0.55;
@@ -27,16 +29,18 @@ export const BOUNCE_DAMP = 0.55;
 export const STONE_BOUNCE_DAMP = 0.92;
 
 /** Source px/s below which the stone snaps to rest. */
-export const MIN_SPEED_SRC = 4;
+export const MIN_SPEED_SRC = 8;
 
-/** Default lateral curl drift per frame (gentle natural drift rightward). */
-export const DEFAULT_CURL_BIAS = 0.04;
+/** Default lateral curl drift (team 0 curves right, team 1 left).
+ *  dθ/dt = curlBias * CURL_STRENGTH — a full-power shot drifts ~80 src-px. */
+export const DEFAULT_CURL_BIAS = 1.0;
 
 /**
  * Scales how strongly curlBias bends the trajectory.
- * Units: radians/second per unit of curlBias, effectively.
+ * Units: radians/second per unit of curlBias.
+ * Previous value 0.018 was imperceptibly small; 0.5 gives a visible arc.
  */
-export const CURL_STRENGTH = 0.018;
+export const CURL_STRENGTH = 0.5;
 
 // ── State ──────────────────────────────────────────────────────────────────────
 
@@ -72,7 +76,15 @@ export function stepStone(
   deltaMs: number,
   a: RectArenaPixels,
 ): boolean {
-  if (s.stopped || s.frozen) return false;
+  if (s.frozen) {
+    // Frozen stones never move — keep state consistent regardless of what
+    // other code (e.g. resolveStoneCollision) may have done to the flags.
+    s.stopped = true;
+    s.vx = 0;
+    s.vy = 0;
+    return false;
+  }
+  if (s.stopped) return false;
 
   const dt   = deltaMs / 1000;
   const speed = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
@@ -91,16 +103,30 @@ export function stepStone(
   s.x += s.vx * dt;
   s.y += s.vy * dt;
 
-  // ── Side-wall bounce ──────────────────────────────────────────────────────
-  const leftWall  = a.sheetX + s.r;
-  const rightWall = a.sheetX + a.sheetW - s.r;
-
-  if (s.x < leftWall) {
-    s.x  = leftWall;
-    s.vx = -s.vx * (s.power === PowerType.BOUNCER ? 1.0 : BOUNCE_DAMP);
-  } else if (s.x > rightWall) {
-    s.x  = rightWall;
-    s.vx = -s.vx * (s.power === PowerType.BOUNCER ? 1.0 : BOUNCE_DAMP);
+  // ── Boundary-wall bounce (orientation-dependent) ──────────────────────────
+  // Horizontal orientation: stone travels left→right, walls are top & bottom.
+  // Vertical orientation:   stone travels top→bottom, walls are left & right.
+  const bounceDamp = s.power === PowerType.BOUNCER ? 1.0 : BOUNCE_DAMP;
+  if (a.orientation === 'horizontal') {
+    // All four walls are live — no out-of-bounds in horizontal mode.
+    const topWall    = a.sheetY + s.r;
+    const bottomWall = a.sheetY + a.sheetH - s.r;
+    const leftWall   = a.sheetX + s.r;
+    const rightWall  = a.sheetX + a.sheetW - s.r;
+    if (s.y < topWall)         { s.y  = topWall;    s.vy = -s.vy * bounceDamp; }
+    else if (s.y > bottomWall) { s.y  = bottomWall; s.vy = -s.vy * bounceDamp; }
+    if (s.x < leftWall)        { s.x  = leftWall;   s.vx = -s.vx * bounceDamp; }
+    else if (s.x > rightWall)  { s.x  = rightWall;  s.vx = -s.vx * bounceDamp; }
+  } else {
+    const leftWall  = a.sheetX + s.r;
+    const rightWall = a.sheetX + a.sheetW - s.r;
+    if (s.x < leftWall) {
+      s.x  = leftWall;
+      s.vx = -s.vx * bounceDamp;
+    } else if (s.x > rightWall) {
+      s.x  = rightWall;
+      s.vx = -s.vx * bounceDamp;
+    }
   }
 
   // ── Frame-rate-independent friction ───────────────────────────────────────
@@ -140,23 +166,37 @@ export function resolveStoneCollision(a: StoneState, b: StoneState): void {
 
   if (dist >= minD || dist < 0.001) return;
 
-  // Push apart so they don't overlap
+  // Push apart so they don't overlap.
+  // Frozen stones are immovable — push the full overlap onto the moving stone.
   const overlap = minD - dist;
   const nx = dx / dist;
   const ny = dy / dist;
-  a.x -= nx * overlap * 0.5;
-  a.y -= ny * overlap * 0.5;
-  b.x += nx * overlap * 0.5;
-  b.y += ny * overlap * 0.5;
+
+  const aShare = a.frozen ? 0.0 : (b.frozen ? 1.0 : 0.5);
+  const bShare = b.frozen ? 0.0 : (a.frozen ? 1.0 : 0.5);
+  a.x -= nx * overlap * aShare;
+  a.y -= ny * overlap * aShare;
+  b.x += nx * overlap * bShare;
+  b.y += ny * overlap * bShare;
 
   // Velocity exchange along collision normal
-  const dvx  = b.vx - a.vx;
-  const dvy  = b.vy - a.vy;
-  const dvDot = dvx * nx + dvy * ny;
+  const dvx    = b.vx - a.vx;
+  const dvy    = b.vy - a.vy;
+  const dvDot  = dvx * nx + dvy * ny;
   if (dvDot > 0) return; // already separating
 
-  const massA = a.power === PowerType.HEAVY ? HEAVY_MASS_RATIO : 1;
-  const massB = b.power === PowerType.HEAVY ? HEAVY_MASS_RATIO : 1;
+  // Frozen stones act as walls (infinite mass) — full reflection on the mover.
+  if (a.frozen || b.frozen) {
+    const mover = a.frozen ? b : a;
+    const dot   = mover.vx * nx + mover.vy * ny;
+    mover.vx = (mover.vx - 2 * dot * nx) * STONE_BOUNCE_DAMP;
+    mover.vy = (mover.vy - 2 * dot * ny) * STONE_BOUNCE_DAMP;
+    mover.stopped = false;
+    return;
+  }
+
+  const massA  = a.power === PowerType.HEAVY ? HEAVY_MASS_RATIO : 1;
+  const massB  = b.power === PowerType.HEAVY ? HEAVY_MASS_RATIO : 1;
   const impulse = (2 * dvDot) / (massA + massB) * STONE_BOUNCE_DAMP;
 
   a.vx  += impulse * massB * nx;

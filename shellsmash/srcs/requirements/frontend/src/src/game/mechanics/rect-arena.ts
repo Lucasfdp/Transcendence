@@ -1,12 +1,11 @@
 /**
  * game/mechanics/rect-arena.ts — rectangular arena geometry and rendering.
  *
- * Mirrors the contract of game/arenas/arena.ts but for axis-aligned sheets
- * (e.g. curling, shuffleboard) rather than elliptical sumo rings.
+ * Supports two orientations:
+ *   'vertical'   — stone delivered from the top, travels DOWN toward house at bottom.
+ *   'horizontal' — stone delivered from the left, travels RIGHT toward house at right.
  *
- * All coordinates are stored in canvas pixels after letterbox-fitting.
- * The sheet is fit inside the canvas with a uniform scale (Math.min) so the
- * aspect ratio is preserved exactly at every window size.
+ * All coordinates in RectArenaPixels are canvas pixels after letterbox-fitting.
  */
 
 import Phaser from 'phaser';
@@ -24,6 +23,7 @@ export interface RectArenaDef {
   sheetH: number;
   houseRadius: number;       // outermost house ring in source px
   houseCentreOffset: number; // distance from sheet end-line to house centre
+  orientation?: 'vertical' | 'horizontal'; // default: 'vertical'
 }
 
 /** Arena geometry resolved to canvas pixels for the current frame. */
@@ -32,23 +32,39 @@ export interface RectArenaPixels {
   sheetY: number;
   sheetW: number;
   sheetH: number;
-  // House at delivery end (top of sheet — dim reference)
-  houseTopCX: number;
-  houseTopCY: number;
-  // House at scoring end (bottom of sheet — bright target)
-  houseBottomCX: number;
-  houseBottomCY: number;
-  // [outer, mid, inner, button] radii in canvas px
+
+  /** Scoring house centre (far end — the target rings). */
+  houseFarCX: number;
+  houseFarCY: number;
+  /** Reference house centre (near/delivery end — drawn dim). */
+  houseNearCX: number;
+  houseNearCY: number;
+
+  /** [outer, mid, inner, button] radii in canvas px. */
   houseRadii: [number, number, number, number];
-  deliveryLineY: number; // stones must cross this Y to count as in play
-  hogLineY: number;      // stones must clear this Y or are removed
+
+  /** Stone spawn X (delivery-end x for horizontal; sheet centre x for vertical). */
+  deliveryX: number;
+  /** Stone spawn Y (sheet centre y for horizontal; delivery-end y for vertical). */
+  deliveryY: number;
+
+  /**
+   * Hog line coordinate — stones must clear this or are removed.
+   * hogX is used when orientation === 'horizontal'; hogY when 'vertical'.
+   */
+  hogX: number;
+  hogY: number;
+
+  orientation: 'vertical' | 'horizontal';
   scale: number;
 }
 
 // ── Transform ─────────────────────────────────────────────────────────────────
 
-const HOG_LINE_INSET_SRC   = 160; // source px from far end — must clear to stay
-const DELIVERY_LINE_INSET_SRC = 60; // source px from start end
+/** Source-px inset from the far end: visual-only hog line (vertical mode). */
+const HOG_LINE_INSET_SRC      = 160;
+/** Source-px inset from the near end: stone spawns here (delivery hack). */
+const DELIVERY_LINE_INSET_SRC = 90;
 
 /** Letterbox-fit the arena def into the canvas, preserving aspect ratio. */
 export function rectArenaToScreen(
@@ -64,10 +80,10 @@ export function rectArenaToScreen(
   const sheetY = offY + def.sheetY * scale;
   const sheetW = def.sheetW * scale;
   const sheetH = def.sheetH * scale;
-  const sheetCX = sheetX + sheetW / 2;
 
-  const hr = def.houseRadius * scale;
+  const hr   = def.houseRadius * scale;
   const hOff = def.houseCentreOffset * scale;
+  const orientation = def.orientation ?? 'vertical';
 
   const houseRadii: [number, number, number, number] = [
     hr,
@@ -76,18 +92,39 @@ export function rectArenaToScreen(
     hr * 0.10,
   ];
 
+  if (orientation === 'horizontal') {
+    // Stone travels LEFT → RIGHT; scoring house on the right
+    const midY = sheetY + sheetH / 2;
+    return {
+      sheetX, sheetY, sheetW, sheetH,
+      houseFarCX:  sheetX + sheetW - hOff,
+      houseFarCY:  midY,
+      houseNearCX: sheetX + hOff,
+      houseNearCY: midY,
+      houseRadii,
+      deliveryX:   sheetX + DELIVERY_LINE_INSET_SRC * scale,
+      deliveryY:   midY,
+      hogX:        sheetX + sheetW - HOG_LINE_INSET_SRC * scale,
+      hogY:        midY, // unused for horizontal
+      orientation,
+      scale,
+    };
+  }
+
+  // Default: vertical — stone travels TOP → BOTTOM; scoring house at bottom
+  const midX = sheetX + sheetW / 2;
   return {
-    sheetX,
-    sheetY,
-    sheetW,
-    sheetH,
-    houseTopCX:    sheetCX,
-    houseTopCY:    sheetY + hOff,
-    houseBottomCX: sheetCX,
-    houseBottomCY: sheetY + sheetH - hOff,
+    sheetX, sheetY, sheetW, sheetH,
+    houseFarCX:  midX,
+    houseFarCY:  sheetY + sheetH - hOff,
+    houseNearCX: midX,
+    houseNearCY: sheetY + hOff,
     houseRadii,
-    deliveryLineY: sheetY + DELIVERY_LINE_INSET_SRC * scale,
-    hogLineY:      sheetY + sheetH - HOG_LINE_INSET_SRC * scale,
+    deliveryX:   midX, // unused for vertical
+    deliveryY:   sheetY + DELIVERY_LINE_INSET_SRC * scale,
+    hogX:        midX, // unused for vertical
+    hogY:        sheetY + sheetH - HOG_LINE_INSET_SRC * scale,
+    orientation,
     scale,
   };
 }
@@ -96,20 +133,26 @@ export function rectArenaToScreen(
 
 /** True if the stone centre is within the outermost house ring at the scoring end. */
 export function isStoneInHouse(s: StoneState, a: RectArenaPixels): boolean {
-  const dx = s.x - a.houseBottomCX;
-  const dy = s.y - a.houseBottomCY;
+  const dx = s.x - a.houseFarCX;
+  const dy = s.y - a.houseFarCY;
   return Math.sqrt(dx * dx + dy * dy) <= a.houseRadii[0];
 }
 
 /** Distance from the stone centre to the scoring house button (centre dot). */
 export function distanceToHouseButton(s: StoneState, a: RectArenaPixels): number {
-  const dx = s.x - a.houseBottomCX;
-  const dy = s.y - a.houseBottomCY;
+  const dx = s.x - a.houseFarCX;
+  const dy = s.y - a.houseFarCY;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-/** True if the stone has left the sheet entirely (side or far end). */
+/** True if the stone has left the playable sheet.
+ *  Horizontal mode: all four walls bounce (handled in stepStone), so stones
+ *  are never out-of-bounds — they can never leave the enclosed sheet. */
 export function isStoneOutOfBounds(s: StoneState, a: RectArenaPixels): boolean {
+  if (a.orientation === 'horizontal') {
+    return false; // fully enclosed — walls bounce, no removal
+  }
+  // vertical
   return (
     s.x - s.r < a.sheetX ||
     s.x + s.r > a.sheetX + a.sheetW ||
@@ -119,13 +162,12 @@ export function isStoneOutOfBounds(s: StoneState, a: RectArenaPixels): boolean {
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
-const COLOR_BG           = 0x0a1f3f; // deep navy surrounding sheet
-const COLOR_ICE          = 0xcce8ff; // pale ice blue
-const COLOR_WALL         = 0x4499cc; // sheet side walls
-const COLOR_CENTRE_LINE  = 0x4499cc; // mid-sheet horizontal line
-const COLOR_HOG_LINE     = 0xcc4444; // hog / out-of-bounds lines
+const COLOR_ICE          = 0xddeef8; // warm pale ice blue
+const COLOR_WALL         = 0x5aaecc; // sheet boundary walls
+const COLOR_CENTRE_LINE  = 0x5aaecc; // mid-sheet line (perpendicular to travel)
+const COLOR_HOG_LINE     = 0xcc4444; // far hog line — must clear or stone removed
+const COLOR_HOG_LINE_DIM = 0xcc4444; // delivery guide line (drawn faint)
 const COLOR_HACK_MARK    = 0xffffff; // delivery hack cross
-const COLOR_BAMBOO_GRID  = 0x0e2240; // subtle overlay outside sheet
 
 // House ring colours (outer → button)
 const HOUSE_COLORS: [number, number, number, number] = [
@@ -135,10 +177,9 @@ const HOUSE_COLORS: [number, number, number, number] = [
   0xffffff, // button — white
 ];
 
-const BAMBOO_GRID_STEP_SRC = 64; // source px between grid lines
-
 /**
- * Draw the ice sheet onto g. Call once, or after g.clear() on resize.
+ * Draw the ice sheet onto g.
+ * Background is the caller's responsibility (drawn on a separate depth-0 layer).
  * Clears g before drawing.
  */
 export function drawIceSheet(g: Phaser.GameObjects.Graphics, a: RectArenaPixels): void {
@@ -146,56 +187,97 @@ export function drawIceSheet(g: Phaser.GameObjects.Graphics, a: RectArenaPixels)
 
   g.clear();
 
-  // ── 1. Background ────────────────────────────────────────────────────────
-  const bw = g.scene.scale.width;
-  const bh = g.scene.scale.height;
-  g.fillStyle(COLOR_BG, 1);
-  g.fillRect(0, 0, bw, bh);
-
-  // ── 2. Bamboo grid overlay (outside sheet) ────────────────────────────────
-  const step = BAMBOO_GRID_STEP_SRC * scale;
-  g.lineStyle(1, COLOR_BAMBOO_GRID, 0.3);
-  for (let x = 0; x < bw; x += step) g.lineBetween(x, 0, x, bh);
-  for (let y = 0; y < bh; y += step) g.lineBetween(0, y, bw, y);
-
-  // ── 3. Ice sheet fill ────────────────────────────────────────────────────
+  // ── 1. Ice sheet fill ─────────────────────────────────────────────────────
   g.fillStyle(COLOR_ICE, 1);
   g.fillRect(sx, sy, sw, sh);
 
-  // ── 4. House at delivery end (dim) ───────────────────────────────────────
-  drawHouseRings(g, a.houseTopCX, a.houseTopCY, a.houseRadii, 0.35);
+  // ── 2. Pebble texture — faint striations perpendicular to travel direction ─
+  const pebbleStep = Math.max(3, 5 * scale);
+  g.lineStyle(1, 0xc4dce8, 0.22);
+  if (a.orientation === 'horizontal') {
+    // Vertical lines (perpendicular to rightward travel)
+    for (let x = sx; x < sx + sw; x += pebbleStep) {
+      g.lineBetween(x, sy, x, sy + sh);
+    }
+  } else {
+    // Horizontal lines
+    for (let y = sy; y < sy + sh; y += pebbleStep) {
+      g.lineBetween(sx, y, sx + sw, y);
+    }
+  }
 
-  // ── 5. House at scoring end (bright) ────────────────────────────────────
-  drawHouseRings(g, a.houseBottomCX, a.houseBottomCY, a.houseRadii, 1);
+  if (a.orientation === 'horizontal') {
+    drawHorizontalSheet(g, a);
+  } else {
+    drawVerticalSheet(g, a);
+  }
+}
 
-  // ── 6. Centre line (mid-height horizontal) ───────────────────────────────
+// ── Horizontal sheet (stone travels left → right) ────────────────────────────
+
+function drawHorizontalSheet(g: Phaser.GameObjects.Graphics, a: RectArenaPixels): void {
+  const { sheetX: sx, sheetY: sy, sheetW: sw, sheetH: sh, scale } = a;
+
+  // ── 3. Scoring house — right end, full opacity ───────────────────────────
+  drawHouseRings(g, a.houseFarCX, a.houseFarCY, a.houseRadii, 1);
+
+  // ── 4. Centre line (vertical — perpendicular to travel) ──────────────────
+  const midX = sx + sw / 2;
+  g.lineStyle(1, COLOR_CENTRE_LINE, 0.30);
+  g.lineBetween(midX, sy, midX, sy + sh);
+
+  // ── 5. All four boundary walls (fully enclosed) ───────────────────────────
+  g.lineStyle(Math.max(1.5, 2 * scale), COLOR_WALL, 1);
+  g.lineBetween(sx,        sy,        sx + sw, sy);       // top
+  g.lineBetween(sx,        sy + sh,   sx + sw, sy + sh);  // bottom
+  g.lineBetween(sx,        sy,        sx,      sy + sh);  // left
+  g.lineBetween(sx + sw,   sy,        sx + sw, sy + sh);  // right
+
+  // ── 6. Delivery hack mark ─────────────────────────────────────────────────
+  const hackSize = Math.max(6, 10 * scale);
+  g.lineStyle(Math.max(1.5, 2 * scale), COLOR_HACK_MARK, 0.90);
+  g.lineBetween(a.deliveryX - hackSize, a.deliveryY, a.deliveryX + hackSize, a.deliveryY);
+  g.lineBetween(a.deliveryX, a.deliveryY - hackSize, a.deliveryX, a.deliveryY + hackSize);
+}
+
+// ── Vertical sheet (stone travels top → bottom) ───────────────────────────────
+
+function drawVerticalSheet(g: Phaser.GameObjects.Graphics, a: RectArenaPixels): void {
+  const { sheetX: sx, sheetY: sy, sheetW: sw, sheetH: sh, scale } = a;
+
+  // ── 3. Reference house — delivery end, very dim ───────────────────────────
+  drawHouseRings(g, a.houseNearCX, a.houseNearCY, a.houseRadii, 0.25);
+
+  // ── 4. Scoring house — far (bottom) end, full opacity ────────────────────
+  drawHouseRings(g, a.houseFarCX, a.houseFarCY, a.houseRadii, 1);
+
+  // ── 5. Centre line ────────────────────────────────────────────────────────
   const midY = sy + sh / 2;
-  g.lineStyle(1, COLOR_CENTRE_LINE, 0.4);
+  g.lineStyle(1, COLOR_CENTRE_LINE, 0.35);
   g.lineBetween(sx, midY, sx + sw, midY);
 
-  // ── 7. Hog lines ─────────────────────────────────────────────────────────
-  g.lineStyle(2, COLOR_HOG_LINE, 0.85);
-  g.lineBetween(sx, a.hogLineY, sx + sw, a.hogLineY);
-  // Top hog line mirrors at equivalent inset from top
-  const topHogY = sy + sh - (a.hogLineY - sy);
-  g.lineBetween(sx, topHogY, sx + sw, topHogY);
+  // ── 6. Far hog line ───────────────────────────────────────────────────────
+  g.lineStyle(Math.max(1.5, 2 * scale), COLOR_HOG_LINE, 0.85);
+  g.lineBetween(sx, a.hogY, sx + sw, a.hogY);
 
-  // ── 8. Side walls ────────────────────────────────────────────────────────
-  g.lineStyle(2, COLOR_WALL, 1);
+  // ── 7. Delivery guide line ────────────────────────────────────────────────
+  g.lineStyle(1, COLOR_HOG_LINE_DIM, 0.28);
+  g.lineBetween(sx, a.deliveryY, sx + sw, a.deliveryY);
+
+  // ── 8. Side walls ─────────────────────────────────────────────────────────
+  g.lineStyle(Math.max(1.5, 2 * scale), COLOR_WALL, 1);
   g.lineBetween(sx, sy, sx, sy + sh);
   g.lineBetween(sx + sw, sy, sx + sw, sy + sh);
 
-  // ── 9. Delivery hack marks (cross at each delivery position) ─────────────
+  // ── 9. Hack mark ──────────────────────────────────────────────────────────
   const hackSize = Math.max(6, 10 * scale);
-  const hackY = a.deliveryLineY;
-  const hackXL = sx + sw * 0.25;
-  const hackXR = sx + sw * 0.75;
-  g.lineStyle(2, COLOR_HACK_MARK, 0.9);
-  for (const hx of [hackXL, hackXR]) {
-    g.lineBetween(hx - hackSize, hackY, hx + hackSize, hackY);
-    g.lineBetween(hx, hackY - hackSize, hx, hackY + hackSize);
-  }
+  const hackXC   = sx + sw * 0.50;
+  g.lineStyle(Math.max(1.5, 2 * scale), COLOR_HACK_MARK, 0.90);
+  g.lineBetween(hackXC - hackSize, a.deliveryY, hackXC + hackSize, a.deliveryY);
+  g.lineBetween(hackXC, a.deliveryY - hackSize, hackXC, a.deliveryY + hackSize);
 }
+
+// ── Shared helper ─────────────────────────────────────────────────────────────
 
 function drawHouseRings(
   g: Phaser.GameObjects.Graphics,
@@ -204,7 +286,6 @@ function drawHouseRings(
   radii: [number, number, number, number],
   alpha: number,
 ): void {
-  // Draw outer → inner so inner rings paint over outer ones
   for (let i = 0; i < 4; i++) {
     g.fillStyle(HOUSE_COLORS[i], alpha);
     g.fillCircle(cx, cy, radii[i]);

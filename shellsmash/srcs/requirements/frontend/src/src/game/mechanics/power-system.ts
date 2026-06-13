@@ -45,13 +45,13 @@ export interface PowerDef {
 // ── Physics constants used by powers ──────────────────────────────────────────
 
 /** Near-frictionless multiplier for SLICK (per-frame at 60 fps). */
-export const FRICTION_SLICK       = 0.9998;
+export const FRICTION_SLICK       = 0.9940;
 /** HEAVY stone radius scale factor. */
 export const HEAVY_RADIUS_FACTOR  = 1.40;
 /** Mass ratio applied to collision impulse for HEAVY stones. */
 export const HEAVY_MASS_RATIO     = 2.5;
-/** SPINNING curl bias (≈5× default CURL_BIAS). */
-export const SPINNING_CURL_BIAS   = 0.22;
+/** SPINNING curl bias (4× default CURL_BIAS — dramatic arc across the sheet). */
+export const SPINNING_CURL_BIAS   = 4.0;
 /** Explosion push radius in source px — scale by arena.scale at runtime. */
 export const BOMB_RADIUS_SRC      = 160;
 /** Radial velocity impulse from BOMB in source px/s. */
@@ -176,6 +176,8 @@ const SPINNING_DEF: PowerDef = {
   description: 'Extreme curl — arcs dramatically across the sheet.',
   onApply(stone) {
     stone.curlBias = SPINNING_CURL_BIAS;
+    // Higher friction compensates for the longer spiral path — stops in ~2 s.
+    (stone as SlickStone).frictionOverride = 0.984;
     // TODO(#spinning-trail): add particle emitter (ice-blue spiral)
   },
 };
@@ -185,7 +187,11 @@ const BOUNCER_DEF: PowerDef = {
   label: 'Bouncer Shell',
   accentColour: 0xff8800,
   description: 'Bounces off side-walls without losing speed.',
-  onApply() { /* BOUNCE_DAMP bypass is checked in stepStone via stone.power */ },
+  // No bounce damping means friction is the sole brake — use higher friction
+  // so the stone doesn't bounce forever.
+  onApply(stone) {
+    (stone as SlickStone).frictionOverride = 0.984;
+  },
 };
 
 const SHIELD_DEF: PowerDef = {
@@ -195,16 +201,16 @@ const SHIELD_DEF: PowerDef = {
   description: 'Cannot be pushed out of the scoring house once it lands.',
   onApply() { /* guard checked in stepStone */ },
   onUpdate(stone, _delta, arena) {
-    const dx = stone.x - arena.houseBottomCX;
-    const dy = stone.y - arena.houseBottomCY;
+    const dx = stone.x - arena.houseFarCX;
+    const dy = stone.y - arena.houseFarCY;
     const dist = Math.sqrt(dx * dx + dy * dy);
     const outerR = arena.houseRadii[0];
     if (dist > outerR && stone.stopped) {
       // Clamp back to house edge
       const nx = dx / dist;
       const ny = dy / dist;
-      stone.x  = arena.houseBottomCX + nx * outerR;
-      stone.y  = arena.houseBottomCY + ny * outerR;
+      stone.x  = arena.houseFarCX + nx * outerR;
+      stone.y  = arena.houseFarCY + ny * outerR;
       stone.vx = 0;
       stone.vy = 0;
     }

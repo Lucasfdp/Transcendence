@@ -1,9 +1,9 @@
 /**
  * game/arenas/curl-sheet.ts — arena definition for Shell Curl.
  *
- * The sheet is portrait-oriented (tall) centred in a landscape canvas.
+ * The sheet is landscape-oriented (wide) filling almost the full canvas.
+ * Stones are delivered from the LEFT and travel RIGHTWARD toward the house.
  * All measurements are in source pixels at 1920×1080 reference resolution.
- * Tune sheetX/sheetY/sheetW/sheetH so the sheet sits visually centred.
  */
 
 import { RectArenaDef } from '../mechanics/rect-arena';
@@ -12,13 +12,15 @@ export const CURL_SHEET: RectArenaDef = {
   srcW: 1920,
   srcH: 1080,
 
-  // Sheet rectangle — centred horizontally, nearly full height
-  sheetX: 560,
-  sheetY: 40,
-  sheetW: 800,
-  sheetH: 1000,
+  // Sheet rectangle — nearly full canvas, landscape
+  sheetX: 120,
+  sheetY: 100,
+  sheetW: 1680,
+  sheetH:  880,
 
-  // House geometry
-  houseRadius: 180,          // outermost ring in source px
-  houseCentreOffset: 120,    // distance from sheet end-line to house centre
+  // House geometry — scoring house is at the RIGHT end
+  houseRadius:       220,    // outermost ring in source px
+  houseCentreOffset: 380,    // distance from sheet end-line to house centre
+
+  orientation: 'horizontal',
 };

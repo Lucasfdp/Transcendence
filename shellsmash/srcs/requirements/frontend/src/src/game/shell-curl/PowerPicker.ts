@@ -1,8 +1,11 @@
 /**
  * game/shell-curl/PowerPicker.ts — power selection widget for Shell Curl.
  *
- * Displays a horizontal row of up to 5 power tokens at the bottom of the
- * screen. Shown only during phase === 'aiming'; hidden at all other times.
+ * Displays a horizontal row of power tokens at the bottom of the screen.
+ * Shown only during phase === 'aiming'; hidden at all other times.
+ *
+ * Selection changes redraw only the affected token backgrounds — the row
+ * itself is never rebuilt while visible.
  */
 
 import Phaser from 'phaser';
@@ -11,21 +14,32 @@ import { THEME } from '../../hub/theme';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const TOKEN_W     = 52;  // width of each token
-const TOKEN_H     = 52;  // height of each token
-const TOKEN_GAP   = 14;  // gap between tokens
-const TOKEN_PAD_B = 20;  // padding from bottom of screen
-const LABEL_H     = 18;  // space below token for label text
-const CORNER_R    = 8;   // rounded rect corner radius
+const TOKEN_W     = 46;
+const TOKEN_H     = 46;
+const TOKEN_GAP   = 8;
+const TOKEN_PAD_B = 20;
+const LABEL_H     = 18;
+const CORNER_R    = 7;
 const HOVER_SCALE = 1.10;
 const SEL_SCALE   = 1.12;
 
-// ── PowerPicker ───────��──────────────────────────────��────────────────────────
+// ── Internal token record ─────────────────────────────────────────────────────
+
+interface TokenRecord {
+  type:         PowerType;
+  accentColour: number;
+  bg:           Phaser.GameObjects.Graphics;
+  x:            number;
+  y:            number;
+}
+
+// ── PowerPicker ───────────────────────────────────────────────────────────────
 
 export class PowerPicker {
   private readonly container: Phaser.GameObjects.Container;
-  private selected: PowerType = PowerType.NONE;
-  private visible  = false;
+  private selected: PowerType  = PowerType.NONE;
+  private visible              = false;
+  private tokens: TokenRecord[] = [];
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -38,9 +52,10 @@ export class PowerPicker {
   /** Show the picker with the given subset of powers. */
   show(availablePowers: PowerType[]): void {
     this.container.removeAll(true);
+    this.tokens  = [];
     this.selected = PowerType.NONE;
 
-    const count  = Math.min(availablePowers.length, 5);
+    const count  = Math.min(availablePowers.length, 12);
     const totalW = count * TOKEN_W + (count - 1) * TOKEN_GAP;
     const startX = (this.scene.scale.width - totalW) / 2;
     const baseY  = this.scene.scale.height - TOKEN_H - LABEL_H - TOKEN_PAD_B;
@@ -69,7 +84,7 @@ export class PowerPicker {
     this.container.destroy(true);
   }
 
-  // ── Private ──────────────────────────────────────────────────────────────────
+  // ── Private ───────────────────────────────────────────────────────────────
 
   private buildToken(
     type: PowerType,
@@ -86,21 +101,27 @@ export class PowerPicker {
     this.drawTokenBg(bg, x, y, accentColour, isSelected);
     this.container.add(bg);
 
-    // Small power icon (simple geometry per type)
+    // Power icon
     const icon = this.scene.add.graphics();
     this.drawPowerIcon(icon, type, x + TOKEN_W / 2, y + TOKEN_H / 2 - 2, accentColour);
     this.container.add(icon);
 
-    // Label text
+    // Label — wrap after the first word so two-word names stack neatly
+    const wrappedLabel = label.replace(' ', '\n');
     const txt = this.scene.add
-      .text(x + TOKEN_W / 2, y + TOKEN_H + 4, label, {
+      .text(x + TOKEN_W / 2, y + TOKEN_H + 4, wrappedLabel, {
         fontSize: '9px',
         color: THEME.text,
         fontFamily: THEME.font,
         fontStyle: 'bold',
+        align: 'center',
       })
       .setOrigin(0.5, 0);
     this.container.add(txt);
+
+    // Store record for in-place selection redraws
+    const record: TokenRecord = { type, accentColour, bg, x, y };
+    this.tokens.push(record);
 
     // Hit zone
     const zone = this.scene.add
@@ -118,15 +139,8 @@ export class PowerPicker {
       }
     });
     zone.on('pointerup', () => {
-      this.selected = type;
-      // Redraw all tokens to reflect new selection
-      const types = this.container.getAll()
-        .filter(o => (o as Phaser.GameObjects.Zone).type === 'Zone')
-        .map((_, idx) => idx); // simplified — re-show with current types
-      // Full rebuild on selection change:
-      const available = this.registry.available().map(d => d.type);
-      this.show(available);
-      this.selected = type; // re-set after rebuild
+      if (type === this.selected) return; // already selected — no-op
+      this.selectToken(type);
     });
 
     this.container.add(zone);
@@ -134,6 +148,28 @@ export class PowerPicker {
     if (isSelected || autoSelect) {
       this.selected = type;
       bg.setScale(SEL_SCALE);
+    }
+  }
+
+  /**
+   * Update selection in-place — only redraws the two affected token backgrounds.
+   * The row stays intact; no container rebuild.
+   */
+  private selectToken(type: PowerType): void {
+    const prev = this.selected;
+    this.selected = type;
+
+    for (const rec of this.tokens) {
+      if (rec.type === prev || rec.type === type) {
+        const sel = rec.type === type;
+        this.drawTokenBg(rec.bg, rec.x, rec.y, rec.accentColour, sel);
+        this.scene.tweens.add({
+          targets: rec.bg,
+          scaleX: sel ? SEL_SCALE : 1,
+          scaleY: sel ? SEL_SCALE : 1,
+          duration: 90,
+        });
+      }
     }
   }
 
@@ -145,13 +181,10 @@ export class PowerPicker {
     selected: boolean,
   ): void {
     g.clear();
-
-    // Fill
     g.fillStyle(0x0d1a0d, 0.92);
     g.fillRoundedRect(x, y, TOKEN_W, TOKEN_H, CORNER_R);
 
     if (selected) {
-      // Gold border + light accent fill
       g.fillStyle(accentColour, 0.20);
       g.fillRoundedRect(x, y, TOKEN_W, TOKEN_H, CORNER_R);
       g.lineStyle(2, 0xd4a843, 1);
@@ -169,32 +202,28 @@ export class PowerPicker {
     colour: number,
   ): void {
     g.clear();
-    const u = 7; // unit size for icon geometry
+    const u = 7;
 
     g.lineStyle(2, colour, 0.9);
     g.fillStyle(colour, 0.85);
 
     switch (type) {
       case PowerType.NONE:
-        // Circle with line through it
         g.strokeCircle(cx, cy, u * 1.2);
         g.lineBetween(cx - u, cy + u, cx + u, cy - u);
         break;
 
       case PowerType.HEAVY:
-        // Bold filled circle (heavy weight symbol)
         g.fillCircle(cx, cy, u * 1.3);
         break;
 
       case PowerType.BOMB:
-        // Circle with fuse line
         g.fillCircle(cx, cy + u * 0.3, u);
         g.lineStyle(2, colour, 0.9);
         g.lineBetween(cx + u * 0.7, cy - u * 0.3, cx + u * 1.4, cy - u * 1.2);
         break;
 
       case PowerType.SPLITTER:
-        // Triangle of 3 small circles
         for (let i = 0; i < 3; i++) {
           const a = (i / 3) * Math.PI * 2 - Math.PI / 2;
           g.fillCircle(cx + Math.cos(a) * u, cy + Math.sin(a) * u, u * 0.45);
@@ -202,7 +231,6 @@ export class PowerPicker {
         break;
 
       case PowerType.GHOST:
-        // Dashed circle
         for (let i = 0; i < 8; i++) {
           if (i % 2 === 0) {
             const a0 = (i / 8) * Math.PI * 2;
@@ -215,7 +243,6 @@ export class PowerPicker {
         break;
 
       case PowerType.MAGNET:
-        // U-shape
         g.beginPath();
         g.arc(cx, cy + u * 0.2, u, Math.PI, 0, false);
         g.strokePath();
@@ -224,7 +251,6 @@ export class PowerPicker {
         break;
 
       case PowerType.SPINNING:
-        // Spiral arc
         for (let i = 0; i < 3; i++) {
           const r  = u * (0.4 + i * 0.35);
           const a0 = -Math.PI * 0.3 + i * 0.6;
@@ -236,14 +262,12 @@ export class PowerPicker {
         break;
 
       case PowerType.BOUNCER:
-        // Zigzag line
         g.lineBetween(cx - u * 1.2, cy, cx - u * 0.3, cy - u);
         g.lineBetween(cx - u * 0.3, cy - u, cx + u * 0.5, cy + u);
         g.lineBetween(cx + u * 0.5, cy + u, cx + u * 1.2, cy);
         break;
 
       case PowerType.SHIELD:
-        // Shield shape
         g.beginPath();
         g.moveTo(cx, cy - u * 1.2);
         g.lineTo(cx + u, cy - u * 0.5);
@@ -256,7 +280,6 @@ export class PowerPicker {
         break;
 
       case PowerType.FREEZE:
-        // Snowflake
         for (let i = 0; i < 6; i++) {
           const a = (i / 6) * Math.PI * 2;
           g.lineBetween(cx, cy, cx + Math.cos(a) * u * 1.2, cy + Math.sin(a) * u * 1.2);
@@ -264,7 +287,6 @@ export class PowerPicker {
         break;
 
       case PowerType.SLICK:
-        // Speed lines
         for (let i = -1; i <= 1; i++) {
           const off = i * u * 0.5;
           g.lineBetween(cx - u * 1.2, cy + off, cx + u * 1.2, cy + off);
