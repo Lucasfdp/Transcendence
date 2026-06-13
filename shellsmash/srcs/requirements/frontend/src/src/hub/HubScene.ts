@@ -710,6 +710,10 @@ export class HubScene extends Phaser.Scene {
           this.scene.start('BambooBashScene');
           return;
         }
+        if (hs.id === 'shell-cards') {
+          this.scene.start('ShellCurlScene');
+          return;
+        }
         if (available && this.scene.manager.getScene('ShellSmashArenaScene')) {
           this.scene.start('ShellSmashArenaScene');
         } else {
