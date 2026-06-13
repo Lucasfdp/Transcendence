@@ -64,7 +64,7 @@ export class KameKnockScene extends Phaser.Scene {
 
   private arena!: ArenaPixels;
   private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
-  private slingshot!: Slingshot;
+  private slingshot: Slingshot | null = null;
   private hudObjects: Phaser.GameObjects.GameObject[] = [];
 
   private targets: TimedTarget[] = [];
@@ -75,15 +75,20 @@ export class KameKnockScene extends Phaser.Scene {
   private combo = 0;
   private running = true;
 
-  private scoreText!: Phaser.GameObjects.Text;
-  private comboText!: Phaser.GameObjects.Text;
-  private ballText!: Phaser.GameObjects.Text;
+  private scoreText: Phaser.GameObjects.Text | null = null;
+  private comboText: Phaser.GameObjects.Text | null = null;
+  private ballText: Phaser.GameObjects.Text | null = null;
   private overlay?: Phaser.GameObjects.Container;
   private overlayHitZones: Phaser.GameObjects.Zone[] = [];
 
   constructor() { super({ key: 'KameKnockScene' }); }
 
   create(): void {
+    this.events.off(Phaser.Scenes.Events.SHUTDOWN, this.cleanupSceneResources, this);
+    this.events.off(Phaser.Scenes.Events.DESTROY, this.cleanupSceneResources, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupSceneResources, this);
+    this.events.once(Phaser.Scenes.Events.DESTROY, this.cleanupSceneResources, this);
+
     this.targets = [];
     this.nextTargetId = 0;
     this.currentBallIndex = 0;
@@ -92,6 +97,9 @@ export class KameKnockScene extends Phaser.Scene {
     this.combo = 0;
     this.running = true;
     this.overlay = undefined;
+    this.scoreText = null;
+    this.comboText = null;
+    this.ballText = null;
 
     this.arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
     this.resetBall();
@@ -117,11 +125,16 @@ export class KameKnockScene extends Phaser.Scene {
     this.scale.on('resize', this.onResize, this);
   }
 
-  shutdown(): void {
+  private cleanupSceneResources(): void {
     this.scale.off('resize', this.onResize, this);
-    this.slingshot.destroy();
+    this.slingshot?.destroy();
+    this.slingshot = null;
     this.clearOverlayHitZones();
     this.overlay?.destroy(true);
+    this.overlay = undefined;
+    this.scoreText = null;
+    this.comboText = null;
+    this.ballText = null;
   }
 
   update(_time: number, delta: number): void {
@@ -137,7 +150,7 @@ export class KameKnockScene extends Phaser.Scene {
 
     this.drawTargets();
     drawShellBall(this.ballGfx, this.ball);
-    this.comboText.setText(`COMBO  x${Math.max(1, this.combo)}`);
+    this.comboText?.setText(`COMBO  x${Math.max(1, this.combo)}`);
   }
 
   private onLaunch(): void {
@@ -158,8 +171,8 @@ export class KameKnockScene extends Phaser.Scene {
       this.spawnTarget(breakable);
     }
 
-    this.ballText?.setText(this.formatBallText());
-    this.comboText?.setText('COMBO  x1');
+    if (this.ballText?.active) this.ballText.setText(this.formatBallText());
+    if (this.comboText?.active) this.comboText.setText('COMBO  x1');
   }
 
   private shuffledBreakableFlags(config: BallRoundConfig): boolean[] {
@@ -210,7 +223,7 @@ export class KameKnockScene extends Phaser.Scene {
       const perfect = accuracy <= PERFECT_ACCURACY;
       const gained = target.points * this.combo + (perfect ? PERFECT_BONUS : 0);
       this.score += gained;
-      this.scoreText.setText(`SCORE  ${this.score}`);
+      this.scoreText?.setText(`SCORE  ${this.score}`);
 
       this.popScore(pos.x, pos.y, gained, this.combo, perfect);
       this.applyHitKick(pos.x, pos.y);
@@ -251,7 +264,7 @@ export class KameKnockScene extends Phaser.Scene {
 
   private endRound(): void {
     this.running = false;
-    this.slingshot.cancel();
+    this.slingshot?.cancel();
     this.ball.vx = 0;
     this.ball.vy = 0;
     this.combo = 0;
@@ -421,9 +434,11 @@ export class KameKnockScene extends Phaser.Scene {
     container.add(score);
 
     this.addOverlayButton(container, -110, panelH / 2 - 50, 'PLAY AGAIN', () => {
-      this.scene.start('KameKnockScene');
+      this.cleanupSceneResources();
+      this.scene.restart();
     });
     this.addOverlayButton(container, 110, panelH / 2 - 50, 'RETURN', () => {
+      this.cleanupSceneResources();
       this.scene.start('HubScene');
     });
   }
@@ -473,9 +488,11 @@ export class KameKnockScene extends Phaser.Scene {
     this.arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
     const velocityScale = this.arena.scale / oldArena.scale;
 
-    this.slingshot.cancel();
-    this.slingshot.maxDrag = MAX_DRAG_SRC * this.arena.scale;
-    this.slingshot.launchSpeed = LAUNCH_SPEED_SRC * this.arena.scale;
+    this.slingshot?.cancel();
+    if (this.slingshot) {
+      this.slingshot.maxDrag = MAX_DRAG_SRC * this.arena.scale;
+      this.slingshot.launchSpeed = LAUNCH_SPEED_SRC * this.arena.scale;
+    }
 
     const relX = (this.ball.x - oldArena.cx) / oldArena.rx;
     const relY = (this.ball.y - oldArena.cy) / oldArena.ry;
@@ -491,9 +508,9 @@ export class KameKnockScene extends Phaser.Scene {
 
     this.hudObjects.forEach((object) => object.destroy());
     this.hudObjects = buildReturnButton(this);
-    this.scoreText.setPosition(16, 16);
-    this.comboText.setPosition(16, 44);
-    this.ballText.setPosition(this.scale.width / 2, 16);
+    this.scoreText?.setPosition(16, 16);
+    this.comboText?.setPosition(16, 44);
+    this.ballText?.setPosition(this.scale.width / 2, 16);
     if (this.overlay) {
       this.overlay.destroy(true);
       this.showEndScreen();

@@ -31,7 +31,8 @@ export class Slingshot {
   private readonly grabRadiusFactor: number;
   private readonly depth: number;
 
-  private gfx!: Phaser.GameObjects.Graphics;
+  private gfx: Phaser.GameObjects.Graphics | null = null;
+  private attached = false;
   private dragging = false;
   private origin = { x: 0, y: 0 };
   private dragPt = { x: 0, y: 0 };
@@ -49,17 +50,23 @@ export class Slingshot {
   }
 
   attach(): void {
+    if (this.attached) return;
     this.gfx = this.scene.add.graphics().setDepth(this.depth);
     this.scene.input.on('pointerdown', this.onDown, this);
     this.scene.input.on('pointermove', this.onMove, this);
     this.scene.input.on('pointerup',   this.onUp,   this);
+    this.attached = true;
   }
 
   destroy(): void {
+    if (!this.attached && !this.gfx) return;
     this.scene.input.off('pointerdown', this.onDown, this);
     this.scene.input.off('pointermove', this.onMove, this);
     this.scene.input.off('pointerup',   this.onUp,   this);
     this.gfx?.destroy();
+    this.gfx = null;
+    this.attached = false;
+    this.dragging = false;
   }
 
   /** Cancel an in-flight drag (e.g. on resize) without launching. */
@@ -103,7 +110,7 @@ export class Slingshot {
   private onUp(): void {
     if (!this.dragging) return;
     this.dragging = false;
-    this.gfx.clear();
+    this.gfx?.clear();
 
     const dx  = this.dragPt.x - this.origin.x;
     const dy  = this.dragPt.y - this.origin.y;
@@ -122,6 +129,7 @@ export class Slingshot {
   // ── Aim rendering ───────────────────────────────────────────────────────────
 
   private drawAim(): void {
+    if (!this.gfx) return;
     this.gfx.clear();
 
     const ox  = this.origin.x;

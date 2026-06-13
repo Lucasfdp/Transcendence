@@ -8,6 +8,7 @@
 
 COMPOSE_FILE	:= srcs/docker-compose.yml
 OVERRIDE_FILE	:= srcs/docker-compose.override.yml
+DEV_COMPOSE	:= -f $(COMPOSE_FILE) -f $(OVERRIDE_FILE)
 ENV_FILE		:= .env
 PROJECT_NAME	:= transcendence
 
@@ -49,7 +50,7 @@ up: check-env
 ## dev: Start with hot-reload override (Vite HMR + NestJS watch). Access frontend at http://localhost:3000
 dev: check-env
 	@echo "$(GREEN)Starting in DEV mode (hot-reload)...$(RESET)"
-	docker compose -f $(COMPOSE_FILE) -f $(OVERRIDE_FILE) --env-file $(ENV_FILE) up -d --build
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --remove-orphans
 	@echo "$(GREEN)Dev server running. Frontend: http://localhost:3000$(RESET)"
 
 ## prod: Start WITHOUT the dev override — production-like mode (uses serve + compiled dist)
@@ -61,7 +62,7 @@ prod: check-env
 ## down: Stop and remove containers, networks (volumes are preserved by default)
 down:
 	@echo "$(YELLOW)Stopping all services...$(RESET)"
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) down
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) down --remove-orphans
 	@echo "$(YELLOW)Services stopped. Volumes preserved.$(RESET)"
 
 ## restart: Restart all services (preserves volumes)
@@ -75,14 +76,14 @@ build: check-env
 ## logs: Tail logs for all services, or one service. Usage: make logs [SERVICE=backend]
 logs:
 	@if [ "$(SERVICE)" ]; then \
-		docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) logs -f $(SERVICE); \
+		docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) logs -f $(SERVICE); \
 	else \
-		docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) logs -f; \
+		docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) logs -f; \
 	fi
 
 ## ps: Show status of all running containers
 ps:
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) ps
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) ps
 
 # ==============================================================================
 # CLEAN TARGETS
