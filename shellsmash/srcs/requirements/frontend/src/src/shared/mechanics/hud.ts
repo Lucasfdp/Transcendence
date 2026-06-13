@@ -3,7 +3,7 @@
  */
 
 import Phaser from 'phaser';
-import { THEME } from '../../hub/theme';
+import { THEME } from '../theme';
 
 /**
  * Add a "Return to Hub" button to the top-right corner of the scene.

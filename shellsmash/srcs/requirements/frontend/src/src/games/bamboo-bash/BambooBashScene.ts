@@ -12,12 +12,12 @@
  */
 
 import Phaser from 'phaser';
-import { ARENA_01 } from '../arenas/arena01';
-import { ArenaPixels, arenaToScreen, drawSumoRing } from '../arenas/arena';
-import { BallState, BALL_SRC_R, stepBall, isBallMoving, drawShellBall } from '../mechanics/ball';
-import { Slingshot } from '../mechanics/slingshot';
-import { buildReturnButton } from '../mechanics/hud';
-import { THEME } from '../../hub/theme';
+import { ARENA_01 } from '../../shared/arenas/arena01';
+import { ArenaPixels, arenaToScreen, drawSumoRing } from '../../shared/arenas/arena';
+import { BallState, BALL_SRC_R, stepBall, isBallMoving, drawShellBall } from '../../shared/mechanics/ball';
+import { Slingshot } from '../../shared/mechanics/slingshot';
+import { buildReturnButton } from '../../shared/mechanics/hud';
+import { THEME } from '../../shared/theme';
 import { api } from '../../hub/api';
 import {
   Bamboo, STAGE_POINTS,

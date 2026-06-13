@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { HubScene } from './hub/HubScene';
 import { AuthCallbackScene } from './hub/AuthCallbackScene';
-import { BambooBashScene } from './game/bamboo-bash/BambooBashScene';
-import { ShellCurlScene } from './game/shell-curl/ShellCurlScene';
+import { BambooBashScene } from './games/bamboo-bash/BambooBashScene';
+import { ShellCurlScene } from './games/shell-curl/ShellCurlScene';
 
 // Check if user has a token (stored after OAuth callback)
 const token = localStorage.getItem('jwt_token');

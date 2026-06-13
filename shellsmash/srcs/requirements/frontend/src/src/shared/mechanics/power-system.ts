@@ -198,21 +198,17 @@ const SHIELD_DEF: PowerDef = {
   type: PowerType.SHIELD,
   label: 'Shield Shell',
   accentColour: 0x44cc44,
-  description: 'Cannot be pushed out of the scoring house once it lands.',
-  onApply() { /* guard checked in stepStone */ },
-  onUpdate(stone, _delta, arena) {
-    const dx = stone.x - arena.houseFarCX;
-    const dy = stone.y - arena.houseFarCY;
+  description: 'Lands normally. If it stops inside the house it becomes very hard to knock out.',
+  onApply() { /* nothing at launch */ },
+  onStop(stone, arena) {
+    // Only activate the shield if the stone actually landed inside the house.
+    const dx   = stone.x - arena.houseFarCX;
+    const dy   = stone.y - arena.houseFarCY;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const outerR = arena.houseRadii[0];
-    if (dist > outerR && stone.stopped) {
-      // Clamp back to house edge
-      const nx = dx / dist;
-      const ny = dy / dist;
-      stone.x  = arena.houseFarCX + nx * outerR;
-      stone.y  = arena.houseFarCY + ny * outerR;
-      stone.vx = 0;
-      stone.vy = 0;
+    if (dist <= arena.houseRadii[0]) {
+      // Make it behave like a very heavy stone so collisions barely move it.
+      stone.power = PowerType.HEAVY;
+      (stone as { r: number }).r *= HEAVY_RADIUS_FACTOR * 0.5; // subtle visual cue
     }
   },
 };

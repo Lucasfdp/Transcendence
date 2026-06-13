@@ -14,7 +14,7 @@
 
 import Phaser from 'phaser';
 import { BallState, isBallMoving } from './ball';
-import { THEME } from '../../hub/theme';
+import { THEME } from '../theme';
 
 export interface SlingshotConfig {
   maxDrag: number;       // max pull distance in canvas px

@@ -12,7 +12,7 @@
 
 import Phaser from 'phaser';
 import type { TurnState } from './turn-manager';
-import { THEME } from '../../hub/theme';
+import { THEME } from '../theme';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 

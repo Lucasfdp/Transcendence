@@ -9,8 +9,8 @@
  */
 
 import Phaser from 'phaser';
-import { PowerType, PowerRegistry } from '../mechanics/power-system';
-import { THEME } from '../../hub/theme';
+import { PowerType, PowerRegistry } from '../../shared/mechanics/power-system';
+import { THEME } from '../../shared/theme';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 

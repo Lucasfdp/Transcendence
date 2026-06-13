@@ -31,7 +31,7 @@
  */
 
 import Phaser from 'phaser';
-import { THEME } from './theme';
+import { THEME } from '../shared/theme';
 
 // Fixed panel geometry
 const PW  = 320;  // panel width

@@ -7,7 +7,7 @@
  */
 
 import Phaser from 'phaser';
-import { CURL_SHEET } from '../arenas/curl-sheet';
+import { CURL_SHEET } from '../../shared/arenas/curl-sheet';
 import {
   rectArenaToScreen,
   drawIceSheet,
@@ -15,7 +15,7 @@ import {
   isStoneOutOfBounds,
   distanceToHouseButton,
   type RectArenaPixels,
-} from '../mechanics/rect-arena';
+} from '../../shared/mechanics/rect-arena';
 import {
   type StoneState,
   STONE_SRC_R,
@@ -23,17 +23,17 @@ import {
   stepStone,
   resolveStoneCollision,
   drawStone,
-} from '../mechanics/stone';
+} from '../../shared/mechanics/stone';
 import {
   PowerType,
   PowerRegistry,
   ALL_POWERS,
-} from '../mechanics/power-system';
-import { TurnManager, type TurnPhase } from '../mechanics/turn-manager';
-import { SweepController } from '../mechanics/sweep-controller';
-import { ScoreHud } from '../mechanics/score-hud';
-import { Slingshot } from '../mechanics/slingshot';
-import { buildReturnButton } from '../mechanics/hud';
+} from '../../shared/mechanics/power-system';
+import { TurnManager, type TurnPhase } from '../../shared/mechanics/turn-manager';
+import { SweepController } from '../../shared/mechanics/sweep-controller';
+import { ScoreHud } from '../../shared/mechanics/score-hud';
+import { Slingshot } from '../../shared/mechanics/slingshot';
+import { buildReturnButton } from '../../shared/mechanics/hud';
 import { PowerPicker } from './PowerPicker';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -243,24 +243,30 @@ export class ShellCurlScene extends Phaser.Scene {
       const def = this.powerRegistry.get(this.activeStone.power);
       def.onUpdate?.(this.activeStone, delta, this.arena);
 
-      // Stone-stone collisions (full O(n²) — needed now that all stones move)
-      for (let i = 0; i < this.allStones.length; i++) {
-        for (let j = i + 1; j < this.allStones.length; j++) {
-          resolveStoneCollision(this.allStones[i], this.allStones[j]);
-        }
-      }
-      // Fire onCollide / splitter hooks for active stone
+      // Active-stone collisions: check overlap BEFORE resolving so onCollide
+      // fires on first contact (resolution pushes stones apart, breaking the check).
       for (const other of this.allStones) {
-        if (!this.activeStone) break; // split already consumed the active stone
+        if (!this.activeStone) break;
         if (other.id === this.activeStone.id) continue;
-        if (this.stonesOverlapping(this.activeStone, other)) {
+        const colliding = this.stonesOverlapping(this.activeStone, other);
+        resolveStoneCollision(this.activeStone, other);
+        if (colliding) {
           def.onCollide?.(this.activeStone, other, this.arena);
         }
-        if (this.activeStone.splitterPending) {
+        if (this.activeStone?.splitterPending) {
           this.activeStone.splitterPending = false;
           this.spawnSplitStones(this.activeStone);
-          this.activeStone = null; // parent removed — don't reference it again
+          this.activeStone = null;
           break;
+        }
+      }
+      // Resolve collisions between all other stone pairs
+      for (let i = 0; i < this.allStones.length; i++) {
+        for (let j = i + 1; j < this.allStones.length; j++) {
+          const si = this.allStones[i];
+          const sj = this.allStones[j];
+          if (this.activeStone && (si.id === this.activeStone.id || sj.id === this.activeStone.id)) continue;
+          resolveStoneCollision(si, sj);
         }
       }
 

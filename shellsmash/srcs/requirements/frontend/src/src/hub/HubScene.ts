@@ -41,7 +41,7 @@
 
 import Phaser from 'phaser';
 import { api, MiniGameDefinition } from './api';
-import { THEME } from './theme';
+import { THEME } from '../shared/theme';
 import { ProfilePanel } from './ProfilePanel';
 
 const HUB_BG = '/assets/hub-background.png';
