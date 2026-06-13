@@ -281,9 +281,14 @@ export class HubScene extends Phaser.Scene {
    * proportional to the letterboxed image and to the viewport at all times.
    *
    * minPx prevents text from becoming unreadably tiny on extreme viewports.
+   *
+   * The scale is capped at 1.0 so UI chrome never grows *larger* than the
+   * original design sizes on displays wider/taller than 1080 px.  Scaling
+   * only goes downward (for small viewports / high browser zoom levels).
    */
   private scaledFont(basePx: number, minPx = 7): string {
-    return `${Math.max(minPx, Math.round(basePx * this.bgScale))}px`;
+    const s = Math.min(this.bgScale, 1.0);
+    return `${Math.max(minPx, Math.round(basePx * s))}px`;
   }
 
   /** Destroy every object in a layer array and empty it. */
@@ -741,13 +746,13 @@ export class HubScene extends Phaser.Scene {
     const titleText = this.add.text(width / 2, height * 0.67, 'SHELL SMASH', {
       fontSize: this.scaledFont(52), color: THEME.textGold,
       fontFamily: THEME.font, fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: Math.max(1, Math.round(5 * this.bgScale)),
+      stroke: '#000000', strokeThickness: Math.max(1, Math.round(5 * Math.min(this.bgScale, 1.0))),
     }).setOrigin(0.5).setDepth(DEPTH_HUD);
     this.promptLayer.push(titleText);
 
     const subtitleText = this.add.text(width / 2, height * 0.67 + 56, 'Sumo Turtle Arena', {
       fontSize: this.scaledFont(18), color: THEME.text, fontFamily: THEME.font,
-      stroke: '#000000', strokeThickness: Math.max(1, Math.round(3 * this.bgScale)),
+      stroke: '#000000', strokeThickness: Math.max(1, Math.round(3 * Math.min(this.bgScale, 1.0))),
     }).setOrigin(0.5).setDepth(DEPTH_HUD);
     this.promptLayer.push(subtitleText);
 
