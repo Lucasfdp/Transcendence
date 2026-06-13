@@ -272,6 +272,20 @@ export class HubScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Return a CSS font-size string scaled to the current canvas size.
+   *
+   * bgScale = Math.min(width, height) / SRC (1080), so the value is 1.0 at a
+   * 1080-unit viewport, 0.5 when the user has zoomed to 200 %, and 2.0 on a
+   * 2160p display.  Multiplying every hardcoded px value by bgScale keeps text
+   * proportional to the letterboxed image and to the viewport at all times.
+   *
+   * minPx prevents text from becoming unreadably tiny on extreme viewports.
+   */
+  private scaledFont(basePx: number, minPx = 7): string {
+    return `${Math.max(minPx, Math.round(basePx * this.bgScale))}px`;
+  }
+
   /** Destroy every object in a layer array and empty it. */
   private clearLayer(layer: Phaser.GameObjects.GameObject[]): void {
     for (const obj of layer) {
@@ -449,7 +463,7 @@ export class HubScene extends Phaser.Scene {
         // Shorten "Shell Smash Arena" → "Arena"; put every word on its own line
         const rawName  = hs.id === 'shell-smash-arena' ? 'Arena' : hs.name;
         const labelText = this.add.text(r.cx, r.cy, rawName.split(' ').join('\n'), {
-          fontSize: '24px',
+          fontSize: this.scaledFont(24),
           color: available ? THEME.textGold : '#888888',
           fontFamily: THEME.font,
           fontStyle: 'bold',
@@ -576,10 +590,10 @@ export class HubScene extends Phaser.Scene {
     panelGfx.lineStyle(1, THEME.gold, 0.22);
     panelGfx.strokeRoundedRect(px - panelW / 2 + 5, py - panelH / 2 + 5, panelW - 10, panelH - 10, 7);
 
-    const icon = this.add.text(px, py - panelH / 2 + 38, '⛩', { fontSize: '28px' }).setOrigin(0.5);
+    const icon = this.add.text(px, py - panelH / 2 + 38, '⛩', { fontSize: this.scaledFont(28) }).setOrigin(0.5);
 
     const nameText = this.add.text(px, py - panelH / 2 + 80, title.toUpperCase(), {
-      fontSize: '19px', color: THEME.textGold,
+      fontSize: this.scaledFont(19), color: THEME.textGold,
       fontFamily: THEME.font, fontStyle: 'bold', align: 'center',
     }).setOrigin(0.5);
 
@@ -591,14 +605,14 @@ export class HubScene extends Phaser.Scene {
     );
 
     const soonText = this.add.text(px, py - panelH / 2 + 128, 'Coming Soon', {
-      fontSize: '15px', color: THEME.text, fontFamily: THEME.font, fontStyle: 'italic',
+      fontSize: this.scaledFont(15), color: THEME.text, fontFamily: THEME.font, fontStyle: 'italic',
     }).setOrigin(0.5);
 
     const children: Phaser.GameObjects.GameObject[] = [backdrop, panelGfx, icon, nameText, divider, soonText];
 
     if (description) {
       const descText = this.add.text(px, py - panelH / 2 + 162, description, {
-        fontSize: '12px', color: THEME.textMutedHex,
+        fontSize: this.scaledFont(12), color: THEME.textMutedHex,
         fontFamily: THEME.font, align: 'center',
         wordWrap: { width: panelW - 48 },
       }).setOrigin(0.5);
@@ -607,7 +621,7 @@ export class HubScene extends Phaser.Scene {
 
     const closeBtn = this.add.text(
       px + panelW / 2 - 18, py - panelH / 2 + 16, '✕',
-      { fontSize: '15px', color: THEME.textMutedHex, fontFamily: THEME.font },
+      { fontSize: this.scaledFont(15), color: THEME.textMutedHex, fontFamily: THEME.font },
     ).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerup',   () => this.dismissModal());
     closeBtn.on('pointerover', () => closeBtn.setColor(THEME.text));
@@ -681,17 +695,17 @@ export class HubScene extends Phaser.Scene {
     // ── Text labels (above hoverGfx so they stay crisp) ──────────────────────
     const displayName = this.user.turtleName ?? this.user.username;
     const nameLabel = this.add.text(PAD + 48, 8, displayName, {
-      fontSize: '15px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
+      fontSize: this.scaledFont(15), color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
     }).setDepth(DEPTH_HUD);
     this.hudLayer.push(nameLabel);
 
     const levelLabel = this.add.text(PAD + 48, 27, `Lvl ${this.user.level}  ·  Shell: ${this.user.shellSkin ?? 'kanagawa'}`, {
-      fontSize: '11px', color: THEME.text, fontFamily: THEME.font,
+      fontSize: this.scaledFont(11), color: THEME.text, fontFamily: THEME.font,
     }).setDepth(DEPTH_HUD);
     this.hudLayer.push(levelLabel);
 
     const xpLabel = this.add.text(barX + barW + 6, barY - 1, `${this.user.xp} / ${xpMax} XP`, {
-      fontSize: '9px', color: THEME.textMutedHex, fontFamily: THEME.font,
+      fontSize: this.scaledFont(9), color: THEME.textMutedHex, fontFamily: THEME.font,
     }).setDepth(DEPTH_HUD);
     this.hudLayer.push(xpLabel);
 
@@ -725,15 +739,15 @@ export class HubScene extends Phaser.Scene {
     vignette.fillRect(0, height * 0.55, width, height * 0.45);
 
     const titleText = this.add.text(width / 2, height * 0.67, 'SHELL SMASH', {
-      fontSize: '52px', color: THEME.textGold,
+      fontSize: this.scaledFont(52), color: THEME.textGold,
       fontFamily: THEME.font, fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: 5,
+      stroke: '#000000', strokeThickness: Math.max(1, Math.round(5 * this.bgScale)),
     }).setOrigin(0.5).setDepth(DEPTH_HUD);
     this.promptLayer.push(titleText);
 
     const subtitleText = this.add.text(width / 2, height * 0.67 + 56, 'Sumo Turtle Arena', {
-      fontSize: '18px', color: THEME.text, fontFamily: THEME.font,
-      stroke: '#000000', strokeThickness: 3,
+      fontSize: this.scaledFont(18), color: THEME.text, fontFamily: THEME.font,
+      stroke: '#000000', strokeThickness: Math.max(1, Math.round(3 * this.bgScale)),
     }).setOrigin(0.5).setDepth(DEPTH_HUD);
     this.promptLayer.push(subtitleText);
 
@@ -779,7 +793,7 @@ export class HubScene extends Phaser.Scene {
       .setDepth(DEPTH_HUD) as Phaser.GameObjects.Rectangle;
 
     const text = this.add.text(x, y, label, {
-      fontSize: '18px', color: '#ffffff',
+      fontSize: this.scaledFont(18), color: '#ffffff',
       fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(DEPTH_HUD);
 
@@ -833,7 +847,7 @@ export class HubScene extends Phaser.Scene {
       bg.strokeRoundedRect(panelX - panelW, panelY, panelW, panelH, 8);
 
       const header = this.add.text(panelX - panelW / 2, panelY + 10, 'DOJO RANKINGS', {
-        fontSize: '10px', color: THEME.textGold,
+        fontSize: this.scaledFont(10), color: THEME.textGold,
         fontFamily: THEME.font, fontStyle: 'bold',
       }).setOrigin(0.5, 0).setDepth(DEPTH_HUD);
       this.lbLayer.push(header);
@@ -844,10 +858,10 @@ export class HubScene extends Phaser.Scene {
         const rowY    = panelY + 30 + i * rowH;
 
         const nameLabel = this.add.text(panelX - panelW + 12, rowY, `${i + 1}.  ${nameStr}`, {
-          fontSize: '11px', color: colour, fontFamily: THEME.font,
+          fontSize: this.scaledFont(11), color: colour, fontFamily: THEME.font,
         }).setDepth(DEPTH_HUD);
         const xpLabel = this.add.text(panelX - 12, rowY, `${u.xp} XP`, {
-          fontSize: '11px', color: colour, fontFamily: THEME.font,
+          fontSize: this.scaledFont(11), color: colour, fontFamily: THEME.font,
         }).setOrigin(1, 0).setDepth(DEPTH_HUD);
         this.lbLayer.push(nameLabel, xpLabel);
       });
