@@ -703,7 +703,7 @@ export class HubScene extends Phaser.Scene {
       // Click
       zone.on('pointerup', () => {
         if (hs.id === 'bamboo-bash') {
-          this.scene.start('ArenaScene');
+          this.scene.start('BambooBashScene');
           return;
         }
         if (available && this.scene.manager.getScene('ShellSmashArenaScene')) {
