@@ -23,8 +23,7 @@
  *
  *   bgLayer      — procedural sky, moon, trees, mist, path, petals
  *   hotspotLayer — zone rectangles + optional no-bg labels
- *   hudLayer     — HUD bar, avatar, XP, name text, profile hit zone
- *   promptLayer  — login title text + Torii button (unauthenticated path)
+ *   hudLayer     — HUD bar, avatar, XP, name text, guest banner, DEV badge
  *   lbLayer      — leaderboard panel (async, generation-guarded)
  *
  * Stable objects that are NOT in any layer (repositioned, not recreated):
@@ -40,7 +39,7 @@
  */
 
 import Phaser from 'phaser';
-import { api, MiniGameDefinition } from './api';
+import { api, MiniGameDefinition, User } from './api';
 import { THEME } from '../shared/theme';
 import { ProfilePanel } from './ProfilePanel';
 
@@ -87,7 +86,7 @@ const PETAL_COLOURS = [0xFFB7C5, 0xFFC8D3, 0xFFD9E2, 0xFF8FAD, 0xFFE4EC, 0xfffff
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class HubScene extends Phaser.Scene {
-  private user: any            = null;
+  private user: User | null    = null;
   private minigames: MiniGameDefinition[] = [];
   private modal: Phaser.GameObjects.Container | null = null;
   private glowGfx!: Phaser.GameObjects.Graphics;
@@ -112,7 +111,6 @@ export class HubScene extends Phaser.Scene {
   // ── Drawable layers (destroyed + redrawn on resize) ──────────────────────────
   private bgLayer:      Phaser.GameObjects.GameObject[] = [];
   private hudLayer:     Phaser.GameObjects.GameObject[] = [];
-  private promptLayer:  Phaser.GameObjects.GameObject[] = [];
   private hotspotLayer: Phaser.GameObjects.GameObject[] = [];
   private lbLayer:      Phaser.GameObjects.GameObject[] = [];
 
@@ -194,14 +192,15 @@ export class HubScene extends Phaser.Scene {
     try { this.minigames = await api.getMiniGames(); } catch { this.minigames = []; }
     try { this.user      = await api.getMe();        } catch { this.user = null; }
 
-    // Shrine hotspots only exist once logged in — the login screen shows
-    // nothing but the background art and the "Enter the Dojo" prompt.
-    if (this.user) {
-      this.buildHotspots();
-      this.drawHUD();
-    } else {
-      this.drawLoginPrompt();
+    // HubScene is only reachable after authentication.
+    // If getMe() failed (session expired / cookie cleared), return to landing.
+    if (!this.user) {
+      this.scene.start('LandingScene');
+      return;
     }
+
+    this.buildHotspots();
+    this.drawHUD();
 
     // Register resize listener after the initial layout is complete so an
     // immediate resize event (fired synchronously by some browsers on creation)
@@ -241,19 +240,15 @@ export class HubScene extends Phaser.Scene {
     // 4. glowGfx is stable — clear it so a stale highlight isn't left over
     this.glowGfx.clear();
 
-    // 5. Rebuild hotspot zones with recalculated hit areas — but only when
-    //    logged in; the login screen shows just the background + prompt.
+    // 5. Rebuild hotspot zones with recalculated hit areas.
     this.clearLayer(this.hotspotLayer);
 
-    // 6. Redraw the authenticated HUD or the unauthenticated login prompt
+    // 6. Redraw the authenticated HUD (user is always set in HubScene).
     if (this.user) {
       this.buildHotspots();
       this.clearLayer(this.hudLayer);
       this.drawHUD();
       // renderLeaderboard() clears lbLayer internally and re-fetches
-    } else {
-      this.clearLayer(this.promptLayer);
-      this.drawLoginPrompt();
     }
 
     // 7. Recentre any open modal at the new screen centre
@@ -859,6 +854,10 @@ export class HubScene extends Phaser.Scene {
   // ── HUD overlay ──────────────────────────────────────────────────────────────
 
   private drawHUD(): void {
+    // Type guard — drawHUD() is only called after a null check in create() /
+    // applyResize(), but TypeScript cannot track that across method boundaries.
+    if (!this.user) return;
+
     const { width } = this.scale;
     const PAD    = 16;
     const BAR_H  = 56;
@@ -924,6 +923,24 @@ export class HubScene extends Phaser.Scene {
     }).setDepth(DEPTH_HUD);
     this.hudLayer.push(levelLabel);
 
+    // ── DEV badge (visible only for dev accounts) ─────────────────────────────
+    if (this.user.isDevAccount) {
+      const devBadge = this.add.text(nameLabel.getRightCenter().x + 8, 10, 'DEV', {
+        fontSize:        this.scaledFont(9),
+        color:           '#ffffff',
+        fontFamily:      THEME.font,
+        fontStyle:       'bold',
+        backgroundColor: '#8b0000',
+        padding:         { x: 4, y: 2 },
+      }).setDepth(DEPTH_HUD);
+      this.hudLayer.push(devBadge);
+    }
+
+    // ── Guest banner (persistent bottom strip) ────────────────────────────────
+    if (this.user.isGuest) {
+      this.drawGuestBanner();
+    }
+
     // ── One-shot pulse tween on the avatar ring ────────────────────────────────
     // Wrap bar in a Container so the tween can scale it without affecting width
     const avatarRingGfx = this.add.graphics().setDepth(DEPTH_HUD);
@@ -942,6 +959,9 @@ export class HubScene extends Phaser.Scene {
 
     this.renderLeaderboard();
 
+    // ── Logout button (top-right of HUD bar) ──────────────────────────────────
+    this.drawLogoutButton(width, BAR_H, PAD);
+
     // ── Profile trigger ────────────────────────────────────────────────────────
     const profileHit = this.add
       .rectangle(PROFILE_HIT_W / 2, BAR_H / 2, PROFILE_HIT_W, BAR_H, 0x000000, 0)
@@ -959,88 +979,79 @@ export class HubScene extends Phaser.Scene {
     });
   }
 
-  // ── Login prompt ─────────────────────────────────────────────────────────────
+  // ── Logout button ────────────────────────────────────────────────────────────
 
-  private drawLoginPrompt(): void {
-    const { width, height } = this.scale;
+  private drawLogoutButton(barWidth: number, barHeight: number, pad: number): void {
+    const label  = 'Logout';
+    const btnX   = barWidth - pad;
+    const btnY   = barHeight / 2;
 
-    const vignette = this.add.graphics().setDepth(DEPTH_HUD);
-    this.promptLayer.push(vignette);
-    vignette.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0, 0.75, 0.75);
-    vignette.fillRect(0, height * 0.55, width, height * 0.45);
+    const txt = this.add.text(btnX, btnY, label, {
+      fontSize:  this.scaledFont(12),
+      color:     THEME.textMutedHex,
+      fontFamily: THEME.font,
+    }).setOrigin(1, 0.5).setDepth(DEPTH_HUD).setInteractive({ useHandCursor: true });
+    this.hudLayer.push(txt);
 
-    const titleText = this.add.text(width / 2, height * 0.67, 'SHELL SMASH', {
-      fontSize: this.scaledFont(52), color: THEME.textGold,
-      fontFamily: THEME.font, fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: Math.max(1, Math.round(5 * Math.min(this.bgScale, 1.0))),
-    }).setOrigin(0.5).setDepth(DEPTH_HUD);
-    this.promptLayer.push(titleText);
+    // Separator line to the left of the button
+    const sepGfx = this.add.graphics().setDepth(DEPTH_HUD);
+    this.hudLayer.push(sepGfx);
+    sepGfx.lineStyle(1, THEME.gold, 0.20);
+    sepGfx.lineBetween(btnX - txt.width - 12, 10, btnX - txt.width - 12, barHeight - 10);
 
-    const subtitleText = this.add.text(width / 2, height * 0.67 + 56, 'Sumo Turtle Arena', {
-      fontSize: this.scaledFont(18), color: THEME.text, fontFamily: THEME.font,
-      stroke: '#000000', strokeThickness: Math.max(1, Math.round(3 * Math.min(this.bgScale, 1.0))),
-    }).setOrigin(0.5).setDepth(DEPTH_HUD);
-    this.promptLayer.push(subtitleText);
-
-    // TODO(#001): swap devLogin() for loginUrl() redirect once 42 OAuth keys are set
-    const btn = this.drawToriiButton(
-      width / 2, height * 0.67 + 116, 240, 56,
-      'Enter the Dojo',
-      async () => {
-        try {
-          await api.devLogin('KameMaster');
-          this.scene.restart();
-        } catch (err) {
-          console.error('[Enter Dojo] Dev login failed:', err);
-        }
-      },
-    );
-    // Track all three Torii-button objects so they're destroyed on resize
-    this.promptLayer.push(btn.graphics, btn.hitArea, btn.text);
+    txt.on('pointerover', () => txt.setColor(THEME.textGold));
+    txt.on('pointerout',  () => txt.setColor(THEME.textMutedHex));
+    txt.on('pointerup', () => void this.doLogout());
   }
 
-  // ── Torii-gate button ────────────────────────────────────────────────────────
+  private async doLogout(): Promise<void> {
+    try {
+      await api.getCsrfToken();   // refresh token before the DELETE
+      await api.logout();
+    } catch (err) {
+      // Even if the server call fails (expired session, network hiccup),
+      // redirect to landing — the cookie will be cleared on next load.
+      console.warn('[HubScene] Logout request failed (continuing anyway):', err);
+    }
+    this.scene.start('LandingScene');
+  }
 
-  private drawToriiButton(
-    x: number, y: number, w: number, h: number,
-    label: string, onClick: () => void,
-  ): { graphics: Phaser.GameObjects.Graphics; hitArea: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text } {
-    const g = this.add.graphics().setDepth(DEPTH_HUD);
+  // ── Guest banner ──────────────────────────────────────────────────────────────
 
-    const paint = (hovered: boolean): void => {
-      g.clear();
-      g.fillStyle(hovered ? THEME.gold : THEME.red, 0.92);
-      g.fillRect(x - w / 2, y - h / 2, w, h);
-      g.fillStyle(hovered ? THEME.red : THEME.gold, 1);
-      g.fillRect(x - w / 2 - 10, y - h / 2 - 8, w + 20, 8);
-      g.fillRect(x - w / 2 - 6,  y - h / 2,      8,      h);
-      g.fillRect(x + w / 2 - 2,  y - h / 2,      8,      h);
-    };
+  /**
+   * Persistent bottom strip shown while playing as a guest.
+   * Clicking "Log in" redirects to the 42 OAuth flow.
+   */
+  private drawGuestBanner(): void {
+    const { width, height } = this.scale;
+    const BANNER_H = 36;
+    const bannerY  = height - BANNER_H;
 
-    paint(false);
+    const bg = this.add.graphics().setDepth(DEPTH_HUD);
+    this.hudLayer.push(bg);
+    bg.fillStyle(0x1a0a00, 0.90);
+    bg.fillRect(0, bannerY, width, BANNER_H);
+    bg.lineStyle(1, THEME.gold, 0.35);
+    bg.lineBetween(0, bannerY, width, bannerY);
 
-    const hitArea = this.add.rectangle(x, y, w, h, 0x000000, 0)
-      .setInteractive({ useHandCursor: true })
-      .setDepth(DEPTH_HUD) as Phaser.GameObjects.Rectangle;
+    const msg = this.add.text(width / 2, bannerY + BANNER_H / 2,
+      'Playing as Guest — progress is not saved.',
+      {
+        fontSize: this.scaledFont(12), color: THEME.text, fontFamily: THEME.font,
+      },
+    ).setOrigin(0.5).setDepth(DEPTH_HUD);
+    this.hudLayer.push(msg);
 
-    const text = this.add.text(x, y, label, {
-      fontSize: this.scaledFont(18), color: '#ffffff',
-      fontFamily: THEME.font, fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(DEPTH_HUD);
-
-    hitArea.on('pointerup',   () => void onClick());
-    hitArea.on('pointerover', () => {
-      paint(true);
-      text.setColor('#1a1410');
-      this.startPetals(x, y, w, h);
-    });
-    hitArea.on('pointerout',  () => {
-      paint(false);
-      text.setColor('#ffffff');
-      this.stopPetals();
-    });
-
-    return { graphics: g, hitArea, text };
+    const loginLink = this.add.text(msg.getRightCenter().x + 12, bannerY + BANNER_H / 2,
+      'Log in to save', {
+        fontSize: this.scaledFont(12), color: THEME.textGold,
+        fontFamily: THEME.font, fontStyle: 'bold',
+      },
+    ).setOrigin(0, 0.5).setDepth(DEPTH_HUD).setInteractive({ useHandCursor: true });
+    loginLink.on('pointerover', () => loginLink.setStyle({ textDecoration: 'underline' }));
+    loginLink.on('pointerout',  () => loginLink.setStyle({ textDecoration: '' }));
+    loginLink.on('pointerup',   () => { window.location.href = api.loginUrl(); });
+    this.hudLayer.push(loginLink);
   }
 
   // ── Leaderboard ──────────────────────────────────────────────────────────────

@@ -10,14 +10,24 @@ export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ unique: true })
-  fortyTwoId: string;
+  /** Null for guest accounts and local accounts (non-42 auth). */
+  @Column({ unique: true, nullable: true })
+  fortyTwoId: string | null;
+
+  /**
+   * scrypt-derived hash: "<hex-salt>:<hex-hash>".
+   * Null for guest accounts and 42 OAuth accounts (no local password).
+   * NEVER expose this field in API responses.
+   */
+  @Column({ nullable: true, select: false })
+  passwordHash: string | null;
 
   @Column({ unique: true })
   username: string;
 
-  @Column({ unique: true })
-  email: string;
+  /** Null for guest accounts (no email required). */
+  @Column({ unique: true, nullable: true })
+  email: string | null;
 
   @Column({ nullable: true })
   avatar: string;
@@ -35,6 +45,17 @@ export class User {
   // Cosmetic shell skin — e.g. "kanagawa", "dragon", "bamboo"
   @Column({ default: 'kanagawa' })
   shellSkin: string;
+
+  /** True for ephemeral guest accounts created via POST /auth/guest. */
+  @Column({ default: false })
+  isGuest: boolean;
+
+  /**
+   * True for accounts created via the dev-login endpoint.
+   * Rendered with a gold "DEV" badge in the frontend HUD.
+   */
+  @Column({ default: false })
+  isDevAccount: boolean;
 
   @CreateDateColumn()
   createdAt: Date;

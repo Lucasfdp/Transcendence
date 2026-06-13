@@ -36,14 +36,14 @@ describe('JwtStrategy', () => {
   describe('validate', () => {
     it('returns the user for a valid payload', async () => {
       usersService.findById.mockResolvedValue(mockUser);
-      const result = await strategy.validate({ sub: 1, username: 'kamegoro' });
+      const result = await strategy.validate({ sub: 1, username: 'kamegoro', isGuest: false, isDevAccount: false });
       expect(result).toBe(mockUser);
       expect(usersService.findById).toHaveBeenCalledWith(1);
     });
 
     it('throws UnauthorizedException when user not found', async () => {
       usersService.findById.mockResolvedValue(null);
-      await expect(strategy.validate({ sub: 99, username: 'ghost' }))
+      await expect(strategy.validate({ sub: 99, username: 'ghost', isGuest: false, isDevAccount: false }))
         .rejects.toThrow(UnauthorizedException);
     });
   });

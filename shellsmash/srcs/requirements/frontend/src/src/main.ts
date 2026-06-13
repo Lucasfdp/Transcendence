@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
+import { LandingScene } from './hub/LandingScene';
 import { HubScene } from './hub/HubScene';
-import { AuthCallbackScene } from './hub/AuthCallbackScene';
 import { BambooBashScene } from './games/bamboo-bash/BambooBashScene';
 import { ShellCurlScene } from './games/shell-curl/ShellCurlScene';
 import { KameKnockScene } from './games/kame-knock/KameKnockScene';
 
-// Check if user has a token (stored after OAuth callback)
-const token = localStorage.getItem('jwt_token');
+// NOTE: AuthCallbackScene is superseded by cookie-based auth — the backend now
+// sets an httpOnly cookie and redirects to "/" directly. See auth.controller.ts.
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -14,7 +14,9 @@ const config: Phaser.Types.Core.GameConfig = {
   height: window.innerHeight,
   backgroundColor: '#0d1117',
   parent: 'game',
-  scene: [AuthCallbackScene, HubScene, BambooBashScene, ShellCurlScene, KameKnockScene],
+  // LandingScene is always the boot scene.
+  // It detects an existing session and transitions to HubScene automatically.
+  scene: [LandingScene, HubScene, BambooBashScene, ShellCurlScene, KameKnockScene],
   scale: {
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
