@@ -166,9 +166,11 @@ export class HubScene extends Phaser.Scene {
   async create(): Promise<void> {
     const { width, height } = this.scale;
 
-    // Cover-and-crop: scale image so it always fills the canvas completely.
-    // bgOffX / bgOffY may be negative — that means the image is cropped at the edges.
-    this.bgScale = Math.max(width / SRC_W, height / SRC_H);
+    // Contain (letterbox): scale the square image so the WHOLE of it fits on
+    // screen. This guarantees every shrine hotspot stays inside the viewport at
+    // any aspect ratio (cover-and-crop pushed the top shrines off-screen on
+    // 16:9). The margins are filled by the procedural background drawn first.
+    this.bgScale = Math.min(width / SRC_W, height / SRC_H);
     this.bgOffX  = (width  - SRC_W * this.bgScale) / 2;
     this.bgOffY  = (height - SRC_H * this.bgScale) / 2;
 
@@ -192,9 +194,10 @@ export class HubScene extends Phaser.Scene {
     try { this.minigames = await api.getMiniGames(); } catch { this.minigames = []; }
     try { this.user      = await api.getMe();        } catch { this.user = null; }
 
-    this.buildHotspots();
-
+    // Shrine hotspots only exist once logged in — the login screen shows
+    // nothing but the background art and the "Enter the Dojo" prompt.
     if (this.user) {
+      this.buildHotspots();
       this.drawHUD();
     } else {
       this.drawLoginPrompt();
@@ -219,8 +222,8 @@ export class HubScene extends Phaser.Scene {
   private applyResize(): void {
     const { width, height } = this.scale;
 
-    // 1. Recalculate cover-and-crop letterbox transform
-    this.bgScale = Math.max(width / SRC_W, height / SRC_H);
+    // 1. Recalculate contain (letterbox) transform — keeps every hotspot on screen
+    this.bgScale = Math.min(width / SRC_W, height / SRC_H);
     this.bgOffX  = (width  - SRC_W * this.bgScale) / 2;
     this.bgOffY  = (height - SRC_H * this.bgScale) / 2;
 
@@ -238,12 +241,13 @@ export class HubScene extends Phaser.Scene {
     // 4. glowGfx is stable — clear it so a stale highlight isn't left over
     this.glowGfx.clear();
 
-    // 5. Rebuild hotspot zones with recalculated hit areas
+    // 5. Rebuild hotspot zones with recalculated hit areas — but only when
+    //    logged in; the login screen shows just the background + prompt.
     this.clearLayer(this.hotspotLayer);
-    this.buildHotspots();
 
     // 6. Redraw the authenticated HUD or the unauthenticated login prompt
     if (this.user) {
+      this.buildHotspots();
       this.clearLayer(this.hudLayer);
       this.drawHUD();
       // renderLeaderboard() clears lbLayer internally and re-fetches
@@ -639,7 +643,7 @@ export class HubScene extends Phaser.Scene {
       // ── Label text (centred in the frame) ────────────────────────────────────
       const rawName   = hs.id === 'shell-smash-arena' ? 'Arena' : hs.name;
       const labelText = this.add.text(r.cx, r.cy, rawName.split(' ').join('\n'), {
-        fontSize:    this.scaledFont(13),
+        fontSize:    this.scaledFont(22),
         color:       available ? THEME.textGold : THEME.textMutedHex,
         fontFamily:  THEME.font,
         fontStyle:   'bold',

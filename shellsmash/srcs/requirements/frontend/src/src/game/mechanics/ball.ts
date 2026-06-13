@@ -46,20 +46,27 @@ export function stepBall(b: BallState, deltaMs: number, a: ArenaPixels): boolean
   b.x += b.vx * dt;
   b.y += b.vy * dt;
 
-  // Outside the ellipse?  (x-cx)²/rx² + (y-cy)²/ry² ≥ 1
-  const ex = (b.x - a.cx) / a.rx;
-  const ey = (b.y - a.cy) / a.ry;
+  // The ball is a circle of radius b.r, so its centre is confined to an inner
+  // ellipse shrunk by the radius — the ball's *edge* (not its centre) touches
+  // the wall. Clamp the radius so the inner ellipse never collapses on a tiny
+  // arena.
+  const erx = Math.max(1, a.rx - b.r);
+  const ery = Math.max(1, a.ry - b.r);
+
+  // Outside the inner ellipse?  (x-cx)²/erx² + (y-cy)²/ery² ≥ 1
+  const ex = (b.x - a.cx) / erx;
+  const ey = (b.y - a.cy) / ery;
   const distSq = ex * ex + ey * ey;
 
   if (distSq >= 1) {
-    // Project the ball back onto the ellipse surface
+    // Project the ball centre back onto the inner ellipse surface
     const inv = 1 / Math.sqrt(distSq);
     b.x = a.cx + (b.x - a.cx) * inv;
     b.y = a.cy + (b.y - a.cy) * inv;
 
-    // Outward unit normal = normalised gradient of the ellipse equation
-    const nRawX = (b.x - a.cx) / (a.rx * a.rx);
-    const nRawY = (b.y - a.cy) / (a.ry * a.ry);
+    // Outward unit normal = normalised gradient of the inner ellipse equation
+    const nRawX = (b.x - a.cx) / (erx * erx);
+    const nRawY = (b.y - a.cy) / (ery * ery);
     const nLen  = Math.sqrt(nRawX * nRawX + nRawY * nRawY);
     const nx    = nRawX / nLen;
     const ny    = nRawY / nLen;
