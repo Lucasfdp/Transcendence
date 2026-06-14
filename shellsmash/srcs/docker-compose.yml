@@ -559,11 +559,7 @@ networks:
   frontend_network:
     name: ${COMPOSE_PROJECT_NAME}_frontend_network
     driver: bridge
-    # Use custom subnet to avoid conflicts with host network ranges.
-    # Adjust if 172.20.0.0/24 is already in use on your system.
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24
+    # Subnet auto-assigned by Docker — services communicate by DNS name, not IP.
 
   backend_network:
     name: ${COMPOSE_PROJECT_NAME}_backend_network
@@ -571,9 +567,6 @@ networks:
     # internal: true would prevent any internet egress from this network.
     # Enable it once the backend no longer needs to reach external APIs.
     # internal: true
-    ipam:
-      config:
-        - subnet: 172.20.1.0/24
 
 # ==============================================================================
 # VOLUMES

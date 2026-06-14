@@ -14,7 +14,10 @@ import { User } from '../users/entities/user.entity';
 // ── Password-hashing constants ─────────────────────────────────────────────────
 // scrypt params: N=2^15 (32 768), r=8, p=1 → ~100 ms on a modern single core.
 // keyLen=64 bytes → 128 hex chars in the stored hash.
-const SCRYPT_OPTS: ScryptOptions = { N: 32_768, r: 8, p: 1 };
+// maxmem is set explicitly: the required working memory is 128·N·r = 32 MiB,
+// which equals Node's default maxmem and causes OpenSSL to reject the params
+// with ERR_CRYPTO_INVALID_SCRYPT_PARAMS. 64 MiB gives ample headroom.
+const SCRYPT_OPTS: ScryptOptions = { N: 32_768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const SCRYPT_KEYLEN               = 64;
 
 /** Promisified scrypt with full options support (avoids promisify's type limits). */
