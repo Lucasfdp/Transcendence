@@ -13,6 +13,7 @@ import { ArenaPixels, arenaToScreen, drawSumoRing } from '../../shared/arenas/ar
 import { BallState, BALL_SRC_R, drawShellBall, isBallMoving, stepBall } from '../../shared/mechanics/ball';
 import { Slingshot } from '../../shared/mechanics/slingshot';
 import { buildReturnButton } from '../../shared/mechanics/hud';
+import { showAchievementUnlocks } from '../../shared/achievement-popup';
 import {
   TimedTarget,
   TimedTargetKind,
@@ -284,6 +285,7 @@ export class KameKnockScene extends Phaser.Scene {
 
     api.submitGameResult('kame-knock', 'win').then((result) => {
       console.info('[KameKnock] progression:', result);
+      showAchievementUnlocks(this, result.unlockedAchievements ?? []);
     }).catch((err: unknown) => {
       console.warn('[KameKnock] failed to submit result:', err);
     });

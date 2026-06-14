@@ -108,6 +108,17 @@ export interface ProgressionResult {
   newLevel:    number;
   newCoins:    number;
   leveledUp:   boolean;
+  unlockedAchievements: Achievement[];
+}
+
+export interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  unlockDescription: string;
+  rewardLabel?: string;
+  unlocked: boolean;
+  unlockedAt: string | null;
 }
 
 export interface MiniGameDefinition {
@@ -164,6 +175,7 @@ export const api = {
   getUser:      (username: string): Promise<User>        => apiFetch<User>(`/users/${username}`),
   getAllUsers:   (): Promise<User[]>                      => apiFetch<User[]>('/users'),
   getMiniGames: (): Promise<MiniGameDefinition[]>        => apiFetch<MiniGameDefinition[]>('/minigames'),
+  getAchievements: (): Promise<Achievement[]>            => apiFetch<Achievement[]>('/achievements'),
 
   /**
    * Record the outcome of a completed game session.

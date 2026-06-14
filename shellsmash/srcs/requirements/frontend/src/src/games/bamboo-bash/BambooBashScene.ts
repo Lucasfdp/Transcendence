@@ -17,6 +17,7 @@ import { ArenaPixels, arenaToScreen, drawSumoRing } from '../../shared/arenas/ar
 import { BallState, BALL_SRC_R, stepBall, isBallMoving, drawShellBall } from '../../shared/mechanics/ball';
 import { Slingshot } from '../../shared/mechanics/slingshot';
 import { buildReturnButton } from '../../shared/mechanics/hud';
+import { showAchievementUnlocks } from '../../shared/achievement-popup';
 import { THEME } from '../../shared/theme';
 import { api } from '../../hub/api';
 import {
@@ -169,6 +170,7 @@ export class BambooBashScene extends Phaser.Scene {
 
     api.submitGameResult('bamboo-bash', 'win').then((result) => {
       console.info('[BambooBash] progression:', result);
+      showAchievementUnlocks(this, result.unlockedAchievements ?? []);
     }).catch((err: unknown) => {
       console.warn('[BambooBash] failed to submit result:', err);
     });

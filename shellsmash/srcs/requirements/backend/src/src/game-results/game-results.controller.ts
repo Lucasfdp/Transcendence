@@ -36,7 +36,15 @@ export class GameResultsController {
     if (!user) throw new UnauthorizedException();
 
     if (user.isGuest) {
-      return { xpGained: 0, coinsGained: 0, newXp: 0, newLevel: 1, newCoins: 0, leveledUp: false };
+      return {
+        xpGained: 0,
+        coinsGained: 0,
+        newXp: 0,
+        newLevel: 1,
+        newCoins: 0,
+        leveledUp: false,
+        unlockedAchievements: [],
+      };
     }
 
     return this.gameResultsService.submitResult(user, dto);

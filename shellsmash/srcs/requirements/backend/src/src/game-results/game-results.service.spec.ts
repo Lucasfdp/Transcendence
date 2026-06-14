@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { InternalServerErrorException } from '@nestjs/common';
 import { GameResultsService } from './game-results.service';
 import { UsersService } from '../users/users.service';
+import { AchievementsService } from '../achievements/achievements.service';
 import { User } from '../users/entities/user.entity';
 import { Profile } from '../profiles/entities/profile.entity';
 import {
@@ -40,21 +41,27 @@ function makeUser(overrides: Partial<User> = {}): User {
 describe('GameResultsService', () => {
   let service: GameResultsService;
   let usersService: jest.Mocked<UsersService>;
+  let achievementsService: jest.Mocked<AchievementsService>;
 
   beforeEach(async () => {
     const mockUsersService: Partial<jest.Mocked<UsersService>> = {
       save: jest.fn(),
+    };
+    const mockAchievementsService: Partial<jest.Mocked<AchievementsService>> = {
+      evaluateForUser: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GameResultsService,
         { provide: UsersService, useValue: mockUsersService },
+        { provide: AchievementsService, useValue: mockAchievementsService },
       ],
     }).compile();
 
-    service      = module.get<GameResultsService>(GameResultsService);
-    usersService = module.get(UsersService);
+    service             = module.get<GameResultsService>(GameResultsService);
+    usersService        = module.get(UsersService);
+    achievementsService = module.get(AchievementsService);
   });
 
   // ── Happy paths ─────────────────────────────────────────────────────────────
@@ -73,6 +80,8 @@ describe('GameResultsService', () => {
     expect(user.profile.totalLosses).toBe(0);
     expect(user.profile.gamesPlayed).toBe(1);
     expect(usersService.save).toHaveBeenCalledWith(user);
+    expect(achievementsService.evaluateForUser).toHaveBeenCalledWith(user);
+    expect(result.unlockedAchievements).toEqual([]);
   });
 
   it('should award reduced XP on loss, no coins, increment totalLosses and gamesPlayed', async () => {
@@ -180,6 +189,25 @@ describe('GameResultsService', () => {
     await expect(
       service.submitResult(user, { gameId: 'test-game', outcome: 'win' }),
     ).rejects.toThrow(InternalServerErrorException);
+  });
+
+  it('should return newly unlocked achievements from achievement evaluation', async () => {
+    const user = makeUser();
+    const unlocked = [{
+      id: 'first-match',
+      title: 'First Match',
+      description: 'Complete your first match in the dojo.',
+      unlockDescription: 'You completed your first match.',
+      rewardLabel: 'Progress record unlocked',
+      unlocked: true,
+      unlockedAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+    }];
+    usersService.save.mockResolvedValueOnce(user);
+    achievementsService.evaluateForUser.mockResolvedValueOnce(unlocked);
+
+    const result = await service.submitResult(user, { gameId: 'test-game', outcome: 'win' });
+
+    expect(result.unlockedAchievements).toEqual(unlocked);
   });
 
   // ── Accumulation ────────────────────────────────────────────────────────────

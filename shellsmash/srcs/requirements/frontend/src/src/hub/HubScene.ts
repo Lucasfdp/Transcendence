@@ -39,7 +39,7 @@
  */
 
 import Phaser from 'phaser';
-import { api, MiniGameDefinition, User } from './api';
+import { Achievement, api, MiniGameDefinition, User } from './api';
 import { THEME } from '../shared/theme';
 import { ProfilePanel } from './ProfilePanel';
 
@@ -121,6 +121,7 @@ export class HubScene extends Phaser.Scene {
   // ── Modal state — stored so the modal can be recentred on resize ──────────────
   private modalTitle: string | null = null;
   private modalDesc:  string        = '';
+  private modalKind:  'default' | 'achievements' | null = null;
 
   // ── Leaderboard async generation guard ────────────────────────────────────────
   // Incremented on every renderLeaderboard() call; the async callback bails out
@@ -271,8 +272,10 @@ export class HubScene extends Phaser.Scene {
     if (this.modal && this.modalTitle !== null) {
       const title = this.modalTitle;
       const desc  = this.modalDesc;
+      const kind  = this.modalKind;
       this.dismissModal();
-      this.showModal(title, desc);
+      if (kind === 'achievements') void this.showAchievementsModal();
+      else this.showModal(title, desc);
     }
 
     // 8. Clamp the ProfilePanel so it doesn't overflow on narrow viewports
@@ -753,7 +756,7 @@ export class HubScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const PAD = 16;
     const panelW = Math.min(260, width - PAD * 2);
-    const panelH = 152;
+    const panelH = 202;
     const bottomReserve = this.user?.isGuest ? 52 : 16;
     const panelX = PAD;
     const panelY = Math.max(72, height - bottomReserve - panelH);
@@ -793,7 +796,17 @@ export class HubScene extends Phaser.Scene {
       38,
       'achievements',
       'Achievements',
-      'Achievement tracking is coming soon.',
+      'Track your dojo milestones and unlocked rewards.',
+    );
+
+    this.drawExtrasButton(
+      panelX + 16,
+      panelY + 142,
+      panelW - 32,
+      38,
+      'costumization',
+      'Costumization',
+      'Shell and turtle costumization is coming soon.',
     );
   }
 
@@ -812,7 +825,7 @@ export class HubScene extends Phaser.Scene {
     };
     paint(false);
 
-    const icon = id === 'shell-cards' ? 'CARD' : 'MEDAL';
+    const icon = id === 'shell-cards' ? 'CARD' : id === 'achievements' ? 'MEDAL' : 'STYLE';
     const iconText = this.add.text(x + 18, y + h / 2, icon, {
       fontSize: this.scaledFont(7),
       color: THEME.textGold,
@@ -843,7 +856,10 @@ export class HubScene extends Phaser.Scene {
       paint(false);
       labelText.setColor(THEME.text);
     });
-    zone.on('pointerup', () => this.showModal(label, description));
+    zone.on('pointerup', () => {
+      if (id === 'achievements') void this.showAchievementsModal();
+      else this.showModal(label, description);
+    });
   }
 
   // ── Cherry blossom continuous fall ──────────────────────────────────────────
@@ -893,6 +909,7 @@ export class HubScene extends Phaser.Scene {
     // Persist title/desc so applyResize() can reopen the modal at the new centre
     this.modalTitle = title;
     this.modalDesc  = description;
+    this.modalKind  = 'default';
 
     const { width, height } = this.scale;
     const container = this.add.container(0, 0).setDepth(DEPTH_MODAL);
@@ -959,9 +976,143 @@ export class HubScene extends Phaser.Scene {
     this.tweens.add({ targets: container, alpha: 1, duration: 140, ease: 'Power2' });
   }
 
+  private async showAchievementsModal(): Promise<void> {
+    this.dismissModal();
+    this.modalTitle = 'Achievements';
+    this.modalDesc  = '';
+    this.modalKind  = 'achievements';
+    this.renderAchievementsModal(null, null);
+
+    try {
+      const achievements = await api.getAchievements();
+      if (this.modalKind === 'achievements') this.renderAchievementsModal(achievements, null);
+    } catch {
+      if (this.modalKind === 'achievements') {
+        this.renderAchievementsModal(null, 'Could not load achievements. Try again later.');
+      }
+    }
+  }
+
+  private renderAchievementsModal(achievements: Achievement[] | null, error: string | null): void {
+    const { width, height } = this.scale;
+    const panelW = Math.min(760, width * 0.90);
+    const panelH = Math.min(560, height * 0.86);
+    const px = width / 2;
+    const py = height / 2;
+
+    this.modal?.destroy(true);
+    const container = this.add.container(0, 0).setDepth(DEPTH_MODAL);
+    this.modal = container;
+
+    const backdrop = this.add.rectangle(px, py, width, height, 0x000000, 0.72).setInteractive();
+    backdrop.on('pointerup', () => this.dismissModal());
+
+    const panelGfx = this.add.graphics();
+    panelGfx.fillStyle(THEME.background, 0.97);
+    panelGfx.fillRoundedRect(px - panelW / 2, py - panelH / 2, panelW, panelH, 12);
+    panelGfx.lineStyle(2, THEME.gold, 1);
+    panelGfx.strokeRoundedRect(px - panelW / 2, py - panelH / 2, panelW, panelH, 12);
+    panelGfx.lineStyle(1, THEME.gold, 0.20);
+    panelGfx.strokeRoundedRect(px - panelW / 2 + 6, py - panelH / 2 + 6, panelW - 12, panelH - 12, 8);
+
+    const title = this.add.text(px, py - panelH / 2 + 26, 'ACHIEVEMENTS', {
+      fontSize: this.scaledFont(22),
+      color: THEME.textGold,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+    const subtitle = this.add.text(px, py - panelH / 2 + 58, 'Dojo milestones unlocked by playing Shell Smash.', {
+      fontSize: this.scaledFont(12),
+      color: THEME.textMutedHex,
+      fontFamily: THEME.font,
+    }).setOrigin(0.5, 0);
+
+    const children: Phaser.GameObjects.GameObject[] = [backdrop, panelGfx, title, subtitle];
+    const top = py - panelH / 2 + 96;
+
+    if (error) {
+      children.push(this.add.text(px, top + 80, error, {
+        fontSize: this.scaledFont(14),
+        color: THEME.textMutedHex,
+        fontFamily: THEME.font,
+      }).setOrigin(0.5));
+    } else if (!achievements) {
+      children.push(this.add.text(px, top + 80, 'Loading achievements...', {
+        fontSize: this.scaledFont(14),
+        color: THEME.textMutedHex,
+        fontFamily: THEME.font,
+      }).setOrigin(0.5));
+    } else {
+      const cardGap = 12;
+      const cols = panelW < 560 ? 1 : 2;
+      const cardW = (panelW - 48 - cardGap * (cols - 1)) / cols;
+      const cardH = 118;
+      achievements.forEach((achievement, index) => {
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        const x = px - panelW / 2 + 24 + col * (cardW + cardGap);
+        const y = top + row * (cardH + cardGap);
+        children.push(...this.drawAchievementCard(x, y, cardW, cardH, achievement));
+      });
+    }
+
+    const closeBtn = this.add.text(px + panelW / 2 - 20, py - panelH / 2 + 18, 'X', {
+      fontSize: this.scaledFont(15),
+      color: THEME.textMutedHex,
+      fontFamily: THEME.font,
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => this.dismissModal());
+    closeBtn.on('pointerover', () => closeBtn.setColor(THEME.text));
+    closeBtn.on('pointerout', () => closeBtn.setColor(THEME.textMutedHex));
+    children.push(closeBtn);
+
+    container.add(children);
+    container.setAlpha(0);
+    this.tweens.add({ targets: container, alpha: 1, duration: 140, ease: 'Power2' });
+  }
+
+  private drawAchievementCard(x: number, y: number, w: number, h: number, achievement: Achievement): Phaser.GameObjects.GameObject[] {
+    const unlocked = achievement.unlocked;
+    const card = this.add.graphics();
+    card.fillStyle(unlocked ? 0x1a1005 : 0x0b0806, unlocked ? 0.94 : 0.76);
+    card.fillRoundedRect(x, y, w, h, 9);
+    card.lineStyle(1.5, unlocked ? THEME.gold : 0x6d5940, unlocked ? 0.84 : 0.38);
+    card.strokeRoundedRect(x, y, w, h, 9);
+
+    const badge = this.add.text(x + 18, y + 18, unlocked ? 'MEDAL' : 'LOCK', {
+      fontSize: this.scaledFont(8),
+      color: unlocked ? THEME.textGold : THEME.textMutedHex,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+    const title = this.add.text(x + 42, y + 13, achievement.title, {
+      fontSize: this.scaledFont(15),
+      color: unlocked ? THEME.textGold : THEME.text,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+    });
+    const desc = this.add.text(x + 18, y + 40, unlocked ? achievement.unlockDescription : achievement.description, {
+      fontSize: this.scaledFont(11),
+      color: unlocked ? THEME.text : THEME.textMutedHex,
+      fontFamily: THEME.font,
+      wordWrap: { width: w - 36 },
+    });
+    const footerText = unlocked
+      ? `Unlocked${achievement.unlockedAt ? ` · ${new Date(achievement.unlockedAt).toLocaleDateString()}` : ''}`
+      : 'Locked';
+    const footer = this.add.text(x + 18, y + h - 24, footerText, {
+      fontSize: this.scaledFont(10),
+      color: unlocked ? THEME.textGold : THEME.textMutedHex,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+    });
+    return [card, badge, title, desc, footer];
+  }
+
   private dismissModal(): void {
     this.modalTitle = null;
     this.modalDesc  = '';
+    this.modalKind  = null;
 
     if (!this.modal) return;
     const target = this.modal;

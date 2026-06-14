@@ -23,7 +23,7 @@ interface ScoreZone {
 
 const SHOTS_TOTAL = 3;
 const MAX_DRAG_SRC = 380;
-const LAUNCH_SPEED_SRC = 2_360;
+const LAUNCH_SPEED_SRC = 4_720;
 const BELL_RADIUS_SRC = 150;
 const SPAWN_GAP_SRC = 118;
 const BASE_HIT_SCORE = 100;

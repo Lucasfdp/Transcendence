@@ -33,6 +33,7 @@ import {
 import { TurnManager, type TurnPhase } from '../../shared/mechanics/turn-manager';
 import { SweepController } from '../../shared/mechanics/sweep-controller';
 import { ScoreHud } from '../../shared/mechanics/score-hud';
+import { showAchievementUnlocks } from '../../shared/achievement-popup';
 import { Slingshot } from '../../shared/mechanics/slingshot';
 import { buildReturnButton } from '../../shared/mechanics/hud';
 import { PowerPicker } from './PowerPicker';
@@ -808,6 +809,7 @@ export class ShellCurlScene extends Phaser.Scene {
 
     api.submitGameResult('shell-curl', localPlayerWon ? 'win' : 'loss').then((result) => {
       console.info('[ShellCurl] progression:', result);
+      showAchievementUnlocks(this, result.unlockedAchievements ?? []);
     }).catch((err: unknown) => {
       console.warn('[ShellCurl] failed to submit result:', err);
     });

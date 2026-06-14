@@ -1,6 +1,8 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
+import { AchievementView } from '../achievements/achievements.constants';
+import { AchievementsService } from '../achievements/achievements.service';
 import { SubmitResultDto } from './dto/submit-result.dto';
 import {
   COINS_PER_LOSS,
@@ -17,11 +19,15 @@ export interface ProgressionResult {
   newLevel:    number;
   newCoins:    number;
   leveledUp:   boolean;
+  unlockedAchievements: AchievementView[];
 }
 
 @Injectable()
 export class GameResultsService {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService:         UsersService,
+    private readonly achievementsService: AchievementsService,
+  ) {}
 
   async submitResult(user: User, dto: SubmitResultDto): Promise<ProgressionResult> {
     try {
@@ -62,7 +68,17 @@ export class GameResultsService {
 
       await this.usersService.save(user);
 
-      return { xpGained, coinsGained, newXp: xp, newLevel: level, newCoins: coins, leveledUp };
+      const unlockedAchievements = await this.achievementsService.evaluateForUser(user);
+
+      return {
+        xpGained,
+        coinsGained,
+        newXp: xp,
+        newLevel: level,
+        newCoins: coins,
+        leveledUp,
+        unlockedAchievements,
+      };
     } catch (err) {
       if (err instanceof InternalServerErrorException) throw err;
       throw new InternalServerErrorException('Failed to record game result');
