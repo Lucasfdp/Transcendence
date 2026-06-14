@@ -8,7 +8,10 @@ ENV NODE_ENV=${BACKEND_ENV}
 WORKDIR /build
 COPY src/package.json ./
 COPY src/package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+# NOTE: npm install (not npm ci) so new deps added to package.json are picked up
+# without requiring a pre-synced lockfile during development.
+# Switch back to `npm ci` once the lockfile is committed with all dependencies.
+RUN npm install
 COPY src/ .
 RUN npm run build
 

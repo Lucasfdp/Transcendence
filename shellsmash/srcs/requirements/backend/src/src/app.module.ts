@@ -5,6 +5,8 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ProfilesModule } from './profiles/profiles.module';
 import { MiniGamesModule } from './minigames/minigames.module';
+import { MetricsModule } from './metrics/metrics.module';
+import { HealthModule } from './health/health.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -27,10 +29,15 @@ import { AppController } from './app.controller';
       inject: [ConfigService],
     }),
 
+    // Feature modules
     AuthModule,
     UsersModule,
     ProfilesModule,
     MiniGamesModule,
+
+    // Observability — must come after TypeOrmModule so DataSource is available
+    MetricsModule,
+    HealthModule,
   ],
   controllers: [AppController],
 })

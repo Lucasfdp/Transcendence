@@ -2,12 +2,18 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { MetricsInterceptor } from './metrics/metrics.interceptor';
+import { MetricsService } from './metrics/metrics.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // Global validation pipe
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  // Global HTTP metrics interceptor — records http_requests_total + duration histogram
+  const metricsService = app.get(MetricsService);
+  app.useGlobalInterceptors(new MetricsInterceptor(metricsService));
 
   // CORS — frontend reaches backend via nginx proxy
   app.enableCors({

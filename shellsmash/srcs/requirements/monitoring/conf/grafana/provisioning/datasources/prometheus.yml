@@ -1,0 +1,13 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus        # Stable UID — referenced in all dashboard JSONs
+    url: http://127.0.0.1:9090
+    isDefault: true
+    access: proxy
+    editable: false
+    jsonData:
+      timeInterval: "15s"
+      httpMethod: POST

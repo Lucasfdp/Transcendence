@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "ft_transcendence NestJS backend",
   "scripts": {
-    "build": "nest build",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "lint": "eslint src --ext .ts",
@@ -30,7 +30,9 @@
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.0",
     "class-validator": "^0.14.0",
-    "class-transformer": "^0.5.1"
+    "class-transformer": "^0.5.1",
+    "@nestjs/terminus": "^10.0.0",
+    "prom-client": "^15.1.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
