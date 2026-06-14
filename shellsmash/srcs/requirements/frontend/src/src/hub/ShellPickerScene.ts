@@ -130,6 +130,41 @@ export class ShellPickerScene extends Phaser.Scene {
   private buildUI(): void {
     const { width, height } = this.scale;
 
+    // ── Return button (top-left) ──────────────────────────────────────────────
+    const returnGfx = this.add.graphics().setDepth(DEPTH_HUD);
+    const returnBtnW = 100;
+    const returnBtnH = 32;
+    const returnBtnX = GRID_PAD;
+    const returnBtnY = 16;
+
+    const paintReturn = (hovered: boolean) => {
+      returnGfx.clear();
+      returnGfx.fillStyle(hovered ? THEME.gold : 0x1a1405, 0.90);
+      returnGfx.fillRoundedRect(returnBtnX, returnBtnY, returnBtnW, returnBtnH, 6);
+      returnGfx.lineStyle(1.5, THEME.gold, hovered ? 0 : 0.65);
+      returnGfx.strokeRoundedRect(returnBtnX, returnBtnY, returnBtnW, returnBtnH, 6);
+    };
+    paintReturn(false);
+
+    const returnLabel = this.add.text(
+      returnBtnX + returnBtnW / 2,
+      returnBtnY + returnBtnH / 2,
+      '← Back',
+      { fontSize: '13px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold' },
+    ).setOrigin(0.5).setDepth(DEPTH_HUD + 1);
+
+    const returnZone = this.add
+      .zone(returnBtnX + returnBtnW / 2, returnBtnY + returnBtnH / 2, returnBtnW, returnBtnH)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(DEPTH_HUD + 2);
+
+    returnZone.on('pointerover', () => { paintReturn(true);  returnLabel.setColor('#1a1410'); });
+    returnZone.on('pointerout',  () => { paintReturn(false); returnLabel.setColor(THEME.textGold); });
+    returnZone.on('pointerup',   () => {
+      this.scene.stop();
+      this.scene.start('HubScene');
+    });
+
     // ── Title ──────────────────────────────────────────────────────────────────
     this.titleText = this.add.text(width / 2, 28, this.playerTitle(), {
       fontSize:   '22px',
