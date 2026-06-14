@@ -39,7 +39,8 @@
  */
 
 import Phaser from 'phaser';
-import { Achievement, api, MiniGameDefinition, User } from './api';
+import { Achievement, api, Cosmetic, MiniGameDefinition, User } from './api';
+import { shellSkinAccentColor } from '../shared/cosmetics';
 import { THEME } from '../shared/theme';
 import { ProfilePanel } from './ProfilePanel';
 
@@ -121,7 +122,7 @@ export class HubScene extends Phaser.Scene {
   // ── Modal state — stored so the modal can be recentred on resize ──────────────
   private modalTitle: string | null = null;
   private modalDesc:  string        = '';
-  private modalKind:  'default' | 'achievements' | null = null;
+  private modalKind:  'default' | 'achievements' | 'customization' | null = null;
 
   // ── Leaderboard async generation guard ────────────────────────────────────────
   // Incremented on every renderLeaderboard() call; the async callback bails out
@@ -275,6 +276,7 @@ export class HubScene extends Phaser.Scene {
       const kind  = this.modalKind;
       this.dismissModal();
       if (kind === 'achievements') void this.showAchievementsModal();
+      else if (kind === 'customization') void this.showCustomizationModal();
       else this.showModal(title, desc);
     }
 
@@ -804,9 +806,9 @@ export class HubScene extends Phaser.Scene {
       panelY + 142,
       panelW - 32,
       38,
-      'costumization',
-      'Costumization',
-      'Shell and turtle costumization is coming soon.',
+      'customization',
+      'Customization',
+      'Shell and turtle customization.',
     );
   }
 
@@ -858,6 +860,7 @@ export class HubScene extends Phaser.Scene {
     });
     zone.on('pointerup', () => {
       if (id === 'achievements') void this.showAchievementsModal();
+      else if (id === 'customization') void this.showCustomizationModal();
       else this.showModal(label, description);
     });
   }
@@ -1162,26 +1165,206 @@ export class HubScene extends Phaser.Scene {
       fontFamily: THEME.font,
       fontStyle: 'bold',
     }).setOrigin(1, 0);
-    return [card, badge, title, desc, footer, progressBar, progressText];
+    const rewardText = achievement.rewardCosmeticId ? this.add.text(x + 18, y + h - 40, 'Reward: skin', {
+      fontSize: this.scaledFont(9),
+      color: THEME.textGold,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+    }) : null;
+
+    return rewardText
+      ? [card, badge, title, desc, footer, rewardText, progressBar, progressText]
+      : [card, badge, title, desc, footer, progressBar, progressText];
   }
 
   private getAchievementProgress(achievement: Achievement): { ratio: number; label: string } {
     if (achievement.unlocked) return { ratio: 1, label: 'Complete' };
-
-    const profile = this.user?.profile ?? { gamesPlayed: 0, totalWins: 0 };
-    const progressById: Record<string, { current: number; target: number; prefix?: string }> = {
-      'first-match':  { current: profile.gamesPlayed ?? 0, target: 1 },
-      'first-win':    { current: profile.totalWins ?? 0, target: 1 },
-      'dojo-regular': { current: profile.gamesPlayed ?? 0, target: 10 },
-      'rising-shell': { current: this.user?.level ?? 1, target: 2, prefix: 'Lvl ' },
-      'first-bounty': { current: this.user?.coins ?? 0, target: 1 },
-    };
-    const progress = progressById[achievement.id] ?? { current: 0, target: 1 };
-    const current = Math.max(0, Math.min(progress.current, progress.target));
+    const target = Math.max(achievement.progressTarget, 1);
+    const current = Math.max(0, Math.min(achievement.progressCurrent, target));
     return {
-      ratio: progress.target > 0 ? current / progress.target : 0,
-      label: `${progress.prefix ?? ''}${current}/${progress.target}`,
+      ratio: current / target,
+      label: `${current}/${target}`,
     };
+  }
+
+  private async showCustomizationModal(): Promise<void> {
+    this.dismissModal();
+    this.modalTitle = 'Customization';
+    this.modalDesc = '';
+    this.modalKind = 'customization';
+    this.renderCustomizationModal(null, null);
+
+    try {
+      const cosmetics = await api.getCustomization();
+      if (this.modalKind === 'customization') this.renderCustomizationModal(cosmetics, null);
+    } catch {
+      if (this.modalKind === 'customization') {
+        this.renderCustomizationModal(null, 'Could not load customization. Try again later.');
+      }
+    }
+  }
+
+  private renderCustomizationModal(cosmetics: Cosmetic[] | null, error: string | null): void {
+    const { width, height } = this.scale;
+    const panelW = Math.min(740, width * 0.90);
+    const panelH = Math.min(540, height * 0.86);
+    const px = width / 2;
+    const py = height / 2;
+
+    this.modal?.destroy(true);
+    const container = this.add.container(0, 0).setDepth(DEPTH_MODAL);
+    this.modal = container;
+
+    const backdrop = this.add.rectangle(px, py, width, height, 0x000000, 0.72).setInteractive();
+    backdrop.on('pointerup', () => this.dismissModal());
+
+    const panelBlocker = this.add.rectangle(px, py, panelW, panelH, 0x000000, 0).setInteractive();
+    panelBlocker.on('pointerdown', (_pointer, _localX, _localY, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+    panelBlocker.on('pointerup', (_pointer, _localX, _localY, event: Phaser.Types.Input.EventData) => event.stopPropagation());
+
+    const panelGfx = this.add.graphics();
+    panelGfx.fillStyle(THEME.background, 0.97);
+    panelGfx.fillRoundedRect(px - panelW / 2, py - panelH / 2, panelW, panelH, 12);
+    panelGfx.lineStyle(2, THEME.gold, 1);
+    panelGfx.strokeRoundedRect(px - panelW / 2, py - panelH / 2, panelW, panelH, 12);
+    panelGfx.lineStyle(1, THEME.gold, 0.20);
+    panelGfx.strokeRoundedRect(px - panelW / 2 + 6, py - panelH / 2 + 6, panelW - 12, panelH - 12, 8);
+
+    const title = this.add.text(px, py - panelH / 2 + 26, 'CUSTOMIZATION', {
+      fontSize: this.scaledFont(22),
+      color: THEME.textGold,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+    const subtitle = this.add.text(px, py - panelH / 2 + 58, 'Unlock and equip shell skins for your turtle.', {
+      fontSize: this.scaledFont(12),
+      color: THEME.textMutedHex,
+      fontFamily: THEME.font,
+    }).setOrigin(0.5, 0);
+
+    const children: Phaser.GameObjects.GameObject[] = [backdrop, panelBlocker, panelGfx, title, subtitle];
+    const top = py - panelH / 2 + 96;
+
+    if (error) {
+      children.push(this.add.text(px, top + 80, error, {
+        fontSize: this.scaledFont(14),
+        color: THEME.textMutedHex,
+        fontFamily: THEME.font,
+      }).setOrigin(0.5));
+    } else if (!cosmetics) {
+      children.push(this.add.text(px, top + 80, 'Loading shell skins...', {
+        fontSize: this.scaledFont(14),
+        color: THEME.textMutedHex,
+        fontFamily: THEME.font,
+      }).setOrigin(0.5));
+    } else {
+      const cardGap = 12;
+      const cols = panelW < 560 ? 1 : 2;
+      const cardW = (panelW - 48 - cardGap * (cols - 1)) / cols;
+      const cardH = 126;
+      cosmetics.forEach((cosmetic, index) => {
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        const x = px - panelW / 2 + 24 + col * (cardW + cardGap);
+        const y = top + row * (cardH + cardGap);
+        children.push(...this.drawCosmeticCard(x, y, cardW, cardH, cosmetic));
+      });
+    }
+
+    const closeBtn = this.add.text(px + panelW / 2 - 20, py - panelH / 2 + 18, 'X', {
+      fontSize: this.scaledFont(15),
+      color: THEME.textMutedHex,
+      fontFamily: THEME.font,
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => this.dismissModal());
+    closeBtn.on('pointerover', () => closeBtn.setColor(THEME.text));
+    closeBtn.on('pointerout', () => closeBtn.setColor(THEME.textMutedHex));
+    children.push(closeBtn);
+
+    container.add(children);
+    container.setAlpha(0);
+    this.tweens.add({ targets: container, alpha: 1, duration: 140, ease: 'Power2' });
+  }
+
+  private drawCosmeticCard(x: number, y: number, w: number, h: number, cosmetic: Cosmetic): Phaser.GameObjects.GameObject[] {
+    const enabled = cosmetic.owned || cosmetic.lockedReason === 'purchasable';
+    const card = this.add.graphics();
+    card.fillStyle(cosmetic.equipped ? 0x1a1005 : 0x0b0806, cosmetic.owned ? 0.94 : 0.76);
+    card.fillRoundedRect(x, y, w, h, 9);
+    card.lineStyle(1.5, cosmetic.equipped ? THEME.gold : 0x6d5940, cosmetic.equipped ? 0.94 : 0.40);
+    card.strokeRoundedRect(x, y, w, h, 9);
+
+    const preview = this.add.graphics();
+    const accent = cosmetic.accentColor ?? shellSkinAccentColor(cosmetic.id);
+    preview.fillStyle(accent, cosmetic.owned ? 0.95 : 0.42);
+    preview.fillEllipse(x + 36, y + 36, 46, 30);
+    preview.lineStyle(2, THEME.gold, cosmetic.equipped ? 0.9 : 0.35);
+    preview.strokeEllipse(x + 36, y + 36, 46, 30);
+    preview.lineStyle(1, 0x000000, 0.35);
+    preview.lineBetween(x + 18, y + 36, x + 54, y + 36);
+    preview.lineBetween(x + 36, y + 22, x + 36, y + 50);
+
+    const title = this.add.text(x + 72, y + 14, cosmetic.name, {
+      fontSize: this.scaledFont(15),
+      color: cosmetic.equipped ? THEME.textGold : THEME.text,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+    });
+    const desc = this.add.text(x + 72, y + 38, cosmetic.description, {
+      fontSize: this.scaledFont(10),
+      color: THEME.textMutedHex,
+      fontFamily: THEME.font,
+      wordWrap: { width: w - 92 },
+    });
+
+    const status = cosmetic.equipped
+      ? 'Equipped'
+      : cosmetic.owned
+        ? 'Click to equip'
+        : cosmetic.lockedReason === 'achievement-locked'
+          ? 'Locked by achievement'
+          : cosmetic.lockedReason === 'not enough coins'
+            ? `${cosmetic.price} coins needed`
+            : `Buy for ${cosmetic.price} coins`;
+    const statusText = this.add.text(x + 18, y + h - 24, status, {
+      fontSize: this.scaledFont(10),
+      color: enabled ? THEME.textGold : THEME.textMutedHex,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+    });
+
+    const objects: Phaser.GameObjects.GameObject[] = [card, preview, title, desc, statusText];
+    if (enabled && !cosmetic.equipped) {
+      const zone = this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true });
+      zone.on('pointerup', () => void this.handleCosmeticAction(cosmetic));
+      objects.push(zone);
+    }
+    return objects;
+  }
+
+  private async handleCosmeticAction(cosmetic: Cosmetic): Promise<void> {
+    try {
+      const cosmetics = cosmetic.owned
+        ? await api.equipCosmetic(cosmetic.id)
+        : await api.buyCosmetic(cosmetic.id);
+      const equipped = cosmetics.find((item) => item.equipped);
+      if (this.user && equipped) this.user.shellSkin = equipped.id;
+      if (!cosmetic.owned) {
+        try { this.user = await api.getMe(); } catch { /* keep local user if refresh fails */ }
+      }
+      if (this.user) {
+        this.registry.set('user', this.user);
+        this.clearLayer(this.hudLayer);
+        this.drawHUD();
+        if (this.profilePanel) {
+          this.profilePanel.destroy();
+          this.profilePanel = null;
+        }
+      }
+      if (this.modalKind === 'customization') this.renderCustomizationModal(cosmetics, null);
+    } catch {
+      if (this.modalKind === 'customization') this.renderCustomizationModal(null, 'Could not update shell skin.');
+    }
   }
 
   private dismissModal(): void {

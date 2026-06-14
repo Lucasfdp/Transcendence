@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { AchievementsService } from './achievements.service';
 import { UserAchievement } from './entities/user-achievement.entity';
+import { UserCosmetic } from '../customization/entities/user-cosmetic.entity';
 import { User } from '../users/entities/user.entity';
 import { Profile } from '../profiles/entities/profile.entity';
 
@@ -40,6 +41,10 @@ describe('AchievementsService', () => {
     create: jest.Mock;
     save: jest.Mock;
   };
+  let cosmeticsRepo: {
+    create: jest.Mock;
+    save: jest.Mock;
+  };
 
   beforeEach(async () => {
     const mockRepo = {
@@ -51,16 +56,26 @@ describe('AchievementsService', () => {
         unlockedAt: new Date('2026-01-01T00:00:00Z'),
       })),
     };
+    const mockCosmeticsRepo = {
+      create: jest.fn((data: Partial<UserCosmetic>) => data as UserCosmetic),
+      save: jest.fn(async (record: UserCosmetic) => ({
+        ...record,
+        id: 1,
+        unlockedAt: new Date('2026-01-01T00:00:00Z'),
+      })),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AchievementsService,
         { provide: getRepositoryToken(UserAchievement), useValue: mockRepo },
+        { provide: getRepositoryToken(UserCosmetic), useValue: mockCosmeticsRepo },
       ],
     }).compile();
 
     service = module.get(AchievementsService);
     repo = module.get(getRepositoryToken(UserAchievement));
+    cosmeticsRepo = module.get(getRepositoryToken(UserCosmetic));
   });
 
   it('unlocks first match only once', async () => {
@@ -81,6 +96,7 @@ describe('AchievementsService', () => {
     const unlocked = await service.evaluateForUser(user);
 
     expect(unlocked.some((achievement) => achievement.id === 'first-win')).toBe(true);
+    expect(cosmeticsRepo.save).toHaveBeenCalledWith(expect.objectContaining({ cosmeticId: 'dragon' }));
   });
 
   it('unlocks dojo regular when gamesPlayed reaches ten', async () => {
@@ -89,6 +105,7 @@ describe('AchievementsService', () => {
     const unlocked = await service.evaluateForUser(user);
 
     expect(unlocked.some((achievement) => achievement.id === 'dojo-regular')).toBe(true);
+    expect(cosmeticsRepo.save).toHaveBeenCalledWith(expect.objectContaining({ cosmeticId: 'bamboo' }));
   });
 
   it('lists the full catalog with locked and unlocked state', async () => {
@@ -100,5 +117,35 @@ describe('AchievementsService', () => {
     expect(achievements.length).toBeGreaterThan(1);
     expect(achievements.find((achievement) => achievement.id === 'first-match')?.unlocked).toBe(true);
     expect(achievements.find((achievement) => achievement.id === 'first-win')?.unlocked).toBe(false);
+  });
+
+  it('includes backend progress values in achievement views', async () => {
+    const user = makeUser({ profile: makeProfile({ gamesPlayed: 4, totalWins: 0 }) });
+
+    const achievements = await service.listForUser(user);
+
+    expect(achievements.find((achievement) => achievement.id === 'dojo-regular')).toEqual(
+      expect.objectContaining({ progressCurrent: 4, progressTarget: 10 }),
+    );
+  });
+
+  it('does not duplicate achievements or cosmetic rewards on duplicate evaluation', async () => {
+    const user = makeUser({ profile: makeProfile({ gamesPlayed: 1, totalWins: 1 }) });
+
+    const firstPass = await service.evaluateForUser(user);
+    repo.find.mockResolvedValueOnce(firstPass.map((achievement) => makeRecord(user, achievement.id)));
+    const secondPass = await service.evaluateForUser(user);
+
+    expect(secondPass).toEqual([]);
+    expect(cosmeticsRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores duplicate cosmetic reward rows safely', async () => {
+    cosmeticsRepo.save.mockRejectedValueOnce({ code: '23505' });
+    const user = makeUser({ profile: makeProfile({ gamesPlayed: 1, totalWins: 1 }) });
+
+    const unlocked = await service.evaluateForUser(user);
+
+    expect(unlocked.some((achievement) => achievement.id === 'first-win')).toBe(true);
   });
 });

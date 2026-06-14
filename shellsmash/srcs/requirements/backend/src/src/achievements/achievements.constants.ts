@@ -6,6 +6,8 @@ export interface AchievementDefinition {
   description: string;
   unlockDescription: string;
   rewardLabel?: string;
+  rewardCosmeticId?: string;
+  progress: (user: User) => { current: number; target: number };
   isUnlocked: (user: User) => boolean;
 }
 
@@ -15,6 +17,9 @@ export interface AchievementView {
   description: string;
   unlockDescription: string;
   rewardLabel?: string;
+  rewardCosmeticId?: string;
+  progressCurrent: number;
+  progressTarget: number;
   unlocked: boolean;
   unlockedAt: string | null;
 }
@@ -26,6 +31,7 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
     description: 'Complete your first match in the dojo.',
     unlockDescription: 'You completed your first match. The dojo now knows your shell.',
     rewardLabel: 'Progress record unlocked',
+    progress: (user) => ({ current: user.profile?.gamesPlayed ?? 0, target: 1 }),
     isUnlocked: (user) => (user.profile?.gamesPlayed ?? 0) >= 1,
   },
   {
@@ -33,7 +39,9 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
     title: 'First Victory',
     description: 'Win one match.',
     unlockDescription: 'First victory secured. Your technique is starting to stand out.',
-    rewardLabel: 'Winner badge',
+    rewardLabel: 'Dragon Shell unlocked',
+    rewardCosmeticId: 'dragon',
+    progress: (user) => ({ current: user.profile?.totalWins ?? 0, target: 1 }),
     isUnlocked: (user) => (user.profile?.totalWins ?? 0) >= 1,
   },
   {
@@ -41,7 +49,9 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
     title: 'Dojo Regular',
     description: 'Play 10 matches.',
     unlockDescription: 'Ten matches completed. Your discipline is starting to show.',
-    rewardLabel: 'Consistency mark',
+    rewardLabel: 'Bamboo Shell unlocked',
+    rewardCosmeticId: 'bamboo',
+    progress: (user) => ({ current: user.profile?.gamesPlayed ?? 0, target: 10 }),
     isUnlocked: (user) => (user.profile?.gamesPlayed ?? 0) >= 10,
   },
   {
@@ -50,6 +60,7 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
     description: 'Reach level 2.',
     unlockDescription: 'You reached level 2. Your shell feels lighter.',
     rewardLabel: 'Starter rank improved',
+    progress: (user) => ({ current: user.level ?? 1, target: 2 }),
     isUnlocked: (user) => (user.level ?? 1) >= 2,
   },
   {
@@ -58,6 +69,7 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
     description: 'Earn coins for the first time.',
     unlockDescription: 'You earned your first dojo coins.',
     rewardLabel: 'Coins registered',
+    progress: (user) => ({ current: user.coins ?? 0, target: 1 }),
     isUnlocked: (user) => (user.coins ?? 0) > 0,
   },
 ];

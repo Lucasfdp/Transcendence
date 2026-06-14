@@ -117,8 +117,24 @@ export interface Achievement {
   description: string;
   unlockDescription: string;
   rewardLabel?: string;
+  rewardCosmeticId?: string;
+  progressCurrent: number;
+  progressTarget: number;
   unlocked: boolean;
   unlockedAt: string | null;
+}
+
+export interface Cosmetic {
+  id: string;
+  type: 'shell_skin';
+  name: string;
+  description: string;
+  price: number;
+  accentColor: number;
+  owned: boolean;
+  equipped: boolean;
+  unlockAchievementId?: string;
+  lockedReason?: 'achievement-locked' | 'not enough coins' | 'purchasable';
 }
 
 export interface MiniGameDefinition {
@@ -176,6 +192,17 @@ export const api = {
   getAllUsers:   (): Promise<User[]>                      => apiFetch<User[]>('/users'),
   getMiniGames: (): Promise<MiniGameDefinition[]>        => apiFetch<MiniGameDefinition[]>('/minigames'),
   getAchievements: (): Promise<Achievement[]>            => apiFetch<Achievement[]>('/achievements'),
+  getCustomization: (): Promise<Cosmetic[]>              => apiFetch<Cosmetic[]>('/customization'),
+  equipCosmetic: (cosmeticId: string): Promise<Cosmetic[]> =>
+    apiFetch<Cosmetic[]>('/customization/equip', {
+      method: 'POST',
+      body:   JSON.stringify({ cosmeticId }),
+    }),
+  buyCosmetic: (cosmeticId: string): Promise<Cosmetic[]> =>
+    apiFetch<Cosmetic[]>('/customization/buy', {
+      method: 'POST',
+      body:   JSON.stringify({ cosmeticId }),
+    }),
 
   /**
    * Record the outcome of a completed game session.

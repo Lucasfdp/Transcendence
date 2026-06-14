@@ -199,6 +199,8 @@ describe('GameResultsService', () => {
       description: 'Complete your first match in the dojo.',
       unlockDescription: 'You completed your first match.',
       rewardLabel: 'Progress record unlocked',
+      progressCurrent: 1,
+      progressTarget: 1,
       unlocked: true,
       unlockedAt: new Date('2026-01-01T00:00:00Z').toISOString(),
     }];

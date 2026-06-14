@@ -31,6 +31,7 @@
  */
 
 import Phaser from 'phaser';
+import { shellSkinAccentColor } from '../shared/cosmetics';
 import { THEME } from '../shared/theme';
 
 // Fixed panel geometry
@@ -45,16 +46,6 @@ function getRank(level: number): { label: string; colour: number } {
   if (level >= 10) return { label: 'Silver Fang',  colour: 0xc0c0c0 };
   if (level >= 5)  return { label: 'Bronze Claw',  colour: 0xcd7f32 };
   return              { label: 'Novice Shell', colour: 0x8b7355 };
-}
-
-// ── Shell skin accent colours ─────────────────────────────────────────────────
-function skinColour(skin: string): number {
-  switch (skin) {
-    case 'kanagawa': return 0x1a3a5c;
-    case 'dragon':   return 0x8b0000;
-    case 'bamboo':   return 0x2d5a1b;
-    default:         return 0xd4a843;
-  }
 }
 
 export class ProfilePanel {
@@ -211,7 +202,7 @@ export class ProfilePanel {
     // ── 8. Shell skin subtitle with hex icon ──────────────────────────────────
     const skinName  = user.shellSkin ?? 'kanagawa';
     const skinY     = nameY + 26;
-    const hexColour = skinColour(skinName);
+    const hexColour = shellSkinAccentColor(skinName);
     const hexGfx    = this.scene.add.graphics();
     // Draw a small flat-top hexagon (6 vertices)
     const hexR  = 7;
