@@ -71,7 +71,7 @@ interface HotspotDef {
 }
 
 const HOTSPOTS: HotspotDef[] = [
-  { id: 'shell-smash-arena', name: 'Shell Smash Arena', cx: 0.491, cy: 0.148, hw: 0.095, hh: 0.054 },
+  { id: 'kame-knock',        name: 'Kame Knock',        cx: 0.491, cy: 0.148, hw: 0.095, hh: 0.054 },
   { id: 'river-rush',        name: 'River Rush',        cx: 0.155, cy: 0.292, hw: 0.095, hh: 0.044 },
   { id: 'bamboo-bash',       name: 'Bamboo Bash',       cx: 0.838, cy: 0.284, hw: 0.095, hh: 0.044 },
   { id: 'oni-dodge',         name: 'Oni Dodge',         cx: 0.148, cy: 0.534, hw: 0.095, hh: 0.042 },
@@ -544,7 +544,7 @@ export class HubScene extends Phaser.Scene {
     gfx.fillStyle(0xd4a843, 0.80);
 
     switch (id) {
-      case 'shell-smash-arena': {
+      case 'kame-knock': {
         // Torii arch: two upright posts + two crossbars
         const pw = 6 * u, ph = 10 * u;
         gfx.fillRect(ix,          iy + 3 * u, 2 * u, ph);
@@ -658,7 +658,7 @@ export class HubScene extends Phaser.Scene {
       this.drawZoneIcon(iconGfx, hs.id, r.x + 6, r.y + 4, s);
 
       // ── Label text (centred in the frame) ────────────────────────────────────
-      const rawName   = hs.id === 'shell-smash-arena' ? 'Arena' : hs.name;
+      const rawName   = hs.name;
       const labelText = this.add.text(r.cx, r.cy, rawName.split(' ').join('\n'), {
         fontSize:    this.scaledFont(22),
         color:       available ? THEME.textGold : THEME.textMutedHex,
@@ -723,7 +723,7 @@ export class HubScene extends Phaser.Scene {
 
       // Click
       zone.on('pointerup', () => {
-        if (hs.id === 'shell-smash-arena') {
+        if (hs.id === 'kame-knock') {
           this.scene.stop('KameKnockScene');
           this.scene.start('KameKnockScene');
           return;
@@ -1007,6 +1007,20 @@ export class HubScene extends Phaser.Scene {
     const backdrop = this.add.rectangle(px, py, width, height, 0x000000, 0.72).setInteractive();
     backdrop.on('pointerup', () => this.dismissModal());
 
+    const panelBlocker = this.add.rectangle(px, py, panelW, panelH, 0x000000, 0).setInteractive();
+    panelBlocker.on('pointerdown', (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => event.stopPropagation());
+    panelBlocker.on('pointerup', (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => event.stopPropagation());
+
     const panelGfx = this.add.graphics();
     panelGfx.fillStyle(THEME.background, 0.97);
     panelGfx.fillRoundedRect(px - panelW / 2, py - panelH / 2, panelW, panelH, 12);
@@ -1027,8 +1041,8 @@ export class HubScene extends Phaser.Scene {
       fontFamily: THEME.font,
     }).setOrigin(0.5, 0);
 
-    const children: Phaser.GameObjects.GameObject[] = [backdrop, panelGfx, title, subtitle];
-    const top = py - panelH / 2 + 96;
+    const children: Phaser.GameObjects.GameObject[] = [backdrop, panelBlocker, panelGfx, title, subtitle];
+    let top = py - panelH / 2 + 96;
 
     if (error) {
       children.push(this.add.text(px, top + 80, error, {
@@ -1043,6 +1057,27 @@ export class HubScene extends Phaser.Scene {
         fontFamily: THEME.font,
       }).setOrigin(0.5));
     } else {
+      const unlockedCount = achievements.filter((achievement) => achievement.unlocked).length;
+      const totalCount = Math.max(achievements.length, 1);
+      const ratio = unlockedCount / totalCount;
+      const summaryW = Math.min(panelW - 96, 360);
+      const summaryX = px - summaryW / 2;
+      const summaryY = py - panelH / 2 + 82;
+      const summaryBar = this.add.graphics();
+      summaryBar.fillStyle(0x050403, 0.70);
+      summaryBar.fillRoundedRect(summaryX, summaryY, summaryW, 7, 4);
+      summaryBar.fillStyle(THEME.gold, 0.90);
+      summaryBar.fillRoundedRect(summaryX, summaryY, summaryW * ratio, 7, 4);
+      summaryBar.lineStyle(1, THEME.gold, 0.36);
+      summaryBar.strokeRoundedRect(summaryX, summaryY, summaryW, 7, 4);
+      const summaryLabel = this.add.text(px, summaryY + 12, `${unlockedCount}/${achievements.length} unlocked`, {
+        fontSize: this.scaledFont(10),
+        color: THEME.textMutedHex,
+        fontFamily: THEME.font,
+      }).setOrigin(0.5, 0);
+      children.push(summaryBar, summaryLabel);
+      top += 18;
+
       const cardGap = 12;
       const cols = panelW < 560 ? 1 : 2;
       const cardW = (panelW - 48 - cardGap * (cols - 1)) / cols;
@@ -1106,7 +1141,47 @@ export class HubScene extends Phaser.Scene {
       fontFamily: THEME.font,
       fontStyle: 'bold',
     });
-    return [card, badge, title, desc, footer];
+
+    const progress = this.getAchievementProgress(achievement);
+    const barX = x + 18;
+    const barY = y + h - 12;
+    const barW = w - 36;
+    const barH = 5;
+    const progressBar = this.add.graphics();
+    progressBar.fillStyle(0x050403, 0.72);
+    progressBar.fillRoundedRect(barX, barY, barW, barH, 3);
+    if (progress.ratio > 0) {
+      progressBar.fillStyle(unlocked ? THEME.gold : 0x7d6748, unlocked ? 0.95 : 0.70);
+      progressBar.fillRoundedRect(barX, barY, barW * progress.ratio, barH, 3);
+    }
+    progressBar.lineStyle(1, unlocked ? THEME.gold : 0x6d5940, unlocked ? 0.34 : 0.24);
+    progressBar.strokeRoundedRect(barX, barY, barW, barH, 3);
+    const progressText = this.add.text(x + w - 18, y + h - 27, progress.label, {
+      fontSize: this.scaledFont(9),
+      color: unlocked ? THEME.textGold : THEME.textMutedHex,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+    }).setOrigin(1, 0);
+    return [card, badge, title, desc, footer, progressBar, progressText];
+  }
+
+  private getAchievementProgress(achievement: Achievement): { ratio: number; label: string } {
+    if (achievement.unlocked) return { ratio: 1, label: 'Complete' };
+
+    const profile = this.user?.profile ?? { gamesPlayed: 0, totalWins: 0 };
+    const progressById: Record<string, { current: number; target: number; prefix?: string }> = {
+      'first-match':  { current: profile.gamesPlayed ?? 0, target: 1 },
+      'first-win':    { current: profile.totalWins ?? 0, target: 1 },
+      'dojo-regular': { current: profile.gamesPlayed ?? 0, target: 10 },
+      'rising-shell': { current: this.user?.level ?? 1, target: 2, prefix: 'Lvl ' },
+      'first-bounty': { current: this.user?.coins ?? 0, target: 1 },
+    };
+    const progress = progressById[achievement.id] ?? { current: 0, target: 1 };
+    const current = Math.max(0, Math.min(progress.current, progress.target));
+    return {
+      ratio: progress.target > 0 ? current / progress.target : 0,
+      label: `${progress.prefix ?? ''}${current}/${progress.target}`,
+    };
   }
 
   private dismissModal(): void {

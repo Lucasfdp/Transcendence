@@ -83,7 +83,7 @@ border/label with:
 
 **Zone icon** (drawn in top-left corner of each button, 18×18 area):
 Map each `id` to a small icon drawn with Graphics:
-- `shell-smash-arena` → a small shield / torii arch outline
+- `kame-knock`        → a small shield / torii arch outline
 - `river-rush`        → a wave (two small arc strokes)
 - `bamboo-bash`       → three vertical lines (bamboo stalks)
 - `oni-dodge`         → a small horned circle (oni mask)

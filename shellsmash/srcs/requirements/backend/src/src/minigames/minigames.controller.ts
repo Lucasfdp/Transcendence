@@ -9,14 +9,14 @@ export interface MiniGameDefinition {
 }
 
 // The Shell Smash hub map. Each entry is a "shrine" the player can
-// visit. Only Shell Smash Arena is playable for now — everything else
+// visit. Kame Knock is the first playable shrine — everything else
 // is shown as "Coming Soon" in the hub.
 const MINIGAMES: MiniGameDefinition[] = [
   {
-    id: 'shell-smash-arena',
-    name: 'Shell Smash Arena',
+    id: 'kame-knock',
+    name: 'Kame Knock',
     status: 'available',
-    description: '1v1 sumo knockout — launch your shell and send your rival flying.',
+    description: 'Billiards-like target smashing — launch your shell and clear every round.',
   },
   {
     id: 'bell-clash',

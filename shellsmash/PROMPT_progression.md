@@ -82,7 +82,7 @@ import { IsString, IsIn } from 'class-validator';
 
 export class SubmitResultDto {
   @IsString()
-  gameId: string; // e.g. 'shell-smash-arena', 'kame-knock'
+  gameId: string; // e.g. 'kame-knock'
 
   @IsIn(['win', 'loss'])
   outcome: 'win' | 'loss';
@@ -281,7 +281,7 @@ async submitGameResult(gameId: string, outcome: 'win' | 'loss'): Promise<{
 
 ### 3c. Call `submitGameResult` at game-over in each game scene
 
-Each game scene (e.g., `KameKnockScene.ts`, any Shell Smash Arena scene) must call
+Each game scene (e.g., `KameKnockScene.ts`) must call
 the API when the game ends. The game scenes currently have no API calls. Add at the
 point where a winner is determined — typically inside a `phase === 'gameover'`
 handler or equivalent:
@@ -293,7 +293,7 @@ import { api } from '../../hub/api'; // adjust relative path
 private async onGameOver(localPlayerWon: boolean): Promise<void> {
   try {
     const result = await api.submitGameResult(
-      'shell-smash-arena',             // match the id in MINIGAMES array
+      'kame-knock',                    // match the id in MINIGAMES array
       localPlayerWon ? 'win' : 'loss',
     );
     // Optionally show an XP-gain banner: `+${result.xpGained} XP`

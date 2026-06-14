@@ -205,7 +205,7 @@ On click: if the game is `available` and its scene is registered, the scene star
 
 | Zone | Status |
 |------|--------|
-| Shell Smash Arena | available (scene stub) |
+| Kame Knock | available |
 | Bell Clash | coming soon |
 | River Rush | coming soon |
 | Bamboo Bash | coming soon |

@@ -7,9 +7,9 @@ of arcade minigames set in a Japanese temple courtyard.
 ## Concept
 
 The hub is a dojo courtyard. Each minigame is represented as a shrine the
-player can enter. The first playable shrine is **Shell Smash Arena** — a
-1v1 sumo knockout where players launch their turtle to push opponents out
-of the ring. Additional shrines (Bell Clash, River Rush, Bamboo Bash, and
+player can enter. The first playable shrine is **Kame Knock** — a
+billiards-like target-smashing minigame where players launch their shell to
+clear every round. Additional shrines (Bell Clash, River Rush, Bamboo Bash, and
 more) are shown as "sealed" / Coming Soon and will open up as they're
 built.
 
@@ -38,6 +38,5 @@ environment variables (including 42 OAuth credentials).
 
 ## Status
 
-🚧 Early hub MVP — Shell Smash Arena gameplay is not yet implemented;
-the hub currently shows the arena shrine as a placeholder and renders
+🚧 Early hub MVP — Kame Knock is the first playable shrine; the hub renders
 the other shrines as sealed/Coming Soon.

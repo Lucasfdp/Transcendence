@@ -1,7 +1,7 @@
 import { IsIn, IsString } from 'class-validator';
 
 export class SubmitResultDto {
-  /** Identifier for the minigame, e.g. 'shell-smash-arena', 'kame-knock'. */
+  /** Identifier for the minigame, e.g. 'kame-knock'. */
   @IsString()
   gameId: string;
 

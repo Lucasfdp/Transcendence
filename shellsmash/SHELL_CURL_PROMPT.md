@@ -485,7 +485,7 @@ game/
 After the scene is built, wire it into the hub:
 
 1. In `main.ts`, add `ShellCurlScene` to the Phaser `scene` array.
-2. In `HubScene.ts`, the hotspot `shell-smash-arena` currently targets `'BambooBashScene'`. Add a new hotspot entry for `'shell-cards'` or whichever is the curl zone, pointing to `'ShellCurlScene'`.
+2. In `HubScene.ts`, add or reuse the curl zone hotspot so it points to `'ShellCurlScene'`.
 3. The scene key must be `'ShellCurlScene'` so `buildReturnButton` (which calls `scene.scene.start('HubScene')`) stays compatible without changes.
 
 ---

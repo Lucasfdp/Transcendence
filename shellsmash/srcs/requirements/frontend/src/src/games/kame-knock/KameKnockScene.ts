@@ -10,10 +10,11 @@ import Phaser from 'phaser';
 import { api } from '../../hub/api';
 import { ARENA_01 } from '../../shared/arenas/arena01';
 import { ArenaPixels, arenaToScreen, drawSumoRing } from '../../shared/arenas/arena';
-import { BallState, BALL_SRC_R, drawShellBall, isBallMoving, stepBall } from '../../shared/mechanics/ball';
+import { BallState, BALL_SRC_R, drawShellBall, stepBall } from '../../shared/mechanics/ball';
 import { Slingshot } from '../../shared/mechanics/slingshot';
 import { buildReturnButton } from '../../shared/mechanics/hud';
 import { showAchievementUnlocks } from '../../shared/achievement-popup';
+import { PanelRect, SidePanel, SidePanelRow } from '../../shared/ui/panels/side-panel';
 import {
   TimedTarget,
   TimedTargetKind,
@@ -30,6 +31,11 @@ interface BallRoundConfig {
   readonly breakableTargets: number;
 }
 
+interface KameKnockLayout {
+  readonly leftPanel?: PanelRect;
+  readonly rightPanel?: PanelRect;
+}
+
 const BALL_ROUNDS: BallRoundConfig[] = [
   { totalTargets: 7, breakableTargets: 4 },
   { totalTargets: 10, breakableTargets: 6 },
@@ -42,6 +48,13 @@ const PERFECT_ACCURACY = 0.35;
 const PERFECT_BONUS = 500;
 const HIT_KNOCKBACK_SRC = 90;
 const SOLID_BOUNCE_DAMP = 0.92;
+const SIDE_PANEL_MIN_CANVAS_W = 1_180;
+const SIDE_PANEL_MIN_CANVAS_H = 560;
+const SIDE_PANEL_MIN_W = 168;
+const SIDE_PANEL_MAX_W = 230;
+const SIDE_PANEL_PAD = 16;
+const SIDE_PANEL_TOP = 74;
+const SCORE_LOG_LIMIT = 8;
 
 const DEPTH_BG = 0;
 const DEPTH_TARGETS = 1;
@@ -76,10 +89,11 @@ export class KameKnockScene extends Phaser.Scene {
   private score = 0;
   private combo = 0;
   private running = true;
+  private scoreEvents: string[] = [];
 
-  private scoreText: Phaser.GameObjects.Text | null = null;
-  private comboText: Phaser.GameObjects.Text | null = null;
   private ballText: Phaser.GameObjects.Text | null = null;
+  private infoPanel: SidePanel | null = null;
+  private scoreLogPanel: SidePanel | null = null;
   private overlay?: Phaser.GameObjects.Container;
   private overlayHitZones: Phaser.GameObjects.Zone[] = [];
 
@@ -98,12 +112,13 @@ export class KameKnockScene extends Phaser.Scene {
     this.score = 0;
     this.combo = 0;
     this.running = true;
+    this.scoreEvents = [];
     this.overlay = undefined;
-    this.scoreText = null;
-    this.comboText = null;
     this.ballText = null;
+    this.infoPanel = null;
+    this.scoreLogPanel = null;
 
-    this.arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
+    this.arena = this.resolveArena();
     this.resetBall();
 
     this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
@@ -123,6 +138,7 @@ export class KameKnockScene extends Phaser.Scene {
     this.drawTargets();
     drawShellBall(this.ballGfx, this.ball);
     this.buildHud();
+    this.updateSidePanels();
 
     this.scale.on('resize', this.onResize, this);
   }
@@ -134,8 +150,7 @@ export class KameKnockScene extends Phaser.Scene {
     this.clearOverlayHitZones();
     this.overlay?.destroy(true);
     this.overlay = undefined;
-    this.scoreText = null;
-    this.comboText = null;
+    this.destroySidePanels();
     this.ballText = null;
   }
 
@@ -152,7 +167,6 @@ export class KameKnockScene extends Phaser.Scene {
 
     this.drawTargets();
     drawShellBall(this.ballGfx, this.ball);
-    this.comboText?.setText(`COMBO  x${Math.max(1, this.combo)}`);
   }
 
   private onLaunch(): void {
@@ -174,7 +188,7 @@ export class KameKnockScene extends Phaser.Scene {
     }
 
     if (this.ballText?.active) this.ballText.setText(this.formatBallText());
-    if (this.comboText?.active) this.comboText.setText('COMBO  x1');
+    if (this.scoreLogPanel) this.updateSidePanels();
   }
 
   private shuffledBreakableFlags(config: BallRoundConfig): boolean[] {
@@ -225,7 +239,7 @@ export class KameKnockScene extends Phaser.Scene {
       const perfect = accuracy <= PERFECT_ACCURACY;
       const gained = target.points * this.combo + (perfect ? PERFECT_BONUS : 0);
       this.score += gained;
-      this.scoreText?.setText(`SCORE  ${this.score}`);
+      this.addScoreEvent(`${TARGET_COLOURS[target.kind].label}  +${gained}`, perfect ? 'PERFECT' : `x${this.combo}`);
 
       this.popScore(pos.x, pos.y, gained, this.combo, perfect);
       this.applyHitKick(pos.x, pos.y);
@@ -270,6 +284,7 @@ export class KameKnockScene extends Phaser.Scene {
     this.ball.vx = 0;
     this.ball.vy = 0;
     this.combo = 0;
+    this.updateSidePanels();
     this.submitResult();
     this.showEndScreen();
   }
@@ -309,17 +324,116 @@ export class KameKnockScene extends Phaser.Scene {
   private buildHud(): void {
     this.hudObjects = buildReturnButton(this);
 
-    this.scoreText = this.add.text(16, 16, `SCORE  ${this.score}`, {
-      fontSize: '22px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
-    }).setDepth(DEPTH_HUD);
-
-    this.comboText = this.add.text(16, 44, 'COMBO  x1', {
-      fontSize: '16px', color: THEME.text, fontFamily: THEME.font, fontStyle: 'bold',
-    }).setDepth(DEPTH_HUD);
-
     this.ballText = this.add.text(this.scale.width / 2, 16, this.formatBallText(), {
       fontSize: '26px', color: THEME.text, fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5, 0).setDepth(DEPTH_HUD);
+  }
+
+  private resolveArena(): ArenaPixels {
+    return arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
+  }
+
+  private resolveLayout(): KameKnockLayout {
+    const { width, height } = this.scale;
+
+    if (width < SIDE_PANEL_MIN_CANVAS_W || height < SIDE_PANEL_MIN_CANVAS_H) {
+      return {};
+    }
+
+    const arena = this.arena ?? this.resolveArena();
+    const leftFreeW = arena.cx - arena.rx - SIDE_PANEL_PAD * 2;
+    const rightFreeW = width - (arena.cx + arena.rx) - SIDE_PANEL_PAD * 2;
+    const panelW = Math.floor(Math.min(SIDE_PANEL_MAX_W, leftFreeW, rightFreeW));
+
+    if (panelW < SIDE_PANEL_MIN_W) return {};
+
+    const panelH = height - SIDE_PANEL_TOP - SIDE_PANEL_PAD;
+    const leftPanel = { x: SIDE_PANEL_PAD, y: SIDE_PANEL_TOP, width: panelW, height: panelH };
+    const rightPanel = { x: width - SIDE_PANEL_PAD - panelW, y: SIDE_PANEL_TOP, width: panelW, height: panelH };
+
+    return { leftPanel, rightPanel };
+  }
+
+  private updateSidePanels(): void {
+    const layout = this.resolveLayout();
+    if (!layout.leftPanel || !layout.rightPanel) {
+      this.destroySidePanels();
+      return;
+    }
+
+    this.infoPanel ??= new SidePanel(this, DEPTH_HUD);
+    this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
+
+    this.infoPanel.update({
+      title: 'TARGET VALUES',
+      rect: layout.leftPanel,
+      rows: this.buildInfoRows(),
+    });
+    this.scoreLogPanel.update({
+      title: 'SCORE LOG',
+      rect: layout.rightPanel,
+      rows: this.buildScoreLogRows(),
+      footerRows: this.buildScoreStatusRows(),
+    });
+  }
+
+  private destroySidePanels(): void {
+    this.infoPanel?.destroy();
+    this.scoreLogPanel?.destroy();
+    this.infoPanel = null;
+    this.scoreLogPanel = null;
+  }
+
+  private buildInfoRows(): SidePanelRow[] {
+    return [
+      { label: 'Shell ball', value: 'bounce', icon: (g, x, y, size) => this.drawShellIcon(g, x, y, size / 2) },
+      { label: 'Daruma', value: '+100', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'daruma', true) },
+      { label: 'Crate', value: '+120', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'crate', true) },
+      { label: 'Drum', value: '+150', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'drum', true) },
+      { label: 'Solid target', value: 'bounce', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'drum', false) },
+      { label: 'Perfect hit', value: '+500', icon: (g, x, y, size) => this.drawSparkIcon(g, x, y, size / 2) },
+      { label: 'Combo', value: 'x chain', icon: (g, x, y, size) => this.drawComboIcon(g, x, y, size / 2) },
+    ];
+  }
+
+  private buildScoreLogRows(): SidePanelRow[] {
+    if (this.scoreEvents.length === 0) return [{ label: 'No scores yet', muted: true }];
+
+    return this.scoreEvents.map((event, index) => {
+      const [label, value] = event.split('\t');
+      return {
+        label,
+        value,
+        muted: index > 3,
+      };
+    });
+  }
+
+  private buildScoreStatusRows(): SidePanelRow[] {
+    return [
+      {
+        label: 'COMBO',
+        value: `x${Math.max(1, this.combo)}`,
+        labelColor: THEME.text,
+        valueColor: THEME.text,
+        labelFontSize: '13px',
+        valueFontSize: '18px',
+      },
+      {
+        label: 'SCORE',
+        value: String(this.score),
+        labelColor: THEME.textGold,
+        valueColor: THEME.textGold,
+        labelFontSize: '14px',
+        valueFontSize: '24px',
+      },
+    ];
+  }
+
+  private addScoreEvent(label: string, value: string): void {
+    this.scoreEvents.unshift(`${label}\t${value}`);
+    this.scoreEvents = this.scoreEvents.slice(0, SCORE_LOG_LIMIT);
+    this.updateSidePanels();
   }
 
   private formatBallText(): string {
@@ -357,37 +471,86 @@ export class KameKnockScene extends Phaser.Scene {
   private drawTarget(target: TimedTarget): void {
     const pos = timedTargetPosition(target, this.arena);
     const radius = timedTargetRadius(target, this.arena);
-    const def = TARGET_COLOURS[target.kind];
     const pulse = 0.88 + Math.sin(target.ageMs * 0.006) * 0.12;
     const alpha = target.breakable ? 1 : 0.92;
 
-    this.targetGfx.fillStyle(0x000000, 0.20 * alpha);
-    this.targetGfx.fillEllipse(pos.x + radius * 0.25, pos.y + radius * 0.45, radius * 2.1, radius * 0.8);
-    this.targetGfx.fillStyle(target.breakable ? def.body : 0x4d5566, alpha);
-    this.targetGfx.fillCircle(pos.x, pos.y, radius * pulse);
-    this.targetGfx.lineStyle(Math.max(2, radius * 0.12), target.breakable ? def.trim : 0x9aa4b8, alpha);
-    this.targetGfx.strokeCircle(pos.x, pos.y, radius * 0.78);
+    this.drawTargetBody(this.targetGfx, pos.x, pos.y, radius, target.kind, target.breakable, pulse, alpha);
+  }
 
-    if (!target.breakable) {
-      this.targetGfx.lineStyle(Math.max(2, radius * 0.09), 0xffffff, 0.75);
-      this.targetGfx.strokeCircle(pos.x, pos.y, radius * 1.08);
-      this.targetGfx.lineBetween(pos.x - radius * 0.45, pos.y, pos.x + radius * 0.45, pos.y);
-      this.targetGfx.lineBetween(pos.x, pos.y - radius * 0.45, pos.x, pos.y + radius * 0.45);
+  private drawTargetIcon(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number, kind: TimedTargetKind, breakable: boolean): void {
+    this.drawTargetBody(g, x, y, radius, kind, breakable, 0.96, breakable ? 1 : 0.92);
+  }
+
+  private drawTargetBody(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    radius: number,
+    kind: TimedTargetKind,
+    breakable: boolean,
+    pulse: number,
+    alpha: number,
+  ): void {
+    const def = TARGET_COLOURS[kind];
+
+    g.fillStyle(0x000000, 0.20 * alpha);
+    g.fillEllipse(x + radius * 0.25, y + radius * 0.45, radius * 2.1, radius * 0.8);
+    g.fillStyle(breakable ? def.body : 0x4d5566, alpha);
+    g.fillCircle(x, y, radius * pulse);
+    g.lineStyle(Math.max(2, radius * 0.12), breakable ? def.trim : 0x9aa4b8, alpha);
+    g.strokeCircle(x, y, radius * 0.78);
+
+    if (!breakable) {
+      g.lineStyle(Math.max(2, radius * 0.09), 0xffffff, 0.75);
+      g.strokeCircle(x, y, radius * 1.08);
+      g.lineBetween(x - radius * 0.45, y, x + radius * 0.45, y);
+      g.lineBetween(x, y - radius * 0.45, x, y + radius * 0.45);
       return;
     }
 
-    if (target.kind === 'daruma') {
-      this.targetGfx.fillStyle(0xffffff, alpha);
-      this.targetGfx.fillCircle(pos.x - radius * 0.28, pos.y - radius * 0.18, radius * 0.14);
-      this.targetGfx.fillCircle(pos.x + radius * 0.28, pos.y - radius * 0.18, radius * 0.14);
-    } else if (target.kind === 'crate') {
-      this.targetGfx.lineStyle(Math.max(1, radius * 0.08), def.trim, alpha);
-      this.targetGfx.lineBetween(pos.x - radius * 0.55, pos.y - radius * 0.55, pos.x + radius * 0.55, pos.y + radius * 0.55);
-      this.targetGfx.lineBetween(pos.x + radius * 0.55, pos.y - radius * 0.55, pos.x - radius * 0.55, pos.y + radius * 0.55);
+    if (kind === 'daruma') {
+      g.fillStyle(0xffffff, alpha);
+      g.fillCircle(x - radius * 0.28, y - radius * 0.18, radius * 0.14);
+      g.fillCircle(x + radius * 0.28, y - radius * 0.18, radius * 0.14);
+    } else if (kind === 'crate') {
+      g.lineStyle(Math.max(1, radius * 0.08), def.trim, alpha);
+      g.lineBetween(x - radius * 0.55, y - radius * 0.55, x + radius * 0.55, y + radius * 0.55);
+      g.lineBetween(x + radius * 0.55, y - radius * 0.55, x - radius * 0.55, y + radius * 0.55);
     } else {
-      this.targetGfx.fillStyle(def.trim, alpha * 0.9);
-      this.targetGfx.fillRect(pos.x - radius * 0.62, pos.y - radius * 0.12, radius * 1.24, radius * 0.24);
+      g.fillStyle(def.trim, alpha * 0.9);
+      g.fillRect(x - radius * 0.62, y - radius * 0.12, radius * 1.24, radius * 0.24);
     }
+  }
+
+  private drawShellIcon(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number): void {
+    g.fillStyle(0x000000, 0.22);
+    g.fillEllipse(x + radius * 0.3, y + radius * 0.5, radius * 2.4, radius * 0.9);
+    g.fillStyle(0x2a7fd4, 1);
+    g.fillCircle(x, y, radius);
+    g.fillStyle(0x1a5fa8, 1);
+    g.fillCircle(x + radius * 0.25, y - radius * 0.12, radius * 0.38);
+    g.fillCircle(x - radius * 0.22, y + radius * 0.28, radius * 0.30);
+    g.fillCircle(x + radius * 0.08, y + radius * 0.52, radius * 0.22);
+    g.fillStyle(0xffffff, 0.55);
+    g.fillCircle(x - radius * 0.28, y - radius * 0.30, radius * 0.22);
+  }
+
+  private drawSparkIcon(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number): void {
+    g.lineStyle(2, THEME.gold, 0.95);
+    g.lineBetween(x - radius, y, x + radius, y);
+    g.lineBetween(x, y - radius, x, y + radius);
+    g.lineBetween(x - radius * 0.7, y - radius * 0.7, x + radius * 0.7, y + radius * 0.7);
+    g.lineBetween(x + radius * 0.7, y - radius * 0.7, x - radius * 0.7, y + radius * 0.7);
+    g.fillStyle(THEME.gold, 0.95);
+    g.fillCircle(x, y, radius * 0.26);
+  }
+
+  private drawComboIcon(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number): void {
+    g.lineStyle(2, THEME.textMuted, 0.9);
+    g.strokeCircle(x - radius * 0.32, y, radius * 0.54);
+    g.strokeCircle(x + radius * 0.32, y, radius * 0.54);
+    g.fillStyle(THEME.gold, 0.95);
+    g.fillCircle(x, y, radius * 0.18);
   }
 
   private popBounce(x: number, y: number): void {
@@ -505,7 +668,7 @@ export class KameKnockScene extends Phaser.Scene {
 
   private onResize(): void {
     const oldArena = this.arena;
-    this.arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
+    this.arena = this.resolveArena();
     const velocityScale = this.arena.scale / oldArena.scale;
 
     this.slingshot?.cancel();
@@ -528,9 +691,8 @@ export class KameKnockScene extends Phaser.Scene {
 
     this.hudObjects.forEach((object) => object.destroy());
     this.hudObjects = buildReturnButton(this);
-    this.scoreText?.setPosition(16, 16);
-    this.comboText?.setPosition(16, 44);
     this.ballText?.setPosition(this.scale.width / 2, 16);
+    this.updateSidePanels();
     if (this.overlay) {
       this.overlay.destroy(true);
       this.showEndScreen();

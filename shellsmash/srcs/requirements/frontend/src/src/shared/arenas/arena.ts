@@ -41,9 +41,20 @@ export interface ArenaPixels {
  * ellipse's aspect ratio is preserved at any canvas size.
  */
 export function arenaToScreen(def: ArenaDef, canvasW: number, canvasH: number): ArenaPixels {
-  const scale = Math.min(canvasW / def.srcW, canvasH / def.srcH);
-  const offX  = (canvasW - def.srcW * scale) / 2;
-  const offY  = (canvasH - def.srcH * scale) / 2;
+  return arenaToScreenInRect(def, 0, 0, canvasW, canvasH);
+}
+
+/** Letterbox-fit the arena into an arbitrary canvas-space rectangle. */
+export function arenaToScreenInRect(
+  def: ArenaDef,
+  rectX: number,
+  rectY: number,
+  rectW: number,
+  rectH: number,
+): ArenaPixels {
+  const scale = Math.min(rectW / def.srcW, rectH / def.srcH);
+  const offX  = rectX + (rectW - def.srcW * scale) / 2;
+  const offY  = rectY + (rectH - def.srcH * scale) / 2;
   return {
     cx: offX + def.cx * scale,
     cy: offY + def.cy * scale,
