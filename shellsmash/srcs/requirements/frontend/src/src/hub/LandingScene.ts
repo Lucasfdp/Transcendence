@@ -217,6 +217,12 @@ export class LandingScene extends Phaser.Scene {
   // ── create ───────────────────────────────────────────────────────────────────
 
   async create(): Promise<void> {
+    // Reset per-run state — scene instances are reused across scene.start() calls,
+    // so flags and layer refs from the previous run must be cleared here.
+    this.transitioning = false;
+    this.bgLayer       = [];
+    this.titleLayer    = [];
+
     // Phaser does NOT call shutdown() automatically — wire it so overlay and
     // scale listeners are cleaned up if the scene is ever stopped mid-flight.
     this.events.once('shutdown', this.shutdown, this);
