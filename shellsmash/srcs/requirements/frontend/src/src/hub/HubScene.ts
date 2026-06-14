@@ -77,7 +77,7 @@ const HOTSPOTS: HotspotDef[] = [
   { id: 'oni-dodge',         name: 'Oni Dodge',         cx: 0.148, cy: 0.534, hw: 0.095, hh: 0.042 },
   { id: 'sakura-sweep',      name: 'Sakura Sweep',      cx: 0.851, cy: 0.536, hw: 0.095, hh: 0.042 },
   { id: 'bell-clash',        name: 'Bell Clash',        cx: 0.273, cy: 0.708, hw: 0.132, hh: 0.060 },
-  { id: 'shell-cards',       name: 'Shell Cards',       cx: 0.718, cy: 0.720, hw: 0.144, hh: 0.053 },
+  { id: 'temple-curling',    name: 'Temple Curling',    cx: 0.718, cy: 0.720, hw: 0.144, hh: 0.053 },
 ];
 
 // Cherry blossom petal colours (rotated randomly per petal)
@@ -112,6 +112,7 @@ export class HubScene extends Phaser.Scene {
   private bgLayer:      Phaser.GameObjects.GameObject[] = [];
   private hudLayer:     Phaser.GameObjects.GameObject[] = [];
   private hotspotLayer: Phaser.GameObjects.GameObject[] = [];
+  private extrasLayer:  Phaser.GameObjects.GameObject[] = [];
   private lbLayer:      Phaser.GameObjects.GameObject[] = [];
 
   // ── Resize debounce ───────────────────────────────────────────────────────────
@@ -212,6 +213,7 @@ export class HubScene extends Phaser.Scene {
     this.registry.set('user', this.user);
 
     this.buildHotspots();
+    this.drawExtrasSection();
     this.drawHUD();
 
     // Register resize listener after the initial layout is complete so an
@@ -254,10 +256,12 @@ export class HubScene extends Phaser.Scene {
 
     // 5. Rebuild hotspot zones with recalculated hit areas.
     this.clearLayer(this.hotspotLayer);
+    this.clearLayer(this.extrasLayer);
 
     // 6. Redraw the authenticated HUD (user is always set in HubScene).
     if (this.user) {
       this.buildHotspots();
+      this.drawExtrasSection();
       this.clearLayer(this.hudLayer);
       this.drawHUD();
       // renderLeaderboard() clears lbLayer internally and re-fetches
@@ -608,12 +612,15 @@ export class HubScene extends Phaser.Scene {
         gfx.lineBetween(ix - u, iy + 13 * u, ix + 11 * u, iy + 13 * u);
         break;
       }
-      case 'shell-cards': {
-        // Small card rectangle with corner pip
+      case 'temple-curling': {
+        // Curling sheet marker with a small stone.
         gfx.lineStyle(1.5 * u, 0xd4a843, 0.85);
-        gfx.strokeRoundedRect(ix, iy + 2 * u, 10 * u, 13 * u, 2 * u);
+        gfx.strokeRoundedRect(ix, iy + 1 * u, 10 * u, 14 * u, 2 * u);
+        gfx.lineStyle(1 * u, 0xd4a843, 0.35);
+        gfx.lineBetween(ix + 2 * u, iy + 4 * u, ix + 8 * u, iy + 4 * u);
+        gfx.lineBetween(ix + 2 * u, iy + 12 * u, ix + 8 * u, iy + 12 * u);
         gfx.fillStyle(0xd4a843, 0.70);
-        gfx.fillCircle(ix + 2.5 * u, iy + 4.5 * u, 1.5 * u);
+        gfx.fillCircle(ix + 5 * u, iy + 8 * u, 2 * u);
         break;
       }
     }
@@ -624,7 +631,7 @@ export class HubScene extends Phaser.Scene {
 
     HOTSPOTS.forEach((hs) => {
       const minigame  = this.minigames.find((m) => m.id === hs.id);
-      const available = minigame?.status === 'available';
+      const available = minigame?.status === 'available' || hs.id === 'temple-curling';
       const r         = this.toScreen(hs);
       const glowColour = available ? THEME.gold : THEME.red;
 
@@ -722,7 +729,7 @@ export class HubScene extends Phaser.Scene {
           this.scene.start('BambooBashScene');
           return;
         }
-        if (hs.id === 'shell-cards') {
+        if (hs.id === 'temple-curling') {
           this.scene.start('ShellCurlScene');
           return;
         }
@@ -740,6 +747,103 @@ export class HubScene extends Phaser.Scene {
         }
       });
     });
+  }
+
+  private drawExtrasSection(): void {
+    const { width, height } = this.scale;
+    const PAD = 16;
+    const panelW = Math.min(260, width - PAD * 2);
+    const panelH = 152;
+    const bottomReserve = this.user?.isGuest ? 52 : 16;
+    const panelX = PAD;
+    const panelY = Math.max(72, height - bottomReserve - panelH);
+
+    const bg = this.add.graphics().setDepth(DEPTH_HUD);
+    this.extrasLayer.push(bg);
+    bg.fillStyle(THEME.background, 0.82);
+    bg.fillRoundedRect(panelX, panelY, panelW, panelH, 10);
+    bg.lineStyle(1, THEME.gold, 0.34);
+    bg.strokeRoundedRect(panelX, panelY, panelW, panelH, 10);
+    bg.lineStyle(1, THEME.gold, 0.12);
+    bg.strokeRoundedRect(panelX + 5, panelY + 5, panelW - 10, panelH - 10, 7);
+
+    const title = this.add.text(panelX + panelW / 2, panelY + 13, 'DOJO EXTRAS', {
+      fontSize: this.scaledFont(10),
+      color: THEME.textGold,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+      letterSpacing: 1,
+    }).setOrigin(0.5, 0).setDepth(DEPTH_HUD);
+    this.extrasLayer.push(title);
+
+    this.drawExtrasButton(
+      panelX + 16,
+      panelY + 42,
+      panelW - 32,
+      38,
+      'shell-cards',
+      'Shell Cards',
+      'A new card challenge is being prepared for the dojo.',
+    );
+
+    this.drawExtrasButton(
+      panelX + 16,
+      panelY + 92,
+      panelW - 32,
+      38,
+      'achievements',
+      'Achievements',
+      'Achievement tracking is coming soon.',
+    );
+  }
+
+  private drawExtrasButton(x: number, y: number, w: number, h: number, id: string, label: string, description: string): void {
+    const btnGfx = this.add.graphics().setDepth(DEPTH_HUD);
+    this.extrasLayer.push(btnGfx);
+
+    const paint = (hovered: boolean): void => {
+      btnGfx.clear();
+      btnGfx.fillStyle(0x1a1005, hovered ? 0.96 : 0.84);
+      btnGfx.fillRoundedRect(x, y, w, h, 7);
+      btnGfx.lineStyle(1.5, THEME.gold, hovered ? 0.90 : 0.46);
+      btnGfx.strokeRoundedRect(x, y, w, h, 7);
+      btnGfx.fillStyle(THEME.gold, hovered ? 0.18 : 0.10);
+      btnGfx.fillRoundedRect(x + 4, y + 4, 28, h - 8, 5);
+    };
+    paint(false);
+
+    const icon = id === 'shell-cards' ? 'CARD' : 'MEDAL';
+    const iconText = this.add.text(x + 18, y + h / 2, icon, {
+      fontSize: this.scaledFont(7),
+      color: THEME.textGold,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(DEPTH_HUD);
+    this.extrasLayer.push(iconText);
+
+    const labelText = this.add.text(x + 44, y + h / 2, label, {
+      fontSize: this.scaledFont(13),
+      color: THEME.text,
+      fontFamily: THEME.font,
+      fontStyle: 'bold',
+    }).setOrigin(0, 0.5).setDepth(DEPTH_HUD);
+    this.extrasLayer.push(labelText);
+
+    const zone = this.add
+      .zone(x + w / 2, y + h / 2, w, h)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(DEPTH_HUD);
+    this.extrasLayer.push(zone);
+
+    zone.on('pointerover', () => {
+      paint(true);
+      labelText.setColor(THEME.textGold);
+    });
+    zone.on('pointerout', () => {
+      paint(false);
+      labelText.setColor(THEME.text);
+    });
+    zone.on('pointerup', () => this.showModal(label, description));
   }
 
   // ── Cherry blossom continuous fall ──────────────────────────────────────────

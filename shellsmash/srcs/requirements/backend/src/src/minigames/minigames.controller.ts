@@ -33,7 +33,7 @@ const MINIGAMES: MiniGameDefinition[] = [
   {
     id: 'bamboo-bash',
     name: 'Bamboo Bash',
-    status: 'coming_soon',
+    status: 'available',
     description: 'Survive the bamboo forest as obstacles close in.',
   },
 ];
