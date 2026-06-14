@@ -217,6 +217,10 @@ export class LandingScene extends Phaser.Scene {
   // ── create ───────────────────────────────────────────────────────────────────
 
   async create(): Promise<void> {
+    // Phaser does NOT call shutdown() automatically — wire it so overlay and
+    // scale listeners are cleaned up if the scene is ever stopped mid-flight.
+    this.events.once('shutdown', this.shutdown, this);
+
     this.drawBg();
     this.drawTitle();
 
@@ -336,16 +340,6 @@ export class LandingScene extends Phaser.Scene {
     passwordInput.autocomplete   = mode === 'login' ? 'current-password' : 'new-password';
     panel.appendChild(passwordInput);
 
-    // Confirm-password — only in register mode
-    let confirmInput: HTMLInputElement | null = null;
-    if (mode === 'register') {
-      confirmInput              = document.createElement('input');
-      confirmInput.type         = 'password';
-      confirmInput.placeholder  = 'Confirm Password';
-      confirmInput.autocomplete = 'new-password';
-      panel.appendChild(confirmInput);
-    }
-
     const errorEl      = document.createElement('p');
     errorEl.id         = 'ls-error';
     errorEl.textContent = '';
@@ -413,13 +407,11 @@ export class LandingScene extends Phaser.Scene {
 
       const username = usernameInput.value.trim();
       const password = passwordInput.value;
-      const confirm  = confirmInput?.value ?? '';
 
       if (!username) { this.setError(errorEl, 'Username is required.'); return; }
       if (!password) { this.setError(errorEl, 'Password is required.'); return; }
       if (mode === 'register') {
         if (password.length < 8) { this.setError(errorEl, 'Password must be at least 8 characters.'); return; }
-        if (password !== confirm) { this.setError(errorEl, 'Passwords do not match.'); return; }
       }
 
       setLoading(true);
@@ -451,8 +443,8 @@ export class LandingScene extends Phaser.Scene {
     submitBtn.addEventListener('click', () => void handleSubmit());
 
     // Allow Enter key to submit from any input
-    [usernameInput, passwordInput, confirmInput].forEach((el) => {
-      el?.addEventListener('keydown', (e: KeyboardEvent) => {
+    [usernameInput, passwordInput].forEach((el) => {
+      el.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter') void handleSubmit();
       });
     });

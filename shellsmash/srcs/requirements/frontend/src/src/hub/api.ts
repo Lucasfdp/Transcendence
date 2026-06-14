@@ -63,7 +63,14 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
     throw new NetworkError(`Network request failed for ${path}: ${String(err)}`);
   }
 
-  if (res.status === 401 || res.status === 403) {
+  // Statuses that the frontend needs to act on by inspecting the code:
+  //   401 / 403 — auth failures handled by AuthError (CSRF, session, forbidden)
+  //   409 — conflict (duplicate username); friendlyError maps this
+  //   422 — unprocessable entity (validation errors from backend)
+  //   429 — rate limit; friendlyError maps this
+  // Everything else that is not 2xx becomes NetworkError.
+  const API_ERROR_STATUSES = new Set([401, 403, 409, 422, 429]);
+  if (API_ERROR_STATUSES.has(res.status)) {
     throw new AuthError(res.status, `${res.status} on ${path}`);
   }
   if (!res.ok) {

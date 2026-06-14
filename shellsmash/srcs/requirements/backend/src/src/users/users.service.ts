@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { ConflictException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -60,7 +60,14 @@ export class UsersService {
       const savedProfile = await this.profilesRepo.save(profile);
       const user         = this.usersRepo.create({ ...data, profile: savedProfile });
       return await this.usersRepo.save(user);
-    } catch {
+    } catch (err: unknown) {
+      // PostgreSQL unique-violation on username (or any other unique column).
+      // TypeORM wraps the driver error but preserves the original `code`.
+      // We surface this as 409 so the frontend friendlyError() handler fires
+      // and the user sees "That username is already taken." instead of a 500.
+      if ((err as { code?: string })?.code === '23505') {
+        throw new ConflictException('Username is already taken');
+      }
       throw new InternalServerErrorException('Failed to create user');
     }
   }

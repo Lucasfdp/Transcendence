@@ -106,7 +106,7 @@ export class AuthController {
   // CSRF-validated — caller must include X-CSRF-Token header.
 
   @Post('register')
-  @HttpCode(201)
+  @HttpCode(200)
   async localRegister(
     @Body() body: { username?: string; password?: string },
     @Req()  req:  Request,
@@ -128,14 +128,7 @@ export class AuthController {
       throw new BadRequestException('Password must be at most 128 characters');
     }
 
-    let user;
-    try {
-      user = await this.authService.localRegister(username, password);
-    } catch (err) {
-      if (err instanceof ConflictException) throw err;
-      throw err;
-    }
-
+    const user = await this.authService.localRegister(username, password);
     this.authService.issueAuthCookie(res, user);
     return { ok: true };
   }

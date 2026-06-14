@@ -162,6 +162,14 @@ export class HubScene extends Phaser.Scene {
   // ── create ───────────────────────────────────────────────────────────────────
 
   async create(): Promise<void> {
+    // Wire up the shutdown lifecycle so stale per-run state is cleared when the
+    // scene is stopped (e.g. on scene.start('BambooBashScene')).
+    // Phaser does NOT call shutdown() automatically — it only fires if registered
+    // here. Without this, this.profilePanel keeps the old (Phaser-destroyed)
+    // Container reference across scene restarts, causing toggle() to silently
+    // no-op on a dead object.
+    this.events.once('shutdown', this.shutdown, this);
+
     const { width, height } = this.scale;
 
     // Contain (letterbox): scale the square image so the WHOLE of it fits on
