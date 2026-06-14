@@ -15,6 +15,8 @@ export interface PanelRect {
 export interface SidePanelRow {
   label: string;
   value?: string;
+  /** Two-line layout: rendered below the label in smaller muted text. Mutually exclusive with value. */
+  subtitle?: string;
   muted?: boolean;
   labelColor?: string;
   valueColor?: string;
@@ -115,6 +117,17 @@ export class SidePanel {
       fontStyle: 'bold',
     }).setDepth(this.depth + 1);
     this.texts.push(label);
+
+    // Two-line layout: subtitle replaces right-side value
+    if (row.subtitle) {
+      const sub = this.scene.add.text(textX, y + 17, row.subtitle, {
+        fontSize: '10px',
+        color: THEME.textMutedHex,
+        fontFamily: THEME.font,
+      }).setDepth(this.depth + 1);
+      this.texts.push(sub);
+      return;
+    }
 
     if (!row.value) return;
 

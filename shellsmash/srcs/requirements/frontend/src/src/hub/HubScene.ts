@@ -727,19 +727,35 @@ export class HubScene extends Phaser.Scene {
       zone.on('pointerup', () => {
         if (hs.id === 'kame-knock') {
           this.scene.stop('KameKnockScene');
-          this.scene.start('KameKnockScene');
+          this.scene.start('ShellPickerScene', {
+            gameId:      'kame-knock',
+            targetScene: 'KameKnockScene',
+            playerCount: 2,
+          });
           return;
         }
         if (hs.id === 'bamboo-bash') {
-          this.scene.start('BambooBashScene');
+          this.scene.start('ShellPickerScene', {
+            gameId:      'bamboo-bash',
+            targetScene: 'BambooBashScene',
+            playerCount: 1,
+          });
           return;
         }
         if (hs.id === 'temple-curling') {
-          this.scene.start('ShellCurlScene');
+          this.scene.start('ShellPickerScene', {
+            gameId:      'shell-curl',
+            targetScene: 'ShellCurlScene',
+            playerCount: 2,
+          });
           return;
         }
         if (hs.id === 'bell-clash') {
-          this.scene.start('BellClashScene');
+          this.scene.start('ShellPickerScene', {
+            gameId:      'bell-clash',
+            targetScene: 'BellClashScene',
+            playerCount: 1,
+          });
           return;
         }
         if (available && this.scene.manager.getScene('ShellSmashArenaScene')) {
@@ -1509,6 +1525,21 @@ export class HubScene extends Phaser.Scene {
     profileHit.on('pointerout',  () => paintHover(false));
     profileHit.on('pointerup', () => {
       if (!this.profilePanel) {
+        if (this.user && !this.user.isGuest) {
+          // Fetch inventory async; build panel when ready.
+          api.getShellInventory()
+            .then((inventory) => {
+              if (this.profilePanel) return; // guard: panel created while awaiting
+              this.profilePanel = new ProfilePanel(this, this.user, PAD, BAR_H + 8, inventory);
+              this.profilePanel.show();
+            })
+            .catch(() => {
+              // Inventory unavailable — open panel without inventory section.
+              this.profilePanel = new ProfilePanel(this, this.user, PAD, BAR_H + 8);
+              this.profilePanel.show();
+            });
+          return;
+        }
         this.profilePanel = new ProfilePanel(this, this.user, PAD, BAR_H + 8);
       }
       this.profilePanel.toggle();

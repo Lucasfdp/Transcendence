@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { LandingScene } from './hub/LandingScene';
 import { HubScene } from './hub/HubScene';
+import { ShellPickerScene } from './hub/ShellPickerScene';
 import { BambooBashScene } from './games/bamboo-bash/BambooBashScene';
 import { ShellCurlScene } from './games/shell-curl/ShellCurlScene';
 import { KameKnockScene } from './games/kame-knock/KameKnockScene';
@@ -17,7 +18,7 @@ const config: Phaser.Types.Core.GameConfig = {
   parent: 'game',
   // LandingScene is always the boot scene.
   // It detects an existing session and transitions to HubScene automatically.
-  scene: [LandingScene, HubScene, BambooBashScene, ShellCurlScene, KameKnockScene, BellClashScene],
+  scene: [LandingScene, HubScene, ShellPickerScene, BambooBashScene, ShellCurlScene, KameKnockScene, BellClashScene],
   scale: {
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,

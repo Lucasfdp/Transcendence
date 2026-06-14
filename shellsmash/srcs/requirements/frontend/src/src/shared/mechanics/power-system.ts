@@ -12,17 +12,29 @@ import type { RectArenaPixels } from './rect-arena';
 // ── Power enum ────────────────────────────────────────────────────────────────
 
 export enum PowerType {
-  NONE     = 'none',
-  HEAVY    = 'heavy',
-  BOMB     = 'bomb',
-  SPLITTER = 'splitter',
-  GHOST    = 'ghost',
-  MAGNET   = 'magnet',
-  SPINNING = 'spinning',
-  BOUNCER  = 'bouncer',
-  SHIELD   = 'shield',
-  FREEZE   = 'freeze',
-  SLICK    = 'slick',
+  NONE      = 'none',
+  HEAVY     = 'heavy',
+  BOMB      = 'bomb',
+  SPLITTER  = 'splitter',
+  GHOST     = 'ghost',
+  MAGNET    = 'magnet',
+  SPINNING  = 'spinning',
+  BOUNCER   = 'bouncer',
+  SHIELD    = 'shield',
+  FREEZE    = 'freeze',
+  SLICK     = 'slick',
+  // ── New power types ──────────────────────────────────────────────────────────
+  ROCKET    = 'rocket',    // 2× launch speed, zero curl
+  GIANT     = 'giant',     // 2× radius, slower delivery
+  TINY      = 'tiny',      // 0.5× radius, faster, harder to hit
+  BOOMERANG = 'boomerang', // curves back toward delivery point after 60% travel
+  REPEL     = 'repel',     // pushes all stones away on stop (inverse MAGNET)
+  STICKY    = 'sticky',    // fuses with first stone it contacts; they coast together
+  LIGHTNING = 'lightning', // on stop: teleports the nearest enemy stone off-sheet
+  VORTEX    = 'vortex',    // spirals inward when near the house centre
+  CLONE     = 'clone',     // spawns a mirror-image stone on the opposite curl path
+  RICOCHET  = 'ricochet',  // passes through first stone, hits second at full speed
+  PHANTOM   = 'phantom',   // invisible while moving; reveals on stop
 }
 
 // ── Power definition interface ────────────────────────────────────────────────
@@ -64,6 +76,22 @@ export const MAGNET_PULL_SRC      = 55;
 export const SPLITTER_RADIUS      = 0.65;
 /** Spread angle (radians) for SPLITTER child stones. */
 export const SPLITTER_SPREAD      = Math.PI / 12; // 15°
+/** ROCKET launch speed multiplier. */
+export const ROCKET_SPEED_FACTOR  = 2.0;
+/** GIANT stone radius multiplier (slower, hits hard). */
+export const GIANT_RADIUS_FACTOR  = 2.0;
+/** TINY stone radius multiplier (fast, precise). */
+export const TINY_RADIUS_FACTOR   = 0.5;
+/** REPEL push radius in source px (same blast area as BOMB). */
+export const REPEL_RADIUS_SRC     = 200;
+/** REPEL push velocity in source px/s. */
+export const REPEL_IMPULSE_SRC    = 300;
+/** Travel fraction at which BOOMERANG reversal begins (0–1). */
+export const BOOMERANG_FLIP_FRAC  = 0.60;
+/** VORTEX spiral pull strength in source px/s when near house centre. */
+export const VORTEX_PULL_SRC      = 40;
+/** Distance from house centre (src px) at which VORTEX activates. */
+export const VORTEX_RANGE_SRC     = 180;
 
 // ── Power implementations ─────────────────────────────────────────────────────
 
@@ -237,21 +265,265 @@ const SLICK_DEF: PowerDef = {
   },
 };
 
+// ── New power implementations ─────────────────────────────────────────────────
+
+/** Internal flag on a stone that is currently PHANTOM (invisible in motion). */
+interface PhantomStone { phantomHidden: boolean; }
+/** Internal flag on a stone that has completed a BOOMERANG reversal. */
+interface BoomerangStone { boomerangFlipped: boolean; launchVx: number; launchVy: number; distTravelled: number; totalDist: number; }
+/** Internal flag used by STICKY fuse logic. */
+interface StickyStone { stickyFused: boolean; stickyPartnerId?: number; }
+/** Internal flag marking a RICOCHET stone that has already passed through one stone. */
+interface RicochetStone { ricochetUsed: boolean; }
+
+const ROCKET_DEF: PowerDef = {
+  type: PowerType.ROCKET,
+  label: 'Rocket Shell',
+  accentColour: 0xff2222,
+  description: 'Launches at 2× speed with zero curl — straight line, maximum impact.',
+  onApply(stone) {
+    stone.vx       *= ROCKET_SPEED_FACTOR;
+    stone.vy       *= ROCKET_SPEED_FACTOR;
+    stone.curlBias  = 0;
+  },
+};
+
+const GIANT_DEF: PowerDef = {
+  type: PowerType.GIANT,
+  label: 'Giant Shell',
+  accentColour: 0xaa44ff,
+  description: 'Double the radius. Slow but nearly impossible to avoid.',
+  onApply(stone) {
+    stone.r        *= GIANT_RADIUS_FACTOR;
+    stone.curlBias *= 0.3;
+    (stone as SlickStone).frictionOverride = 0.982; // slower stop
+  },
+};
+
+const TINY_DEF: PowerDef = {
+  type: PowerType.TINY,
+  label: 'Tiny Shell',
+  accentColour: 0x44ffaa,
+  description: 'Half the size, faster and harder to knock away once placed.',
+  onApply(stone) {
+    stone.r        *= TINY_RADIUS_FACTOR;
+    stone.vx       *= 1.35;
+    stone.vy       *= 1.35;
+    stone.curlBias *= 0.6;
+  },
+};
+
+const BOOMERANG_DEF: PowerDef = {
+  type: PowerType.BOOMERANG,
+  label: 'Boomerang Shell',
+  accentColour: 0xffcc44,
+  description: 'Travels forward, then curves back toward the delivery point.',
+  onApply(stone) {
+    const s = stone as unknown as BoomerangStone;
+    s.boomerangFlipped = false;
+    s.launchVx = stone.vx;
+    s.launchVy = stone.vy;
+    s.distTravelled = 0;
+    s.totalDist = Math.sqrt(stone.vx * stone.vx + stone.vy * stone.vy) * 2.0;
+  },
+  onUpdate(stone, deltaMs) {
+    const s = stone as unknown as BoomerangStone;
+    if (s.boomerangFlipped) return;
+    const spd = Math.sqrt(stone.vx * stone.vx + stone.vy * stone.vy);
+    s.distTravelled += spd * (deltaMs / 1000);
+    if (s.totalDist > 0 && s.distTravelled / s.totalDist >= BOOMERANG_FLIP_FRAC) {
+      s.boomerangFlipped = true;
+      // Reverse the velocity direction so the stone curves back
+      stone.vx = -Math.abs(s.launchVx) * 0.55 * (stone.vx < 0 ? -1 : 1);
+      stone.vy = -Math.abs(s.launchVy) * 0.55;
+    }
+  },
+};
+
+const REPEL_DEF: PowerDef = {
+  type: PowerType.REPEL,
+  label: 'Repel Shell',
+  accentColour: 0xff44aa,
+  description: 'Pushes all stones away when it stops — the inverse of MAGNET.',
+  onApply() { /* nothing at launch */ },
+  onStop(stone, arena, allStones) {
+    const blastR  = REPEL_RADIUS_SRC  * arena.scale;
+    const impulse = REPEL_IMPULSE_SRC * arena.scale;
+    for (const other of allStones) {
+      if (other.id === stone.id) continue;
+      const dx   = other.x - stone.x;
+      const dy   = other.y - stone.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < blastR && dist > 0.001) {
+        const nx      = dx / dist;
+        const ny      = dy / dist;
+        const falloff = 1 - dist / blastR;
+        other.vx += nx * impulse * falloff;
+        other.vy += ny * impulse * falloff;
+        other.stopped = false;
+      }
+    }
+  },
+};
+
+const STICKY_DEF: PowerDef = {
+  type: PowerType.STICKY,
+  label: 'Sticky Shell',
+  accentColour: 0x996633,
+  description: 'Fuses with the first stone it touches — they glide together and stop as a pair.',
+  onApply(stone) {
+    (stone as unknown as StickyStone).stickyFused = false;
+  },
+  onCollide(stone, other) {
+    const s = stone as unknown as StickyStone;
+    if (s.stickyFused) return;
+    s.stickyFused       = true;
+    s.stickyPartnerId   = other.id;
+    // Average the velocities so they coast as one mass
+    const avgVx = (stone.vx + other.vx) * 0.5;
+    const avgVy = (stone.vy + other.vy) * 0.5;
+    stone.vx = avgVx; stone.vy = avgVy;
+    other.vx = avgVx; other.vy = avgVy;
+    other.stopped = false;
+  },
+};
+
+const LIGHTNING_DEF: PowerDef = {
+  type: PowerType.LIGHTNING,
+  label: 'Lightning Shell',
+  accentColour: 0xeeff00,
+  description: 'On stop, the nearest enemy stone is instantly struck off the sheet.',
+  onApply() { /* nothing at launch */ },
+  onStop(stone, arena, allStones) {
+    // The scene is responsible for determining ownership;
+    // we eject the nearest OTHER stone by placing it outside the sheet bounds.
+    let nearest: StoneState | null = null;
+    let nearDist = Infinity;
+    for (const other of allStones) {
+      if (other.id === stone.id) continue;
+      const dx   = other.x - stone.x;
+      const dy   = other.y - stone.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < nearDist) { nearDist = dist; nearest = other; }
+    }
+    if (nearest) {
+      // Move the stone well outside the right edge of the sheet
+      nearest.x       = arena.sheetX + arena.sheetW + nearest.r * 4;
+      nearest.stopped  = true;
+      nearest.vx       = 0;
+      nearest.vy       = 0;
+      // TODO(#lightning-visual): flash effect and strike line animation
+    }
+  },
+};
+
+const VORTEX_DEF: PowerDef = {
+  type: PowerType.VORTEX,
+  label: 'Vortex Shell',
+  accentColour: 0x2244ff,
+  description: 'Spirals inward as it approaches the house centre — unpredictable path.',
+  onApply() { /* nothing at launch */ },
+  onUpdate(stone, _deltaMs, arena) {
+    if (stone.stopped) return;
+    const dx   = arena.houseFarCX - stone.x;
+    const dy   = arena.houseFarCY - stone.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < VORTEX_RANGE_SRC * arena.scale && dist > 0.001) {
+      const pull = VORTEX_PULL_SRC * arena.scale;
+      stone.vx += (dx / dist) * pull * 0.016;  // ~per-frame at 60fps
+      stone.vy += (dy / dist) * pull * 0.016;
+    }
+  },
+};
+
+const CLONE_DEF: PowerDef = {
+  type: PowerType.CLONE,
+  label: 'Clone Shell',
+  accentColour: 0x88ff88,
+  description: 'Spawns a mirror-image stone on the opposite curl path. Scene must handle the split flag.',
+  onApply(stone) {
+    // The scene reads `clonePending` and creates the mirror stone.
+    (stone as unknown as { clonePending: boolean }).clonePending = true;
+  },
+};
+
+const RICOCHET_DEF: PowerDef = {
+  type: PowerType.RICOCHET,
+  label: 'Ricochet Shell',
+  accentColour: 0xff8844,
+  description: 'Passes straight through the first stone it hits, then impacts the second at full speed.',
+  onApply(stone) {
+    (stone as unknown as RicochetStone).ricochetUsed = false;
+  },
+  onCollide(stone, _other) {
+    const s = stone as unknown as RicochetStone;
+    if (!s.ricochetUsed) {
+      s.ricochetUsed = true;
+      // Signal the scene's collision resolver to skip impulse exchange this once.
+      // Flagged by setting the power temporarily to GHOST semantics.
+      (stone as unknown as GhostStone).ghostUsed = false; // reset ghost flag if any
+    }
+  },
+};
+
+const PHANTOM_DEF: PowerDef = {
+  type: PowerType.PHANTOM,
+  label: 'Phantom Shell',
+  accentColour: 0xdddddd,
+  description: 'Invisible while moving. Opponents cannot judge its path until it stops.',
+  onApply(stone) {
+    (stone as unknown as PhantomStone).phantomHidden = true;
+    // TODO(#phantom-visual): scene should set stone alpha to 0.05 while phantomHidden is true
+  },
+  onStop(stone) {
+    (stone as unknown as PhantomStone).phantomHidden = false;
+    // TODO(#phantom-visual): scene restores stone alpha to 1.0
+  },
+};
+
+// ── GameEffectHook — for non-physics games ────────────────────────────────────
+
+/**
+ * Defines the effect of a shell power in games that don't use the curling
+ * physics engine (BambooBash, BellClash, KameKnock). Each game defines its own
+ * GAME_EFFECTS map with stub or real implementations per PowerType.
+ *
+ * @template TState The game-specific state object (scoring context, shot state, etc.)
+ */
+export interface GameEffectHook<TState> {
+  /**
+   * Called once when the player activates this shell for the current round/shot.
+   * Mutate `state` in place to apply the effect.
+   */
+  onActivate(state: TState): void;
+}
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 /** Map of all built-in power definitions. */
 export const ALL_POWERS: Record<PowerType, PowerDef> = {
-  [PowerType.NONE]:     NONE_DEF,
-  [PowerType.HEAVY]:    HEAVY_DEF,
-  [PowerType.BOMB]:     BOMB_DEF,
-  [PowerType.SPLITTER]: SPLITTER_DEF,
-  [PowerType.GHOST]:    GHOST_DEF,
-  [PowerType.MAGNET]:   MAGNET_DEF,
-  [PowerType.SPINNING]: SPINNING_DEF,
-  [PowerType.BOUNCER]:  BOUNCER_DEF,
-  [PowerType.SHIELD]:   SHIELD_DEF,
-  [PowerType.FREEZE]:   FREEZE_DEF,
-  [PowerType.SLICK]:    SLICK_DEF,
+  [PowerType.NONE]:      NONE_DEF,
+  [PowerType.HEAVY]:     HEAVY_DEF,
+  [PowerType.BOMB]:      BOMB_DEF,
+  [PowerType.SPLITTER]:  SPLITTER_DEF,
+  [PowerType.GHOST]:     GHOST_DEF,
+  [PowerType.MAGNET]:    MAGNET_DEF,
+  [PowerType.SPINNING]:  SPINNING_DEF,
+  [PowerType.BOUNCER]:   BOUNCER_DEF,
+  [PowerType.SHIELD]:    SHIELD_DEF,
+  [PowerType.FREEZE]:    FREEZE_DEF,
+  [PowerType.SLICK]:     SLICK_DEF,
+  [PowerType.ROCKET]:    ROCKET_DEF,
+  [PowerType.GIANT]:     GIANT_DEF,
+  [PowerType.TINY]:      TINY_DEF,
+  [PowerType.BOOMERANG]: BOOMERANG_DEF,
+  [PowerType.REPEL]:     REPEL_DEF,
+  [PowerType.STICKY]:    STICKY_DEF,
+  [PowerType.LIGHTNING]: LIGHTNING_DEF,
+  [PowerType.VORTEX]:    VORTEX_DEF,
+  [PowerType.CLONE]:     CLONE_DEF,
+  [PowerType.RICOCHET]:  RICOCHET_DEF,
+  [PowerType.PHANTOM]:   PHANTOM_DEF,
 };
 
 /**
@@ -294,4 +566,31 @@ interface FrozenStone {
 
 interface SlickStone {
   frictionOverride: number;
+}
+
+// ── New power stone interfaces (used internally by power implementations above) ─
+
+export interface BoomerangStoneState {
+  boomerangFlipped: boolean;
+  launchVx:         number;
+  launchVy:         number;
+  distTravelled:    number;
+  totalDist:        number;
+}
+
+export interface StickyStoneState {
+  stickyFused:     boolean;
+  stickyPartnerId?: number;
+}
+
+export interface RicochetStoneState {
+  ricochetUsed: boolean;
+}
+
+export interface PhantomStoneState {
+  phantomHidden: boolean;
+}
+
+export interface CloneStoneState {
+  clonePending: boolean;
 }

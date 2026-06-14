@@ -23,6 +23,10 @@ const CORNER_R    = 7;
 const HOVER_SCALE = 1.10;
 const SEL_SCALE   = 1.12;
 
+const TOOLTIP_W   = 168;
+const TOOLTIP_H   = 48;
+const TOOLTIP_PAD = 8;
+
 // ── Internal token record ─────────────────────────────────────────────────────
 
 interface TokenRecord {
@@ -33,6 +37,20 @@ interface TokenRecord {
   y:            number;
 }
 
+const POWER_DESC: Record<PowerType, string> = {
+  [PowerType.NONE]:     'Standard delivery',
+  [PowerType.HEAVY]:    'More knockback on contact',
+  [PowerType.BOMB]:     'Explodes on first hit',
+  [PowerType.SPLITTER]: 'Splits into 3 on collision',
+  [PowerType.GHOST]:    'Phases through opponents',
+  [PowerType.MAGNET]:   'Pulls nearby enemy stones',
+  [PowerType.SPINNING]: 'Unpredictable curved path',
+  [PowerType.BOUNCER]:  'Extra bounce off bumpers',
+  [PowerType.SHIELD]:   'Immune to power effects',
+  [PowerType.FREEZE]:   'Freezes stones on contact',
+  [PowerType.SLICK]:    'Slides far, low friction',
+};
+
 // ── PowerPicker ───────────────────────────────────────────────────────────────
 
 export class PowerPicker {
@@ -40,6 +58,10 @@ export class PowerPicker {
   private selected: PowerType  = PowerType.NONE;
   private visible              = false;
   private tokens: TokenRecord[] = [];
+
+  // Tooltip — created on hover, destroyed on pointerout / hide
+  private tooltipGfx:   Phaser.GameObjects.Graphics | null = null;
+  private tooltipTexts: Phaser.GameObjects.Text[]          = [];
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -72,6 +94,7 @@ export class PowerPicker {
   }
 
   hide(): void {
+    this.hideTooltip();
     this.container.setVisible(false);
     this.visible = false;
   }
@@ -81,6 +104,7 @@ export class PowerPicker {
   }
 
   destroy(): void {
+    this.hideTooltip();
     this.container.destroy(true);
   }
 
@@ -132,11 +156,13 @@ export class PowerPicker {
       if (type !== this.selected) {
         this.scene.tweens.add({ targets: bg, scaleX: HOVER_SCALE, scaleY: HOVER_SCALE, duration: 80 });
       }
+      this.showTooltip(type, x, y);
     });
     zone.on('pointerout', () => {
       if (type !== this.selected) {
         this.scene.tweens.add({ targets: bg, scaleX: 1, scaleY: 1, duration: 80 });
       }
+      this.hideTooltip();
     });
     zone.on('pointerup', () => {
       if (type === this.selected) return; // already selected — no-op
@@ -293,5 +319,55 @@ export class PowerPicker {
         }
         break;
     }
+  }
+
+  private showTooltip(type: PowerType, tokenX: number, tokenY: number): void {
+    this.hideTooltip();
+
+    const def  = this.registry.get(type);
+    const desc = POWER_DESC[type];
+    const depth = this.container.depth + 10;
+
+    // Centre tooltip above the token; clamp to canvas bounds
+    const cx = Math.max(
+      TOOLTIP_W / 2 + 4,
+      Math.min(this.scene.scale.width - TOOLTIP_W / 2 - 4, tokenX + TOKEN_W / 2),
+    );
+    const ty = tokenY - 6; // bottom edge of tooltip
+
+    const gfx = this.scene.add.graphics().setDepth(depth);
+    gfx.fillStyle(0x0a1208, 0.96);
+    gfx.fillRoundedRect(cx - TOOLTIP_W / 2, ty - TOOLTIP_H, TOOLTIP_W, TOOLTIP_H, 6);
+    gfx.lineStyle(1.5, 0xd4a843, 0.75);
+    gfx.strokeRoundedRect(cx - TOOLTIP_W / 2, ty - TOOLTIP_H, TOOLTIP_W, TOOLTIP_H, 6);
+
+    const titleTxt = this.scene.add
+      .text(cx, ty - TOOLTIP_H + TOOLTIP_PAD, def.label, {
+        fontSize:   '12px',
+        color:      '#d4a843',
+        fontFamily: THEME.font,
+        fontStyle:  'bold',
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(depth + 1);
+
+    const descTxt = this.scene.add
+      .text(cx, ty - TOOLTIP_H + TOOLTIP_PAD + 16, desc, {
+        fontSize:   '10px',
+        color:      '#c8c0b0',
+        fontFamily: THEME.font,
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(depth + 1);
+
+    this.tooltipGfx   = gfx;
+    this.tooltipTexts = [titleTxt, descTxt];
+  }
+
+  private hideTooltip(): void {
+    this.tooltipGfx?.destroy();
+    this.tooltipGfx = null;
+    for (const t of this.tooltipTexts) t.destroy();
+    this.tooltipTexts = [];
   }
 }

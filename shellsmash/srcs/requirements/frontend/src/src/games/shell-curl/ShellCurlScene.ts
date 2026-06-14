@@ -36,7 +36,8 @@ import { ScoreHud } from '../../shared/mechanics/score-hud';
 import { showAchievementUnlocks } from '../../shared/achievement-popup';
 import { Slingshot } from '../../shared/mechanics/slingshot';
 import { buildReturnButton } from '../../shared/mechanics/hud';
-import { PowerPicker } from './PowerPicker';
+import { PowerSidePanel } from './PowerSidePanel';
+import { PanelRect } from '../../shared/ui/panels/side-panel';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -55,8 +56,11 @@ const GRAB_RADIUS_FACTOR = 6.0;
 /** Full-drag launch speed in source px/s. */
 const LAUNCH_SPEED_SRC = 3300;
 
-/** Powers available to players in Shell Curl — all powers in one row. */
-const DEFAULT_POWERS: PowerType[] = [
+/**
+ * Fallback power set used when no shell selection is in the registry
+ * (e.g. the player launched the scene directly without going through the picker).
+ */
+const FALLBACK_POWERS: PowerType[] = [
   PowerType.NONE,
   PowerType.HEAVY,
   PowerType.BOMB,
@@ -82,6 +86,14 @@ const DEPTH_OVERLAY   = 100;
 
 /** Pause in ms between end-of-throw and advancing to next turn. */
 const SETTLING_DELAY_MS = 800;
+
+// Side-panel layout — panel sits in the LEFT strip beside the sheet.
+// Min width is deliberately lower than other games because the curling sheet
+// already has a reserved left margin (see curl-sheet.ts sheetX: 230).
+const SIDE_PANEL_MIN_W  = 110;
+const SIDE_PANEL_MAX_W  = 200;
+const SIDE_PANEL_PAD    = 12;
+const SIDE_PANEL_TOP    = 74;
 
 // ── Pinball bumpers ───────────────────────────────────────────────────────────
 
@@ -143,22 +155,27 @@ export class ShellCurlScene extends Phaser.Scene {
   private settlingTimer  = 0;
 
   // ── Mechanics ─────────────────────────────────────────────────────────────
-  private slingshot!:     Slingshot;
-  private sweepCtrl!:     SweepController;
-  private scoreHud!:      ScoreHud;
-  private powerPicker!:   PowerPicker;
+  private slingshot!:  Slingshot;
+  private sweepCtrl!:  SweepController;
+  private scoreHud!:   ScoreHud;
 
   // ── Graphics layers ───────────────────────────────────────────────────────
-  private bgGfx!:         Phaser.GameObjects.Graphics;
-  private sheetGfx!:      Phaser.GameObjects.Graphics;
-  private bumperGfx!:     Phaser.GameObjects.Graphics;
-  private hudObjects:     Phaser.GameObjects.GameObject[] = [];
+  private bgGfx!:      Phaser.GameObjects.Graphics;
+  private sheetGfx!:   Phaser.GameObjects.Graphics;
+  private bumperGfx!:  Phaser.GameObjects.Graphics;
+  private hudObjects:  Phaser.GameObjects.GameObject[] = [];
 
   // ── Bumpers ───────────────────────────────────────────────────────────────
-  private bumpers:        Bumper[] = [];
+  private bumpers:     Bumper[] = [];
 
   // ── Overlay ───────────────────────────────────────────────────────────────
   private overlayContainer: Phaser.GameObjects.Container | null = null;
+
+  // ── Power side panel (replaces the bottom PowerPicker bar) ────────────────
+  private powerSidePanel: PowerSidePanel | null = null;
+
+  // ── Per-player power pools (read from registry, set in create()) ──────────
+  private playerPowers: [PowerType[], PowerType[]] = [FALLBACK_POWERS, FALLBACK_POWERS];
 
   constructor() { super({ key: 'ShellCurlScene' }); }
 
@@ -168,9 +185,27 @@ export class ShellCurlScene extends Phaser.Scene {
     this.arena       = rectArenaToScreen(CURL_SHEET, this.scale.width, this.scale.height);
     this.turnManager = new TurnManager({ totalEnds: TOTAL_ENDS, stonesPerTeam: STONES_PER_TEAM });
 
-    // Power registry — register only the subset offered in Shell Curl
+    // Read per-player shell selections from the registry (set by ShellPickerScene).
+    // Falls back to FALLBACK_POWERS if no selection is present (direct launch / dev).
+    const sel = this.registry.get('shellSelection') as
+      { player0?: string[]; player1?: string[] } | undefined;
+
+    const buildPool = (picks: string[] | undefined): PowerType[] => {
+      const specials = (picks ?? [])
+        .map((s) => s as PowerType)
+        .filter((s) => (Object.values(PowerType) as string[]).includes(s) && s !== PowerType.NONE);
+      return [PowerType.NONE, ...new Set(specials)];
+    };
+
+    const p0 = buildPool(sel?.player0);
+    const p1 = buildPool(sel?.player1);
+    this.playerPowers = [
+      p0.length > 1 ? p0 : FALLBACK_POWERS,
+      p1.length > 1 ? p1 : FALLBACK_POWERS,
+    ];
+
+    // Power registry — register ALL powers so the registry can always resolve any type
     this.powerRegistry = new PowerRegistry();
-    // Register all powers so badge colours are always available
     for (const type of Object.values(PowerType)) {
       this.powerRegistry.register(ALL_POWERS[type]);
     }
@@ -187,9 +222,8 @@ export class ShellCurlScene extends Phaser.Scene {
     this.drawBumpers();
 
     // HUD
-    this.scoreHud    = new ScoreHud(this, DEPTH_HUD);
-    this.powerPicker = new PowerPicker(this, this.powerRegistry, DEPTH_HUD);
-    this.hudObjects  = buildReturnButton(this);
+    this.scoreHud   = new ScoreHud(this, DEPTH_HUD);
+    this.hudObjects = buildReturnButton(this);
 
     // Slingshot (shared mechanic) — starts detached; attached when stone is placed
     this.slingshot = new Slingshot(
@@ -209,7 +243,7 @@ export class ShellCurlScene extends Phaser.Scene {
     this.sweepCtrl = new SweepController(this, this.makeEmptyStone(), DEPTH_PARTICLES);
 
     this.scoreHud.update(this.turnManager.state);
-    this.beginTurn();
+    this.beginTurn(); // calls showPowerPanel() internally
 
     this.scale.on('resize', this.onResize, this);
   }
@@ -219,7 +253,8 @@ export class ShellCurlScene extends Phaser.Scene {
     this.slingshot.destroy();
     this.sweepCtrl.destroy();
     this.scoreHud.destroy();
-    this.powerPicker.destroy();
+    this.powerSidePanel?.destroy();
+    this.powerSidePanel = null;
     this.clearAllStoneGfx();
     this.bumperGfx.destroy();
     this.overlayContainer?.destroy(true);
@@ -367,18 +402,18 @@ export class ShellCurlScene extends Phaser.Scene {
     this.updateSlingshotTarget(stone);
     this.slingshot.attach();
 
-    this.powerPicker.show(DEFAULT_POWERS);
     this.scoreHud.update(state);
     this.addActiveRing(stone);
 
     this.turnManager.setPhase('aiming');
+    this.showPowerPanel();
   }
 
   private onLaunch(vx: number, vy: number): void {
     if (!this.activeStone || this.turnManager.state.phase !== 'aiming') return;
 
     // Apply power
-    const power = this.powerPicker.getSelected();
+    const power = this.powerSidePanel?.getSelected() ?? PowerType.NONE;
     this.activeStone.power = power;
     const def = this.powerRegistry.get(power);
     def.onApply(this.activeStone, this.arena);
@@ -401,7 +436,7 @@ export class ShellCurlScene extends Phaser.Scene {
       (lvx, lvy) => this.onLaunch(lvx, lvy),
     );
 
-    this.powerPicker.hide();
+    this.powerSidePanel?.hide();
     this.clearActiveRing();
 
     // Re-attach sweep controller to the active stone
@@ -1021,12 +1056,63 @@ export class ShellCurlScene extends Phaser.Scene {
 
     this.scoreHud.update(this.turnManager.state);
 
-    this.powerPicker.hide();
-    if (this.turnManager.state.phase === 'aiming') {
-      this.powerPicker.show(DEFAULT_POWERS);
-    }
-
     this.hudObjects.forEach(o => o.destroy());
     this.hudObjects = buildReturnButton(this);
+    this.updatePowerPanel();
+  }
+
+  // ── Power side panel ──────────────────────────────────────────────────────
+
+  private resolveLayout(): { rect: PanelRect; panelW: number } | null {
+    const { width: canvasW, height: canvasH } = this.scale;
+    const a = this.arena;
+
+    // Panel occupies the RIGHT strip beside the ice sheet.
+    const rightX = a.sheetX + a.sheetW + SIDE_PANEL_PAD;
+    const availW = canvasW - rightX - SIDE_PANEL_PAD;
+    if (availW < SIDE_PANEL_MIN_W) return null;
+
+    const panelW = Math.min(availW, SIDE_PANEL_MAX_W);
+    const panelH = canvasH - SIDE_PANEL_TOP - 16;
+    if (panelH < 200) return null;
+
+    return {
+      rect: { x: rightX, y: SIDE_PANEL_TOP, width: panelW, height: panelH },
+      panelW,
+    };
+  }
+
+  /** Returns the power pool for the team whose turn it currently is. */
+  private currentTeamPowers(): PowerType[] {
+    const team = this.turnManager.state.currentTeam;
+    return this.playerPowers[team] ?? FALLBACK_POWERS;
+  }
+
+  /** Show the power panel fresh at the start of each aiming turn (resets selection to NONE). */
+  private showPowerPanel(): void {
+    const layout = this.resolveLayout();
+    if (!layout) return;
+
+    if (!this.powerSidePanel) {
+      this.powerSidePanel = new PowerSidePanel(this, () => {}, DEPTH_HUD);
+    }
+    this.powerSidePanel.show(layout.rect, this.currentTeamPowers(), PowerType.NONE);
+  }
+
+  /** Refresh the power panel on resize — preserves the current selection. */
+  private updatePowerPanel(): void {
+    const layout   = this.resolveLayout();
+    const isAiming = this.turnManager.state.phase === 'aiming';
+
+    if (!layout || !isAiming) {
+      this.powerSidePanel?.hide();
+      return;
+    }
+
+    if (!this.powerSidePanel) {
+      this.powerSidePanel = new PowerSidePanel(this, () => {}, DEPTH_HUD);
+    }
+    const sel = this.powerSidePanel.getSelected();
+    this.powerSidePanel.show(layout.rect, this.currentTeamPowers(), sel);
   }
 }

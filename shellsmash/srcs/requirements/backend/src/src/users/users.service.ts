@@ -1,14 +1,17 @@
-import { ConflictException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { ConflictException, forwardRef, Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { Profile } from '../profiles/entities/profile.entity';
+import { ShellsService } from '../shells/shells.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)    private readonly usersRepo: Repository<User>,
     @InjectRepository(Profile) private readonly profilesRepo: Repository<Profile>,
+    @Inject(forwardRef(() => ShellsService))
+    private readonly shellsService: ShellsService,
   ) {}
 
   async findById(id: number): Promise<User | null> {
@@ -59,7 +62,11 @@ export class UsersService {
       const profile      = this.profilesRepo.create();
       const savedProfile = await this.profilesRepo.save(profile);
       const user         = this.usersRepo.create({ ...data, profile: savedProfile });
-      return await this.usersRepo.save(user);
+      const savedUser    = await this.usersRepo.save(user);
+      // Seed 999 of every shell for the new user.
+      // Non-fatal: if this fails the user is still created successfully.
+      await this.shellsService.seedInventory(savedUser);
+      return savedUser;
     } catch (err: unknown) {
       // PostgreSQL unique-violation on username (or any other unique column).
       // TypeORM wraps the driver error but preserves the original `code`.

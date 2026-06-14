@@ -12,6 +12,9 @@ import { BallState, BALL_SRC_R, drawShellBall, isBallMoving, stepBall } from '..
 import { Slingshot } from '../../shared/mechanics/slingshot';
 import { buildReturnButton } from '../../shared/mechanics/hud';
 import { THEME } from '../../shared/theme';
+import { PanelRect, SidePanel, SidePanelRow } from '../../shared/ui/panels/side-panel';
+import { PowerType, GameEffectHook, ALL_POWERS } from '../../shared/mechanics/power-system';
+import { GAME_POWERS } from '../../shared/mechanics/game-powers';
 
 type ZoneKind = 'red' | 'yellow' | 'green';
 
@@ -23,6 +26,15 @@ interface ScoreZone {
 
 const SHOTS_TOTAL = 3;
 const MAX_DRAG_SRC = 380;
+
+// Side-panel layout
+const SIDE_PANEL_MIN_CANVAS_W = 1_180;
+const SIDE_PANEL_MIN_CANVAS_H = 560;
+const SIDE_PANEL_MIN_W        = 168;
+const SIDE_PANEL_MAX_W        = 230;
+const SIDE_PANEL_PAD          = 16;
+const SIDE_PANEL_TOP          = 74;
+const SCORE_LOG_LIMIT         = 8;
 const LAUNCH_SPEED_SRC = 4_720;
 const BELL_RADIUS_SRC = 150;
 const SPAWN_GAP_SRC = 118;
@@ -74,6 +86,17 @@ export class BellClashScene extends Phaser.Scene {
   private shotText: Phaser.GameObjects.Text | null = null;
   private lastHitText: Phaser.GameObjects.Text | null = null;
 
+  private infoPanel:     SidePanel | null = null;
+  private scoreLogPanel: SidePanel | null = null;
+  private scoreEvents:   string[]         = [];
+
+  /**
+   * Shell powers available to the player this game (read from registry).
+   * TODO(#shell-effects-bellclash): implement per-power game effects.
+   */
+  private playerPowers: PowerType[] = [PowerType.NONE];
+  private activePower:  PowerType   = PowerType.NONE;
+
   constructor() { super({ key: 'BellClashScene' }); }
 
   create(): void {
@@ -93,8 +116,24 @@ export class BellClashScene extends Phaser.Scene {
     this.scoreText = null;
     this.shotText = null;
     this.lastHitText = null;
+    this.infoPanel = null;
+    this.scoreLogPanel = null;
+    this.scoreEvents = [];
 
     this.arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
+
+    // Read shell selection from registry (set by ShellPickerScene).
+    const sel = this.registry.get('shellSelection') as
+      { player0?: string[] } | undefined;
+    const specials = (sel?.player0 ?? [])
+      .map((s) => s as PowerType)
+      .filter((s) => (Object.values(PowerType) as string[]).includes(s) && s !== PowerType.NONE);
+    this.playerPowers = [PowerType.NONE, ...new Set(specials)];
+    if (this.playerPowers.length <= 1) {
+      this.playerPowers = [PowerType.NONE, ...GAME_POWERS['bell-clash']];
+    }
+    this.activePower = PowerType.NONE;
+
     this.setupShot();
 
     this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
@@ -114,6 +153,7 @@ export class BellClashScene extends Phaser.Scene {
     this.drawBell();
     drawShellBall(this.ballGfx, this.ball);
     this.buildHud();
+    this.updateSidePanels();
 
     this.scale.on('resize', this.onResize, this);
   }
@@ -128,6 +168,7 @@ export class BellClashScene extends Phaser.Scene {
     this.scoreText = null;
     this.shotText = null;
     this.lastHitText = null;
+    this.destroySidePanels();
   }
 
   update(_time: number, delta: number): void {
@@ -159,6 +200,7 @@ export class BellClashScene extends Phaser.Scene {
 
     this.shotText?.setText(this.formatShotText());
     this.lastHitText?.setText('LAST HIT  -');
+    this.updateSidePanels();
   }
 
   private finishShot(): void {
@@ -260,6 +302,7 @@ export class BellClashScene extends Phaser.Scene {
     this.scoreText?.setText(`SCORE  ${this.score}`);
     this.lastHitText?.setText(`LAST HIT  ${label} x${multiplier}`);
     this.popScore(this.ball.x, this.ball.y, `+${gained}  ${label}`, color);
+    this.addScoreEvent(`${label}  +${gained}`, `x${multiplier}`);
   }
 
   private zoneAt(angle: number): ScoreZone | null {
@@ -280,6 +323,7 @@ export class BellClashScene extends Phaser.Scene {
     this.slingshot?.cancel();
     this.ball.vx = 0;
     this.ball.vy = 0;
+    this.updateSidePanels();
     this.showEndScreen();
   }
 
@@ -594,5 +638,138 @@ export class BellClashScene extends Phaser.Scene {
       this.overlay.destroy(true);
       this.showEndScreen();
     }
+    this.updateSidePanels();
+  }
+
+  // ── Side panels ─────────────────────────────────────────────────────────────
+
+  private resolveLayout(): { leftPanel?: PanelRect; rightPanel?: PanelRect } {
+    const { width, height } = this.scale;
+    if (width < SIDE_PANEL_MIN_CANVAS_W || height < SIDE_PANEL_MIN_CANVAS_H) return {};
+
+    const arena      = this.arena;
+    const leftFreeW  = arena.cx - arena.rx - SIDE_PANEL_PAD * 2;
+    const rightFreeW = width - (arena.cx + arena.rx) - SIDE_PANEL_PAD * 2;
+    const panelW     = Math.floor(Math.min(SIDE_PANEL_MAX_W, leftFreeW, rightFreeW));
+    if (panelW < SIDE_PANEL_MIN_W) return {};
+
+    const panelH     = height - SIDE_PANEL_TOP - SIDE_PANEL_PAD;
+    const leftPanel  = { x: SIDE_PANEL_PAD, y: SIDE_PANEL_TOP, width: panelW, height: panelH };
+    const rightPanel = { x: width - SIDE_PANEL_PAD - panelW, y: SIDE_PANEL_TOP, width: panelW, height: panelH };
+    return { leftPanel, rightPanel };
+  }
+
+  private updateSidePanels(): void {
+    const layout = this.resolveLayout();
+    if (!layout.leftPanel || !layout.rightPanel) {
+      this.destroySidePanels();
+      return;
+    }
+
+    this.infoPanel     ??= new SidePanel(this, DEPTH_HUD);
+    this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
+
+    this.infoPanel.update({
+      title: 'ZONE VALUES',
+      rect: layout.leftPanel,
+      rows: this.buildInfoRows(),
+    });
+    this.scoreLogPanel.update({
+      title: 'SHOT LOG',
+      rect: layout.rightPanel,
+      rows: this.buildScoreLogRows(),
+      footerRows: this.buildScoreFooterRows(),
+    });
+  }
+
+  private destroySidePanels(): void {
+    this.infoPanel?.destroy();
+    this.scoreLogPanel?.destroy();
+    this.infoPanel     = null;
+    this.scoreLogPanel = null;
+  }
+
+  private buildInfoRows(): SidePanelRow[] {
+    return [
+      { label: 'Green ×2',    subtitle: '200 pts', icon: (g, x, y, s) => this.drawZoneIcon(g, x, y, s, 0x4aa564) },
+      { label: 'Yellow ×1.5', subtitle: '150 pts', icon: (g, x, y, s) => this.drawZoneIcon(g, x, y, s, THEME.gold) },
+      { label: 'Red ×0.5',   subtitle: '50 pts',  icon: (g, x, y, s) => this.drawZoneIcon(g, x, y, s, THEME.red) },
+      { label: 'Neutral ×1', subtitle: '100 pts', icon: (g, x, y, s) => this.drawZoneIcon(g, x, y, s, 0x888888) },
+      { label: '3 shots total',      muted: true },
+      { label: 'Zones move each shot', muted: true },
+    ];
+  }
+
+  private buildScoreLogRows(): SidePanelRow[] {
+    if (this.scoreEvents.length === 0) return [{ label: 'No hits yet', muted: true }];
+    return this.scoreEvents.map((event, index) => {
+      const [label, value] = event.split('\t');
+      return { label, value, muted: index > 3 };
+    });
+  }
+
+  private buildScoreFooterRows(): SidePanelRow[] {
+    return [
+      {
+        label: 'SHOT',
+        value: `${this.currentShot + 1}/${SHOTS_TOTAL}`,
+        labelColor: THEME.text,
+        valueColor: THEME.text,
+        labelFontSize: '13px',
+        valueFontSize: '18px',
+      },
+      {
+        label: 'SCORE',
+        value: String(this.score),
+        labelColor: THEME.textGold,
+        valueColor: THEME.textGold,
+        labelFontSize: '14px',
+        valueFontSize: '24px',
+      },
+    ];
+  }
+
+  private addScoreEvent(label: string, value: string): void {
+    this.scoreEvents.unshift(`${label}\t${value}`);
+    this.scoreEvents = this.scoreEvents.slice(0, SCORE_LOG_LIMIT);
+    this.updateSidePanels();
+  }
+
+  /**
+   * Draw a small arc-wedge icon representing a bell score zone.
+   * Filled sector from centre, coloured at 35% alpha + bright stroke arc.
+   */
+  private drawZoneIcon(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    size: number,
+    color: number,
+  ): void {
+    const r      = size * 0.46;
+    const startA = -Math.PI * 0.75;
+    const endA   = -Math.PI * 0.25;
+    const steps  = 10;
+
+    g.fillStyle(color, 0.35);
+    g.beginPath();
+    g.moveTo(x, y);
+    for (let i = 0; i <= steps; i++) {
+      const a = startA + (endA - startA) * (i / steps);
+      g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+    }
+    g.closePath();
+    g.fillPath();
+
+    g.lineStyle(Math.max(1.5, size * 0.07), color, 0.9);
+    g.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const a = startA + (endA - startA) * (i / steps);
+      const px = x + Math.cos(a) * r;
+      const py = y + Math.sin(a) * r;
+      if (i === 0) g.moveTo(px, py);
+      else g.lineTo(px, py);
+    }
+    g.strokePath();
   }
 }

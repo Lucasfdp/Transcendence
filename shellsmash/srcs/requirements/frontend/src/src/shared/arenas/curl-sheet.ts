@@ -12,10 +12,12 @@ export const CURL_SHEET: RectArenaDef = {
   srcW: 1920,
   srcH: 1080,
 
-  // Sheet rectangle — nearly full canvas, landscape
+  // Sheet rectangle — right margin widened to 230 src-px so the power-guide
+  // side panel can fit in the right strip at typical screen resolutions.
+  // Left margin stays at 120 (original). Total: 120 + 1570 + 230 = 1920. ✓
   sheetX: 120,
   sheetY: 100,
-  sheetW: 1680,
+  sheetW: 1570,
   sheetH:  880,
 
   // House geometry — scoring house is at the RIGHT end

@@ -33,11 +33,74 @@
 import Phaser from 'phaser';
 import { shellSkinAccentColor } from '../shared/cosmetics';
 import { THEME } from '../shared/theme';
+import { PowerType } from '../shared/mechanics/power-system';
 
 // Fixed panel geometry
-const PW  = 320;  // panel width
-const PH  = 568;  // panel height (extra 28 px for the coins row)
-const PAD = 20;   // internal padding
+const PW       = 320;  // panel width
+const PH_BASE  = 568;  // panel height without inventory section
+const PAD      = 20;   // internal padding
+
+// Inventory section geometry
+const INV_ROW_H   = 22;  // height per chip row
+const INV_COLS    = 4;   // chips per row
+const INV_GAP     = 4;   // gap between chips
+const INV_HDR_H   = 38;  // divider + title height
+
+// The 21 special shell types shown in the inventory (no NONE/normal)
+const INVENTORY_SHELL_TYPES = Object.values(PowerType).filter((p) => p !== PowerType.NONE);
+
+const INV_ROWS    = Math.ceil(INVENTORY_SHELL_TYPES.length / INV_COLS);
+const INV_BODY_H  = INV_ROWS * INV_ROW_H + (INV_ROWS - 1) * INV_GAP;
+const INV_SECTION_H = INV_HDR_H + INV_BODY_H + 12;
+
+// Short display labels for each shell type (PowerSidePanel has full names)
+const SHELL_SHORT: Partial<Record<PowerType, string>> = {
+  [PowerType.HEAVY]:    'Heavy',
+  [PowerType.BOMB]:     'Bomb',
+  [PowerType.SPLITTER]: 'Split',
+  [PowerType.GHOST]:    'Ghost',
+  [PowerType.MAGNET]:   'Magnet',
+  [PowerType.SPINNING]: 'Spin',
+  [PowerType.BOUNCER]:  'Bounce',
+  [PowerType.SHIELD]:   'Shield',
+  [PowerType.FREEZE]:   'Freeze',
+  [PowerType.SLICK]:    'Slick',
+  [PowerType.ROCKET]:   'Rocket',
+  [PowerType.GIANT]:    'Giant',
+  [PowerType.TINY]:     'Tiny',
+  [PowerType.BOOMERANG]:'Boomer',
+  [PowerType.REPEL]:    'Repel',
+  [PowerType.STICKY]:   'Sticky',
+  [PowerType.LIGHTNING]:'Bolt',
+  [PowerType.VORTEX]:   'Vortex',
+  [PowerType.CLONE]:    'Clone',
+  [PowerType.RICOCHET]: 'Ricoch',
+  [PowerType.PHANTOM]:  'Phantom',
+};
+
+const SHELL_COLOUR: Partial<Record<PowerType, number>> = {
+  [PowerType.HEAVY]:    0x886633,
+  [PowerType.BOMB]:     0xff6600,
+  [PowerType.SPLITTER]: 0xffee00,
+  [PowerType.GHOST]:    0xaaddff,
+  [PowerType.MAGNET]:   0xff44cc,
+  [PowerType.SPINNING]: 0x44ffcc,
+  [PowerType.BOUNCER]:  0xff8800,
+  [PowerType.SHIELD]:   0x44cc44,
+  [PowerType.FREEZE]:   0x88ccff,
+  [PowerType.SLICK]:    0xccffee,
+  [PowerType.ROCKET]:   0xff3333,
+  [PowerType.GIANT]:    0xcc66ff,
+  [PowerType.TINY]:     0x99eeaa,
+  [PowerType.BOOMERANG]:0xffcc00,
+  [PowerType.REPEL]:    0xff6688,
+  [PowerType.STICKY]:   0xaa8855,
+  [PowerType.LIGHTNING]:0xeeff44,
+  [PowerType.VORTEX]:   0x6699ff,
+  [PowerType.CLONE]:    0x55dddd,
+  [PowerType.RICOCHET]: 0xff9944,
+  [PowerType.PHANTOM]:  0xbbbbbb,
+};
 
 // ── Rank belt mapping ─────────────────────────────────────────────────────────
 function getRank(level: number): { label: string; colour: number } {
@@ -52,11 +115,17 @@ export class ProfilePanel {
   private readonly scene:     Phaser.Scene;
   private readonly container: Phaser.GameObjects.Container;
 
-  constructor(scene: Phaser.Scene, user: any, panelX: number, panelY: number) {
+  constructor(
+    scene: Phaser.Scene,
+    user: any,
+    panelX: number,
+    panelY: number,
+    shellInventory?: Record<string, number>,
+  ) {
     this.scene     = scene;
     this.container = scene.add.container(panelX, panelY);
     this.container.setDepth(100); // always on top
-    this.build(user);
+    this.build(user, shellInventory);
     this.container.setVisible(false);
   }
 
@@ -106,7 +175,8 @@ export class ProfilePanel {
 
   // ── Build ────────────────────────────────────────────────────────────────────
 
-  private build(user: any) {
+  private build(user: any, shellInventory?: Record<string, number>) {
+    const PH = shellInventory ? PH_BASE + INV_SECTION_H : PH_BASE;
     const children: Phaser.GameObjects.GameObject[] = [];
 
     // ── 1. Panel background ───────────────────────────────────────────────────
@@ -359,7 +429,70 @@ export class ProfilePanel {
       }).setOrigin(0.5, 0));
     }
 
-    // ── 14. Close button ──────────────────────────────────────────────────────
+    // ── 14. Shell inventory grid (only when inventory data is available) ──────
+    if (shellInventory) {
+      const invStartY = winRateY + 40;
+
+      // Divider
+      const invDivGfx = this.scene.add.graphics();
+      invDivGfx.lineStyle(1, THEME.gold, 0.22);
+      invDivGfx.lineBetween(PAD, invStartY, PW - PAD, invStartY);
+      children.push(invDivGfx);
+
+      // Section title
+      children.push(this.scene.add.text(PAD, invStartY + 8, 'SHELL INVENTORY', {
+        fontSize: '10px', color: THEME.textMutedHex,
+        fontFamily: THEME.font, fontStyle: 'bold',
+      }));
+
+      // Grid of shell chips
+      const chipW   = Math.floor((PW - PAD * 2 - INV_GAP * (INV_COLS - 1)) / INV_COLS);
+      const gridStartY = invStartY + INV_HDR_H;
+      const invGfx  = this.scene.add.graphics();
+      children.push(invGfx);
+
+      INVENTORY_SHELL_TYPES.forEach((shellType, idx) => {
+        const col    = idx % INV_COLS;
+        const row    = Math.floor(idx / INV_COLS);
+        const cx     = PAD + col * (chipW + INV_GAP);
+        const cy     = gridStartY + row * (INV_ROW_H + INV_GAP);
+        const colour = SHELL_COLOUR[shellType] ?? 0x888888;
+        const qty    = shellInventory[shellType] ?? 0;
+        const label  = SHELL_SHORT[shellType] ?? shellType;
+        const isEmpty = qty <= 0;
+
+        // Chip background
+        invGfx.fillStyle(colour, isEmpty ? 0.06 : 0.14);
+        invGfx.fillRoundedRect(cx, cy, chipW, INV_ROW_H, 4);
+        invGfx.lineStyle(1, colour, isEmpty ? 0.20 : 0.55);
+        invGfx.strokeRoundedRect(cx, cy, chipW, INV_ROW_H, 4);
+
+        // Colour dot
+        invGfx.fillStyle(colour, isEmpty ? 0.25 : 0.85);
+        invGfx.fillCircle(cx + 8, cy + INV_ROW_H / 2, 3);
+
+        // Shell name
+        children.push(this.scene.add.text(cx + 14, cy + 5, label, {
+          fontSize:  '8px',
+          color:     isEmpty ? THEME.textMutedHex : THEME.text,
+          fontFamily: THEME.font,
+        }));
+
+        // Quantity badge (right-aligned in chip)
+        const qtyLabel = qty >= 999 ? '∞' : `${qty}`;
+        children.push(this.scene.add.text(cx + chipW - 3, cy + 5, qtyLabel, {
+          fontSize:  '8px',
+          color:     isEmpty
+            ? THEME.textMutedHex
+            : Phaser.Display.Color.IntegerToColor(colour).rgba,
+          fontFamily: THEME.font,
+          fontStyle:  'bold',
+          align:      'right',
+        }).setOrigin(1, 0));
+      });
+    }
+
+    // ── 15. Close button ──────────────────────────────────────────────────────
     const closeBtnY = PH - 38;
     const closeGfx  = this.scene.add.graphics();
     const paintClose = (hovered: boolean) => {

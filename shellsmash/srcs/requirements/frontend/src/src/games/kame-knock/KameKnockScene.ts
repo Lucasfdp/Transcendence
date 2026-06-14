@@ -25,6 +25,8 @@ import {
   timedTargetRadius,
 } from '../../shared/mechanics/timed-targets';
 import { THEME } from '../../shared/theme';
+import { PowerType } from '../../shared/mechanics/power-system';
+import { GAME_POWERS } from '../../shared/mechanics/game-powers';
 
 interface BallRoundConfig {
   readonly totalTargets: number;
@@ -97,6 +99,11 @@ export class KameKnockScene extends Phaser.Scene {
   private overlay?: Phaser.GameObjects.Container;
   private overlayHitZones: Phaser.GameObjects.Zone[] = [];
 
+  /** Power pool for the current player, populated from ShellPickerScene registry. */
+  private playerPowers: PowerType[] = [PowerType.NONE, ...GAME_POWERS['kame-knock']];
+  /** Currently active power (NONE = no power selected). */
+  private activePower: PowerType = PowerType.NONE;
+
   constructor() { super({ key: 'KameKnockScene' }); }
 
   create(): void {
@@ -120,6 +127,19 @@ export class KameKnockScene extends Phaser.Scene {
 
     this.arena = this.resolveArena();
     this.resetBall();
+
+    // Read shell selection from registry (set by ShellPickerScene).
+    // KameKnock uses player0's selection as the single active power pool.
+    const sel = this.registry.get('shellSelection') as
+      { player0?: string[] } | undefined;
+    const specials = (sel?.player0 ?? [])
+      .map((s) => s as PowerType)
+      .filter((s) => (Object.values(PowerType) as string[]).includes(s) && s !== PowerType.NONE);
+    this.playerPowers = [PowerType.NONE, ...new Set(specials)];
+    if (this.playerPowers.length <= 1) {
+      this.playerPowers = [PowerType.NONE, ...GAME_POWERS['kame-knock']];
+    }
+    this.activePower = PowerType.NONE;
 
     this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
     this.targetGfx = this.add.graphics().setDepth(DEPTH_TARGETS);

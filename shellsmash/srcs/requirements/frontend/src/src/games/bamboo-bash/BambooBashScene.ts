@@ -24,6 +24,9 @@ import {
   Bamboo, STAGE_POINTS,
   stepBamboo, randomSpot, bambooPos, hitsBamboo, drawBamboo,
 } from './bamboo';
+import { PanelRect, SidePanel, SidePanelRow } from '../../shared/ui/panels/side-panel';
+import { PowerType, GameEffectHook, ALL_POWERS } from '../../shared/mechanics/power-system';
+import { GAME_POWERS } from '../../shared/mechanics/game-powers';
 
 // Slingshot tuning in arena source px (scaled by the letterbox factor so the
 // game feels identical at 1080p, 4K, or a tiny window)
@@ -37,6 +40,15 @@ const MAX_BAMBOO      = 6;       // max bamboo alive at once
 const START_BAMBOO    = 2;       // bamboo present when the round begins
 
 const DEPTH_OVERLAY = 30;
+
+// Side-panel layout
+const SIDE_PANEL_MIN_CANVAS_W = 1_180;
+const SIDE_PANEL_MIN_CANVAS_H = 560;
+const SIDE_PANEL_MIN_W        = 168;
+const SIDE_PANEL_MAX_W        = 230;
+const SIDE_PANEL_PAD          = 16;
+const SIDE_PANEL_TOP          = 74;
+const SCORE_LOG_LIMIT         = 8;
 
 export class BambooBashScene extends Phaser.Scene {
   private bgGfx!:     Phaser.GameObjects.Graphics;
@@ -59,6 +71,18 @@ export class BambooBashScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
   private overlay?: Phaser.GameObjects.Container;
 
+  private infoPanel:     SidePanel | null = null;
+  private scoreLogPanel: SidePanel | null = null;
+  private scoreEvents:   string[]         = [];
+
+  /**
+   * Shell powers available to the player this game (read from registry).
+   * Each power's onActivate is a stub — real effects are implemented incrementally.
+   * TODO(#shell-effects-bamboo): implement per-power game effects.
+   */
+  private playerPowers: PowerType[] = [PowerType.NONE];
+  private activePower:  PowerType   = PowerType.NONE;
+
   constructor() { super({ key: 'BambooBashScene' }); }
 
   create(): void {
@@ -69,9 +93,25 @@ export class BambooBashScene extends Phaser.Scene {
     this.timeLeftMs = ROUND_MS;
     this.running = true;
     this.overlay = undefined;
+    this.infoPanel = null;
+    this.scoreLogPanel = null;
+    this.scoreEvents = [];
 
     this.arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
     this.resetBall();
+
+    // Read shell selection from registry (set by ShellPickerScene).
+    // Falls back to the full GAME_POWERS list for bamboo-bash if nothing was selected.
+    const sel = this.registry.get('shellSelection') as
+      { player0?: string[] } | undefined;
+    const specials = (sel?.player0 ?? [])
+      .map((s) => s as PowerType)
+      .filter((s) => (Object.values(PowerType) as string[]).includes(s) && s !== PowerType.NONE);
+    this.playerPowers = [PowerType.NONE, ...new Set(specials)];
+    if (this.playerPowers.length <= 1) {
+      this.playerPowers = [PowerType.NONE, ...GAME_POWERS['bamboo-bash']];
+    }
+    this.activePower = PowerType.NONE;
 
     this.bgGfx     = this.add.graphics().setDepth(0);
     this.bambooGfx = this.add.graphics().setDepth(1);
@@ -90,6 +130,7 @@ export class BambooBashScene extends Phaser.Scene {
     this.drawBamboos();
     drawShellBall(this.ballGfx, this.ball);
     this.buildHud();
+    this.updateSidePanels();
 
     this.scale.on('resize', this.onResize, this);
   }
@@ -98,6 +139,7 @@ export class BambooBashScene extends Phaser.Scene {
     this.scale.off('resize', this.onResize, this);
     this.slingshot.destroy();
     this.overlay?.destroy(true);
+    this.destroySidePanels();
   }
 
   update(_time: number, delta: number): void {
@@ -145,6 +187,7 @@ export class BambooBashScene extends Phaser.Scene {
 
       const p = bambooPos(b, this.arena);
       this.popScore(p.x, p.y, points);
+      this.addScoreEvent(`Stage ${b.stage} bamboo`, `+${points}`);
       this.bamboos.splice(i, 1);
     }
   }
@@ -155,6 +198,7 @@ export class BambooBashScene extends Phaser.Scene {
     this.slingshot.cancel();
     this.ball.vx = 0;
     this.ball.vy = 0;
+    this.updateSidePanels();
     this.submitResult();
     this.showEndScreen();
   }
@@ -351,5 +395,115 @@ export class BambooBashScene extends Phaser.Scene {
     this.scoreText.setPosition(16, 16);
     this.timerText.setPosition(this.scale.width / 2, 16);
     this.overlay?.setPosition(this.scale.width / 2, this.scale.height / 2);
+    this.updateSidePanels();
+  }
+
+  // ── Side panels ─────────────────────────────────────────────────────────────
+
+  private resolveLayout(): { leftPanel?: PanelRect; rightPanel?: PanelRect } {
+    const { width, height } = this.scale;
+    if (width < SIDE_PANEL_MIN_CANVAS_W || height < SIDE_PANEL_MIN_CANVAS_H) return {};
+
+    const arena       = this.arena;
+    const leftFreeW   = arena.cx - arena.rx - SIDE_PANEL_PAD * 2;
+    const rightFreeW  = width - (arena.cx + arena.rx) - SIDE_PANEL_PAD * 2;
+    const panelW      = Math.floor(Math.min(SIDE_PANEL_MAX_W, leftFreeW, rightFreeW));
+    if (panelW < SIDE_PANEL_MIN_W) return {};
+
+    const panelH    = height - SIDE_PANEL_TOP - SIDE_PANEL_PAD;
+    const leftPanel  = { x: SIDE_PANEL_PAD, y: SIDE_PANEL_TOP, width: panelW, height: panelH };
+    const rightPanel = { x: width - SIDE_PANEL_PAD - panelW, y: SIDE_PANEL_TOP, width: panelW, height: panelH };
+    return { leftPanel, rightPanel };
+  }
+
+  private updateSidePanels(): void {
+    const layout = this.resolveLayout();
+    if (!layout.leftPanel || !layout.rightPanel) {
+      this.destroySidePanels();
+      return;
+    }
+
+    this.infoPanel     ??= new SidePanel(this, 20);
+    this.scoreLogPanel ??= new SidePanel(this, 20);
+
+    this.infoPanel.update({
+      title: 'BAMBOO GUIDE',
+      rect: layout.leftPanel,
+      rows: this.buildInfoRows(),
+    });
+    this.scoreLogPanel.update({
+      title: 'SCORE LOG',
+      rect: layout.rightPanel,
+      rows: this.buildScoreLogRows(),
+      footerRows: this.buildScoreFooterRows(),
+    });
+  }
+
+  private destroySidePanels(): void {
+    this.infoPanel?.destroy();
+    this.scoreLogPanel?.destroy();
+    this.infoPanel     = null;
+    this.scoreLogPanel = null;
+  }
+
+  private buildInfoRows(): SidePanelRow[] {
+    return [
+      { label: 'Stage 1', subtitle: '+100 pts', icon: (g, x, y, s) => this.drawBambooIcon(g, x, y, s, 1) },
+      { label: 'Stage 2', subtitle: '+150 pts', icon: (g, x, y, s) => this.drawBambooIcon(g, x, y, s, 2) },
+      { label: 'Stage 3', subtitle: '+250 pts', icon: (g, x, y, s) => this.drawBambooIcon(g, x, y, s, 3) },
+      { label: 'Grows every 5s', muted: true },
+      { label: '30s round',      muted: true },
+    ];
+  }
+
+  private buildScoreLogRows(): SidePanelRow[] {
+    if (this.scoreEvents.length === 0) return [{ label: 'No scores yet', muted: true }];
+    return this.scoreEvents.map((event, index) => {
+      const [label, value] = event.split('\t');
+      return { label, value, muted: index > 3 };
+    });
+  }
+
+  private buildScoreFooterRows(): SidePanelRow[] {
+    return [{
+      label: 'SCORE',
+      value: String(this.score),
+      labelColor: THEME.textGold,
+      valueColor: THEME.textGold,
+      labelFontSize: '14px',
+      valueFontSize: '24px',
+    }];
+  }
+
+  private addScoreEvent(label: string, value: string): void {
+    this.scoreEvents.unshift(`${label}\t${value}`);
+    this.scoreEvents = this.scoreEvents.slice(0, SCORE_LOG_LIMIT);
+    this.updateSidePanels();
+  }
+
+  /** Draw a mini bamboo cluster icon with `stage` canes, centred at (x, y). */
+  private drawBambooIcon(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    size: number,
+    stage: number,
+  ): void {
+    const caneW  = Math.max(2, size * 0.18);
+    const caneH  = size * (0.55 + stage * 0.12);
+    const spread = caneW + 2;
+    const topY   = y - caneH * 0.65;
+
+    for (let i = 0; i < stage; i++) {
+      const offset = stage === 1 ? 0 : (i - (stage - 1) / 2) * spread;
+      const cx     = x + offset;
+
+      g.fillStyle(0x4e9a3a, 1);
+      g.fillRect(cx - caneW / 2, topY, caneW, caneH);
+
+      g.lineStyle(Math.max(1, caneW * 0.3), 0x2c5a1e, 0.9);
+      g.lineBetween(cx - caneW / 2, topY + caneH * 0.4, cx + caneW / 2, topY + caneH * 0.4);
+      g.lineBetween(cx - caneW / 2, topY + caneH * 0.75, cx + caneW / 2, topY + caneH * 0.75);
+    }
   }
 }

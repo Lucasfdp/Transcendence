@@ -144,6 +144,18 @@ export interface MiniGameDefinition {
   description: string;
 }
 
+/**
+ * Maps shell type IDs to owned quantity.
+ * The 'none' key is always present (value: Infinity — never depleted).
+ */
+export interface ShellInventory {
+  [shellType: string]: number;
+}
+
+export interface ShellSelectionResult {
+  shellTypes: string[];
+}
+
 // ── API surface ───────────────────────────────────────────────────────────────
 
 export const api = {
@@ -216,5 +228,25 @@ export const api = {
     apiFetch<ProgressionResult>('/game-results', {
       method: 'POST',
       body:   JSON.stringify({ gameId, outcome }),
+    }),
+
+  /**
+   * Fetch the logged-in player's shell inventory.
+   * Returns { shellType: quantity } — 'none' is always Infinity.
+   * Throws AuthError if unauthenticated.
+   */
+  getShellInventory: (): Promise<ShellInventory> =>
+    apiFetch<ShellInventory>('/shells/inventory'),
+
+  /**
+   * Validate a shell selection against the backend before starting a game.
+   * Body: up to 3 special shell IDs (not counting 'none').
+   * Returns the validated list on success; throws AuthError(400) on failure.
+   * This does NOT deduct inventory — it is read-only.
+   */
+  validateShellSelection: (shellTypes: string[]): Promise<ShellSelectionResult> =>
+    apiFetch<ShellSelectionResult>('/shells/validate-selection', {
+      method: 'POST',
+      body:   JSON.stringify({ shellTypes }),
     }),
 };
