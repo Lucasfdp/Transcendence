@@ -83,6 +83,7 @@ const HOTSPOTS: HotspotDef[] = [
 
 // Cherry blossom petal colours (rotated randomly per petal)
 const PETAL_COLOURS = [0xFFB7C5, 0xFFC8D3, 0xFFD9E2, 0xFF8FAD, 0xFFE4EC, 0xffffff];
+type HubBackgroundPreset = 'default_dojo' | 'sunset_dojo';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -216,22 +217,6 @@ export class HubScene extends Phaser.Scene {
     this.bgOffX  = (width  - SRC_W * this.bgScale) / 2;
     this.bgOffY  = (height - SRC_H * this.bgScale) / 2;
 
-    // Always draw the procedural background first
-    this.drawBackground();
-
-    // If the art loaded, overlay it on top of the procedural scene
-    if (this.bgImageLoaded) {
-      const bgCX = this.bgOffX + (SRC_W * this.bgScale) / 2;
-      const bgCY = this.bgOffY + (SRC_H * this.bgScale) / 2;
-      this.bgImage = this.add
-        .image(bgCX, bgCY, 'hub-bg')
-        .setScale(this.bgScale)
-        .setDepth(DEPTH_IMAGE);
-    }
-
-    // Glow graphics layer — stable object, sits above bg, below HUD
-    this.glowGfx = this.add.graphics().setDepth(DEPTH_GLOW);
-
     // Fetch API data.  On a scene restart the previous values are still valid
     // (user session hasn't changed), but we refresh to catch any server-side
     // updates (e.g. level-up, new minigame unlock).
@@ -259,9 +244,17 @@ export class HubScene extends Phaser.Scene {
     // resize listener survived a previous shutdown).  Without this clear,
     // buildHotspots() and drawExtrasSection() would append onto stale zones,
     // creating duplicates that trigger two scene.start() calls on click.
+    this.clearLayer(this.bgLayer);
     this.clearLayer(this.hotspotLayer);
     this.clearLayer(this.extrasLayer);
     this.clearLayer(this.hudLayer);
+
+    // Draw after loading the user so persisted hub background presets apply on entry.
+    this.drawBackground();
+    this.syncBackgroundImageOverlay();
+
+    // Glow graphics layer — stable object, sits above bg, below HUD
+    this.glowGfx = this.add.graphics().setDepth(DEPTH_GLOW);
     this.buildHotspots();
     this.drawExtrasSection();
     this.drawHUD();
@@ -309,6 +302,7 @@ export class HubScene extends Phaser.Scene {
     // 3. Redraw procedural background at new dimensions
     this.clearLayer(this.bgLayer);
     this.drawBackground();
+    this.syncBackgroundImageOverlay();
 
     // 4. glowGfx is stable — clear it so a stale highlight isn't left over.
     // Guard with active check: if a resize fires during the async gap between
@@ -377,9 +371,50 @@ export class HubScene extends Phaser.Scene {
     layer.length = 0;
   }
 
-  // ── Procedural Japanese night-sky background ──────────────────────────────────
+  // ── Procedural Hub backgrounds ────────────────────────────────────────────────
 
   private drawBackground(): void {
+    switch (this.currentHubBackground()) {
+      case 'sunset_dojo':
+        this.drawSunsetDojoBackground();
+        return;
+      case 'default_dojo':
+      default:
+        this.drawDefaultDojoBackground();
+    }
+  }
+
+  private currentHubBackground(): HubBackgroundPreset {
+    const preset = this.user?.hubBackground;
+    return preset === 'sunset_dojo' ? 'sunset_dojo' : 'default_dojo';
+  }
+
+  private redrawBackground(): void {
+    this.clearLayer(this.bgLayer);
+    this.drawBackground();
+    this.syncBackgroundImageOverlay();
+  }
+
+  private syncBackgroundImageOverlay(): void {
+    if (!this.bgImageLoaded || this.currentHubBackground() !== 'default_dojo') {
+      this.bgImage?.destroy();
+      this.bgImage = null;
+      return;
+    }
+
+    const bgCX = this.bgOffX + (SRC_W * this.bgScale) / 2;
+    const bgCY = this.bgOffY + (SRC_H * this.bgScale) / 2;
+    if (this.bgImage?.active) {
+      this.bgImage.setPosition(bgCX, bgCY).setScale(this.bgScale);
+      return;
+    }
+    this.bgImage = this.add
+      .image(bgCX, bgCY, 'hub-bg')
+      .setScale(this.bgScale)
+      .setDepth(DEPTH_IMAGE);
+  }
+
+  private drawDefaultDojoBackground(): void {
     const { width, height } = this.scale;
 
     // Helper: register objects in bgLayer so they can be cleared on resize
@@ -539,6 +574,110 @@ export class HubScene extends Phaser.Scene {
       const pc = Phaser.Math.RND.pick(PETAL_COLOURS);
       const pa = Phaser.Math.FloatBetween(0.2, 0.55);
       petalGfx.fillStyle(pc, pa);
+      petalGfx.fillEllipse(px, py, pw, ph);
+    }
+  }
+
+  private drawSunsetDojoBackground(): void {
+    const { width, height } = this.scale;
+    const track = (...objs: Phaser.GameObjects.GameObject[]): void => {
+      this.bgLayer.push(...objs);
+    };
+
+    const gfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(gfx);
+
+    // Warm dusk gradient: orange horizon under a violet upper sky.
+    gfx.fillGradientStyle(0x2b174f, 0x2b174f, 0x73306d, 0x73306d, 1);
+    gfx.fillRect(0, 0, width, height * 0.48);
+    gfx.fillGradientStyle(0x73306d, 0x73306d, 0xd97832, 0xd97832, 1);
+    gfx.fillRect(0, height * 0.34, width, height * 0.32);
+    gfx.fillGradientStyle(0x2b1408, 0x2b1408, 0x100704, 0x100704, 1);
+    gfx.fillRect(0, height * 0.62, width, height * 0.38);
+
+    // Low sun and broad glow behind the dojo silhouettes.
+    const sunX = width * 0.72;
+    const sunY = height * 0.30;
+    const sunR = Math.min(width, height) * 0.082;
+    gfx.fillStyle(0xffb15f, 0.07); gfx.fillCircle(sunX, sunY, sunR * 3.1);
+    gfx.fillStyle(0xffc16f, 0.13); gfx.fillCircle(sunX, sunY, sunR * 2.0);
+    gfx.fillStyle(0xffd18a, 0.96); gfx.fillCircle(sunX, sunY, sunR);
+    gfx.fillGradientStyle(0xffb15f, 0xffb15f, 0x73306d, 0x73306d, 0.08, 0.08, 0, 0);
+    gfx.fillTriangle(
+      sunX, sunY + sunR,
+      sunX - width * 0.26, height * 0.76,
+      sunX + width * 0.26, height * 0.76,
+    );
+
+    const mtGfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(mtGfx);
+    mtGfx.fillStyle(0x281a3c, 0.46);
+    mtGfx.fillTriangle(0, height * 0.72, width * 0.28, height * 0.34, width * 0.55, height * 0.72);
+    mtGfx.fillTriangle(width * 0.42, height * 0.72, width * 0.70, height * 0.42, width, height * 0.72);
+    mtGfx.fillStyle(0x3d2042, 0.34);
+    mtGfx.fillTriangle(0, height * 0.72, width * 0.18, height * 0.50, width * 0.38, height * 0.72);
+    mtGfx.fillTriangle(width * 0.60, height * 0.72, width * 0.82, height * 0.46, width, height * 0.72);
+
+    const mistGfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(mistGfx);
+    mistGfx.fillGradientStyle(0xffb15f, 0xffb15f, 0xffb15f, 0xffb15f, 0, 0, 0.18, 0.18);
+    mistGfx.fillRect(0, height * 0.60, width, height * 0.12);
+
+    const pathGfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(pathGfx);
+    const pathTopW = width * 0.10;
+    const pathBotW = width * 0.40;
+    const pathTopY = height * 0.65;
+    const pathBotY = height;
+    const cx = width / 2;
+    pathGfx.fillStyle(0x382111, 0.90);
+    pathGfx.fillPoints([
+      { x: cx - pathTopW / 2, y: pathTopY },
+      { x: cx + pathTopW / 2, y: pathTopY },
+      { x: cx + pathBotW / 2, y: pathBotY },
+      { x: cx - pathBotW / 2, y: pathBotY },
+    ] as Phaser.Types.Math.Vector2Like[], true);
+    pathGfx.lineStyle(1, 0x160904, 0.42);
+    const rows = 7;
+    for (let row = 0; row <= rows; row++) {
+      const t = row / rows;
+      const py = pathTopY + (pathBotY - pathTopY) * t;
+      const hw = pathTopW / 2 + (pathBotW / 2 - pathTopW / 2) * t;
+      pathGfx.lineBetween(cx - hw, py, cx + hw, py);
+    }
+    pathGfx.lineBetween(cx, pathTopY, cx, pathBotY);
+
+    const lanternGfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(lanternGfx);
+    [0.18, 0.38, 0.62, 0.82].forEach((xFrac) => {
+      const lx = width * xFrac;
+      const ly = height * 0.30;
+      const lw = Math.min(width, height) * 0.022;
+      const lh = Math.min(width, height) * 0.040;
+      lanternGfx.lineStyle(1, 0x54321d, 0.70);
+      lanternGfx.lineBetween(lx, 0, lx, ly - lh);
+      lanternGfx.fillStyle(0xa94f20, 0.86);
+      lanternGfx.fillEllipse(lx, ly, lw * 2, lh * 2);
+      lanternGfx.fillStyle(0xffb347, 0.38);
+      lanternGfx.fillEllipse(lx, ly, lw * 1.4, lh * 1.4);
+      lanternGfx.fillStyle(0x6d3314, 0.92);
+      lanternGfx.fillRect(lx - lw * 0.7, ly - lh - 3, lw * 1.4, 5);
+      lanternGfx.fillRect(lx - lw * 0.7, ly + lh - 2, lw * 1.4, 5);
+      track(this.add.pointlight(lx, ly + lh * 0.5, 0xff8a24, 70, 0.36, 0.05));
+    });
+
+    this.drawBlossamTree(width * 0.06, height * 0.72, height * 0.38, true);
+    this.drawBlossamTree(width * 0.94, height * 0.72, height * 0.38, false);
+
+    const petalGfx = this.add.graphics().setDepth(DEPTH_BG);
+    track(petalGfx);
+    for (let i = 0; i < 28; i++) {
+      const px = Phaser.Math.Between(0, width);
+      const py = Phaser.Math.Between(height * 0.15, height * 0.85);
+      const pw = Phaser.Math.Between(5, 11);
+      const ph = Phaser.Math.Between(3, 7);
+      const pc = Phaser.Math.RND.pick([0xffc0cb, 0xffd08a, 0xffa66a, 0xffe1b8, 0xffffff]);
+      petalGfx.fillStyle(pc, Phaser.Math.FloatBetween(0.18, 0.50));
       petalGfx.fillEllipse(px, py, pw, ph);
     }
   }
@@ -1315,7 +1454,7 @@ export class HubScene extends Phaser.Scene {
       fontFamily: THEME.font,
       fontStyle: 'bold',
     }).setOrigin(0.5, 0);
-    const subtitle = this.add.text(px, py - panelH / 2 + 58, 'Unlock and equip shell skins for your turtle.', {
+    const subtitle = this.add.text(px, py - panelH / 2 + 58, 'Unlock and equip shell skins and Hub backgrounds.', {
       fontSize: this.scaledFont(12),
       color: THEME.textMutedHex,
       fontFamily: THEME.font,
@@ -1331,7 +1470,7 @@ export class HubScene extends Phaser.Scene {
         fontFamily: THEME.font,
       }).setOrigin(0.5));
     } else if (!cosmetics) {
-      children.push(this.add.text(px, top + 80, 'Loading shell skins...', {
+      children.push(this.add.text(px, top + 80, 'Loading cosmetics...', {
         fontSize: this.scaledFont(14),
         color: THEME.textMutedHex,
         fontFamily: THEME.font,
@@ -1340,13 +1479,31 @@ export class HubScene extends Phaser.Scene {
       const cardGap = 12;
       const cols = panelW < 560 ? 1 : 2;
       const cardW = (panelW - 48 - cardGap * (cols - 1)) / cols;
-      const cardH = 126;
-      cosmetics.forEach((cosmetic, index) => {
-        const col = index % cols;
-        const row = Math.floor(index / cols);
-        const x = px - panelW / 2 + 24 + col * (cardW + cardGap);
-        const y = top + row * (cardH + cardGap);
-        children.push(...this.drawCosmeticCard(x, y, cardW, cardH, cosmetic));
+      const cardH = 104;
+      let yCursor = top;
+      const sections: { title: string; items: Cosmetic[] }[] = [
+        { title: 'Shell Skins', items: cosmetics.filter((cosmetic) => cosmetic.type === 'shell_skin') },
+        { title: 'Hub Backgrounds', items: cosmetics.filter((cosmetic) => cosmetic.type === 'hub_background') },
+      ];
+
+      sections.forEach((section) => {
+        if (section.items.length === 0) return;
+        children.push(this.add.text(px - panelW / 2 + 24, yCursor, section.title.toUpperCase(), {
+          fontSize: this.scaledFont(11),
+          color: THEME.textGold,
+          fontFamily: THEME.font,
+          fontStyle: 'bold',
+        }));
+        yCursor += 22;
+
+        section.items.forEach((cosmetic, index) => {
+          const col = index % cols;
+          const row = Math.floor(index / cols);
+          const x = px - panelW / 2 + 24 + col * (cardW + cardGap);
+          const y = yCursor + row * (cardH + cardGap);
+          children.push(...this.drawCosmeticCard(x, y, cardW, cardH, cosmetic));
+        });
+        yCursor += Math.ceil(section.items.length / cols) * (cardH + cardGap) + 10;
       });
     }
 
@@ -1375,13 +1532,25 @@ export class HubScene extends Phaser.Scene {
 
     const preview = this.add.graphics();
     const accent = cosmetic.accentColor ?? shellSkinAccentColor(cosmetic.id);
-    preview.fillStyle(accent, cosmetic.owned ? 0.95 : 0.42);
-    preview.fillEllipse(x + 36, y + 36, 46, 30);
-    preview.lineStyle(2, THEME.gold, cosmetic.equipped ? 0.9 : 0.35);
-    preview.strokeEllipse(x + 36, y + 36, 46, 30);
-    preview.lineStyle(1, 0x000000, 0.35);
-    preview.lineBetween(x + 18, y + 36, x + 54, y + 36);
-    preview.lineBetween(x + 36, y + 22, x + 36, y + 50);
+    if (cosmetic.type === 'hub_background') {
+      preview.fillGradientStyle(0x2b174f, 0x2b174f, accent, accent, cosmetic.owned ? 0.95 : 0.42);
+      preview.fillRoundedRect(x + 14, y + 18, 44, 36, 5);
+      preview.fillStyle(cosmetic.id === 'sunset_dojo' ? 0xffd18a : 0xfff5d6, cosmetic.owned ? 0.9 : 0.36);
+      preview.fillCircle(x + 46, y + 28, 7);
+      preview.fillStyle(0x1a1005, cosmetic.owned ? 0.65 : 0.30);
+      preview.fillTriangle(x + 14, y + 54, x + 28, y + 34, x + 42, y + 54);
+      preview.fillTriangle(x + 30, y + 54, x + 46, y + 38, x + 58, y + 54);
+      preview.lineStyle(2, THEME.gold, cosmetic.equipped ? 0.9 : 0.35);
+      preview.strokeRoundedRect(x + 14, y + 18, 44, 36, 5);
+    } else {
+      preview.fillStyle(accent, cosmetic.owned ? 0.95 : 0.42);
+      preview.fillEllipse(x + 36, y + 36, 46, 30);
+      preview.lineStyle(2, THEME.gold, cosmetic.equipped ? 0.9 : 0.35);
+      preview.strokeEllipse(x + 36, y + 36, 46, 30);
+      preview.lineStyle(1, 0x000000, 0.35);
+      preview.lineBetween(x + 18, y + 36, x + 54, y + 36);
+      preview.lineBetween(x + 36, y + 22, x + 36, y + 50);
+    }
 
     const title = this.add.text(x + 72, y + 14, cosmetic.name, {
       fontSize: this.scaledFont(15),
@@ -1423,12 +1592,17 @@ export class HubScene extends Phaser.Scene {
 
   private async handleCosmeticAction(cosmetic: Cosmetic): Promise<void> {
     try {
-      const cosmetics = cosmetic.owned
+      const wasOwned = cosmetic.owned;
+      const cosmetics = wasOwned
         ? await api.equipCosmetic(cosmetic.id)
         : await api.buyCosmetic(cosmetic.id);
-      const equipped = cosmetics.find((item) => item.equipped);
-      if (this.user && equipped) this.user.shellSkin = equipped.id;
-      if (!cosmetic.owned) {
+      const equipped = cosmetics.find((item) => item.type === cosmetic.type && item.equipped);
+      if (this.user && equipped?.type === 'shell_skin') this.user.shellSkin = equipped.id;
+      if (this.user && equipped?.type === 'hub_background') {
+        this.user.hubBackground = equipped.id;
+        this.redrawBackground();
+      }
+      if (!wasOwned) {
         try { this.user = await api.getMe(); } catch { /* keep local user if refresh fails */ }
       }
       if (this.user) {
@@ -1442,7 +1616,7 @@ export class HubScene extends Phaser.Scene {
       }
       if (this.modalKind === 'customization') this.renderCustomizationModal(cosmetics, null);
     } catch {
-      if (this.modalKind === 'customization') this.renderCustomizationModal(null, 'Could not update shell skin.');
+      if (this.modalKind === 'customization') this.renderCustomizationModal(null, 'Could not update customization.');
     }
   }
 

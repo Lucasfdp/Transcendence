@@ -16,6 +16,7 @@ function makeUser(overrides: Partial<User> = {}): User {
   user.xp = overrides.xp ?? 0;
   user.coins = overrides.coins ?? 0;
   user.shellSkin = overrides.shellSkin ?? 'kanagawa';
+  user.hubBackground = overrides.hubBackground ?? 'default_dojo';
   user.profile = overrides.profile ?? new Profile();
   return user;
 }
@@ -101,6 +102,9 @@ describe('CustomizationService', () => {
     expect(cosmetics.find((cosmetic) => cosmetic.id === 'kanagawa')).toEqual(
       expect.objectContaining({ owned: true, equipped: true }),
     );
+    expect(cosmetics.find((cosmetic) => cosmetic.id === 'default_dojo')).toEqual(
+      expect.objectContaining({ owned: true, equipped: true }),
+    );
   });
 
   it('cannot equip locked cosmetic', async () => {
@@ -117,6 +121,17 @@ describe('CustomizationService', () => {
 
     expect(usersRepo.save).toHaveBeenCalledWith(expect.objectContaining({ shellSkin: 'dragon' }));
     expect(cosmetics.find((cosmetic) => cosmetic.id === 'dragon')?.equipped).toBe(true);
+  });
+
+  it('can equip owned hub background', async () => {
+    const user = makeUser();
+    cosmeticsRepo.find = jest.fn().mockResolvedValue([makeCosmetic(user, 'sunset_dojo')]);
+
+    const cosmetics = await service.equip(user, 'sunset_dojo');
+
+    expect(usersRepo.save).toHaveBeenCalledWith(expect.objectContaining({ hubBackground: 'sunset_dojo' }));
+    expect(cosmetics.find((cosmetic) => cosmetic.id === 'sunset_dojo')?.equipped).toBe(true);
+    expect(cosmetics.find((cosmetic) => cosmetic.id === 'kanagawa')?.equipped).toBe(true);
   });
 
   it('cannot buy unknown cosmetic', async () => {

@@ -1,4 +1,4 @@
-export type CosmeticType = 'shell_skin';
+export type CosmeticType = 'shell_skin' | 'hub_background';
 
 export interface CosmeticDefinition {
   id: string;
@@ -44,6 +44,24 @@ export const COSMETICS: CosmeticDefinition[] = [
     price: 250,
     unlockAchievementId: 'dojo-regular',
     accentColor: 0x2d5a1b,
+  },
+  {
+    id: 'default_dojo',
+    type: 'hub_background',
+    name: 'Default Dojo',
+    description: 'The classic moonlit Shell Smash dojo hub.',
+    price: 0,
+    defaultUnlocked: true,
+    accentColor: 0x14083a,
+  },
+  {
+    id: 'sunset_dojo',
+    type: 'hub_background',
+    name: 'Sunset Dojo',
+    description: 'A warm orange and violet dojo at dusk.',
+    price: 0,
+    defaultUnlocked: true,
+    accentColor: 0xd97832,
   },
 ];
 

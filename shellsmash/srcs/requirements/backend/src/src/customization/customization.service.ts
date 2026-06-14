@@ -28,12 +28,14 @@ export class CustomizationService {
 
   async equip(user: User, cosmeticId: string): Promise<CosmeticView[]> {
     const cosmetic = this.requireCosmetic(cosmeticId);
-    if (cosmetic.type !== 'shell_skin') throw new BadRequestException('Cosmetic is not equippable');
 
     const ownedIds = await this.findOwnedIds(user.id);
     if (!this.isOwned(cosmetic, ownedIds)) throw new ForbiddenException('Cosmetic is not owned');
 
-    user.shellSkin = cosmetic.id;
+    if (cosmetic.type === 'shell_skin') user.shellSkin = cosmetic.id;
+    else if (cosmetic.type === 'hub_background') user.hubBackground = cosmetic.id;
+    else throw new BadRequestException('Cosmetic is not equippable');
+
     await this.usersRepo.save(user);
     const achievementIds = await this.findAchievementIds(user.id);
     return this.toViews(user, ownedIds, achievementIds);
@@ -118,10 +120,16 @@ export class CustomizationService {
       return {
         ...cosmetic,
         owned,
-        equipped: (user.shellSkin ?? 'kanagawa') === cosmetic.id,
+        equipped: this.isEquipped(user, cosmetic),
         ...(lockedReason ? { lockedReason } : {}),
       };
     });
+  }
+
+  private isEquipped(user: User, cosmetic: CosmeticDefinition): boolean {
+    if (cosmetic.type === 'shell_skin') return (user.shellSkin ?? 'kanagawa') === cosmetic.id;
+    if (cosmetic.type === 'hub_background') return (user.hubBackground ?? 'default_dojo') === cosmetic.id;
+    return false;
   }
 
   private lockedReason(

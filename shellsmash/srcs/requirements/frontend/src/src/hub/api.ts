@@ -87,6 +87,7 @@ export interface User {
   username:     string;
   turtleName:   string | null;
   shellSkin:    string;
+  hubBackground: string;
   level:        number;
   xp:           number;
   coins:        number;
@@ -126,7 +127,7 @@ export interface Achievement {
 
 export interface Cosmetic {
   id: string;
-  type: 'shell_skin';
+  type: 'shell_skin' | 'hub_background';
   name: string;
   description: string;
   price: number;
