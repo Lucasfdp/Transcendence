@@ -718,6 +718,10 @@ export class HubScene extends Phaser.Scene {
           this.scene.start('ShellCurlScene');
           return;
         }
+        if (hs.id === 'bell-clash') {
+          this.scene.start('BellClashScene');
+          return;
+        }
         if (available && this.scene.manager.getScene('ShellSmashArenaScene')) {
           this.scene.start('ShellSmashArenaScene');
         } else {

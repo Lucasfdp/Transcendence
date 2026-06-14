@@ -21,7 +21,7 @@ const MINIGAMES: MiniGameDefinition[] = [
   {
     id: 'bell-clash',
     name: 'Bell Clash',
-    status: 'coming_soon',
+    status: 'available',
     description: 'Ring the great temple bell from the perfect angle.',
   },
   {
