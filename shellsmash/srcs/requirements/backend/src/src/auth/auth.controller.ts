@@ -6,6 +6,7 @@ import {
   Post, Query, Req, Res,
   UnauthorizedException, UseGuards,
 } from '@nestjs/common';
+import { UsersService } from '../users/users.service';
 
 /** Portable 429 — TooManyRequestsException was added in later NestJS patches. */
 const TooManyRequests = (msg: string): HttpException => new HttpException(msg, 429);
@@ -44,16 +45,22 @@ function parseCookie(cookieHeader: string, name: string): string | null {
 @Controller('auth')
 export class AuthController {
   constructor(
-    private readonly authService: AuthService,
-    private readonly rateLimiter: RateLimiterService,
+    private readonly authService:  AuthService,
+    private readonly rateLimiter:  RateLimiterService,
+    private readonly usersService: UsersService,
   ) {}
 
   // ── GET /api/auth/me ─────────────────────────────────────────────────────────
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  getMe(@Req() req: Request & { user: unknown }): unknown {
-    return req.user;
+  async getMe(@Req() req: Request & { user: { id: number } }): Promise<unknown> {
+    const user = await this.usersService.findById(req.user.id);
+    if (!user) throw new UnauthorizedException('Session expired or user not found');
+    // passwordHash has select:false so it is absent from findById results.
+    // The explicit omission below is a defence-in-depth guard.
+    const { passwordHash: _pw, ...safe } = user as typeof user & { passwordHash?: unknown };
+    return safe;
   }
 
   // ── GET /api/auth/csrf-token ──────────────────────────────────────────────────

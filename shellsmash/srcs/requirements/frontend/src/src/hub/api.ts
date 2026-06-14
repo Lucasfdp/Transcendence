@@ -82,6 +82,7 @@ export interface User {
   shellSkin:    string;
   level:        number;
   xp:           number;
+  coins:        number;
   isGuest:      boolean;
   isDevAccount: boolean;
   avatar:       string | null;
@@ -91,6 +92,15 @@ export interface User {
     gamesPlayed: number;
     bio:         string | null;
   };
+}
+
+export interface ProgressionResult {
+  xpGained:    number;
+  coinsGained: number;
+  newXp:       number;
+  newLevel:    number;
+  newCoins:    number;
+  leveledUp:   boolean;
 }
 
 export interface MiniGameDefinition {
@@ -147,4 +157,18 @@ export const api = {
   getUser:      (username: string): Promise<User>        => apiFetch<User>(`/users/${username}`),
   getAllUsers:   (): Promise<User[]>                      => apiFetch<User[]>('/users'),
   getMiniGames: (): Promise<MiniGameDefinition[]>        => apiFetch<MiniGameDefinition[]>('/minigames'),
+
+  /**
+   * Record the outcome of a completed game session.
+   * Returns XP / coin / level-up deltas for progression feedback animation.
+   * Non-fatal on failure — callers should catch and log, then continue.
+   */
+  submitGameResult: (
+    gameId:  string,
+    outcome: 'win' | 'loss',
+  ): Promise<ProgressionResult> =>
+    apiFetch<ProgressionResult>('/game-results', {
+      method: 'POST',
+      body:   JSON.stringify({ gameId, outcome }),
+    }),
 };

@@ -154,7 +154,24 @@ export class BambooBashScene extends Phaser.Scene {
     this.slingshot.cancel();
     this.ball.vx = 0;
     this.ball.vy = 0;
+    this.submitResult();
     this.showEndScreen();
+  }
+
+  /**
+   * Submit the game result for progression.
+   * Bamboo Bash is single-player — completing the timer always counts as a win.
+   * Non-fatal: errors are logged but never block the end screen from showing.
+   */
+  private submitResult(): void {
+    const user = this.registry.get('user') as { isGuest?: boolean } | undefined;
+    if (user?.isGuest) return;
+
+    api.submitGameResult('bamboo-bash', 'win').then((result) => {
+      console.info('[BambooBash] progression:', result);
+    }).catch((err: unknown) => {
+      console.warn('[BambooBash] failed to submit result:', err);
+    });
   }
 
   // ── Floating "+points" popup ────────────────────────────────────────────────

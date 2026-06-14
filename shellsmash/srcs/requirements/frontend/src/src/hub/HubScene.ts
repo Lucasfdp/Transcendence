@@ -199,6 +199,10 @@ export class HubScene extends Phaser.Scene {
       return;
     }
 
+    // Share user data with game scenes via the global registry so they can
+    // check isGuest before submitting progression results.
+    this.registry.set('user', this.user);
+
     this.buildHotspots();
     this.drawHUD();
 
@@ -923,6 +927,12 @@ export class HubScene extends Phaser.Scene {
       fontSize: this.scaledFont(11), color: THEME.text, fontFamily: THEME.font,
     }).setDepth(DEPTH_HUD);
     this.hudLayer.push(levelLabel);
+
+    // ── Coins display ─────────────────────────────────────────────────────────
+    const coinsLabel = this.add.text(PAD + 48, 44, `⬡ ${this.user.coins ?? 0}`, {
+      fontSize: this.scaledFont(10), color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
+    }).setDepth(DEPTH_HUD);
+    this.hudLayer.push(coinsLabel);
 
     // ── DEV badge (visible only for dev accounts) ─────────────────────────────
     if (this.user.isDevAccount) {

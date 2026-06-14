@@ -7,6 +7,7 @@
  */
 
 import Phaser from 'phaser';
+import { api } from '../../hub/api';
 import { ARENA_01 } from '../../shared/arenas/arena01';
 import { ArenaPixels, arenaToScreen, drawSumoRing } from '../../shared/arenas/arena';
 import { BallState, BALL_SRC_R, drawShellBall, isBallMoving, stepBall } from '../../shared/mechanics/ball';
@@ -268,7 +269,24 @@ export class KameKnockScene extends Phaser.Scene {
     this.ball.vx = 0;
     this.ball.vy = 0;
     this.combo = 0;
+    this.submitResult();
     this.showEndScreen();
+  }
+
+  /**
+   * Submit the game result to the backend for XP / coin / level progression.
+   * Kame Knock is single-player — completing all rounds always counts as a win.
+   * Non-fatal: errors are logged but never block the end screen from showing.
+   */
+  private submitResult(): void {
+    const user = this.registry.get('user') as { isGuest?: boolean } | undefined;
+    if (user?.isGuest) return;
+
+    api.submitGameResult('kame-knock', 'win').then((result) => {
+      console.info('[KameKnock] progression:', result);
+    }).catch((err: unknown) => {
+      console.warn('[KameKnock] failed to submit result:', err);
+    });
   }
 
   private finishBallRound(): void {

@@ -38,6 +38,9 @@ export class User {
   @Column({ default: 0 })
   xp: number;
 
+  @Column({ default: 0 })
+  coins: number;
+
   // The display name of the player's turtle (defaults to username)
   @Column({ nullable: true })
   turtleName: string;

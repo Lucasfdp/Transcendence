@@ -35,7 +35,7 @@ import { THEME } from '../shared/theme';
 
 // Fixed panel geometry
 const PW  = 320;  // panel width
-const PH  = 540;  // panel height (increased to fit rank belt + win-rate bar)
+const PH  = 568;  // panel height (extra 28 px for the coins row)
 const PAD = 20;   // internal padding
 
 // ── Rank belt mapping ─────────────────────────────────────────────────────────
@@ -272,14 +272,23 @@ export class ProfilePanel {
       }).setOrigin(0.5, 0),
     );
 
-    // ── 10. Divider ────────────────────────────────────────────────────────────
-    const div2Y = xpBarY + xpBarH + 26;
+    // ── 10. Coins row ────────────────────────────────────────────────────────
+    const coinsY = xpBarY + xpBarH + 28;
+    children.push(this.scene.add.text(PAD, coinsY, `⬡  ${(user.coins ?? 0).toLocaleString()} coins`, {
+      fontSize:   '13px',
+      color:      THEME.textGold,
+      fontFamily: THEME.font,
+      fontStyle:  'bold',
+    }));
+
+    // ── 11. Divider ────────────────────────────────────────────────────────────
+    const div2Y = coinsY + 24;
     const divGfx2 = this.scene.add.graphics();
     divGfx2.lineStyle(1, THEME.gold, 0.22);
     divGfx2.lineBetween(PAD, div2Y, PW - PAD, div2Y);
     children.push(divGfx2);
 
-    // ── 11. Stats row ────────────────────────────────────────────────────────
+    // ── 12. Stats row ────────────────────────────────────────────────────────
     const statsY   = div2Y + 14;
     const profile  = user.profile ?? {};
     const stats = [
@@ -309,7 +318,7 @@ export class ProfilePanel {
       );
     });
 
-    // ── 12. Win-rate bar OR bio placeholder ───────────────────────────────────
+    // ── 13. Win-rate bar OR bio placeholder ───────────────────────────────────
     const winRateY    = statsY + 78;
     const wins        = profile.totalWins   ?? 0;
     const losses      = profile.totalLosses ?? 0;
@@ -359,7 +368,7 @@ export class ProfilePanel {
       }).setOrigin(0.5, 0));
     }
 
-    // ── 13. Close button ──────────────────────────────────────────────────────
+    // ── 14. Close button ──────────────────────────────────────────────────────
     const closeBtnY = PH - 38;
     const closeGfx  = this.scene.add.graphics();
     const paintClose = (hovered: boolean) => {

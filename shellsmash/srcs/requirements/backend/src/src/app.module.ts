@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ProfilesModule } from './profiles/profiles.module';
 import { MiniGamesModule } from './minigames/minigames.module';
+import { GameResultsModule } from './game-results/game-results.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { HealthModule } from './health/health.module';
 import { AppController } from './app.controller';
@@ -34,6 +35,7 @@ import { AppController } from './app.controller';
     UsersModule,
     ProfilesModule,
     MiniGamesModule,
+    GameResultsModule,
 
     // Observability — must come after TypeOrmModule so DataSource is available
     MetricsModule,
