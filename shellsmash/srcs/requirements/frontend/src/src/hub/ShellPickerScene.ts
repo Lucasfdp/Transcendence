@@ -87,6 +87,10 @@ export class ShellPickerScene extends Phaser.Scene {
   // Currently hovered/described shell
   private hoveredType: PowerType | null = null;
 
+  // Stale-guard for async onConfirm — incremented on each invocation so that
+  // a zombie continuation after scene.stop() is a no-op.
+  private _confirmRunId = 0;
+
   constructor() { super({ key: 'ShellPickerScene' }); }
 
   // ── init ────────────────────────────────────────────────────────────────────
@@ -102,6 +106,13 @@ export class ShellPickerScene extends Phaser.Scene {
   // ── create ───────────────────────────────────────────────────────────────────
 
   async create(): Promise<void> {
+    // Guard against zombie continuations: if the scene is stopped and restarted
+    // before the await below resolves, the old create()'s continuation would
+    // call buildUI() on a scene that already has a second buildUI() in flight,
+    // producing duplicate zones that fire scene.start() twice on click.
+    let stale = false;
+    this.events.once('shutdown', () => { stale = true; });
+
     const { width, height } = this.scale;
 
     // ── Dark background ────────────────────────────────────────────────────────
@@ -122,6 +133,7 @@ export class ShellPickerScene extends Phaser.Scene {
       this.inventory = this.buildFullInventory();
     }
 
+    if (stale) return;
     this.buildUI();
   }
 
@@ -161,7 +173,10 @@ export class ShellPickerScene extends Phaser.Scene {
     returnZone.on('pointerover', () => { paintReturn(true);  returnLabel.setColor('#1a1410'); });
     returnZone.on('pointerout',  () => { paintReturn(false); returnLabel.setColor(THEME.textGold); });
     returnZone.on('pointerup',   () => {
-      this.scene.stop();
+      // Do NOT call this.scene.stop() explicitly — scene.start() already stops
+      // the calling scene implicitly. An explicit stop() before start() causes
+      // InputPlugin.shutdown() to run twice, corrupting InputManager._sceneInputPlugin
+      // and permanently breaking pointerup on HubScene zones until page reload.
       this.scene.start('HubScene');
     });
 
@@ -389,6 +404,11 @@ export class ShellPickerScene extends Phaser.Scene {
   // ── Confirm ───────────────────────────────────────────────────────────────────
 
   private async onConfirm(): Promise<void> {
+    // Capture run ID before any await so we can detect zombie continuations.
+    // If the user clicks Back while the API call is in-flight, the scene will
+    // be stopped and this.scene.start() must not fire from the stale path.
+    const myRun = ++this._confirmRunId;
+
     const user = this.registry.get('user') as { isGuest?: boolean } | undefined;
     const picks = this.selections[this.currentPlayer];
 
@@ -398,14 +418,20 @@ export class ShellPickerScene extends Phaser.Scene {
         await api.validateShellSelection(picks);
       } catch {
         // Validation failed — show brief error and abort
+        if (myRun !== this._confirmRunId || !this.scene.isActive()) return;
         this.subText.setText('Selection invalid. Try again.').setColor(THEME.red);
         this.time.delayedCall(2000, () => {
+          if (!this.scene.isActive()) return;
           this.subText.setText('Pick up to 3 special shells — or go with no power.')
             .setColor(THEME.textMutedHex);
         });
         return;
       }
     }
+
+    // Guard: if the scene was stopped while we were awaiting (e.g. user clicked
+    // Back), do nothing — the HubScene transition is already in flight.
+    if (myRun !== this._confirmRunId || !this.scene.isActive()) return;
 
     if (this.playerCount === 2 && this.currentPlayer === 0) {
       // Move to player 2's pick
@@ -454,7 +480,12 @@ export class ShellPickerScene extends Phaser.Scene {
     this.confirmGfx.fillRoundedRect(x, y, w, h, 8);
     this.confirmGfx.lineStyle(2, THEME.gold, hovered ? 0 : 0.80);
     this.confirmGfx.strokeRoundedRect(x, y, w, h, 8);
-    if (this.confirmBtn) {
+    // Guard against calling methods on a destroyed Phaser object. On the second
+    // visit to ShellPickerScene, this.confirmBtn still points to the destroyed
+    // Text from the previous run (truthy in JS, but .active = false). Without
+    // this guard, setColor() throws a TypeError before this.confirmBtn is
+    // re-assigned below, leaving the button with no text and no click zone.
+    if (this.confirmBtn?.active) {
       this.confirmBtn.setColor(hovered ? '#1a1410' : THEME.textGold);
     }
   }

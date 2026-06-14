@@ -99,11 +99,15 @@ export class BellClashScene extends Phaser.Scene {
 
   constructor() { super({ key: 'BellClashScene' }); }
 
+  /**
+   * Phaser lifecycle — called automatically on scene stop/switch/restart.
+   * Replaces the old once(SHUTDOWN, cleanupSceneResources) pattern.
+   */
+  shutdown(): void {
+    this.cleanupSceneResources();
+  }
+
   create(): void {
-    this.events.off(Phaser.Scenes.Events.SHUTDOWN, this.cleanupSceneResources, this);
-    this.events.off(Phaser.Scenes.Events.DESTROY, this.cleanupSceneResources, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupSceneResources, this);
-    this.events.once(Phaser.Scenes.Events.DESTROY, this.cleanupSceneResources, this);
 
     this.zones = [];
     this.currentShot = 0;
@@ -590,7 +594,10 @@ export class BellClashScene extends Phaser.Scene {
       .zone(container.x + x, container.y + y, buttonW, buttonH)
       .setInteractive({ useHandCursor: true })
       .setDepth(DEPTH_OVERLAY + 2);
-    zone.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+    // Use 'pointerup' (not 'pointerdown') — see KameKnockScene.addOverlayButton for
+    // the full explanation. TL;DR: 'pointerdown' transitions the scene while the
+    // mouse is still held, poisoning HubScene's InputPlugin state.
+    zone.on('pointerup', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
       zone.disableInteractive();
       onClick();

@@ -305,7 +305,20 @@ export class BambooBashScene extends Phaser.Scene {
     c.add(t);
 
     const zone = this.add.zone(x, y, BW, BH).setInteractive({ useHandCursor: true });
-    zone.on('pointerup', onClick);
+    zone.on('pointerup', (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      // Stop propagation so the click doesn't fall through to slingshot or other
+      // zones behind this overlay button, and disable to prevent double-fire on
+      // rapid taps (which would call scene.restart()/start() twice in one frame,
+      // repeating the same double-stop corruption as BUG-01).
+      event.stopPropagation();
+      zone.disableInteractive();
+      onClick();
+    });
     c.add(zone);
   }
 

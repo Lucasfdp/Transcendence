@@ -106,11 +106,17 @@ export class KameKnockScene extends Phaser.Scene {
 
   constructor() { super({ key: 'KameKnockScene' }); }
 
+  /**
+   * Phaser lifecycle — called automatically on scene stop/switch/restart.
+   * Replaces the old once(SHUTDOWN, cleanupSceneResources) pattern, which
+   * caused cleanupSceneResources() to be called twice when the overlay buttons
+   * called it manually before scene.start()/scene.restart().
+   */
+  shutdown(): void {
+    this.cleanupSceneResources();
+  }
+
   create(): void {
-    this.events.off(Phaser.Scenes.Events.SHUTDOWN, this.cleanupSceneResources, this);
-    this.events.off(Phaser.Scenes.Events.DESTROY, this.cleanupSceneResources, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupSceneResources, this);
-    this.events.once(Phaser.Scenes.Events.DESTROY, this.cleanupSceneResources, this);
 
     this.targets = [];
     this.nextTargetId = 0;
@@ -406,13 +412,14 @@ export class KameKnockScene extends Phaser.Scene {
 
   private buildInfoRows(): SidePanelRow[] {
     return [
-      { label: 'Shell ball', value: 'bounce', icon: (g, x, y, size) => this.drawShellIcon(g, x, y, size / 2) },
-      { label: 'Daruma', value: '+100', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'daruma', true) },
-      { label: 'Crate', value: '+120', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'crate', true) },
-      { label: 'Drum', value: '+150', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'drum', true) },
-      { label: 'Solid target', value: 'bounce', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'drum', false) },
+      // subtitle format used for long labels to prevent value-column overlap
+      { label: 'Shell ball', subtitle: 'bounces off targets', icon: (g, x, y, size) => this.drawShellIcon(g, x, y, size / 2) },
+      { label: 'Daruma',     value: '+100', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'daruma', true) },
+      { label: 'Crate',      value: '+120', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'crate', true) },
+      { label: 'Drum',       value: '+150', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'drum', true) },
+      { label: 'Solid target', subtitle: 'no score — bounces', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'drum', false) },
       { label: 'Perfect hit', value: '+500', icon: (g, x, y, size) => this.drawSparkIcon(g, x, y, size / 2) },
-      { label: 'Combo', value: 'x chain', icon: (g, x, y, size) => this.drawComboIcon(g, x, y, size / 2) },
+      { label: 'Combo',       value: 'x chain', icon: (g, x, y, size) => this.drawComboIcon(g, x, y, size / 2) },
     ];
   }
 
@@ -671,7 +678,13 @@ export class KameKnockScene extends Phaser.Scene {
       .zone(container.x + x, container.y + y, buttonW, buttonH)
       .setInteractive({ useHandCursor: true })
       .setDepth(DEPTH_OVERLAY + 2);
-    zone.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+    // Use 'pointerup' (not 'pointerdown') so the full click cycle completes inside
+    // this scene before the transition fires. Using 'pointerdown' caused scene.start()
+    // to run while the mouse button was still physically held — the subsequent mouseup
+    // then arrived in HubScene's fresh InputPlugin with no zones registered yet,
+    // corrupting Phaser's _tempHits/_overObjectsContainer state and breaking all
+    // subsequent pointerup delivery in HubScene.
+    zone.on('pointerup', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
       zone.disableInteractive();
       onClick();

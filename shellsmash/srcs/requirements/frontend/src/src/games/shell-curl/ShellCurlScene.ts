@@ -386,9 +386,15 @@ export class ShellCurlScene extends Phaser.Scene {
   // ── Turn flow ─────────────────────────────────────────────────────────────
 
   private beginTurn(): void {
+    // Guard: if the scene has been stopped (e.g. by a delayed-call timer that
+    // fired after scene.start('HubScene') was already called), do nothing.
+    if (!this.scene.isActive()) return;
+
     const state = this.turnManager.state;
     if (state.phase === 'gameover') {
-      this.showGameOverOverlay();
+      // The gameover overlay is already showing with a RETURN button — nothing
+      // else to do here. This branch should not be reachable in normal flow;
+      // it is a safety net against stale delayedCall callbacks.
       return;
     }
 
@@ -830,8 +836,13 @@ export class ShellCurlScene extends Phaser.Scene {
     // A draw is recorded as a win — the local player completed the game.
     const localPlayerWon = s0 >= s1;
     this.submitResult(localPlayerWon);
-    this.showOverlay(message, null, null);
     this.scoreHud.update(this.turnManager.state);
+
+    // Show a RETURN button rather than auto-dismissing with null/null.
+    // The null/null pattern triggers an auto-dismiss that calls beginTurn(),
+    // which sees phase==='gameover' and calls showGameOverOverlay() again —
+    // creating an infinite 1.5s timer loop that survives scene transitions.
+    this.showOverlay(message, 'RETURN', () => this.scene.start('HubScene'));
   }
 
   /**

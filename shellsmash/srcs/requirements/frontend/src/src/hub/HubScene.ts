@@ -124,6 +124,21 @@ export class HubScene extends Phaser.Scene {
   private modalDesc:  string        = '';
   private modalKind:  'default' | 'achievements' | 'customization' | null = null;
 
+  // ── Async-create staleness guards ────────────────────────────────────────────
+  // create() is async (awaits two API calls).  If the scene is stopped while
+  // awaiting, the JS Promise continuation keeps running on the dead scene.
+  // We use TWO complementary checks:
+  //   1. _createRunId  — incremented on every create() so a stale continuation
+  //      from a previous invocation can detect that a newer run has started.
+  //   2. _shutdownFired — set true in shutdown(), reset false in create().
+  //      Guards the case where the scene is stopped but create() hasn't been
+  //      called again yet (so _createRunId hasn't changed).
+  // NOTE: we deliberately do NOT use this.scene.isActive() here because Phaser
+  // reports status = CREATE (not RUNNING) while create() itself is executing,
+  // which would cause isActive() to return false and break every create() call.
+  private _createRunId   = 0;
+  private _shutdownFired = false;
+
   // ── Leaderboard async generation guard ────────────────────────────────────────
   // Incremented on every renderLeaderboard() call; the async callback bails out
   // if its captured generation no longer matches the current one.
@@ -132,6 +147,9 @@ export class HubScene extends Phaser.Scene {
   constructor() { super({ key: 'HubScene' }); }
 
   shutdown(): void {
+    // Signal any in-flight async create() that it is now stale.
+    this._shutdownFired = true;
+
     // Cancel any pending debounce and remove the resize listener so it cannot
     // fire after the scene has been torn down (important for HMR hot-reloads).
     if (this.resizeTimer !== null) {
@@ -165,12 +183,27 @@ export class HubScene extends Phaser.Scene {
   // ── create ───────────────────────────────────────────────────────────────────
 
   async create(): Promise<void> {
+    // ── Guard against stale async continuations ─────────────────────────────────
+    // Phaser reuses the same scene instance on restart.  If the previous
+    // create() was still awaiting when shutdown fired, its Promise continuation
+    // keeps running.  We capture a run ID here and reset the shutdown flag so
+    // that after each await we can detect whether we're still the current run.
+    const runId = ++this._createRunId;
+    this._shutdownFired = false;
+    const isStale = () => this._shutdownFired || this._createRunId !== runId;
+
+    // Clear stale layer references left over from the previous run.  Phaser
+    // destroys all display-list objects on SHUTDOWN, so the arrays may still
+    // contain dead references; resetting them here keeps clearLayer() fast and
+    // avoids potential edge-cases in applyResize() during the async gap.
+    this.bgLayer.length       = 0;
+    this.hudLayer.length      = 0;
+    this.hotspotLayer.length  = 0;
+    this.extrasLayer.length   = 0;
+    this.lbLayer.length       = 0;
+
     // Wire up the shutdown lifecycle so stale per-run state is cleared when the
     // scene is stopped (e.g. on scene.start('BambooBashScene')).
-    // Phaser does NOT call shutdown() automatically — it only fires if registered
-    // here. Without this, this.profilePanel keeps the old (Phaser-destroyed)
-    // Container reference across scene restarts, causing toggle() to silently
-    // no-op on a dead object.
     this.events.once('shutdown', this.shutdown, this);
 
     const { width, height } = this.scale;
@@ -199,9 +232,16 @@ export class HubScene extends Phaser.Scene {
     // Glow graphics layer — stable object, sits above bg, below HUD
     this.glowGfx = this.add.graphics().setDepth(DEPTH_GLOW);
 
-    // Fetch API data
+    // Fetch API data.  On a scene restart the previous values are still valid
+    // (user session hasn't changed), but we refresh to catch any server-side
+    // updates (e.g. level-up, new minigame unlock).
     try { this.minigames = await api.getMiniGames(); } catch { this.minigames = []; }
-    try { this.user      = await api.getMe();        } catch { this.user = null; }
+    // Bail if the scene was shut down while awaiting (another run has started).
+    if (isStale()) return;
+
+    try { this.user = await api.getMe(); } catch { this.user = null; }
+    // Bail if the scene was shut down while awaiting.
+    if (isStale()) return;
 
     // HubScene is only reachable after authentication.
     // If getMe() failed (session expired / cookie cleared), return to landing.
@@ -214,6 +254,14 @@ export class HubScene extends Phaser.Scene {
     // check isGuest before submitting progression results.
     this.registry.set('user', this.user);
 
+    // Explicitly clear any zones that may have been added by a concurrent
+    // applyResize() that fired during the async gap above (e.g. if a stale
+    // resize listener survived a previous shutdown).  Without this clear,
+    // buildHotspots() and drawExtrasSection() would append onto stale zones,
+    // creating duplicates that trigger two scene.start() calls on click.
+    this.clearLayer(this.hotspotLayer);
+    this.clearLayer(this.extrasLayer);
+    this.clearLayer(this.hudLayer);
     this.buildHotspots();
     this.drawExtrasSection();
     this.drawHUD();
@@ -221,6 +269,10 @@ export class HubScene extends Phaser.Scene {
     // Register resize listener after the initial layout is complete so an
     // immediate resize event (fired synchronously by some browsers on creation)
     // doesn't run applyResize() before create() has finished.
+    // Remove first in case a stale continuation from a previous run registered
+    // one already (the isCurrentRun guard above prevents this in normal flow,
+    // but belt-and-suspenders here is cheap).
+    this.scale.off('resize', this.handleResize, this);
     this.scale.on('resize', this.handleResize, this);
   }
 
@@ -235,6 +287,11 @@ export class HubScene extends Phaser.Scene {
   }
 
   private applyResize(): void {
+    // The 100ms debounce timer in handleResize() can fire after shutdown() has
+    // already run (shutdown removes the scale listener but can't cancel the
+    // in-flight setTimeout). Guard here so we don't touch a dead scene.
+    if (!this.scene.isActive()) return;
+
     const { width, height } = this.scale;
 
     // 1. Recalculate contain (letterbox) transform — keeps every hotspot on screen
@@ -253,8 +310,11 @@ export class HubScene extends Phaser.Scene {
     this.clearLayer(this.bgLayer);
     this.drawBackground();
 
-    // 4. glowGfx is stable — clear it so a stale highlight isn't left over
-    this.glowGfx.clear();
+    // 4. glowGfx is stable — clear it so a stale highlight isn't left over.
+    // Guard with active check: if a resize fires during the async gap between
+    // scene restart and create() completing, glowGfx may still be the dead
+    // reference from the previous run (not yet reassigned in create()).
+    if (this.glowGfx && this.glowGfx.active) this.glowGfx.clear();
 
     // 5. Rebuild hotspot zones with recalculated hit areas.
     this.clearLayer(this.hotspotLayer);
@@ -726,7 +786,10 @@ export class HubScene extends Phaser.Scene {
       // Click
       zone.on('pointerup', () => {
         if (hs.id === 'kame-knock') {
-          this.scene.stop('KameKnockScene');
+          // Do NOT call scene.stop('KameKnockScene') here — KameKnock is already
+          // in SHUTDOWN state when you're in HubScene, and stopping an already-
+          // stopped scene calls InputPlugin.shutdown() on it, which can corrupt
+          // the shared Phaser input manager and break subsequent pointerup events.
           this.scene.start('ShellPickerScene', {
             gameId:      'kame-knock',
             targetScene: 'KameKnockScene',
@@ -1391,6 +1454,17 @@ export class HubScene extends Phaser.Scene {
     if (!this.modal) return;
     const target = this.modal;
     this.modal = null;
+
+    // Disable interactivity on every child immediately, before the tween starts.
+    // Without this, any panelBlocker inside the container continues to call
+    // event.stopPropagation() on pointerup for the full 100ms fade duration,
+    // silently eating clicks on shrine hotspots beneath it.
+    target.getAll().forEach((child) => {
+      if (typeof (child as Phaser.GameObjects.GameObject & { disableInteractive?: () => void }).disableInteractive === 'function') {
+        (child as Phaser.GameObjects.GameObject & { disableInteractive: () => void }).disableInteractive();
+      }
+    });
+
     this.tweens.add({
       targets: target, alpha: 0, duration: 100, ease: 'Power1',
       onComplete: () => target.destroy(),
