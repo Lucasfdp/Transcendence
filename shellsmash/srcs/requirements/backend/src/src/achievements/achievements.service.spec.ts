@@ -5,12 +5,14 @@ import { UserAchievement } from './entities/user-achievement.entity';
 import { UserCosmetic } from '../customization/entities/user-cosmetic.entity';
 import { User } from '../users/entities/user.entity';
 import { Profile } from '../profiles/entities/profile.entity';
+import { UserGameStats } from '../game-results/entities/user-game-stats.entity';
 
 function makeProfile(overrides: Partial<Profile> = {}): Profile {
   const profile = new Profile();
   profile.totalWins = overrides.totalWins ?? 0;
   profile.totalLosses = overrides.totalLosses ?? 0;
   profile.gamesPlayed = overrides.gamesPlayed ?? 0;
+  profile.totalCoinsEarned = overrides.totalCoinsEarned ?? 0;
   profile.bio = overrides.bio ?? null;
   return profile;
 }
@@ -45,6 +47,8 @@ describe('AchievementsService', () => {
     create: jest.Mock;
     save: jest.Mock;
   };
+  let gameStatsRepo: { find: jest.Mock };
+  let usersRepo: { save: jest.Mock };
 
   beforeEach(async () => {
     const mockRepo = {
@@ -64,18 +68,28 @@ describe('AchievementsService', () => {
         unlockedAt: new Date('2026-01-01T00:00:00Z'),
       })),
     };
+    const mockGameStatsRepo = {
+      find: jest.fn().mockResolvedValue([]),
+    };
+    const mockUsersRepo = {
+      save: jest.fn(async (user: User) => user),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AchievementsService,
         { provide: getRepositoryToken(UserAchievement), useValue: mockRepo },
         { provide: getRepositoryToken(UserCosmetic), useValue: mockCosmeticsRepo },
+        { provide: getRepositoryToken(UserGameStats), useValue: mockGameStatsRepo },
+        { provide: getRepositoryToken(User), useValue: mockUsersRepo },
       ],
     }).compile();
 
     service = module.get(AchievementsService);
     repo = module.get(getRepositoryToken(UserAchievement));
     cosmeticsRepo = module.get(getRepositoryToken(UserCosmetic));
+    gameStatsRepo = module.get(getRepositoryToken(UserGameStats));
+    usersRepo = module.get(getRepositoryToken(User));
   });
 
   it('unlocks first match only once', async () => {
@@ -108,6 +122,25 @@ describe('AchievementsService', () => {
     expect(cosmeticsRepo.save).toHaveBeenCalledWith(expect.objectContaining({ cosmeticId: 'bamboo' }));
   });
 
+  it('unlocks per-game achievements from game stats context', async () => {
+    const user = makeUser({ profile: makeProfile({ gamesPlayed: 1 }) });
+    gameStatsRepo.find.mockResolvedValueOnce([{ user, gameId: 'kame-knock', gamesPlayed: 1, totalWins: 0, totalLosses: 0 }]);
+
+    const unlocked = await service.evaluateForUser(user);
+
+    expect(unlocked.some((achievement) => achievement.id === 'kame-knock-initiate')).toBe(true);
+  });
+
+  it('grants coin rewards once when an achievement unlocks', async () => {
+    const user = makeUser({ coins: 10, profile: makeProfile({ totalCoinsEarned: 1 }) });
+
+    const unlocked = await service.evaluateForUser(user);
+
+    expect(unlocked.some((achievement) => achievement.id === 'first-bounty')).toBe(true);
+    expect(user.coins).toBe(35);
+    expect(usersRepo.save).toHaveBeenCalledWith(expect.objectContaining({ coins: 35 }));
+  });
+
   it('lists the full catalog with locked and unlocked state', async () => {
     const user = makeUser();
     repo.find.mockResolvedValueOnce([makeRecord(user, 'first-match')]);
@@ -138,6 +171,17 @@ describe('AchievementsService', () => {
 
     expect(secondPass).toEqual([]);
     expect(cosmeticsRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not duplicate coin rewards when already unlocked', async () => {
+    const user = makeUser({ coins: 10, profile: makeProfile({ totalCoinsEarned: 1 }) });
+    repo.find.mockResolvedValueOnce([makeRecord(user, 'first-bounty')]);
+
+    const unlocked = await service.evaluateForUser(user);
+
+    expect(unlocked).toEqual([]);
+    expect(user.coins).toBe(10);
+    expect(usersRepo.save).not.toHaveBeenCalled();
   });
 
   it('ignores duplicate cosmetic reward rows safely', async () => {

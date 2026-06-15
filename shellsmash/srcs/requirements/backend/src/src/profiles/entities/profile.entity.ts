@@ -25,6 +25,9 @@ export class Profile {
   @Column({ default: 0 })
   gamesPlayed: number;
 
+  @Column({ default: 0 })
+  totalCoinsEarned: number;
+
   @Column({ nullable: true })
   bio: string;
 }

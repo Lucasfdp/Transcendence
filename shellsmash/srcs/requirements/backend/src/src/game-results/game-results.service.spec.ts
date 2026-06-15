@@ -5,6 +5,8 @@ import { UsersService } from '../users/users.service';
 import { AchievementsService } from '../achievements/achievements.service';
 import { User } from '../users/entities/user.entity';
 import { Profile } from '../profiles/entities/profile.entity';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { UserGameStats } from './entities/user-game-stats.entity';
 import {
   COINS_PER_WIN, COINS_PER_LOSS,
   XP_PER_WIN, XP_PER_LOSS,
@@ -19,6 +21,7 @@ function makeProfile(overrides: Partial<Profile> = {}): Profile {
   profile.totalWins    = overrides.totalWins    ?? 0;
   profile.totalLosses  = overrides.totalLosses  ?? 0;
   profile.gamesPlayed  = overrides.gamesPlayed  ?? 0;
+  profile.totalCoinsEarned = overrides.totalCoinsEarned ?? 0;
   profile.bio          = overrides.bio          ?? null;
   return profile;
 }
@@ -42,6 +45,11 @@ describe('GameResultsService', () => {
   let service: GameResultsService;
   let usersService: jest.Mocked<UsersService>;
   let achievementsService: jest.Mocked<AchievementsService>;
+  let gameStatsRepo: {
+    findOne: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+  };
 
   beforeEach(async () => {
     const mockUsersService: Partial<jest.Mocked<UsersService>> = {
@@ -50,18 +58,25 @@ describe('GameResultsService', () => {
     const mockAchievementsService: Partial<jest.Mocked<AchievementsService>> = {
       evaluateForUser: jest.fn().mockResolvedValue([]),
     };
+    const mockGameStatsRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((data: Partial<UserGameStats>) => ({ ...data }) as UserGameStats),
+      save: jest.fn(async (stats: UserGameStats) => stats),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GameResultsService,
         { provide: UsersService, useValue: mockUsersService },
         { provide: AchievementsService, useValue: mockAchievementsService },
+        { provide: getRepositoryToken(UserGameStats), useValue: mockGameStatsRepo },
       ],
     }).compile();
 
     service             = module.get<GameResultsService>(GameResultsService);
     usersService        = module.get(UsersService);
     achievementsService = module.get(AchievementsService);
+    gameStatsRepo       = module.get(getRepositoryToken(UserGameStats));
   });
 
   // ── Happy paths ─────────────────────────────────────────────────────────────
@@ -79,6 +94,7 @@ describe('GameResultsService', () => {
     expect(user.profile.totalWins).toBe(1);
     expect(user.profile.totalLosses).toBe(0);
     expect(user.profile.gamesPlayed).toBe(1);
+    expect(user.profile.totalCoinsEarned).toBe(COINS_PER_WIN);
     expect(usersService.save).toHaveBeenCalledWith(user);
     expect(achievementsService.evaluateForUser).toHaveBeenCalledWith(user);
     expect(result.unlockedAchievements).toEqual([]);
@@ -97,6 +113,50 @@ describe('GameResultsService', () => {
     expect(user.profile.totalWins).toBe(0);
     expect(user.profile.totalLosses).toBe(1);
     expect(user.profile.gamesPlayed).toBe(1);
+    expect(user.profile.totalCoinsEarned).toBe(COINS_PER_LOSS);
+  });
+
+  it('should create per-game stats when none exist', async () => {
+    const user = makeUser();
+    usersService.save.mockResolvedValueOnce(user);
+
+    await service.submitResult(user, { gameId: 'kame-knock', outcome: 'win' });
+
+    expect(gameStatsRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      user,
+      gameId: 'kame-knock',
+      gamesPlayed: 0,
+      totalWins: 0,
+      totalLosses: 0,
+    }));
+    expect(gameStatsRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      gameId: 'kame-knock',
+      gamesPlayed: 1,
+      totalWins: 1,
+      totalLosses: 0,
+    }));
+  });
+
+  it('should update existing per-game stats', async () => {
+    const user = makeUser();
+    const stats = Object.assign(new UserGameStats(), {
+      user,
+      gameId: 'shell-curl',
+      gamesPlayed: 4,
+      totalWins: 2,
+      totalLosses: 2,
+    });
+    gameStatsRepo.findOne.mockResolvedValueOnce(stats);
+    usersService.save.mockResolvedValueOnce(user);
+
+    await service.submitResult(user, { gameId: 'shell-curl', outcome: 'loss' });
+
+    expect(gameStatsRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      gameId: 'shell-curl',
+      gamesPlayed: 5,
+      totalWins: 2,
+      totalLosses: 3,
+    }));
   });
 
   // ── Level-up ────────────────────────────────────────────────────────────────
@@ -199,6 +259,7 @@ describe('GameResultsService', () => {
       description: 'Complete your first match in the dojo.',
       unlockDescription: 'You completed your first match.',
       rewardLabel: 'Progress record unlocked',
+      reward: { type: 'none' as const, label: 'Progress record unlocked' },
       progressCurrent: 1,
       progressTarget: 1,
       unlocked: true,

@@ -124,6 +124,7 @@ export class HubScene extends Phaser.Scene {
   private modalTitle: string | null = null;
   private modalDesc:  string        = '';
   private modalKind:  'default' | 'achievements' | 'customization' | null = null;
+  private achievementWheelHandler: ((pointer: Phaser.Input.Pointer, gameObjects: Phaser.GameObjects.GameObject[], deltaX: number, deltaY: number) => void) | null = null;
 
   // ── Async-create staleness guards ────────────────────────────────────────────
   // create() is async (awaits two API calls).  If the scene is stopped while
@@ -1221,6 +1222,7 @@ export class HubScene extends Phaser.Scene {
     const px = width / 2;
     const py = height / 2;
 
+    this.clearAchievementWheelHandler();
     this.modal?.destroy(true);
     const container = this.add.container(0, 0).setDepth(DEPTH_MODAL);
     this.modal = container;
@@ -1303,13 +1305,43 @@ export class HubScene extends Phaser.Scene {
       const cols = panelW < 560 ? 1 : 2;
       const cardW = (panelW - 48 - cardGap * (cols - 1)) / cols;
       const cardH = 118;
+      const listTop = top;
+      const listBottom = py + panelH / 2 - 42;
+      const listHeight = Math.max(80, listBottom - listTop);
+      const rows = Math.ceil(achievements.length / cols);
+      const contentHeight = rows * cardH + Math.max(0, rows - 1) * cardGap;
+      const listContainer = this.add.container(0, 0);
+      const maskGfx = this.add.graphics();
+      maskGfx.fillStyle(0xffffff, 0);
+      maskGfx.fillRect(px - panelW / 2 + 18, listTop - 4, panelW - 36, listHeight + 8);
+      listContainer.setMask(maskGfx.createGeometryMask());
+
       achievements.forEach((achievement, index) => {
         const col = index % cols;
         const row = Math.floor(index / cols);
         const x = px - panelW / 2 + 24 + col * (cardW + cardGap);
         const y = top + row * (cardH + cardGap);
-        children.push(...this.drawAchievementCard(x, y, cardW, cardH, achievement));
+        listContainer.add(this.drawAchievementCard(x, y, cardW, cardH, achievement));
       });
+      children.push(maskGfx, listContainer);
+
+      if (contentHeight > listHeight) {
+        let scrollY = 0;
+        const maxScroll = contentHeight - listHeight;
+        this.achievementWheelHandler = (_pointer, _gameObjects, _deltaX, deltaY) => {
+          if (this.modalKind !== 'achievements') return;
+          scrollY = Phaser.Math.Clamp(scrollY + deltaY, 0, maxScroll);
+          listContainer.y = -scrollY;
+        };
+        this.input.on('wheel', this.achievementWheelHandler);
+
+        const hint = this.add.text(px, listBottom + 12, 'Scroll to see more achievements', {
+          fontSize: this.scaledFont(9),
+          color: THEME.textMutedHex,
+          fontFamily: THEME.font,
+        }).setOrigin(0.5, 0);
+        children.push(hint);
+      }
     }
 
     const closeBtn = this.add.text(px + panelW / 2 - 20, py - panelH / 2 + 18, 'X', {
@@ -1383,7 +1415,8 @@ export class HubScene extends Phaser.Scene {
       fontFamily: THEME.font,
       fontStyle: 'bold',
     }).setOrigin(1, 0);
-    const rewardText = achievement.rewardCosmeticId ? this.add.text(x + 18, y + h - 40, 'Reward: skin', {
+    const rewardLabel = achievement.rewardLabel ?? achievement.reward.label;
+    const rewardText = rewardLabel ? this.add.text(x + 18, y + h - 40, `Reward: ${rewardLabel}`, {
       fontSize: this.scaledFont(9),
       color: THEME.textGold,
       fontFamily: THEME.font,
@@ -1624,6 +1657,7 @@ export class HubScene extends Phaser.Scene {
     this.modalTitle = null;
     this.modalDesc  = '';
     this.modalKind  = null;
+    this.clearAchievementWheelHandler();
 
     if (!this.modal) return;
     const target = this.modal;
@@ -1643,6 +1677,12 @@ export class HubScene extends Phaser.Scene {
       targets: target, alpha: 0, duration: 100, ease: 'Power1',
       onComplete: () => target.destroy(),
     });
+  }
+
+  private clearAchievementWheelHandler(): void {
+    if (!this.achievementWheelHandler) return;
+    this.input.off('wheel', this.achievementWheelHandler);
+    this.achievementWheelHandler = null;
   }
 
   // ── HUD overlay ──────────────────────────────────────────────────────────────

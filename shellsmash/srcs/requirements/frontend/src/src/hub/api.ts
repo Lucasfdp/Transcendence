@@ -98,6 +98,7 @@ export interface User {
     totalWins:   number;
     totalLosses: number;
     gamesPlayed: number;
+    totalCoinsEarned: number;
     bio:         string | null;
   };
 }
@@ -118,7 +119,11 @@ export interface Achievement {
   description: string;
   unlockDescription: string;
   rewardLabel?: string;
-  rewardCosmeticId?: string;
+  reward:
+    | { type: 'cosmetic'; cosmeticId: string; label: string }
+    | { type: 'coins'; amount: number; label: string }
+    | { type: 'title'; titleId: string; label: string }
+    | { type: 'none'; label?: string };
   progressCurrent: number;
   progressTarget: number;
   unlocked: boolean;
