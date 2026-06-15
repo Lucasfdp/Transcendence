@@ -105,6 +105,17 @@ export function installHiDPI(game: Phaser.Game): void {
 
     game.renderer.resize(bw, bh);
 
+    // Keep the ScaleManager's pointer transform in sync with our overridden
+    // baseSize. Phaser computes displayScale = baseSize / canvasBounds in its own
+    // resize pass, but that runs BEFORE we swap in the physical baseSize here, so
+    // it's left at the unzoomed ratio (1). transformX/Y use displayScale to map
+    // DOM pointer coords into backing-store space; left stale, the pointer only
+    // spans the top-left 1/currentDPR of the canvas, so input hit areas drift away
+    // from the rendered objects as you zoom in. Recompute it against the physical
+    // backing so hit areas track the visuals. (cssW is the CSS-px canvas width =
+    // canvasBounds.width; bw/cssW === currentDPR/baseDPR; a no-op at dpr 1.)
+    game.scale.displayScale.set(bw / cssW, bh / cssH);
+
     for (const scene of game.scene.getScenes(true)) {
       if (scene.cameras?.main) applyCamera(scene.cameras.main);
     }
