@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { installHiDPI } from './shared/hidpi';
 import { LandingScene } from './hub/LandingScene';
 import { HubScene } from './hub/HubScene';
 import { ShellPickerScene } from './hub/ShellPickerScene';
@@ -21,11 +22,21 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [LandingScene, HubScene, ShellPickerScene, BambooBashScene, ShellCurlScene, KameKnockScene, BellClashScene],
   scale: {
     mode: Phaser.Scale.RESIZE,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+    // No autoCenter: the canvas fills its (viewport-pinned) host via CSS, so
+    // Phaser must not also apply centering margins — those margins fight the
+    // manual backing-store sizing in shared/hidpi.ts and shift the layout.
+    autoCenter: Phaser.Scale.NO_CENTER,
   },
 };
 
 export const game = new Phaser.Game(config);
+
+// Render at the display's native resolution (crisp on HiDPI and at any browser
+// zoom) while keeping the game's logical size constant, so browser zoom keeps
+// everything sharp without reflowing the layout. See shared/hidpi.ts. Must run
+// synchronously after construction so its resize handler is registered before
+// Phaser's own renderer/camera handlers.
+installHiDPI(game);
 
 // Tear down the Phaser instance on Vite HMR updates so the resize listener
 // registered inside HubScene.shutdown() is cleaned up before the module is

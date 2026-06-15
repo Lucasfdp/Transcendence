@@ -925,24 +925,21 @@ export class HubScene extends Phaser.Scene {
 
       // Click
       zone.on('pointerup', () => {
+        // Shell selection is only used by Temple Curling. All other games
+        // launch directly; clear any stale selection so they fall back to
+        // their own default power set.
         if (hs.id === 'kame-knock') {
-          // Do NOT call scene.stop('KameKnockScene') here — KameKnock is already
-          // in SHUTDOWN state when you're in HubScene, and stopping an already-
-          // stopped scene calls InputPlugin.shutdown() on it, which can corrupt
-          // the shared Phaser input manager and break subsequent pointerup events.
-          this.scene.start('ShellPickerScene', {
-            gameId:      'kame-knock',
-            targetScene: 'KameKnockScene',
-            playerCount: 2,
-          });
+          // No scene.stop('KameKnockScene') here: it's already shut down while we're
+          // in the hub, and stopping an already-stopped scene runs InputPlugin.shutdown()
+          // on it — that corrupts the shared Phaser input manager and breaks subsequent
+          // pointerup events.
+          this.registry.remove('shellSelection');
+          this.scene.start('KameKnockScene');
           return;
         }
         if (hs.id === 'bamboo-bash') {
-          this.scene.start('ShellPickerScene', {
-            gameId:      'bamboo-bash',
-            targetScene: 'BambooBashScene',
-            playerCount: 1,
-          });
+          this.registry.remove('shellSelection');
+          this.scene.start('BambooBashScene');
           return;
         }
         if (hs.id === 'temple-curling') {
@@ -954,11 +951,8 @@ export class HubScene extends Phaser.Scene {
           return;
         }
         if (hs.id === 'bell-clash') {
-          this.scene.start('ShellPickerScene', {
-            gameId:      'bell-clash',
-            targetScene: 'BellClashScene',
-            playerCount: 1,
-          });
+          this.registry.remove('shellSelection');
+          this.scene.start('BellClashScene');
           return;
         }
         if (available && this.scene.manager.getScene('ShellSmashArenaScene')) {

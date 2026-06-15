@@ -234,14 +234,18 @@ export class ShellPickerScene extends Phaser.Scene {
     const btnH = 40;
     const btnX = width / 2 - btnW / 2;
     const btnY = height - 48;
-    this.paintConfirmBtn(false, btnX, btnY, btnW, btnH);
 
+    // Create the label before painting — paintConfirmBtn() touches this.confirmBtn,
+    // and on a scene restart the field still references the previous (destroyed)
+    // Text. Calling setColor on that would throw and abort the rest of buildUI.
     this.confirmBtn = this.add.text(width / 2, btnY + btnH / 2, this.confirmLabel(), {
       fontSize:   '15px',
       color:      THEME.textGold,
       fontFamily: THEME.font,
       fontStyle:  'bold',
     }).setOrigin(0.5).setDepth(DEPTH_HUD + 1);
+
+    this.paintConfirmBtn(false, btnX, btnY, btnW, btnH);
 
     const btnZone = this.add
       .zone(width / 2, btnY + btnH / 2, btnW, btnH)

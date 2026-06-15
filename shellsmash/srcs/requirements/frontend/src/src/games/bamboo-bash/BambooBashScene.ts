@@ -79,6 +79,7 @@ export class BambooBashScene extends Phaser.Scene {
   private score = 0;
   private timeLeftMs = ROUND_MS;
   private running = true;
+  private countdownText?: Phaser.GameObjects.Text;
 
   private scoreText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
@@ -110,7 +111,8 @@ export class BambooBashScene extends Phaser.Scene {
     this.spawnFreezeMs = 0;
     this.score         = 0;
     this.timeLeftMs    = ROUND_MS;
-    this.running       = true;
+    this.running       = false;   // held until the "3, 2, 1, GO!" countdown finishes
+    this.countdownText = undefined;
     this.overlay       = undefined;
     this.scoreLogPanel = null;
     this.scoreEvents   = [];
@@ -142,7 +144,8 @@ export class BambooBashScene extends Phaser.Scene {
       launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
       depth: 2,
     }, () => this.onLaunch());
-    this.slingshot.attach();
+    // Slingshot stays detached until the countdown ends so the player can't
+    // launch early (attached in beginPlay()).
 
     for (let i = 0; i < START_BAMBOO; i++) this.spawnBamboo();
 
@@ -154,6 +157,56 @@ export class BambooBashScene extends Phaser.Scene {
     this.showPowerPanel();
 
     this.scale.on('resize', this.onResize, this);
+
+    this.startCountdown();
+  }
+
+  // ── Pre-round countdown ─────────────────────────────────────────────────────
+
+  /** Show "3, 2, 1, GO!" then unlock play. */
+  private startCountdown(): void {
+    const steps = ['3', '2', '1', 'GO!'];
+
+    this.countdownText = this.add.text(this.scale.width / 2, this.scale.height / 2, '', {
+      fontSize: '120px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(DEPTH_OVERLAY);
+
+    const showStep = (i: number): void => {
+      const label = steps[i];
+      const t = this.countdownText;
+      if (!t) return;
+
+      t.setText(label).setScale(0.4).setAlpha(1);
+      this.tweens.add({
+        targets: t,
+        scale: label === 'GO!' ? 1.6 : 1.2,
+        duration: 650,
+        ease: 'Back.easeOut',
+      });
+      this.tweens.add({
+        targets: t,
+        alpha: 0,
+        delay: 500,
+        duration: 280,
+        ease: 'Cubic.easeIn',
+      });
+
+      if (i < steps.length - 1) {
+        this.time.delayedCall(800, () => showStep(i + 1));
+      } else {
+        this.time.delayedCall(800, () => this.beginPlay());
+      }
+    };
+
+    showStep(0);
+  }
+
+  /** Called when the countdown reaches the end — start the round. */
+  private beginPlay(): void {
+    this.countdownText?.destroy();
+    this.countdownText = undefined;
+    this.slingshot.attach();
+    this.running = true;
   }
 
   shutdown(): void {
@@ -162,6 +215,7 @@ export class BambooBashScene extends Phaser.Scene {
     this.overlay?.destroy(true);
     this.powerSidePanel?.destroy();
     this.powerSidePanel = null;
+    this.countdownText?.destroy();
     this.destroySidePanels();
   }
 
@@ -513,7 +567,7 @@ export class BambooBashScene extends Phaser.Scene {
     this.scoreText.setPosition(16, 16);
     this.timerText.setPosition(this.scale.width / 2, 16);
     this.overlay?.setPosition(this.scale.width / 2, this.scale.height / 2);
-
+    this.countdownText?.setPosition(this.scale.width / 2, this.scale.height / 2);
     this.updateSidePanels();
     // Re-show power panel if ball is currently stopped (player can still aim)
     if (!isBallMoving(this.ball) && this.running) {
