@@ -46,13 +46,28 @@ function clampDPR(v: number): number {
   return Math.max(1, Math.min(v || 1, MAX_DPR));
 }
 
+// Every Text created through the (patched) factory, so we can re-scale them all
+// when the zoom changes. Entries remove themselves on destroy.
+const trackedTexts = new Set<Phaser.GameObjects.Text>();
+
+// Text is the ONE thing we let grow with browser zoom — the rest of the layout
+// stays zoom-stable. Scale by the zoom factor (currentDPR/baseDPR) so labels
+// enlarge on zoom-in from their anchor (origin) point, and render at currentDPR
+// resolution so they stay crisp at that larger size. A no-op when not zoomed
+// (f === 1 and currentDPR === baseDPR), so dpr-1 displays are unaffected.
+function applyTextZoom(t: Phaser.GameObjects.Text): void {
+  t.setResolution(currentDPR);
+  t.setScale(currentDPR / baseDPR);
+}
+
 export function installHiDPI(game: Phaser.Game): void {
   baseDPR = clampDPR(window.devicePixelRatio);
   currentDPR = baseDPR;
 
-  // Render Text at baseDPR resolution so it stays sharp under the (constant)
-  // camera zoom. No-op when baseDPR === 1. Patching the factory catches every
-  // `this.add.text(...)`, including dynamic popups.
+  // Scale + sharpen every Text the moment it's created (so text made while
+  // already zoomed is correct immediately), then track it for future zoom
+  // changes. Patching the factory catches every `this.add.text(...)`, including
+  // dynamic popups. No-op when not zoomed.
   const factoryProto = Phaser.GameObjects.GameObjectFactory.prototype as unknown as {
     text: (...args: unknown[]) => Phaser.GameObjects.Text;
     __hidpiPatched?: boolean;
@@ -61,7 +76,9 @@ export function installHiDPI(game: Phaser.Game): void {
     const originalText = factoryProto.text;
     factoryProto.text = function (this: unknown, ...args: unknown[]): Phaser.GameObjects.Text {
       const t = originalText.apply(this, args);
-      t.setResolution(baseDPR);
+      applyTextZoom(t);
+      trackedTexts.add(t);
+      t.once(Phaser.GameObjects.Events.DESTROY, () => trackedTexts.delete(t));
       return t;
     };
     factoryProto.__hidpiPatched = true;
@@ -115,6 +132,10 @@ export function installHiDPI(game: Phaser.Game): void {
     // backing so hit areas track the visuals. (cssW is the CSS-px canvas width =
     // canvasBounds.width; bw/cssW === currentDPR/baseDPR; a no-op at dpr 1.)
     game.scale.displayScale.set(bw / cssW, bh / cssH);
+
+    // Re-scale every live text to the new zoom factor (layout stays put; only
+    // text grows/shrinks).
+    for (const t of trackedTexts) applyTextZoom(t);
 
     for (const scene of game.scene.getScenes(true)) {
       if (scene.cameras?.main) applyCamera(scene.cameras.main);
