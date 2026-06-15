@@ -4,6 +4,9 @@
  * The player launches a turtle shell with the shared Slingshot mechanic, chains
  * hits against timed targets, and scores higher multipliers while the shell is
  * still moving from the same launch.
+ *
+ * Two-player: registry's shellSelection.player0 and player1 pools alternate
+ * every ball round (round 0 → player 0, round 1 → player 1, etc.).
  */
 
 import Phaser from 'phaser';
@@ -15,6 +18,7 @@ import { Slingshot } from '../../shared/mechanics/slingshot';
 import { buildReturnButton } from '../../shared/mechanics/hud';
 import { showAchievementUnlocks } from '../../shared/achievement-popup';
 import { PanelRect, SidePanel, SidePanelRow } from '../../shared/ui/panels/side-panel';
+import { PowerSidePanel } from '../../shared/ui/panels/PowerSidePanel';
 import {
   TimedTarget,
   TimedTargetKind,
@@ -27,6 +31,15 @@ import {
 import { THEME } from '../../shared/theme';
 import { PowerType } from '../../shared/mechanics/power-system';
 import { GAME_POWERS } from '../../shared/mechanics/game-powers';
+import {
+  applyBallPower,
+  BallExtState,
+  BALL_FRICTION_BASE,
+} from '../../shared/mechanics/ball-powers';
+import {
+  BOMB_RADIUS_SRC,
+  REPEL_RADIUS_SRC,
+} from '../../shared/mechanics/power-system';
 
 interface BallRoundConfig {
   readonly totalTargets: number;
@@ -52,11 +65,12 @@ const HIT_KNOCKBACK_SRC = 90;
 const SOLID_BOUNCE_DAMP = 0.92;
 const SIDE_PANEL_MIN_CANVAS_W = 1_180;
 const SIDE_PANEL_MIN_CANVAS_H = 560;
-const SIDE_PANEL_MIN_W = 168;
+const SIDE_PANEL_MIN_W = 100;
 const SIDE_PANEL_MAX_W = 230;
 const SIDE_PANEL_PAD = 16;
 const SIDE_PANEL_TOP = 74;
 const SCORE_LOG_LIMIT = 8;
+const FREEZE_DURATION_MS = 5_000;
 
 const DEPTH_BG = 0;
 const DEPTH_TARGETS = 1;
@@ -73,6 +87,9 @@ const TARGET_COLOURS: Record<TimedTargetKind, { body: number; trim: number; labe
 };
 
 const TARGET_TYPES: TimedTargetKind[] = ['daruma', 'crate', 'drum'];
+
+/** Fallback power pool when no ShellPicker selection is present. */
+const FALLBACK_POWERS: PowerType[] = [PowerType.NONE, ...GAME_POWERS['kame-knock']];
 
 export class KameKnockScene extends Phaser.Scene {
   private bgGfx!: Phaser.GameObjects.Graphics;
@@ -92,64 +109,68 @@ export class KameKnockScene extends Phaser.Scene {
   private combo = 0;
   private running = true;
   private scoreEvents: string[] = [];
+  private targetFreezeMs = 0; // FREEZE power: pauses target age when > 0
 
   private ballText: Phaser.GameObjects.Text | null = null;
-  private infoPanel: SidePanel | null = null;
   private scoreLogPanel: SidePanel | null = null;
   private overlay?: Phaser.GameObjects.Container;
   private overlayHitZones: Phaser.GameObjects.Zone[] = [];
 
-  /** Power pool for the current player, populated from ShellPickerScene registry. */
-  private playerPowers: PowerType[] = [PowerType.NONE, ...GAME_POWERS['kame-knock']];
-  /** Currently active power (NONE = no power selected). */
+  // ── Power state ──────────────────────────────────────────────────────────────
+  private powerSidePanel: PowerSidePanel | null = null;
+
+  /**
+   * Per-player power pools. KameKnock alternates players each ball round:
+   * round 0 → player 0, round 1 → player 1, etc.
+   */
+  private playerPowers: [PowerType[], PowerType[]] = [FALLBACK_POWERS, FALLBACK_POWERS];
   private activePower: PowerType = PowerType.NONE;
+  /** Per-player used-power tracking (one-shot each per game, NONE always reusable). */
+  private powerUsed: [Set<PowerType>, Set<PowerType>] = [new Set(), new Set()];
 
   constructor() { super({ key: 'KameKnockScene' }); }
 
-  /**
-   * Phaser lifecycle — called automatically on scene stop/switch/restart.
-   * Replaces the old once(SHUTDOWN, cleanupSceneResources) pattern, which
-   * caused cleanupSceneResources() to be called twice when the overlay buttons
-   * called it manually before scene.start()/scene.restart().
-   */
   shutdown(): void {
     this.cleanupSceneResources();
   }
 
   create(): void {
-
-    this.targets = [];
-    this.nextTargetId = 0;
+    this.targets          = [];
+    this.nextTargetId     = 0;
     this.currentBallIndex = 0;
     this.launchedThisBall = false;
-    this.score = 0;
-    this.combo = 0;
-    this.running = true;
-    this.scoreEvents = [];
-    this.overlay = undefined;
-    this.ballText = null;
-    this.infoPanel = null;
-    this.scoreLogPanel = null;
+    this.score            = 0;
+    this.combo            = 0;
+    this.running          = true;
+    this.scoreEvents      = [];
+    this.overlay          = undefined;
+    this.ballText         = null;
+    this.scoreLogPanel    = null;
+    this.targetFreezeMs   = 0;
+    this.activePower      = PowerType.NONE;
+    this.powerUsed        = [new Set(), new Set()];
 
     this.arena = this.resolveArena();
     this.resetBall();
 
-    // Read shell selection from registry (set by ShellPickerScene).
-    // KameKnock uses player0's selection as the single active power pool.
+    // Read shell selection from registry.
+    // KameKnock is 2-player: alternate pools each ball round.
     const sel = this.registry.get('shellSelection') as
-      { player0?: string[] } | undefined;
-    const specials = (sel?.player0 ?? [])
-      .map((s) => s as PowerType)
-      .filter((s) => (Object.values(PowerType) as string[]).includes(s) && s !== PowerType.NONE);
-    this.playerPowers = [PowerType.NONE, ...new Set(specials)];
-    if (this.playerPowers.length <= 1) {
-      this.playerPowers = [PowerType.NONE, ...GAME_POWERS['kame-knock']];
-    }
-    this.activePower = PowerType.NONE;
+      { player0?: string[]; player1?: string[] } | undefined;
 
-    this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
+    const buildPool = (picks: string[] | undefined): PowerType[] => {
+      const specials = (picks ?? [])
+        .map((s) => s as PowerType)
+        .filter((s) => (Object.values(PowerType) as string[]).includes(s) && s !== PowerType.NONE);
+      const pool = [PowerType.NONE, ...new Set(specials)];
+      return pool.length > 1 ? pool : FALLBACK_POWERS;
+    };
+
+    this.playerPowers = [buildPool(sel?.player0), buildPool(sel?.player1)];
+
+    this.bgGfx     = this.add.graphics().setDepth(DEPTH_BG);
     this.targetGfx = this.add.graphics().setDepth(DEPTH_TARGETS);
-    this.ballGfx = this.add.graphics().setDepth(DEPTH_BALL);
+    this.ballGfx   = this.add.graphics().setDepth(DEPTH_BALL);
 
     this.slingshot = new Slingshot(this, this.ball, {
       maxDrag: MAX_DRAG_SRC * this.arena.scale,
@@ -165,6 +186,7 @@ export class KameKnockScene extends Phaser.Scene {
     drawShellBall(this.ballGfx, this.ball);
     this.buildHud();
     this.updateSidePanels();
+    this.showPowerPanel();
 
     this.scale.on('resize', this.onResize, this);
   }
@@ -176,6 +198,8 @@ export class KameKnockScene extends Phaser.Scene {
     this.clearOverlayHitZones();
     this.overlay?.destroy(true);
     this.overlay = undefined;
+    this.powerSidePanel?.destroy();
+    this.powerSidePanel = null;
     this.destroySidePanels();
     this.ballText = null;
   }
@@ -183,35 +207,119 @@ export class KameKnockScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (!this.running) return;
 
-    for (const target of this.targets) {
-      target.ageMs += delta;
+    // Advance target age (paused during FREEZE)
+    this.targetFreezeMs = Math.max(0, this.targetFreezeMs - delta);
+    if (this.targetFreezeMs <= 0) {
+      for (const target of this.targets) {
+        target.ageMs += delta;
+      }
     }
 
     const moving = stepBall(this.ball, delta, this.arena);
-    if (moving) this.checkTargetHits();
+    const ext    = this.ball as BallExtState;
+
+    // Apply frictionOverride correction (SLICK / BOUNCER / SPINNING)
+    if (moving && ext.frictionOverride !== undefined) {
+      const factor = Math.pow(ext.frictionOverride / BALL_FRICTION_BASE, delta / 16.67);
+      this.ball.vx *= factor;
+      this.ball.vy *= factor;
+    }
+
+    if (moving) {
+      this.checkTargetHits();
+    }
+
+    // Resolve stop flags when ball comes to rest
+    if (!moving && this.launchedThisBall) {
+      if (ext.phantomHidden) {
+        this.ballGfx.setAlpha(1);
+        ext.phantomHidden = false;
+      }
+      if (ext.bombPending) {
+        this.resolveStopBomb();
+        ext.bombPending = false;
+      }
+      if (ext.repelPending) {
+        this.resolveStopRepel();
+        ext.repelPending = false;
+      }
+      if (ext.freezePending) {
+        this.targetFreezeMs = FREEZE_DURATION_MS;
+        ext.freezePending   = false;
+      }
+    }
+
     if (this.launchedThisBall && !moving) this.finishBallRound();
 
     this.drawTargets();
     drawShellBall(this.ballGfx, this.ball);
   }
 
+  // ── Launch handler ────────────────────────────────────────────────────────────
+
   private onLaunch(): void {
     this.launchedThisBall = true;
     this.combo = 0;
+
+    // Apply power to ball (velocity already set by Slingshot, radius reset in setupBallRound)
+    applyBallPower(this.activePower, this.ball, this.arena);
+
+    if ((this.ball as BallExtState).phantomHidden) {
+      this.ballGfx.setAlpha(0.05);
+    }
+
+    // Track used powers for the current player
+    const p = this.currentPlayerIndex();
+    if (this.activePower !== PowerType.NONE) {
+      this.powerUsed[p].add(this.activePower);
+    }
+
+    this.activePower = PowerType.NONE;
+    this.powerSidePanel?.hide();
+  }
+
+  // ── Stop-flag resolvers ───────────────────────────────────────────────────────
+
+  private resolveStopBomb(): void {
+    const blastR = BOMB_RADIUS_SRC * this.arena.scale;
+    const bx = this.ball.x;
+    const by = this.ball.y;
+    this.targets = this.targets.filter(t => {
+      if (!t.breakable) return true;
+      const pos = timedTargetPosition(t, this.arena);
+      return Math.hypot(pos.x - bx, pos.y - by) >= blastR;
+    });
+  }
+
+  private resolveStopRepel(): void {
+    const repelR = REPEL_RADIUS_SRC * this.arena.scale;
+    const bx = this.ball.x;
+    const by = this.ball.y;
+    this.targets = this.targets.filter(t => {
+      if (!t.breakable) return true;
+      const pos = timedTargetPosition(t, this.arena);
+      return Math.hypot(pos.x - bx, pos.y - by) >= repelR;
+    });
+  }
+
+  // ── Turn helpers ──────────────────────────────────────────────────────────────
+
+  /** Index of the player whose turn it currently is. */
+  private currentPlayerIndex(): 0 | 1 {
+    return (this.currentBallIndex % 2) as 0 | 1;
   }
 
   private setupBallRound(): void {
-    this.targets = [];
+    this.targets      = [];
     this.launchedThisBall = false;
-    this.combo = 0;
+    this.combo        = 0;
     this.resetBall();
 
     const config = BALL_ROUNDS[this.currentBallIndex];
-    const breakableFlags = this.shuffledBreakableFlags(config);
+    if (!config) return;
 
-    for (const breakable of breakableFlags) {
-      this.spawnTarget(breakable);
-    }
+    const breakableFlags = this.shuffledBreakableFlags(config);
+    for (const breakable of breakableFlags) this.spawnTarget(breakable);
 
     if (this.ballText?.active) this.ballText.setText(this.formatBallText());
     if (this.scoreLogPanel) this.updateSidePanels();
@@ -224,9 +332,8 @@ export class KameKnockScene extends Phaser.Scene {
 
   private spawnTarget(breakable: boolean): void {
     const spot = randomTimedTargetSpot(this.targets) ?? this.fallbackTargetSpot();
-
     const kind = Phaser.Math.RND.pick(TARGET_TYPES);
-    const def = TARGET_COLOURS[kind];
+    const def  = TARGET_COLOURS[kind];
     this.targets.push({
       id: this.nextTargetId++,
       kind,
@@ -242,14 +349,12 @@ export class KameKnockScene extends Phaser.Scene {
 
   private fallbackTargetSpot(): { nx: number; ny: number } {
     const radius = 0.28 + Math.random() * 0.56;
-    const theta = Math.random() * Math.PI * 2;
-    return {
-      nx: Math.cos(theta) * radius,
-      ny: Math.sin(theta) * radius,
-    };
+    const theta  = Math.random() * Math.PI * 2;
+    return { nx: Math.cos(theta) * radius, ny: Math.sin(theta) * radius };
   }
 
   private checkTargetHits(): void {
+    const ext = this.ball as BallExtState;
     for (let i = this.targets.length - 1; i >= 0; i--) {
       const target = this.targets[i];
       if (!hitsTimedTarget(target, this.arena, this.ball.x, this.ball.y, this.ball.r)) continue;
@@ -260,11 +365,17 @@ export class KameKnockScene extends Phaser.Scene {
         continue;
       }
 
+      // GHOST: pass through first breakable target without scoring
+      if (ext.ghostUsed === false) {
+        ext.ghostUsed = true;
+        continue;
+      }
+
       this.combo += 1;
       const accuracy = targetHitAccuracy(target, this.arena, this.ball.x, this.ball.y);
-      const perfect = accuracy <= PERFECT_ACCURACY;
-      const gained = target.points * this.combo + (perfect ? PERFECT_BONUS : 0);
-      this.score += gained;
+      const perfect  = accuracy <= PERFECT_ACCURACY;
+      const gained   = target.points * this.combo + (perfect ? PERFECT_BONUS : 0);
+      this.score    += gained;
       this.addScoreEvent(`${TARGET_COLOURS[target.kind].label}  +${gained}`, perfect ? 'PERFECT' : `x${this.combo}`);
 
       this.popScore(pos.x, pos.y, gained, this.combo, perfect);
@@ -282,9 +393,8 @@ export class KameKnockScene extends Phaser.Scene {
     const minDist = this.ball.r + targetRadius;
 
     if (dist < minDist) {
-      const push = minDist - dist;
-      this.ball.x += nx * push;
-      this.ball.y += ny * push;
+      this.ball.x += nx * (minDist - dist);
+      this.ball.y += ny * (minDist - dist);
     }
 
     const dot = this.ball.vx * nx + this.ball.vy * ny;
@@ -296,8 +406,8 @@ export class KameKnockScene extends Phaser.Scene {
   }
 
   private applyHitKick(targetX: number, targetY: number): void {
-    const dx = this.ball.x - targetX;
-    const dy = this.ball.y - targetY;
+    const dx  = this.ball.x - targetX;
+    const dy  = this.ball.y - targetY;
     const len = Math.max(1, Math.hypot(dx, dy));
     const kick = HIT_KNOCKBACK_SRC * this.arena.scale;
     this.ball.vx += (dx / len) * kick;
@@ -309,17 +419,13 @@ export class KameKnockScene extends Phaser.Scene {
     this.slingshot?.cancel();
     this.ball.vx = 0;
     this.ball.vy = 0;
-    this.combo = 0;
+    this.combo   = 0;
+    this.powerSidePanel?.hide();
     this.updateSidePanels();
     this.submitResult();
     this.showEndScreen();
   }
 
-  /**
-   * Submit the game result to the backend for XP / coin / level progression.
-   * Kame Knock is single-player — completing all rounds always counts as a win.
-   * Non-fatal: errors are logged but never block the end screen from showing.
-   */
   private submitResult(): void {
     const user = this.registry.get('user') as { isGuest?: boolean } | undefined;
     if (user?.isGuest) return;
@@ -334,7 +440,7 @@ export class KameKnockScene extends Phaser.Scene {
 
   private finishBallRound(): void {
     this.launchedThisBall = false;
-    this.combo = 0;
+    this.combo            = 0;
     this.currentBallIndex += 1;
 
     if (this.currentBallIndex >= BALL_ROUNDS.length) {
@@ -345,12 +451,35 @@ export class KameKnockScene extends Phaser.Scene {
     this.setupBallRound();
     this.drawTargets();
     drawShellBall(this.ballGfx, this.ball);
+    this.showPowerPanel();
   }
+
+  // ── Power panel ──────────────────────────────────────────────────────────────
+
+  private showPowerPanel(): void {
+    const layout = this.resolveLayout();
+    if (!layout.leftPanel) {
+      this.powerSidePanel?.hide();
+      return;
+    }
+
+    if (!this.powerSidePanel) {
+      this.powerSidePanel = new PowerSidePanel(
+        this,
+        (type) => { this.activePower = type; },
+        DEPTH_HUD,
+      );
+    }
+
+    const p = this.currentPlayerIndex();
+    this.powerSidePanel.show(layout.leftPanel, this.playerPowers[p], this.activePower, this.powerUsed[p]);
+  }
+
+  // ── HUD ──────────────────────────────────────────────────────────────────────
 
   private buildHud(): void {
     this.hudObjects = buildReturnButton(this);
-
-    this.ballText = this.add.text(this.scale.width / 2, 16, this.formatBallText(), {
+    this.ballText   = this.add.text(this.scale.width / 2, 16, this.formatBallText(), {
       fontSize: '26px', color: THEME.text, fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5, 0).setDepth(DEPTH_HUD);
   }
@@ -361,40 +490,33 @@ export class KameKnockScene extends Phaser.Scene {
 
   private resolveLayout(): KameKnockLayout {
     const { width, height } = this.scale;
+    if (width < SIDE_PANEL_MIN_CANVAS_W || height < SIDE_PANEL_MIN_CANVAS_H) return {};
 
-    if (width < SIDE_PANEL_MIN_CANVAS_W || height < SIDE_PANEL_MIN_CANVAS_H) {
-      return {};
-    }
-
-    const arena = this.arena ?? this.resolveArena();
-    const leftFreeW = arena.cx - arena.rx - SIDE_PANEL_PAD * 2;
+    const arena      = this.arena ?? this.resolveArena();
+    const leftFreeW  = arena.cx - arena.rx - SIDE_PANEL_PAD * 2;
     const rightFreeW = width - (arena.cx + arena.rx) - SIDE_PANEL_PAD * 2;
-    const panelW = Math.floor(Math.min(SIDE_PANEL_MAX_W, leftFreeW, rightFreeW));
+    const leftPanelW  = Math.floor(Math.min(SIDE_PANEL_MAX_W, leftFreeW));
+    const rightPanelW = Math.floor(Math.min(SIDE_PANEL_MAX_W, rightFreeW));
+    const panelH      = height - SIDE_PANEL_TOP - SIDE_PANEL_PAD;
 
-    if (panelW < SIDE_PANEL_MIN_W) return {};
-
-    const panelH = height - SIDE_PANEL_TOP - SIDE_PANEL_PAD;
-    const leftPanel = { x: SIDE_PANEL_PAD, y: SIDE_PANEL_TOP, width: panelW, height: panelH };
-    const rightPanel = { x: width - SIDE_PANEL_PAD - panelW, y: SIDE_PANEL_TOP, width: panelW, height: panelH };
-
+    const leftPanel  = leftPanelW  >= SIDE_PANEL_MIN_W
+      ? { x: SIDE_PANEL_PAD, y: SIDE_PANEL_TOP, width: leftPanelW,  height: panelH }
+      : undefined;
+    const rightPanel = rightPanelW >= SIDE_PANEL_MIN_W
+      ? { x: width - SIDE_PANEL_PAD - rightPanelW, y: SIDE_PANEL_TOP, width: rightPanelW, height: panelH }
+      : undefined;
+    if (!leftPanel && !rightPanel) return {};
     return { leftPanel, rightPanel };
   }
 
   private updateSidePanels(): void {
     const layout = this.resolveLayout();
-    if (!layout.leftPanel || !layout.rightPanel) {
+    if (!layout.rightPanel) {
       this.destroySidePanels();
       return;
     }
 
-    this.infoPanel ??= new SidePanel(this, DEPTH_HUD);
     this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
-
-    this.infoPanel.update({
-      title: 'TARGET VALUES',
-      rect: layout.leftPanel,
-      rows: this.buildInfoRows(),
-    });
     this.scoreLogPanel.update({
       title: 'SCORE LOG',
       rect: layout.rightPanel,
@@ -404,35 +526,15 @@ export class KameKnockScene extends Phaser.Scene {
   }
 
   private destroySidePanels(): void {
-    this.infoPanel?.destroy();
     this.scoreLogPanel?.destroy();
-    this.infoPanel = null;
     this.scoreLogPanel = null;
-  }
-
-  private buildInfoRows(): SidePanelRow[] {
-    return [
-      // subtitle format used for long labels to prevent value-column overlap
-      { label: 'Shell ball', subtitle: 'bounces off targets', icon: (g, x, y, size) => this.drawShellIcon(g, x, y, size / 2) },
-      { label: 'Daruma',     value: '+100', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'daruma', true) },
-      { label: 'Crate',      value: '+120', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'crate', true) },
-      { label: 'Drum',       value: '+150', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'drum', true) },
-      { label: 'Solid target', subtitle: 'no score — bounces', icon: (g, x, y, size) => this.drawTargetIcon(g, x, y, size / 2, 'drum', false) },
-      { label: 'Perfect hit', value: '+500', icon: (g, x, y, size) => this.drawSparkIcon(g, x, y, size / 2) },
-      { label: 'Combo',       value: 'x chain', icon: (g, x, y, size) => this.drawComboIcon(g, x, y, size / 2) },
-    ];
   }
 
   private buildScoreLogRows(): SidePanelRow[] {
     if (this.scoreEvents.length === 0) return [{ label: 'No scores yet', muted: true }];
-
     return this.scoreEvents.map((event, index) => {
       const [label, value] = event.split('\t');
-      return {
-        label,
-        value,
-        muted: index > 3,
-      };
+      return { label, value, muted: index > 3 };
     });
   }
 
@@ -465,15 +567,18 @@ export class KameKnockScene extends Phaser.Scene {
 
   private formatBallText(): string {
     const config = BALL_ROUNDS[this.currentBallIndex];
-    return `BALL ${this.currentBallIndex + 1}/${BALL_ROUNDS.length}  ${config.breakableTargets} BREAK  ${config.totalTargets - config.breakableTargets} BOUNCE`;
+    if (!config) return '';
+    const p = this.currentPlayerIndex();
+    return `BALL ${this.currentBallIndex + 1}/${BALL_ROUNDS.length}  P${p + 1}  ${config.breakableTargets} BREAK`;
   }
 
   private resetBall(): void {
-    this.ball.x = this.arena.cx;
-    this.ball.y = this.arena.cy;
+    // Spawn near the left edge of the arena so the player aims rightward at targets.
+    this.ball.x  = this.arena.cx - this.arena.rx * 0.72;
+    this.ball.y  = this.arena.cy;
     this.ball.vx = 0;
     this.ball.vy = 0;
-    this.ball.r = BALL_SRC_R * this.arena.scale;
+    this.ball.r  = BALL_SRC_R * this.arena.scale;
   }
 
   private drawBackground(): void {
@@ -484,7 +589,7 @@ export class KameKnockScene extends Phaser.Scene {
 
     const gridStep = Math.max(28, Math.round(70 * this.arena.scale));
     this.bgGfx.lineStyle(1, THEME.greenMuted, 0.45);
-    for (let x = 0; x < width; x += gridStep) this.bgGfx.lineBetween(x, 0, x, height);
+    for (let x = 0; x < width;  x += gridStep) this.bgGfx.lineBetween(x, 0, x, height);
     for (let y = 0; y < height; y += gridStep) this.bgGfx.lineBetween(0, y, width, y);
 
     drawSumoRing(this.bgGfx, this.arena);
@@ -496,30 +601,19 @@ export class KameKnockScene extends Phaser.Scene {
   }
 
   private drawTarget(target: TimedTarget): void {
-    const pos = timedTargetPosition(target, this.arena);
+    const pos    = timedTargetPosition(target, this.arena);
     const radius = timedTargetRadius(target, this.arena);
-    const pulse = 0.88 + Math.sin(target.ageMs * 0.006) * 0.12;
-    const alpha = target.breakable ? 1 : 0.92;
-
+    const pulse  = 0.88 + Math.sin(target.ageMs * 0.006) * 0.12;
+    const alpha  = target.breakable ? 1 : 0.92;
     this.drawTargetBody(this.targetGfx, pos.x, pos.y, radius, target.kind, target.breakable, pulse, alpha);
-  }
-
-  private drawTargetIcon(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number, kind: TimedTargetKind, breakable: boolean): void {
-    this.drawTargetBody(g, x, y, radius, kind, breakable, 0.96, breakable ? 1 : 0.92);
   }
 
   private drawTargetBody(
     g: Phaser.GameObjects.Graphics,
-    x: number,
-    y: number,
-    radius: number,
-    kind: TimedTargetKind,
-    breakable: boolean,
-    pulse: number,
-    alpha: number,
+    x: number, y: number, radius: number,
+    kind: TimedTargetKind, breakable: boolean, pulse: number, alpha: number,
   ): void {
     const def = TARGET_COLOURS[kind];
-
     g.fillStyle(0x000000, 0.20 * alpha);
     g.fillEllipse(x + radius * 0.25, y + radius * 0.45, radius * 2.1, radius * 0.8);
     g.fillStyle(breakable ? def.body : 0x4d5566, alpha);
@@ -549,80 +643,33 @@ export class KameKnockScene extends Phaser.Scene {
     }
   }
 
-  private drawShellIcon(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number): void {
-    g.fillStyle(0x000000, 0.22);
-    g.fillEllipse(x + radius * 0.3, y + radius * 0.5, radius * 2.4, radius * 0.9);
-    g.fillStyle(0x2a7fd4, 1);
-    g.fillCircle(x, y, radius);
-    g.fillStyle(0x1a5fa8, 1);
-    g.fillCircle(x + radius * 0.25, y - radius * 0.12, radius * 0.38);
-    g.fillCircle(x - radius * 0.22, y + radius * 0.28, radius * 0.30);
-    g.fillCircle(x + radius * 0.08, y + radius * 0.52, radius * 0.22);
-    g.fillStyle(0xffffff, 0.55);
-    g.fillCircle(x - radius * 0.28, y - radius * 0.30, radius * 0.22);
-  }
-
-  private drawSparkIcon(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number): void {
-    g.lineStyle(2, THEME.gold, 0.95);
-    g.lineBetween(x - radius, y, x + radius, y);
-    g.lineBetween(x, y - radius, x, y + radius);
-    g.lineBetween(x - radius * 0.7, y - radius * 0.7, x + radius * 0.7, y + radius * 0.7);
-    g.lineBetween(x + radius * 0.7, y - radius * 0.7, x - radius * 0.7, y + radius * 0.7);
-    g.fillStyle(THEME.gold, 0.95);
-    g.fillCircle(x, y, radius * 0.26);
-  }
-
-  private drawComboIcon(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number): void {
-    g.lineStyle(2, THEME.textMuted, 0.9);
-    g.strokeCircle(x - radius * 0.32, y, radius * 0.54);
-    g.strokeCircle(x + radius * 0.32, y, radius * 0.54);
-    g.fillStyle(THEME.gold, 0.95);
-    g.fillCircle(x, y, radius * 0.18);
-  }
-
   private popBounce(x: number, y: number): void {
     const text = this.add.text(x, y, 'BOUNCE', {
-      fontSize: '16px',
-      color: '#9aa4b8',
-      fontFamily: THEME.font,
-      fontStyle: 'bold',
+      fontSize: '16px', color: '#9aa4b8', fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(DEPTH_FX);
-
     this.tweens.add({
-      targets: text,
-      y: y - 34,
-      alpha: 0,
-      duration: 420,
-      ease: 'Cubic.easeOut',
+      targets: text, y: y - 34, alpha: 0, duration: 420, ease: 'Cubic.easeOut',
       onComplete: () => text.destroy(),
     });
   }
 
   private popScore(x: number, y: number, points: number, combo: number, perfect: boolean): void {
     const label = perfect ? `PERFECT +${points}` : `+${points}  x${combo}`;
-    const text = this.add.text(x, y, label, {
+    const text  = this.add.text(x, y, label, {
       fontSize: perfect ? '24px' : '20px',
       color: perfect ? THEME.textGold : THEME.text,
-      fontFamily: THEME.font,
-      fontStyle: 'bold',
+      fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(DEPTH_FX);
-
     this.tweens.add({
-      targets: text,
-      y: y - 48,
-      alpha: 0,
-      duration: 700,
-      ease: 'Cubic.easeOut',
+      targets: text, y: y - 48, alpha: 0, duration: 700, ease: 'Cubic.easeOut',
       onComplete: () => text.destroy(),
     });
   }
 
   private showEndScreen(): void {
     this.clearOverlayHitZones();
-
     const { width, height } = this.scale;
-    const panelW = 460;
-    const panelH = 280;
+    const panelW = 460, panelH = 280;
     const container = this.add.container(width / 2, height / 2).setDepth(DEPTH_OVERLAY);
     this.overlay = container;
 
@@ -655,13 +702,9 @@ export class KameKnockScene extends Phaser.Scene {
 
   private addOverlayButton(
     container: Phaser.GameObjects.Container,
-    x: number,
-    y: number,
-    label: string,
-    onClick: () => void,
+    x: number, y: number, label: string, onClick: () => void,
   ): void {
-    const buttonW = 180;
-    const buttonH = 42;
+    const buttonW = 180, buttonH = 42;
     const bg = this.add.graphics();
     bg.fillStyle(THEME.background, 0.95);
     bg.fillRoundedRect(x - buttonW / 2, y - buttonH / 2, buttonW, buttonH, 8);
@@ -678,12 +721,6 @@ export class KameKnockScene extends Phaser.Scene {
       .zone(container.x + x, container.y + y, buttonW, buttonH)
       .setInteractive({ useHandCursor: true })
       .setDepth(DEPTH_OVERLAY + 2);
-    // Use 'pointerup' (not 'pointerdown') so the full click cycle completes inside
-    // this scene before the transition fires. Using 'pointerdown' caused scene.start()
-    // to run while the mouse button was still physically held — the subsequent mouseup
-    // then arrived in HubScene's fresh InputPlugin with no zones registered yet,
-    // corrupting Phaser's _tempHits/_overObjectsContainer state and breaking all
-    // subsequent pointerup delivery in HubScene.
     zone.on('pointerup', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
       zone.disableInteractive();
@@ -693,28 +730,26 @@ export class KameKnockScene extends Phaser.Scene {
   }
 
   private clearOverlayHitZones(): void {
-    for (const zone of this.overlayHitZones) {
-      zone.destroy();
-    }
+    for (const zone of this.overlayHitZones) zone.destroy();
     this.overlayHitZones = [];
   }
 
   private onResize(): void {
     const oldArena = this.arena;
-    this.arena = this.resolveArena();
+    this.arena     = this.resolveArena();
     const velocityScale = this.arena.scale / oldArena.scale;
 
     this.slingshot?.cancel();
     if (this.slingshot) {
-      this.slingshot.maxDrag = MAX_DRAG_SRC * this.arena.scale;
+      this.slingshot.maxDrag     = MAX_DRAG_SRC * this.arena.scale;
       this.slingshot.launchSpeed = LAUNCH_SPEED_SRC * this.arena.scale;
     }
 
     const relX = (this.ball.x - oldArena.cx) / oldArena.rx;
     const relY = (this.ball.y - oldArena.cy) / oldArena.ry;
-    this.ball.x = this.arena.cx + relX * this.arena.rx;
-    this.ball.y = this.arena.cy + relY * this.arena.ry;
-    this.ball.r = BALL_SRC_R * this.arena.scale;
+    this.ball.x  = this.arena.cx + relX * this.arena.rx;
+    this.ball.y  = this.arena.cy + relY * this.arena.ry;
+    this.ball.r  = BALL_SRC_R * this.arena.scale;
     this.ball.vx *= velocityScale;
     this.ball.vy *= velocityScale;
 
@@ -725,10 +760,27 @@ export class KameKnockScene extends Phaser.Scene {
     this.hudObjects.forEach((object) => object.destroy());
     this.hudObjects = buildReturnButton(this);
     this.ballText?.setPosition(this.scale.width / 2, 16);
+
     this.updateSidePanels();
+    this.powerSidePanel?.refresh();
+
     if (this.overlay) {
       this.overlay.destroy(true);
       this.showEndScreen();
     }
+  }
+
+  // ── Icon helpers (used in info rows - kept for reference, info panel removed) ─
+  private drawShellIcon(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number): void {
+    g.fillStyle(0x000000, 0.22);
+    g.fillEllipse(x + radius * 0.3, y + radius * 0.5, radius * 2.4, radius * 0.9);
+    g.fillStyle(0x2a7fd4, 1);
+    g.fillCircle(x, y, radius);
+    g.fillStyle(0x1a5fa8, 1);
+    g.fillCircle(x + radius * 0.25, y - radius * 0.12, radius * 0.38);
+    g.fillCircle(x - radius * 0.22, y + radius * 0.28, radius * 0.30);
+    g.fillCircle(x + radius * 0.08, y + radius * 0.52, radius * 0.22);
+    g.fillStyle(0xffffff, 0.55);
+    g.fillCircle(x - radius * 0.28, y - radius * 0.30, radius * 0.22);
   }
 }

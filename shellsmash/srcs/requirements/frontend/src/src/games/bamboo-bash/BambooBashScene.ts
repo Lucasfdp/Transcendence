@@ -25,8 +25,18 @@ import {
   stepBamboo, randomSpot, bambooPos, hitsBamboo, drawBamboo,
 } from './bamboo';
 import { PanelRect, SidePanel, SidePanelRow } from '../../shared/ui/panels/side-panel';
-import { PowerType, GameEffectHook, ALL_POWERS } from '../../shared/mechanics/power-system';
+import { PowerSidePanel } from '../../shared/ui/panels/PowerSidePanel';
+import { PowerType } from '../../shared/mechanics/power-system';
 import { GAME_POWERS } from '../../shared/mechanics/game-powers';
+import {
+  applyBallPower,
+  BallExtState,
+  BALL_FRICTION_BASE,
+} from '../../shared/mechanics/ball-powers';
+import {
+  BOMB_RADIUS_SRC,
+  REPEL_RADIUS_SRC,
+} from '../../shared/mechanics/power-system';
 
 // Slingshot tuning in arena source px (scaled by the letterbox factor so the
 // game feels identical at 1080p, 4K, or a tiny window)
@@ -38,8 +48,10 @@ const ROUND_MS        = 30_000;  // countdown length
 const SPAWN_EVERY_MS  = 1800;    // cadence of new bamboo while the field has room
 const MAX_BAMBOO      = 6;       // max bamboo alive at once
 const START_BAMBOO    = 2;       // bamboo present when the round begins
+const FREEZE_DURATION_MS = 5_000; // how long FREEZE pauses spawn accumulation
 
 const DEPTH_OVERLAY = 30;
+const DEPTH_HUD     = 20;
 
 // Side-panel layout
 const SIDE_PANEL_MIN_CANVAS_W = 1_180;
@@ -61,7 +73,8 @@ export class BambooBashScene extends Phaser.Scene {
   private hudObjects: Phaser.GameObjects.GameObject[] = [];
 
   private bamboos: Bamboo[] = [];
-  private spawnAccMs = 0;
+  private spawnAccMs   = 0;
+  private spawnFreezeMs = 0; // FREEZE power: pauses spawn accumulation when > 0
 
   private score = 0;
   private timeLeftMs = ROUND_MS;
@@ -71,37 +84,45 @@ export class BambooBashScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
   private overlay?: Phaser.GameObjects.Container;
 
-  private infoPanel:     SidePanel | null = null;
+  // ── Side panels ──────────────────────────────────────────────────────────────
   private scoreLogPanel: SidePanel | null = null;
   private scoreEvents:   string[]         = [];
 
-  /**
-   * Shell powers available to the player this game (read from registry).
-   * Each power's onActivate is a stub — real effects are implemented incrementally.
-   * TODO(#shell-effects-bamboo): implement per-power game effects.
-   */
+  // ── Power panel ──────────────────────────────────────────────────────────────
+  private powerSidePanel: PowerSidePanel | null = null;
+
+  /** Shell power pool for this player (read from registry in create()). */
   private playerPowers: PowerType[] = [PowerType.NONE];
+  /** Currently selected power (updated by panel onSelect callback). */
   private activePower:  PowerType   = PowerType.NONE;
+  /** Powers already fired this game — one-shot each (NONE is always reusable). */
+  private powerUsed: Set<PowerType> = new Set();
+
+  /** True while ball was moving last frame — used to detect the stop transition. */
+  private ballWasMoving = false;
 
   constructor() { super({ key: 'BambooBashScene' }); }
 
   create(): void {
     // Reset per-round state (scenes are reused across restarts)
-    this.bamboos = [];
-    this.spawnAccMs = 0;
-    this.score = 0;
-    this.timeLeftMs = ROUND_MS;
-    this.running = true;
-    this.overlay = undefined;
-    this.infoPanel = null;
+    this.bamboos       = [];
+    this.spawnAccMs    = 0;
+    this.spawnFreezeMs = 0;
+    this.score         = 0;
+    this.timeLeftMs    = ROUND_MS;
+    this.running       = true;
+    this.overlay       = undefined;
     this.scoreLogPanel = null;
-    this.scoreEvents = [];
+    this.scoreEvents   = [];
+    this.ballWasMoving = false;
+    this.powerUsed     = new Set();
+    this.activePower   = PowerType.NONE;
 
     this.arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
     this.resetBall();
 
     // Read shell selection from registry (set by ShellPickerScene).
-    // Falls back to the full GAME_POWERS list for bamboo-bash if nothing was selected.
+    // BambooBash is single-player — use player0's pool only.
     const sel = this.registry.get('shellSelection') as
       { player0?: string[] } | undefined;
     const specials = (sel?.player0 ?? [])
@@ -111,7 +132,6 @@ export class BambooBashScene extends Phaser.Scene {
     if (this.playerPowers.length <= 1) {
       this.playerPowers = [PowerType.NONE, ...GAME_POWERS['bamboo-bash']];
     }
-    this.activePower = PowerType.NONE;
 
     this.bgGfx     = this.add.graphics().setDepth(0);
     this.bambooGfx = this.add.graphics().setDepth(1);
@@ -121,7 +141,7 @@ export class BambooBashScene extends Phaser.Scene {
       maxDrag: MAX_DRAG_SRC * this.arena.scale,
       launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
       depth: 2,
-    });
+    }, () => this.onLaunch());
     this.slingshot.attach();
 
     for (let i = 0; i < START_BAMBOO; i++) this.spawnBamboo();
@@ -131,6 +151,7 @@ export class BambooBashScene extends Phaser.Scene {
     drawShellBall(this.ballGfx, this.ball);
     this.buildHud();
     this.updateSidePanels();
+    this.showPowerPanel();
 
     this.scale.on('resize', this.onResize, this);
   }
@@ -139,6 +160,8 @@ export class BambooBashScene extends Phaser.Scene {
     this.scale.off('resize', this.onResize, this);
     this.slingshot.destroy();
     this.overlay?.destroy(true);
+    this.powerSidePanel?.destroy();
+    this.powerSidePanel = null;
     this.destroySidePanels();
   }
 
@@ -150,22 +173,113 @@ export class BambooBashScene extends Phaser.Scene {
     this.timerText.setText(this.formatTime());
     if (this.timeLeftMs <= 0) { this.endRound(); return; }
 
-    // Grow existing bamboo
+    // Grow existing bamboo (paused while FREEZE is active)
+    this.spawnFreezeMs = Math.max(0, this.spawnFreezeMs - delta);
     for (const b of this.bamboos) stepBamboo(b, delta);
 
-    // Spawn new bamboo on cadence while there's room
-    this.spawnAccMs += delta;
-    if (this.spawnAccMs >= SPAWN_EVERY_MS) {
-      this.spawnAccMs = 0;
-      if (this.bamboos.length < MAX_BAMBOO) this.spawnBamboo();
+    // Spawn new bamboo on cadence while there's room (pause during freeze)
+    if (this.spawnFreezeMs <= 0) {
+      this.spawnAccMs += delta;
+      if (this.spawnAccMs >= SPAWN_EVERY_MS) {
+        this.spawnAccMs = 0;
+        if (this.bamboos.length < MAX_BAMBOO) this.spawnBamboo();
+      }
     }
 
-    // Ball physics + collisions
+    // Ball physics
     const moving = stepBall(this.ball, delta, this.arena);
-    if (moving) this.checkBambooHits();
+    const ext    = this.ball as BallExtState;
+
+    // Apply frictionOverride correction (SLICK / BOUNCER / SPINNING)
+    if (moving && ext.frictionOverride !== undefined) {
+      const factor = Math.pow(ext.frictionOverride / BALL_FRICTION_BASE, delta / 16.67);
+      this.ball.vx *= factor;
+      this.ball.vy *= factor;
+    }
+
+    if (moving) {
+      this.checkBambooHits();
+    } else {
+      // Ball just stopped — resolve pending power flags (idempotent: flags cleared on first check)
+      if (ext.phantomHidden) {
+        this.ballGfx.setAlpha(1);
+        ext.phantomHidden = false;
+      }
+      if (ext.bombPending) {
+        this.resolveStopBomb();
+        ext.bombPending = false;
+      }
+      if (ext.repelPending) {
+        this.resolveStopRepel();
+        ext.repelPending = false;
+      }
+      if (ext.freezePending) {
+        this.spawnFreezeMs = FREEZE_DURATION_MS;
+        ext.freezePending  = false;
+      }
+    }
+
+    // Show power panel once ball has stopped (transition detection)
+    if (!moving && this.ballWasMoving && this.running) {
+      this.showPowerPanel();
+    }
+    this.ballWasMoving = moving;
 
     this.drawBamboos();
     drawShellBall(this.ballGfx, this.ball);
+  }
+
+  // ── Launch handler ────────────────────────────────────────────────────────────
+
+  /**
+   * Called by Slingshot after it sets ball.vx / ball.vy.
+   * INVARIANT: applyBallPower is called exactly once per shot, AFTER the
+   * slingshot has set velocity and AFTER resetBall reset the radius.
+   */
+  private onLaunch(): void {
+    // Reset radius so powers don't stack across shots within the same game
+    this.ball.r = BALL_SRC_R * this.arena.scale;
+
+    applyBallPower(this.activePower, this.ball, this.arena);
+
+    // Phantom: hide ball while in motion
+    if ((this.ball as BallExtState).phantomHidden) {
+      this.ballGfx.setAlpha(0.05);
+    }
+
+    // Track used powers (NONE is always reusable)
+    if (this.activePower !== PowerType.NONE) {
+      this.powerUsed.add(this.activePower);
+    }
+
+    // Reset selection to NONE and hide panel while ball is in flight
+    this.activePower = PowerType.NONE;
+    this.powerSidePanel?.hide();
+  }
+
+  // ── Stop-flag resolvers ───────────────────────────────────────────────────────
+
+  private resolveStopBomb(): void {
+    const blastR = BOMB_RADIUS_SRC * this.arena.scale;
+    const bx = this.ball.x;
+    const by = this.ball.y;
+    this.bamboos = this.bamboos.filter(b => {
+      const pos = bambooPos(b, this.arena);
+      return Math.hypot(pos.x - bx, pos.y - by) >= blastR;
+    });
+    this.drawBamboos();
+  }
+
+  private resolveStopRepel(): void {
+    const repelR = REPEL_RADIUS_SRC * this.arena.scale;
+    const bx = this.ball.x;
+    const by = this.ball.y;
+    // Bamboos cannot be moved — clear those in range (simulates repel blast)
+    this.bamboos = this.bamboos.filter(b => {
+      const pos = bambooPos(b, this.arena);
+      return Math.hypot(pos.x - bx, pos.y - by) >= repelR;
+    });
+    this.drawBamboos();
   }
 
   // ── Gameplay ──────────────────────────────────────────────────────────────
@@ -177,9 +291,16 @@ export class BambooBashScene extends Phaser.Scene {
   }
 
   private checkBambooHits(): void {
+    const ext = this.ball as BallExtState;
     for (let i = this.bamboos.length - 1; i >= 0; i--) {
       const b = this.bamboos[i];
       if (!hitsBamboo(b, this.arena, this.ball.x, this.ball.y, this.ball.r)) continue;
+
+      // GHOST: pass through first bamboo without scoring
+      if (ext.ghostUsed === false) {
+        ext.ghostUsed = true;
+        continue;
+      }
 
       const points = STAGE_POINTS[b.stage] ?? 0;
       this.score += points;
@@ -198,16 +319,12 @@ export class BambooBashScene extends Phaser.Scene {
     this.slingshot.cancel();
     this.ball.vx = 0;
     this.ball.vy = 0;
+    this.powerSidePanel?.hide();
     this.updateSidePanels();
     this.submitResult();
     this.showEndScreen();
   }
 
-  /**
-   * Submit the game result for progression.
-   * Bamboo Bash is single-player — completing the timer always counts as a win.
-   * Non-fatal: errors are logged but never block the end screen from showing.
-   */
   private submitResult(): void {
     const user = this.registry.get('user') as { isGuest?: boolean } | undefined;
     if (user?.isGuest) return;
@@ -265,7 +382,6 @@ export class BambooBashScene extends Phaser.Scene {
     }).setOrigin(0.5);
     c.add(header);
 
-    // Player rows — single-player for now; fetch the real name, fall back to "You".
     const rowY = -H / 2 + 120;
     const nameText = this.add.text(-W / 2 + 40, rowY, 'You', {
       fontSize: '20px', color: THEME.text, fontFamily: THEME.font, fontStyle: 'bold',
@@ -278,12 +394,11 @@ export class BambooBashScene extends Phaser.Scene {
 
     api.getMe()
       .then((me: { displayName?: string; username?: string }) => {
-        if (this.overlay !== c) return;  // round restarted / left while loading
+        if (this.overlay !== c) return;
         nameText.setText(me.displayName || me.username || 'You');
       })
       .catch(() => { /* keep the "You" fallback */ });
 
-    // Buttons
     this.addOverlayButton(c, -110, H / 2 - 50, 'PLAY AGAIN', () => this.scene.restart());
     this.addOverlayButton(c,  110, H / 2 - 50, 'RETURN', () => this.scene.start('HubScene'));
   }
@@ -311,10 +426,6 @@ export class BambooBashScene extends Phaser.Scene {
       _localY: number,
       event: Phaser.Types.Input.EventData,
     ) => {
-      // Stop propagation so the click doesn't fall through to slingshot or other
-      // zones behind this overlay button, and disable to prevent double-fire on
-      // rapid taps (which would call scene.restart()/start() twice in one frame,
-      // repeating the same double-stop corruption as BUG-01).
       event.stopPropagation();
       zone.disableInteractive();
       onClick();
@@ -329,11 +440,11 @@ export class BambooBashScene extends Phaser.Scene {
 
     this.scoreText = this.add.text(16, 16, `SCORE  ${this.score}`, {
       fontSize: '22px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
-    }).setDepth(20);
+    }).setDepth(DEPTH_HUD);
 
     this.timerText = this.add.text(this.scale.width / 2, 16, this.formatTime(), {
       fontSize: '26px', color: THEME.text, fontFamily: THEME.font, fontStyle: 'bold',
-    }).setOrigin(0.5, 0).setDepth(20);
+    }).setOrigin(0.5, 0).setDepth(DEPTH_HUD);
   }
 
   private formatTime(): string {
@@ -360,11 +471,9 @@ export class BambooBashScene extends Phaser.Scene {
     const { width, height } = this.scale;
     this.bgGfx.clear();
 
-    // Bamboo-forest backdrop
     this.bgGfx.fillStyle(0x0a1208, 1);
     this.bgGfx.fillRect(0, 0, width, height);
 
-    // Faint tatami grid
     const step = Math.round(Math.min(width, height) * 0.065);
     this.bgGfx.lineStyle(1, 0x152410, 0.55);
     for (let x = 0; x < width;  x += step) this.bgGfx.lineBetween(x, 0, x, height);
@@ -379,19 +488,16 @@ export class BambooBashScene extends Phaser.Scene {
     const oldArena = this.arena;
     this.arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
 
-    // Cancel any in-flight drag and rescale pull distance + launch power
     this.slingshot.cancel();
     this.slingshot.maxDrag     = MAX_DRAG_SRC * this.arena.scale;
     this.slingshot.launchSpeed = LAUNCH_SPEED_SRC * this.arena.scale;
 
-    // Carry the ball to the equivalent spot in the new arena space
     const relX = (this.ball.x - oldArena.cx) / oldArena.rx;
     const relY = (this.ball.y - oldArena.cy) / oldArena.ry;
     this.ball.x = this.arena.cx + relX * this.arena.rx;
     this.ball.y = this.arena.cy + relY * this.arena.ry;
     this.ball.r = BALL_SRC_R * this.arena.scale;
 
-    // Rescale velocity so motion feels consistent across sizes
     if (isBallMoving(this.ball)) {
       const vScale = this.arena.scale / oldArena.scale;
       this.ball.vx *= vScale;
@@ -402,48 +508,68 @@ export class BambooBashScene extends Phaser.Scene {
     this.drawBamboos();
     drawShellBall(this.ballGfx, this.ball);
 
-    // Reposition HUD
     this.hudObjects.forEach((o) => o.destroy());
     this.hudObjects = buildReturnButton(this);
     this.scoreText.setPosition(16, 16);
     this.timerText.setPosition(this.scale.width / 2, 16);
     this.overlay?.setPosition(this.scale.width / 2, this.scale.height / 2);
+
     this.updateSidePanels();
+    // Re-show power panel if ball is currently stopped (player can still aim)
+    if (!isBallMoving(this.ball) && this.running) {
+      this.showPowerPanel();
+    } else {
+      this.powerSidePanel?.refresh();
+    }
   }
 
-  // ── Side panels ─────────────────────────────────────────────────────────────
+  // ── Power panel ──────────────────────────────────────────────────────────────
 
   private resolveLayout(): { leftPanel?: PanelRect; rightPanel?: PanelRect } {
     const { width, height } = this.scale;
     if (width < SIDE_PANEL_MIN_CANVAS_W || height < SIDE_PANEL_MIN_CANVAS_H) return {};
 
-    const arena       = this.arena;
-    const leftFreeW   = arena.cx - arena.rx - SIDE_PANEL_PAD * 2;
-    const rightFreeW  = width - (arena.cx + arena.rx) - SIDE_PANEL_PAD * 2;
-    const panelW      = Math.floor(Math.min(SIDE_PANEL_MAX_W, leftFreeW, rightFreeW));
+    const arena      = this.arena;
+    const leftFreeW  = arena.cx - arena.rx - SIDE_PANEL_PAD * 2;
+    const rightFreeW = width - (arena.cx + arena.rx) - SIDE_PANEL_PAD * 2;
+    const panelW     = Math.floor(Math.min(SIDE_PANEL_MAX_W, leftFreeW, rightFreeW));
     if (panelW < SIDE_PANEL_MIN_W) return {};
 
-    const panelH    = height - SIDE_PANEL_TOP - SIDE_PANEL_PAD;
+    const panelH     = height - SIDE_PANEL_TOP - SIDE_PANEL_PAD;
     const leftPanel  = { x: SIDE_PANEL_PAD, y: SIDE_PANEL_TOP, width: panelW, height: panelH };
     const rightPanel = { x: width - SIDE_PANEL_PAD - panelW, y: SIDE_PANEL_TOP, width: panelW, height: panelH };
     return { leftPanel, rightPanel };
   }
 
+  /** Show or refresh the power panel in the left column before each shot. */
+  private showPowerPanel(): void {
+    const layout = this.resolveLayout();
+    if (!layout.leftPanel) {
+      this.powerSidePanel?.hide();
+      return;
+    }
+
+    if (!this.powerSidePanel) {
+      this.powerSidePanel = new PowerSidePanel(
+        this,
+        (type) => { this.activePower = type; },
+        DEPTH_HUD,
+      );
+    }
+
+    this.powerSidePanel.show(layout.leftPanel, this.playerPowers, this.activePower, this.powerUsed);
+  }
+
+  // ── Side panels ─────────────────────────────────────────────────────────────
+
   private updateSidePanels(): void {
     const layout = this.resolveLayout();
-    if (!layout.leftPanel || !layout.rightPanel) {
+    if (!layout.rightPanel) {
       this.destroySidePanels();
       return;
     }
 
-    this.infoPanel     ??= new SidePanel(this, 20);
-    this.scoreLogPanel ??= new SidePanel(this, 20);
-
-    this.infoPanel.update({
-      title: 'BAMBOO GUIDE',
-      rect: layout.leftPanel,
-      rows: this.buildInfoRows(),
-    });
+    this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
     this.scoreLogPanel.update({
       title: 'SCORE LOG',
       rect: layout.rightPanel,
@@ -453,20 +579,8 @@ export class BambooBashScene extends Phaser.Scene {
   }
 
   private destroySidePanels(): void {
-    this.infoPanel?.destroy();
     this.scoreLogPanel?.destroy();
-    this.infoPanel     = null;
     this.scoreLogPanel = null;
-  }
-
-  private buildInfoRows(): SidePanelRow[] {
-    return [
-      { label: 'Stage 1', subtitle: '+100 pts', icon: (g, x, y, s) => this.drawBambooIcon(g, x, y, s, 1) },
-      { label: 'Stage 2', subtitle: '+150 pts', icon: (g, x, y, s) => this.drawBambooIcon(g, x, y, s, 2) },
-      { label: 'Stage 3', subtitle: '+250 pts', icon: (g, x, y, s) => this.drawBambooIcon(g, x, y, s, 3) },
-      { label: 'Grows every 5s', muted: true },
-      { label: '30s round',      muted: true },
-    ];
   }
 
   private buildScoreLogRows(): SidePanelRow[] {
@@ -492,31 +606,5 @@ export class BambooBashScene extends Phaser.Scene {
     this.scoreEvents.unshift(`${label}\t${value}`);
     this.scoreEvents = this.scoreEvents.slice(0, SCORE_LOG_LIMIT);
     this.updateSidePanels();
-  }
-
-  /** Draw a mini bamboo cluster icon with `stage` canes, centred at (x, y). */
-  private drawBambooIcon(
-    g: Phaser.GameObjects.Graphics,
-    x: number,
-    y: number,
-    size: number,
-    stage: number,
-  ): void {
-    const caneW  = Math.max(2, size * 0.18);
-    const caneH  = size * (0.55 + stage * 0.12);
-    const spread = caneW + 2;
-    const topY   = y - caneH * 0.65;
-
-    for (let i = 0; i < stage; i++) {
-      const offset = stage === 1 ? 0 : (i - (stage - 1) / 2) * spread;
-      const cx     = x + offset;
-
-      g.fillStyle(0x4e9a3a, 1);
-      g.fillRect(cx - caneW / 2, topY, caneW, caneH);
-
-      g.lineStyle(Math.max(1, caneW * 0.3), 0x2c5a1e, 0.9);
-      g.lineBetween(cx - caneW / 2, topY + caneH * 0.4, cx + caneW / 2, topY + caneH * 0.4);
-      g.lineBetween(cx - caneW / 2, topY + caneH * 0.75, cx + caneW / 2, topY + caneH * 0.75);
-    }
   }
 }

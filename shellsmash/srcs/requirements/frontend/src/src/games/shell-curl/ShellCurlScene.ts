@@ -36,7 +36,7 @@ import { ScoreHud } from '../../shared/mechanics/score-hud';
 import { showAchievementUnlocks } from '../../shared/achievement-popup';
 import { Slingshot } from '../../shared/mechanics/slingshot';
 import { buildReturnButton } from '../../shared/mechanics/hud';
-import { PowerSidePanel } from './PowerSidePanel';
+import { PowerSidePanel } from '../../shared/ui/panels/PowerSidePanel';
 import { PanelRect } from '../../shared/ui/panels/side-panel';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ const SETTLING_DELAY_MS = 800;
 // Side-panel layout — panel sits in the LEFT strip beside the sheet.
 // Min width is deliberately lower than other games because the curling sheet
 // already has a reserved left margin (see curl-sheet.ts sheetX: 230).
-const SIDE_PANEL_MIN_W  = 110;
+const SIDE_PANEL_MIN_W  = 80;
 const SIDE_PANEL_MAX_W  = 200;
 const SIDE_PANEL_PAD    = 12;
 const SIDE_PANEL_TOP    = 74;
@@ -177,11 +177,15 @@ export class ShellCurlScene extends Phaser.Scene {
   // ── Per-player power pools (read from registry, set in create()) ──────────
   private playerPowers: [PowerType[], PowerType[]] = [FALLBACK_POWERS, FALLBACK_POWERS];
 
+  // ── Per-player used-power tracking (powers are one-shot per game) ────────────
+  private powerUsed: [Set<PowerType>, Set<PowerType>] = [new Set(), new Set()];
+
   constructor() { super({ key: 'ShellCurlScene' }); }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   create(): void {
+    this.powerUsed = [new Set(), new Set()];
     this.arena       = rectArenaToScreen(CURL_SHEET, this.scale.width, this.scale.height);
     this.turnManager = new TurnManager({ totalEnds: TOTAL_ENDS, stonesPerTeam: STONES_PER_TEAM });
 
@@ -243,7 +247,10 @@ export class ShellCurlScene extends Phaser.Scene {
     this.sweepCtrl = new SweepController(this, this.makeEmptyStone(), DEPTH_PARTICLES);
 
     this.scoreHud.update(this.turnManager.state);
-    this.beginTurn(); // calls showPowerPanel() internally
+    // Defer beginTurn() by one tick — this.scene.isActive() returns false
+    // during create() (scene is CREATING, not yet RUNNING), so the guard
+    // inside beginTurn() would bail immediately if called synchronously here.
+    this.time.delayedCall(0, () => this.beginTurn());
 
     this.scale.on('resize', this.onResize, this);
   }
@@ -423,6 +430,10 @@ export class ShellCurlScene extends Phaser.Scene {
     this.activeStone.power = power;
     const def = this.powerRegistry.get(power);
     def.onApply(this.activeStone, this.arena);
+
+    if (power !== PowerType.NONE) {
+      this.powerUsed[this.turnManager.state.currentTeam].add(power);
+    }
 
     this.activeStone.vx = vx;
     this.activeStone.vy = vy;
@@ -1107,7 +1118,7 @@ export class ShellCurlScene extends Phaser.Scene {
     if (!this.powerSidePanel) {
       this.powerSidePanel = new PowerSidePanel(this, () => {}, DEPTH_HUD);
     }
-    this.powerSidePanel.show(layout.rect, this.currentTeamPowers(), PowerType.NONE);
+    this.powerSidePanel.show(layout.rect, this.currentTeamPowers(), PowerType.NONE, this.powerUsed[this.turnManager.state.currentTeam]);
   }
 
   /** Refresh the power panel on resize — preserves the current selection. */
@@ -1124,6 +1135,6 @@ export class ShellCurlScene extends Phaser.Scene {
       this.powerSidePanel = new PowerSidePanel(this, () => {}, DEPTH_HUD);
     }
     const sel = this.powerSidePanel.getSelected();
-    this.powerSidePanel.show(layout.rect, this.currentTeamPowers(), sel);
+    this.powerSidePanel.show(layout.rect, this.currentTeamPowers(), sel, this.powerUsed[this.turnManager.state.currentTeam]);
   }
 }

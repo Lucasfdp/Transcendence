@@ -11,7 +11,8 @@ import { ArenaPixels } from '../arenas/arena';
 
 // ── Physics constants ─────────────────────────────────────────────────────────
 
-const FRICTION_BASE = 0.985;  // per-frame multiplier at 60 fps (compensated below)
+/** Per-frame friction multiplier at 60 fps. Exported so frictionOverride corrections can reference it. */
+export const BALL_FRICTION_BASE = 0.985;
 const BOUNCE_DAMP   = 0.80;   // speed retained per wall bounce
 const MIN_SPEED_SRC = 6;      // source px/s — ball snaps to rest below this
                               // (scaled by arena.scale so it's fair at any size)
@@ -78,7 +79,7 @@ export function stepBall(b: BallState, deltaMs: number, a: ArenaPixels): boolean
   }
 
   // Frame-rate-independent friction
-  const f = Math.pow(FRICTION_BASE, deltaMs / 16.67);
+  const f = Math.pow(BALL_FRICTION_BASE, deltaMs / 16.67);
   b.vx *= f;
   b.vy *= f;
 
