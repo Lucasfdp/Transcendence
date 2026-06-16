@@ -80,22 +80,25 @@ export class Slingshot {
   private onDown(ptr: Phaser.Input.Pointer): void {
     if (isBallMoving(this.ball)) return;
 
-    const dx = ptr.x - this.ball.x;
-    const dy = ptr.y - this.ball.y;
+    // Use WORLD coords (ptr.worldX/Y), not ptr.x/y: the ball/origin live in world
+    // space, and under camera zoom the screen-space pointer diverges from world —
+    // comparing the two makes the grab radius never match while zoomed in.
+    const dx = ptr.worldX - this.ball.x;
+    const dy = ptr.worldY - this.ball.y;
     if (Math.sqrt(dx * dx + dy * dy) > this.ball.r * this.grabRadiusFactor) return;
 
     this.dragging = true;
     this.origin.x = this.ball.x;
     this.origin.y = this.ball.y;
-    this.dragPt.x = ptr.x;
-    this.dragPt.y = ptr.y;
+    this.dragPt.x = ptr.worldX;
+    this.dragPt.y = ptr.worldY;
   }
 
   private onMove(ptr: Phaser.Input.Pointer): void {
     if (!this.dragging) return;
 
-    let dx = ptr.x - this.origin.x;
-    let dy = ptr.y - this.origin.y;
+    let dx = ptr.worldX - this.origin.x;
+    let dy = ptr.worldY - this.origin.y;
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len > this.maxDrag) {
       dx = (dx / len) * this.maxDrag;

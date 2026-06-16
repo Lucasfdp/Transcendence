@@ -102,20 +102,22 @@ export class SweepController {
     const dt  = (now - this.lastPtr.t) / 1000; // seconds
 
     if (dt > 0 && this.lastPtr.t > 0) {
-      const dx    = ptr.x - this.lastPtr.x;
-      const dy    = ptr.y - this.lastPtr.y;
+      // World coords (ptr.worldX/Y), not ptr.x/y: the trail renders in world
+      // space and the speed threshold must be zoom-independent (see slingshot).
+      const dx    = ptr.worldX - this.lastPtr.x;
+      const dy    = ptr.worldY - this.lastPtr.y;
       const speed = Math.sqrt(dx * dx + dy * dy) / dt;
 
       if (speed > SWEEP_THRESHOLD) {
         this.isSweeping = true;
-        this.trail.push({ x: ptr.x, y: ptr.y, age: 0 });
+        this.trail.push({ x: ptr.worldX, y: ptr.worldY, age: 0 });
         if (this.trail.length > TRAIL_SEGMENTS + 2) {
           this.trail.shift();
         }
       }
     }
 
-    this.lastPtr = { x: ptr.x, y: ptr.y, t: now };
+    this.lastPtr = { x: ptr.worldX, y: ptr.worldY, t: now };
   }
 
   private drawTrail(): void {
