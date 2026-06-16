@@ -22,6 +22,12 @@ const ROW_H  = 28;
 const ICON_R = 7;   // icon circle radius
 const DESC_H = 68;  // description footer height (name + two wrapped lines)
 
+// Collapsible drop-down geometry — used when the viewport is too small/zoomed to
+// dock the panel beside the arena. Anchored to a screen edge below the top HUD.
+const COLLAPSE_W   = 188;
+const COLLAPSE_TOP = 74;
+const EDGE_PAD     = 12;
+
 // ── Data ──────────────────────────────────────────────────────────────────────
 
 const POWER_LABELS: Record<PowerType, string> = {
@@ -113,12 +119,40 @@ export class PowerSidePanel {
   private usedPowers: Set<PowerType>   = new Set();
   private active                       = false;
 
+  // Collapsible (drop-down) mode state. `collapsed` persists across rebuilds so
+  // toggling and resizes don't reset what the player opened.
+  private collapsible                  = false;
+  private collapsed                    = true;
+  private side: 'left' | 'right'       = 'left';
+
+  // Scroll window over the power rows when the list is taller than the panel.
+  private scrollRow                    = 0;
+  private maxScrollRows                = 0;
+
   constructor(
     private readonly scene:    Phaser.Scene,
     private readonly onSelect: (type: PowerType) => void,
     private readonly depth     = 20,
   ) {
     this.gfx = scene.add.graphics().setDepth(depth);
+    this.scene.input.on('wheel', this.onWheel, this);
+  }
+
+  /** Mouse-wheel over the panel scrolls the row window when it overflows. */
+  private onWheel(
+    pointer: Phaser.Input.Pointer, _objs: Phaser.GameObjects.GameObject[], _dx: number, deltaY: number,
+  ): void {
+    if (!this.active || !this.rect || this.maxScrollRows <= 0) return;
+    const r = this.rect;
+    // pointer.x/y are screen-space; the rect is world-space. Under camera zoom
+    // they diverge, so transform through the camera before the bounds test.
+    const p = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    if (p.x < r.x || p.x > r.x + r.width || p.y < r.y || p.y > r.y + r.height) return;
+    const next = Phaser.Math.Clamp(this.scrollRow + (deltaY > 0 ? 1 : -1), 0, this.maxScrollRows);
+    if (next !== this.scrollRow) {
+      this.scrollRow = next;
+      this.rebuild();
+    }
   }
 
   /**
@@ -132,17 +166,57 @@ export class PowerSidePanel {
     selected: PowerType,
     usedPowers?: Set<PowerType>,
   ): void {
-    this.rect       = rect;
-    this.powers     = powers;
-    this.selected   = selected;
-    this.usedPowers = usedPowers ?? new Set();
-    this.active     = true;
+    this.collapsible = false;
+    this.rect        = rect;
+    this.powers      = powers;
+    this.selected    = selected;
+    this.usedPowers  = usedPowers ?? new Set();
+    this.active      = true;
+    this.rebuild();
+  }
+
+  /**
+   * Show the panel as a collapsible drop-down anchored to a screen edge — used
+   * when the viewport is too small/zoomed to dock the panel beside the arena.
+   * Renders a slim "POWERS ▾" header; clicking it drops the full panel down.
+   */
+  showCollapsible(
+    side: 'left' | 'right',
+    powers: PowerType[],
+    selected: PowerType,
+    usedPowers?: Set<PowerType>,
+  ): void {
+    this.collapsible = true;
+    this.side        = side;
+    this.powers      = powers;
+    this.selected    = selected;
+    this.usedPowers  = usedPowers ?? new Set();
+    this.active      = true;
+    this.updateCollapsibleRect();
     this.rebuild();
   }
 
   /** Rebuild in-place preserving current selection — use on resize. */
   refresh(): void {
-    if (this.active) this.rebuild();
+    if (!this.active) return;
+    if (this.collapsible) this.updateCollapsibleRect();
+    this.rebuild();
+  }
+
+  /** Recompute the drop-down rect for the current collapsed/expanded state. */
+  private updateCollapsibleRect(): void {
+    const sw = this.scene.scale.width;
+    const sh = this.scene.scale.height;
+    const w  = Math.min(COLLAPSE_W, sw - EDGE_PAD * 2);
+    const x  = this.side === 'left' ? EDGE_PAD : sw - EDGE_PAD - w;
+    const headerH = PAD + TITLE_H;
+    if (this.collapsed) {
+      this.rect = { x, y: COLLAPSE_TOP, width: w, height: headerH };
+    } else {
+      const maxH = sh - COLLAPSE_TOP - EDGE_PAD;
+      const need = headerH + 8 + this.powers.length * ROW_H + DESC_H + PAD;
+      this.rect = { x, y: COLLAPSE_TOP, width: w, height: Math.max(headerH, Math.min(need, maxH)) };
+    }
   }
 
   hide(): void {
@@ -151,6 +225,7 @@ export class PowerSidePanel {
   }
 
   destroy(): void {
+    this.scene.input.off('wheel', this.onWheel, this);
     this.clear();
     this.gfx.destroy();
   }
@@ -159,11 +234,17 @@ export class PowerSidePanel {
     return this.selected;
   }
 
+  /** Whether the panel is currently shown (docked or collapsed). */
+  isVisible(): boolean {
+    return this.active;
+  }
+
   // ── Private ───────────────────────────────────────────────────────────────
 
   private rebuild(): void {
     if (!this.rect || !this.active) return;
     this.clear();
+    this.maxScrollRows = 0;  // recomputed in the rows section; stays 0 when collapsed
     const r = this.rect;
 
     // Frame
@@ -177,14 +258,37 @@ export class PowerSidePanel {
       fontSize: '14px', color: THEME.textGold,
       fontFamily: THEME.font, fontStyle: 'bold',
     });
+
+    // Collapsible header: chevron + a click-zone over the title strip that
+    // toggles the panel open/closed. When collapsed we draw only this strip.
+    if (this.collapsible) {
+      this.addText(r.x + r.width - PAD - 12, r.y + PAD - 2, this.collapsed ? '▾' : '▴', {
+        fontSize: '14px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
+      });
+      const toggle = this.scene.add.zone(r.x, r.y, r.width, PAD + TITLE_H)
+        .setOrigin(0, 0).setInteractive({ useHandCursor: true }).setDepth(this.depth + 2);
+      toggle.on('pointerup', () => {
+        this.collapsed = !this.collapsed;
+        this.updateCollapsibleRect();
+        this.rebuild();
+      });
+      this.zones.push(toggle);
+      if (this.collapsed) return;
+    }
+
     this.gfx.lineStyle(1, THEME.gold, 0.25);
     this.gfx.lineBetween(r.x + PAD, r.y + PAD + TITLE_H, r.x + r.width - PAD, r.y + PAD + TITLE_H);
 
-    // Power rows
-    const rowsStartY = r.y + PAD + TITLE_H + 8;
-    const iconX      = r.x + PAD + ICON_R;
+    // Power rows. When the list is taller than the space above the footer, show
+    // a scrollable window (mouse-wheel over the panel) instead of clipping rows.
+    const rowsStartY  = r.y + PAD + TITLE_H + 8;
+    const iconX       = r.x + PAD + ICON_R;
+    const regionBot   = r.y + r.height - DESC_H - PAD;
+    const visibleRows = Math.max(0, Math.floor((regionBot - rowsStartY) / ROW_H));
+    this.maxScrollRows = Math.max(0, this.powers.length - visibleRows);
+    this.scrollRow     = Phaser.Math.Clamp(this.scrollRow, 0, this.maxScrollRows);
 
-    this.powers.forEach((power, i) => {
+    this.powers.slice(this.scrollRow, this.scrollRow + visibleRows).forEach((power, i) => {
       const ry     = rowsStartY + i * ROW_H;
       const isSel  = power === this.selected;
       const isHov  = power === this.hovered;
@@ -253,6 +357,18 @@ export class PowerSidePanel {
         this.zones.push(zone);
       }
     });
+
+    // Scrollbar thumb on the right edge of the rows region when it overflows.
+    if (this.maxScrollRows > 0 && visibleRows > 0) {
+      const barH = regionBot - rowsStartY;
+      const barX = r.x + r.width - 7;
+      this.gfx.fillStyle(0xffffff, 0.07);
+      this.gfx.fillRoundedRect(barX, rowsStartY, 3, barH, 1.5);
+      const thumbH = Math.max(16, barH * (visibleRows / this.powers.length));
+      const thumbY = rowsStartY + (barH - thumbH) * (this.scrollRow / this.maxScrollRows);
+      this.gfx.fillStyle(THEME.gold, 0.55);
+      this.gfx.fillRoundedRect(barX, thumbY, 3, thumbH, 1.5);
+    }
 
     // Description footer
     const footerY   = r.y + r.height - DESC_H - PAD;

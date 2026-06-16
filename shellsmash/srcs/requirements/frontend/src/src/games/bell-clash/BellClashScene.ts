@@ -174,7 +174,13 @@ export class BellClashScene extends Phaser.Scene {
     this.updateSidePanels();
     this.showPowerPanel();
 
+    // Phaser does NOT auto-call a Scene's shutdown() method — it only emits the
+    // SHUTDOWN event — so we must wire it ourselves, otherwise the resize
+    // listener (on the game-global ScaleManager) leaks every time this scene is
+    // left and re-entered, and stale handlers fire on later zooms.
+    this.scale.off('resize', this.onResize, this);
     this.scale.on('resize', this.onResize, this);
+    this.events.once('shutdown', this.shutdown, this);
   }
 
   private cleanupSceneResources(): void {
@@ -410,10 +416,6 @@ export class BellClashScene extends Phaser.Scene {
 
   private showPowerPanel(): void {
     const layout = this.resolveLayout();
-    if (!layout.leftPanel) {
-      this.powerSidePanel?.hide();
-      return;
-    }
 
     if (!this.powerSidePanel) {
       this.powerSidePanel = new PowerSidePanel(
@@ -424,6 +426,12 @@ export class BellClashScene extends Phaser.Scene {
     }
 
     const p = this.currentPlayerIndex();
+    if (!layout.leftPanel) {
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.powerSidePanel.showCollapsible('left', this.playerPowers[p], this.activePower, this.powerUsed[p]);
+      return;
+    }
+
     this.powerSidePanel.show(layout.leftPanel, this.playerPowers[p], this.activePower, this.powerUsed[p]);
   }
 
@@ -483,18 +491,21 @@ export class BellClashScene extends Phaser.Scene {
 
   private updateSidePanels(): void {
     const layout = this.resolveLayout();
+    this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
+
+    const content = {
+      title: 'SHOT LOG',
+      rows: this.buildScoreLogRows(),
+      footerRows: this.buildScoreFooterRows(),
+    };
+
     if (!layout.rightPanel) {
-      this.destroySidePanels();
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.scoreLogPanel.updateCollapsible('right', content);
       return;
     }
 
-    this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
-    this.scoreLogPanel.update({
-      title: 'SHOT LOG',
-      rect: layout.rightPanel,
-      rows: this.buildScoreLogRows(),
-      footerRows: this.buildScoreFooterRows(),
-    });
+    this.scoreLogPanel.update({ ...content, rect: layout.rightPanel });
   }
 
   private destroySidePanels(): void {
@@ -798,7 +809,9 @@ export class BellClashScene extends Phaser.Scene {
       this.showEndScreen();
     }
     this.updateSidePanels();
-    this.powerSidePanel?.refresh();
+    // Re-run the full layout decision so the panel switches between docked and
+    // collapsed drop-down as the viewport crosses the fit threshold on zoom.
+    if (this.powerSidePanel?.isVisible()) this.showPowerPanel();
   }
 
   // ── Icon helper (for zone icon in side panel rows) ────────────────────────────

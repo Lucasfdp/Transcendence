@@ -252,7 +252,13 @@ export class ShellCurlScene extends Phaser.Scene {
     // inside beginTurn() would bail immediately if called synchronously here.
     this.time.delayedCall(0, () => this.beginTurn());
 
+    // Phaser does NOT auto-call a Scene's shutdown() method — it only emits the
+    // SHUTDOWN event — so we must wire it ourselves, otherwise the resize
+    // listener (on the game-global ScaleManager) leaks every time this scene is
+    // left and re-entered, and stale handlers fire on later zooms.
+    this.scale.off('resize', this.onResize, this);
     this.scale.on('resize', this.onResize, this);
+    this.events.once('shutdown', this.shutdown, this);
   }
 
   shutdown(): void {
@@ -1113,10 +1119,14 @@ export class ShellCurlScene extends Phaser.Scene {
   /** Show the power panel fresh at the start of each aiming turn (resets selection to NONE). */
   private showPowerPanel(): void {
     const layout = this.resolveLayout();
-    if (!layout) return;
 
     if (!this.powerSidePanel) {
       this.powerSidePanel = new PowerSidePanel(this, () => {}, DEPTH_HUD);
+    }
+    if (!layout) {
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.powerSidePanel.showCollapsible('right', this.currentTeamPowers(), PowerType.NONE, this.powerUsed[this.turnManager.state.currentTeam]);
+      return;
     }
     this.powerSidePanel.show(layout.rect, this.currentTeamPowers(), PowerType.NONE, this.powerUsed[this.turnManager.state.currentTeam]);
   }
@@ -1126,7 +1136,7 @@ export class ShellCurlScene extends Phaser.Scene {
     const layout   = this.resolveLayout();
     const isAiming = this.turnManager.state.phase === 'aiming';
 
-    if (!layout || !isAiming) {
+    if (!isAiming) {
       this.powerSidePanel?.hide();
       return;
     }
@@ -1135,6 +1145,11 @@ export class ShellCurlScene extends Phaser.Scene {
       this.powerSidePanel = new PowerSidePanel(this, () => {}, DEPTH_HUD);
     }
     const sel = this.powerSidePanel.getSelected();
+    if (!layout) {
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.powerSidePanel.showCollapsible('right', this.currentTeamPowers(), sel, this.powerUsed[this.turnManager.state.currentTeam]);
+      return;
+    }
     this.powerSidePanel.show(layout.rect, this.currentTeamPowers(), sel, this.powerUsed[this.turnManager.state.currentTeam]);
   }
 }

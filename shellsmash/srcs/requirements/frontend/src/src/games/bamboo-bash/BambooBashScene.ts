@@ -156,7 +156,13 @@ export class BambooBashScene extends Phaser.Scene {
     this.updateSidePanels();
     this.showPowerPanel();
 
+    // Phaser does NOT auto-call a Scene's shutdown() method — it only emits the
+    // SHUTDOWN event — so we must wire it ourselves, otherwise the resize
+    // listener below (on the game-global ScaleManager) leaks every time this
+    // scene is left and re-entered, and stale handlers fire on later zooms.
+    this.scale.off('resize', this.onResize, this);
     this.scale.on('resize', this.onResize, this);
+    this.events.once('shutdown', this.shutdown, this);
 
     this.startCountdown();
   }
@@ -176,6 +182,10 @@ export class BambooBashScene extends Phaser.Scene {
       const t = this.countdownText;
       if (!t) return;
 
+      // Kill the previous step's fade-out tween before showing this number — its
+      // fade (ends ~780ms) can otherwise finish just after this step's setAlpha(1)
+      // (step cadence is 800ms) and stamp alpha back to 0, blanking the number.
+      this.tweens.killTweensOf(t);
       t.setText(label).setScale(0.4).setAlpha(1);
       this.tweens.add({
         targets: t,
@@ -598,10 +608,6 @@ export class BambooBashScene extends Phaser.Scene {
   /** Show or refresh the power panel in the left column before each shot. */
   private showPowerPanel(): void {
     const layout = this.resolveLayout();
-    if (!layout.leftPanel) {
-      this.powerSidePanel?.hide();
-      return;
-    }
 
     if (!this.powerSidePanel) {
       this.powerSidePanel = new PowerSidePanel(
@@ -611,6 +617,12 @@ export class BambooBashScene extends Phaser.Scene {
       );
     }
 
+    if (!layout.leftPanel) {
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.powerSidePanel.showCollapsible('left', this.playerPowers, this.activePower, this.powerUsed);
+      return;
+    }
+
     this.powerSidePanel.show(layout.leftPanel, this.playerPowers, this.activePower, this.powerUsed);
   }
 
@@ -618,18 +630,21 @@ export class BambooBashScene extends Phaser.Scene {
 
   private updateSidePanels(): void {
     const layout = this.resolveLayout();
+    this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
+
+    const content = {
+      title: 'SCORE LOG',
+      rows: this.buildScoreLogRows(),
+      footerRows: this.buildScoreFooterRows(),
+    };
+
     if (!layout.rightPanel) {
-      this.destroySidePanels();
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.scoreLogPanel.updateCollapsible('right', content);
       return;
     }
 
-    this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
-    this.scoreLogPanel.update({
-      title: 'SCORE LOG',
-      rect: layout.rightPanel,
-      rows: this.buildScoreLogRows(),
-      footerRows: this.buildScoreFooterRows(),
-    });
+    this.scoreLogPanel.update({ ...content, rect: layout.rightPanel });
   }
 
   private destroySidePanels(): void {
