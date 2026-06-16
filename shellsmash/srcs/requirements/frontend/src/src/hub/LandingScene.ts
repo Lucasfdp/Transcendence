@@ -18,6 +18,7 @@
  */
 
 import Phaser from 'phaser';
+import { ResponsiveScene } from '../shared/responsive-scene';
 import { api, AuthError, NetworkError } from './api';
 import { THEME } from '../shared/theme';
 import { drawBackground } from '../shared/drawBackground';
@@ -180,24 +181,19 @@ const OVERLAY_CSS = `
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class LandingScene extends Phaser.Scene {
+export class LandingScene extends ResponsiveScene {
   private bgLayer:      Phaser.GameObjects.GameObject[] = [];
   private titleLayer:   Phaser.GameObjects.GameObject[] = [];
   private overlayEl:    HTMLElement | null = null;
   private styleEl:      HTMLStyleElement | null = null;
   private transitioning = false;
-  private resizeTimer:  ReturnType<typeof globalThis.setTimeout> | null = null;
+  protected resizeDebounceMs = RESIZE_DEBOUNCE_MS;
 
   constructor() { super({ key: 'LandingScene' }); }
 
   // ── shutdown ─────────────────────────────────────────────────────────────────
 
-  shutdown(): void {
-    if (this.resizeTimer !== null) {
-      globalThis.clearTimeout(this.resizeTimer);
-      this.resizeTimer = null;
-    }
-    this.scale.off('resize', this.handleResize, this);
+  protected onShutdown(): void {
     this.removeOverlay();
   }
 
@@ -223,10 +219,6 @@ export class LandingScene extends Phaser.Scene {
     this.bgLayer       = [];
     this.titleLayer    = [];
 
-    // Phaser does NOT call shutdown() automatically — wire it so overlay and
-    // scale listeners are cleaned up if the scene is ever stopped mid-flight.
-    this.events.once('shutdown', this.shutdown, this);
-
     this.drawBg();
     this.drawTitle();
 
@@ -244,22 +236,18 @@ export class LandingScene extends Phaser.Scene {
     // Mount form overlay — CSRF will be fetched lazily per-request.
     this.injectStyles();
     this.mountOverlay();
-    this.scale.on('resize', this.handleResize, this);
+    this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
   }
 
   // ── Resize ───────────────────────────────────────────────────────────────────
 
-  private handleResize(): void {
-    if (this.resizeTimer !== null) globalThis.clearTimeout(this.resizeTimer);
-    this.resizeTimer = globalThis.setTimeout(() => {
-      this.resizeTimer = null;
-      if (this.transitioning) return;
-      this.clearLayer(this.bgLayer);
-      this.drawBg();
-      this.clearLayer(this.titleLayer);
-      this.drawTitle();
-      // DOM overlay is CSS-driven — no manual repositioning needed.
-    }, RESIZE_DEBOUNCE_MS);
+  protected relayout(): void {
+    if (this.transitioning) return;
+    this.clearLayer(this.bgLayer);
+    this.drawBg();
+    this.clearLayer(this.titleLayer);
+    this.drawTitle();
+    // DOM overlay is CSS-driven — no manual repositioning needed.
   }
 
   // ── Canvas helpers ────────────────────────────────────────────────────────────

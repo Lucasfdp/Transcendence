@@ -10,6 +10,7 @@
 
 import Phaser from 'phaser';
 import { api } from '../../hub/api';
+import { ResponsiveScene } from '../../shared/responsive-scene';
 import { ARENA_01 } from '../../shared/arenas/arena01';
 import { ArenaPixels, arenaToScreen, drawSumoRing } from '../../shared/arenas/arena';
 import { BallState, BALL_SRC_R, drawShellBall, isBallMoving, stepBall } from '../../shared/mechanics/ball';
@@ -73,7 +74,7 @@ const TWO_PI = Math.PI * 2;
 /** Fallback power pool when no ShellPicker selection is present. */
 const FALLBACK_POWERS: PowerType[] = [PowerType.NONE, ...GAME_POWERS['bell-clash']];
 
-export class BellClashScene extends Phaser.Scene {
+export class BellClashScene extends ResponsiveScene {
   private bgGfx!:   Phaser.GameObjects.Graphics;
   private zoneGfx!: Phaser.GameObjects.Graphics;
   private bellGfx!: Phaser.GameObjects.Graphics;
@@ -116,7 +117,7 @@ export class BellClashScene extends Phaser.Scene {
 
   constructor() { super({ key: 'BellClashScene' }); }
 
-  shutdown(): void {
+  protected onShutdown(): void {
     this.cleanupSceneResources();
   }
 
@@ -176,11 +177,10 @@ export class BellClashScene extends Phaser.Scene {
     this.updateSidePanels();
     this.showPowerPanel();
 
-    this.scale.on('resize', this.onResize, this);
+    this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
   }
 
   private cleanupSceneResources(): void {
-    this.scale.off('resize', this.onResize, this);
     this.slingshot?.destroy();
     this.slingshot = null;
     this.clearOverlayHitZones();
@@ -425,10 +425,6 @@ export class BellClashScene extends Phaser.Scene {
 
   private showPowerPanel(): void {
     const layout = this.resolveLayout();
-    if (!layout.leftPanel) {
-      this.powerSidePanel?.hide();
-      return;
-    }
 
     if (!this.powerSidePanel) {
       this.powerSidePanel = new PowerSidePanel(
@@ -439,6 +435,12 @@ export class BellClashScene extends Phaser.Scene {
     }
 
     const p = this.currentPlayerIndex();
+    if (!layout.leftPanel) {
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.powerSidePanel.showCollapsible('left', this.playerPowers[p], this.activePower, this.powerUsed[p]);
+      return;
+    }
+
     this.powerSidePanel.show(layout.leftPanel, this.playerPowers[p], this.activePower, this.powerUsed[p]);
   }
 
@@ -498,18 +500,21 @@ export class BellClashScene extends Phaser.Scene {
 
   private updateSidePanels(): void {
     const layout = this.resolveLayout();
+    this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
+
+    const content = {
+      title: 'SHOT LOG',
+      rows: this.buildScoreLogRows(),
+      footerRows: this.buildScoreFooterRows(),
+    };
+
     if (!layout.rightPanel) {
-      this.destroySidePanels();
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.scoreLogPanel.updateCollapsible('right', content);
       return;
     }
 
-    this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
-    this.scoreLogPanel.update({
-      title: 'SHOT LOG',
-      rect: layout.rightPanel,
-      rows: this.buildScoreLogRows(),
-      footerRows: this.buildScoreFooterRows(),
-    });
+    this.scoreLogPanel.update({ ...content, rect: layout.rightPanel });
   }
 
   private destroySidePanels(): void {
@@ -776,7 +781,7 @@ export class BellClashScene extends Phaser.Scene {
     this.overlayHitZones = [];
   }
 
-  private onResize(): void {
+  protected relayout(): void {
     const oldArena = this.arena;
     this.arena     = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
     const velocityScale = this.arena.scale / oldArena.scale;
@@ -813,7 +818,9 @@ export class BellClashScene extends Phaser.Scene {
       this.showEndScreen();
     }
     this.updateSidePanels();
-    this.powerSidePanel?.refresh();
+    // Re-run the full layout decision so the panel switches between docked and
+    // collapsed drop-down as the viewport crosses the fit threshold on zoom.
+    if (this.powerSidePanel?.isVisible()) this.showPowerPanel();
   }
 
   // ── Icon helper (for zone icon in side panel rows) ────────────────────────────

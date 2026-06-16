@@ -11,6 +11,7 @@
 
 import Phaser from 'phaser';
 import { api } from '../../hub/api';
+import { ResponsiveScene } from '../../shared/responsive-scene';
 import { ARENA_01 } from '../../shared/arenas/arena01';
 import { ArenaPixels, arenaToScreen, drawSumoRing } from '../../shared/arenas/arena';
 import { BallState, BALL_SRC_R, drawShellBall, stepBall } from '../../shared/mechanics/ball';
@@ -91,7 +92,7 @@ const TARGET_TYPES: TimedTargetKind[] = ['daruma', 'crate', 'drum'];
 /** Fallback power pool when no ShellPicker selection is present. */
 const FALLBACK_POWERS: PowerType[] = [PowerType.NONE, ...GAME_POWERS['kame-knock']];
 
-export class KameKnockScene extends Phaser.Scene {
+export class KameKnockScene extends ResponsiveScene {
   private bgGfx!: Phaser.GameObjects.Graphics;
   private targetGfx!: Phaser.GameObjects.Graphics;
   private ballGfx!: Phaser.GameObjects.Graphics;
@@ -130,7 +131,7 @@ export class KameKnockScene extends Phaser.Scene {
 
   constructor() { super({ key: 'KameKnockScene' }); }
 
-  shutdown(): void {
+  protected onShutdown(): void {
     this.cleanupSceneResources();
   }
 
@@ -188,11 +189,10 @@ export class KameKnockScene extends Phaser.Scene {
     this.updateSidePanels();
     this.showPowerPanel();
 
-    this.scale.on('resize', this.onResize, this);
+    this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
   }
 
   private cleanupSceneResources(): void {
-    this.scale.off('resize', this.onResize, this);
     this.slingshot?.destroy();
     this.slingshot = null;
     this.clearOverlayHitZones();
@@ -458,10 +458,6 @@ export class KameKnockScene extends Phaser.Scene {
 
   private showPowerPanel(): void {
     const layout = this.resolveLayout();
-    if (!layout.leftPanel) {
-      this.powerSidePanel?.hide();
-      return;
-    }
 
     if (!this.powerSidePanel) {
       this.powerSidePanel = new PowerSidePanel(
@@ -472,6 +468,12 @@ export class KameKnockScene extends Phaser.Scene {
     }
 
     const p = this.currentPlayerIndex();
+    if (!layout.leftPanel) {
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.powerSidePanel.showCollapsible('left', this.playerPowers[p], this.activePower, this.powerUsed[p]);
+      return;
+    }
+
     this.powerSidePanel.show(layout.leftPanel, this.playerPowers[p], this.activePower, this.powerUsed[p]);
   }
 
@@ -511,18 +513,21 @@ export class KameKnockScene extends Phaser.Scene {
 
   private updateSidePanels(): void {
     const layout = this.resolveLayout();
+    this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
+
+    const content = {
+      title: 'SCORE LOG',
+      rows: this.buildScoreLogRows(),
+      footerRows: this.buildScoreStatusRows(),
+    };
+
     if (!layout.rightPanel) {
-      this.destroySidePanels();
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.scoreLogPanel.updateCollapsible('right', content);
       return;
     }
 
-    this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
-    this.scoreLogPanel.update({
-      title: 'SCORE LOG',
-      rect: layout.rightPanel,
-      rows: this.buildScoreLogRows(),
-      footerRows: this.buildScoreStatusRows(),
-    });
+    this.scoreLogPanel.update({ ...content, rect: layout.rightPanel });
   }
 
   private destroySidePanels(): void {
@@ -734,7 +739,7 @@ export class KameKnockScene extends Phaser.Scene {
     this.overlayHitZones = [];
   }
 
-  private onResize(): void {
+  protected relayout(): void {
     const oldArena = this.arena;
     this.arena     = this.resolveArena();
     const velocityScale = this.arena.scale / oldArena.scale;
@@ -762,7 +767,9 @@ export class KameKnockScene extends Phaser.Scene {
     this.ballText?.setPosition(this.scale.width / 2, 16);
 
     this.updateSidePanels();
-    this.powerSidePanel?.refresh();
+    // Re-run the full layout decision so the panel switches between docked and
+    // collapsed drop-down as the viewport crosses the fit threshold on zoom.
+    if (this.powerSidePanel?.isVisible()) this.showPowerPanel();
 
     if (this.overlay) {
       this.overlay.destroy(true);

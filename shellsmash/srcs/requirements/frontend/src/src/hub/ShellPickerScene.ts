@@ -12,6 +12,7 @@
  */
 
 import Phaser from 'phaser';
+import { ResponsiveScene } from '../shared/responsive-scene';
 import { ALL_POWERS, PowerType } from '../shared/mechanics/power-system';
 import { GAME_POWERS, GameId } from '../shared/mechanics/game-powers';
 import { THEME } from '../shared/theme';
@@ -56,7 +57,7 @@ interface CardState {
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
 
-export class ShellPickerScene extends Phaser.Scene {
+export class ShellPickerScene extends ResponsiveScene {
   // Scene init data
   private gameId!:      GameId;
   private targetScene!: string;
@@ -83,6 +84,11 @@ export class ShellPickerScene extends Phaser.Scene {
   private confirmBtn!:   Phaser.GameObjects.Text;
   private confirmGfx!:   Phaser.GameObjects.Graphics;
   private pickCountText!: Phaser.GameObjects.Text;
+
+  // Full-screen background + every object buildUI() creates, so the whole layout
+  // can be torn down and rebuilt on resize.
+  private bgGfx!:   Phaser.GameObjects.Graphics;
+  private uiLayer: Phaser.GameObjects.GameObject[] = [];
 
   // Currently hovered/described shell
   private hoveredType: PowerType | null = null;
@@ -113,12 +119,9 @@ export class ShellPickerScene extends Phaser.Scene {
     let stale = false;
     this.events.once('shutdown', () => { stale = true; });
 
-    const { width, height } = this.scale;
-
     // ── Dark background ────────────────────────────────────────────────────────
-    const bgGfx = this.add.graphics().setDepth(DEPTH_BG);
-    bgGfx.fillStyle(0x080604, 0.97);
-    bgGfx.fillRect(0, 0, width, height);
+    this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
+    this.drawBackground();
 
     // ── Fetch inventory ────────────────────────────────────────────────────────
     const user = this.registry.get('user') as { isGuest?: boolean } | undefined;
@@ -135,11 +138,31 @@ export class ShellPickerScene extends Phaser.Scene {
 
     if (stale) return;
     this.buildUI();
+    this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
+  }
+
+  private drawBackground(): void {
+    const { width, height } = this.scale;
+    this.bgGfx.clear();
+    this.bgGfx.fillStyle(0x080604, 0.97);
+    this.bgGfx.fillRect(0, 0, width, height);
+  }
+
+  protected relayout(): void {
+    this.drawBackground();
+    this.buildUI();
+  }
+
+  /** Destroy everything buildUI() created (cards are owned by buildGrid). */
+  private clearUI(): void {
+    for (const obj of this.uiLayer) obj.destroy();
+    this.uiLayer = [];
   }
 
   // ── buildUI ──────────────────────────────────────────────────────────────────
 
   private buildUI(): void {
+    this.clearUI();
     const { width, height } = this.scale;
 
     // ── Return button (top-left) ──────────────────────────────────────────────
@@ -255,6 +278,14 @@ export class ShellPickerScene extends Phaser.Scene {
     btnZone.on('pointerover', () => this.paintConfirmBtn(true, btnX, btnY, btnW, btnH));
     btnZone.on('pointerout',  () => this.paintConfirmBtn(false, btnX, btnY, btnW, btnH));
     btnZone.on('pointerup',   () => void this.onConfirm());
+
+    // Track everything for teardown on rebuild (grid cards are handled by buildGrid).
+    this.uiLayer.push(
+      returnGfx, returnLabel, returnZone,
+      this.titleText, this.subText, this.pickCountText,
+      this.descGfx, this.descNameText, this.descBodyText,
+      this.confirmGfx, this.confirmBtn, btnZone,
+    );
   }
 
   // ── Grid ──────────────────────────────────────────────────────────────────────

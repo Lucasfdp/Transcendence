@@ -8,6 +8,7 @@
 
 import Phaser from 'phaser';
 import { api } from '../../hub/api';
+import { ResponsiveScene } from '../../shared/responsive-scene';
 import { CURL_SHEET } from '../../shared/arenas/curl-sheet';
 import {
   rectArenaToScreen,
@@ -140,7 +141,7 @@ const BUMPER_BOOST      = 1.10; // 10% speed boost on bumper hit (pinball feel)
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
 
-export class ShellCurlScene extends Phaser.Scene {
+export class ShellCurlScene extends ResponsiveScene {
   private arena!: RectArenaPixels;
 
   // ── Game state ────────────────────────────────────────────────────────────
@@ -252,11 +253,10 @@ export class ShellCurlScene extends Phaser.Scene {
     // inside beginTurn() would bail immediately if called synchronously here.
     this.time.delayedCall(0, () => this.beginTurn());
 
-    this.scale.on('resize', this.onResize, this);
+    this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
   }
 
-  shutdown(): void {
-    this.scale.off('resize', this.onResize, this);
+  protected onShutdown(): void {
     this.slingshot.destroy();
     this.sweepCtrl.destroy();
     this.scoreHud.destroy();
@@ -1049,7 +1049,7 @@ export class ShellCurlScene extends Phaser.Scene {
 
   // ── Resize ────────────────────────────────────────────────────────────────
 
-  private onResize(): void {
+  protected relayout(): void {
     const oldArena = this.arena;
     this.arena     = rectArenaToScreen(CURL_SHEET, this.scale.width, this.scale.height);
 
@@ -1113,10 +1113,14 @@ export class ShellCurlScene extends Phaser.Scene {
   /** Show the power panel fresh at the start of each aiming turn (resets selection to NONE). */
   private showPowerPanel(): void {
     const layout = this.resolveLayout();
-    if (!layout) return;
 
     if (!this.powerSidePanel) {
       this.powerSidePanel = new PowerSidePanel(this, () => {}, DEPTH_HUD);
+    }
+    if (!layout) {
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.powerSidePanel.showCollapsible('right', this.currentTeamPowers(), PowerType.NONE, this.powerUsed[this.turnManager.state.currentTeam]);
+      return;
     }
     this.powerSidePanel.show(layout.rect, this.currentTeamPowers(), PowerType.NONE, this.powerUsed[this.turnManager.state.currentTeam]);
   }
@@ -1126,7 +1130,7 @@ export class ShellCurlScene extends Phaser.Scene {
     const layout   = this.resolveLayout();
     const isAiming = this.turnManager.state.phase === 'aiming';
 
-    if (!layout || !isAiming) {
+    if (!isAiming) {
       this.powerSidePanel?.hide();
       return;
     }
@@ -1135,6 +1139,11 @@ export class ShellCurlScene extends Phaser.Scene {
       this.powerSidePanel = new PowerSidePanel(this, () => {}, DEPTH_HUD);
     }
     const sel = this.powerSidePanel.getSelected();
+    if (!layout) {
+      // No room to dock — collapse into an edge drop-down instead of vanishing.
+      this.powerSidePanel.showCollapsible('right', this.currentTeamPowers(), sel, this.powerUsed[this.turnManager.state.currentTeam]);
+      return;
+    }
     this.powerSidePanel.show(layout.rect, this.currentTeamPowers(), sel, this.powerUsed[this.turnManager.state.currentTeam]);
   }
 }

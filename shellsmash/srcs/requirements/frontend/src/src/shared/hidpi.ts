@@ -1,5 +1,5 @@
 /**
- * hidpi.ts — crisp, zoom-stable rendering for the Phaser canvas.
+ * hidpi.ts — crisp, responsive (reflow) rendering for the Phaser canvas.
  *
  * The problem
  * -----------
@@ -9,25 +9,25 @@
  * each CSS pixel spans several physical pixels, so the browser upscales the
  * low-res backing store and everything looks blurry.
  *
- * The approach (crisp + zoom-stable)
- * ----------------------------------
- * Two independent quantities, both derived from the parent's CSS-px size:
+ * The approach (crisp + responsive reflow)
+ * ----------------------------------------
+ *   • logical size   = cssPx                  → what scenes lay out against
+ *   • backing store  = cssPx × currentDPR     → native resolution, always crisp
  *
- *   • backing store  = cssPx × currentDPR        → native resolution, always crisp
- *   • logical size   = backing / baseDPR         → what scenes lay out against
+ * `baseDPR` is the display's native devicePixelRatio captured once at load;
+ * `currentDPR` tracks live zoom. We LEAVE the logical gameSize at the CSS-px
+ * viewport size (Phaser's RESIZE value — we don't override it), so scenes reflow
+ * with the browser viewport, symmetrically in BOTH zoom directions: zoom in
+ * shrinks the CSS viewport → scenes relayout "smaller" → the camera magnifies
+ * them back to fill the screen → things look bigger; zoom out is the mirror
+ * image. Nothing ever crops, because the logical world always *exactly* fits the
+ * backing.
  *
- * `baseDPR` is the display's native devicePixelRatio captured once at load (the
- * unzoomed density). `currentDPR` tracks live zoom. Because browser zoom shrinks
- * the CSS viewport in exact proportion to how it raises the dpr, `cssPx ×
- * currentDPR` (hence the logical size) stays ~constant as you zoom — so the
- * scenes never reflow and nothing moves. The backing store, meanwhile, always
- * matches the physical pixels, so it stays sharp.
- *
- * Phaser ties the world coordinate space to the backing store, so we bridge the
- * logical→backing gap (factor `baseDPR`) with a fixed camera zoom. That zoom is
- * CONSTANT (it depends only on the display, not on browser zoom), so it never
- * causes movement while zooming. On a standard 1× display baseDPR === 1, the
- * camera zoom is 1, and every step here is an identity no-op.
+ * Phaser ties the world coordinate space to the backing store. We bridge the
+ * logical→backing gap with the camera zoom = `currentDPR`, which maps the cssPx
+ * world exactly onto the cssPx × currentDPR backing. The backing always matches
+ * the physical pixels, so it stays sharp. On a standard 1× display with no zoom,
+ * currentDPR === 1 and every step here is an identity no-op.
  *
  * Wired up by a single `installHiDPI(game)` call in main.ts; scenes need no
  * changes. The canvas *display* size is owned by CSS (see index.html); we only
@@ -46,28 +46,28 @@ function clampDPR(v: number): number {
   return Math.max(1, Math.min(v || 1, MAX_DPR));
 }
 
-// Every Text created through the (patched) factory, so we can re-scale them all
-// when the zoom changes. Entries remove themselves on destroy.
+// Every Text created through the (patched) factory, so we can refresh their
+// render resolution when the zoom changes. Entries remove themselves on destroy.
 const trackedTexts = new Set<Phaser.GameObjects.Text>();
 
-// Text is the ONE thing we let grow with browser zoom — the rest of the layout
-// stays zoom-stable. Scale by the zoom factor (currentDPR/baseDPR) so labels
-// enlarge on zoom-in from their anchor (origin) point, and render at currentDPR
-// resolution so they stay crisp at that larger size. A no-op when not zoomed
-// (f === 1 and currentDPR === baseDPR), so dpr-1 displays are unaffected.
-function applyTextZoom(t: Phaser.GameObjects.Text): void {
+// The scene reflows with browser zoom and the camera bridges the logical world
+// onto the physical backing (zoom = currentDPR), so text scales along with
+// everything else automatically — we must NOT also setScale it. But text
+// rasterises to a texture at `resolution`, so unlike vector graphics it won't be
+// crisp at its on-screen size unless we raise the resolution to match. Bump it to
+// currentDPR. A no-op when not zoomed (currentDPR === baseDPR).
+function applyTextResolution(t: Phaser.GameObjects.Text): void {
   t.setResolution(currentDPR);
-  t.setScale(currentDPR / baseDPR);
 }
 
 export function installHiDPI(game: Phaser.Game): void {
   baseDPR = clampDPR(window.devicePixelRatio);
   currentDPR = baseDPR;
 
-  // Scale + sharpen every Text the moment it's created (so text made while
-  // already zoomed is correct immediately), then track it for future zoom
-  // changes. Patching the factory catches every `this.add.text(...)`, including
-  // dynamic popups. No-op when not zoomed.
+  // Sharpen every Text the moment it's created (so text made while already zoomed
+  // is crisp immediately), then track it for future zoom changes. Patching the
+  // factory catches every `this.add.text(...)`, including dynamic popups. No-op
+  // when not zoomed.
   const factoryProto = Phaser.GameObjects.GameObjectFactory.prototype as unknown as {
     text: (...args: unknown[]) => Phaser.GameObjects.Text;
     __hidpiPatched?: boolean;
@@ -76,7 +76,7 @@ export function installHiDPI(game: Phaser.Game): void {
     const originalText = factoryProto.text;
     factoryProto.text = function (this: unknown, ...args: unknown[]): Phaser.GameObjects.Text {
       const t = originalText.apply(this, args);
-      applyTextZoom(t);
+      applyTextResolution(t);
       trackedTexts.add(t);
       t.once(Phaser.GameObjects.Events.DESTROY, () => trackedTexts.delete(t));
       return t;
@@ -85,33 +85,35 @@ export function installHiDPI(game: Phaser.Game): void {
   }
 
   const applyCamera = (cam: Phaser.Cameras.Scene2D.Camera): void => {
-    // Map the logical world (size = baseSize / baseDPR) onto the physical backing
-    // store. Keep the default centred origin and offset scroll so the zoom is
-    // anchored top-left for BOTH the render transform and Camera.worldView
-    // (Phaser derives worldView from the camera centre regardless of origin, so
-    // changing the origin would desync them). All a no-op when baseDPR === 1.
+    // Bridge the logical world (gameSize = CSS px) onto the physical backing.
+    // Camera zoom = currentDPR maps the cssPx-wide world EXACTLY onto the
+    // cssPx × currentDPR backing — a perfect fit, so nothing ever crops in either
+    // zoom direction. The scroll offset anchors that mapping at the top-left for
+    // BOTH the render transform and Camera.worldView (Phaser derives worldView
+    // from the camera centre regardless of origin, so changing the origin would
+    // desync them — and desync hit-testing). Identity no-op at dpr 1 / no zoom.
     const bw = game.scale.baseSize.width;
     const bh = game.scale.baseSize.height;
     cam.setSize(bw, bh);
-    cam.setZoom(baseDPR);
-    cam.setScroll((bw / 2) * (1 / baseDPR - 1), (bh / 2) * (1 / baseDPR - 1));
+    cam.setZoom(currentDPR);
+    cam.setScroll((bw / 2) * (1 / currentDPR - 1), (bh / 2) * (1 / currentDPR - 1));
   };
 
   const apply = (): void => {
     currentDPR = clampDPR(window.devicePixelRatio);
 
-    // Phaser (RESIZE) just set gameSize to the parent's CSS-px size.
+    // Phaser (RESIZE) just set gameSize to the parent's CSS-px size. We LEAVE it
+    // there — that CSS-px size is exactly what we want scenes to lay out against,
+    // so they reflow with the browser viewport (and thus with zoom) in both
+    // directions. We only override the backing store below.
     const cssW = game.scale.gameSize.width;
     const cssH = game.scale.gameSize.height;
 
     const bw = Math.max(1, Math.round(cssW * currentDPR));        // backing = physical px
     const bh = Math.max(1, Math.round(cssH * currentDPR));
-    const gw = Math.max(1, Math.round(bw / baseDPR));             // logical (zoom-stable)
-    const gh = Math.max(1, Math.round(bh / baseDPR));
 
-    // Logical size scenes lay out against — constant across zoom → no reflow.
-    game.scale.gameSize.setSize(gw, gh);
-    // Backing store at native resolution → crisp. (Canvas *display* size is CSS.)
+    // Backing store at native resolution → crisp. (gameSize / canvas *display*
+    // size stay in CSS px.)
     game.scale.baseSize.setSize(bw, bh);
 
     const canvas = game.canvas;
@@ -130,12 +132,12 @@ export function installHiDPI(game: Phaser.Game): void {
     // spans the top-left 1/currentDPR of the canvas, so input hit areas drift away
     // from the rendered objects as you zoom in. Recompute it against the physical
     // backing so hit areas track the visuals. (cssW is the CSS-px canvas width =
-    // canvasBounds.width; bw/cssW === currentDPR/baseDPR; a no-op at dpr 1.)
+    // canvasBounds.width; bw/cssW === currentDPR; a no-op at dpr 1.)
     game.scale.displayScale.set(bw / cssW, bh / cssH);
 
-    // Re-scale every live text to the new zoom factor (layout stays put; only
-    // text grows/shrinks).
-    for (const t of trackedTexts) applyTextZoom(t);
+    // Refresh every live text's render resolution for the new zoom level so it
+    // stays crisp under the magnified camera.
+    for (const t of trackedTexts) applyTextResolution(t);
 
     for (const scene of game.scene.getScenes(true)) {
       if (scene.cameras?.main) applyCamera(scene.cameras.main);
