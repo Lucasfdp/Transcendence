@@ -8,6 +8,7 @@
 
 import Phaser from 'phaser';
 import { api } from '../../hub/api';
+import { ResponsiveScene } from '../../shared/responsive-scene';
 import { CURL_SHEET } from '../../shared/arenas/curl-sheet';
 import {
   rectArenaToScreen,
@@ -140,7 +141,7 @@ const BUMPER_BOOST      = 1.10; // 10% speed boost on bumper hit (pinball feel)
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
 
-export class ShellCurlScene extends Phaser.Scene {
+export class ShellCurlScene extends ResponsiveScene {
   private arena!: RectArenaPixels;
 
   // ── Game state ────────────────────────────────────────────────────────────
@@ -252,17 +253,10 @@ export class ShellCurlScene extends Phaser.Scene {
     // inside beginTurn() would bail immediately if called synchronously here.
     this.time.delayedCall(0, () => this.beginTurn());
 
-    // Phaser does NOT auto-call a Scene's shutdown() method — it only emits the
-    // SHUTDOWN event — so we must wire it ourselves, otherwise the resize
-    // listener (on the game-global ScaleManager) leaks every time this scene is
-    // left and re-entered, and stale handlers fire on later zooms.
-    this.scale.off('resize', this.onResize, this);
-    this.scale.on('resize', this.onResize, this);
-    this.events.once('shutdown', this.shutdown, this);
+    this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
   }
 
-  shutdown(): void {
-    this.scale.off('resize', this.onResize, this);
+  protected onShutdown(): void {
     this.slingshot.destroy();
     this.sweepCtrl.destroy();
     this.scoreHud.destroy();
@@ -1055,7 +1049,7 @@ export class ShellCurlScene extends Phaser.Scene {
 
   // ── Resize ────────────────────────────────────────────────────────────────
 
-  private onResize(): void {
+  protected relayout(): void {
     const oldArena = this.arena;
     this.arena     = rectArenaToScreen(CURL_SHEET, this.scale.width, this.scale.height);
 

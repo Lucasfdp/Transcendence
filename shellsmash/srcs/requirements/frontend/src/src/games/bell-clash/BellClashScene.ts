@@ -9,6 +9,7 @@
  */
 
 import Phaser from 'phaser';
+import { ResponsiveScene } from '../../shared/responsive-scene';
 import { ARENA_01 } from '../../shared/arenas/arena01';
 import { ArenaPixels, arenaToScreen, drawSumoRing } from '../../shared/arenas/arena';
 import { BallState, BALL_SRC_R, drawShellBall, isBallMoving, stepBall } from '../../shared/mechanics/ball';
@@ -71,7 +72,7 @@ const TWO_PI = Math.PI * 2;
 /** Fallback power pool when no ShellPicker selection is present. */
 const FALLBACK_POWERS: PowerType[] = [PowerType.NONE, ...GAME_POWERS['bell-clash']];
 
-export class BellClashScene extends Phaser.Scene {
+export class BellClashScene extends ResponsiveScene {
   private bgGfx!:   Phaser.GameObjects.Graphics;
   private zoneGfx!: Phaser.GameObjects.Graphics;
   private bellGfx!: Phaser.GameObjects.Graphics;
@@ -114,7 +115,7 @@ export class BellClashScene extends Phaser.Scene {
 
   constructor() { super({ key: 'BellClashScene' }); }
 
-  shutdown(): void {
+  protected onShutdown(): void {
     this.cleanupSceneResources();
   }
 
@@ -174,17 +175,10 @@ export class BellClashScene extends Phaser.Scene {
     this.updateSidePanels();
     this.showPowerPanel();
 
-    // Phaser does NOT auto-call a Scene's shutdown() method — it only emits the
-    // SHUTDOWN event — so we must wire it ourselves, otherwise the resize
-    // listener (on the game-global ScaleManager) leaks every time this scene is
-    // left and re-entered, and stale handlers fire on later zooms.
-    this.scale.off('resize', this.onResize, this);
-    this.scale.on('resize', this.onResize, this);
-    this.events.once('shutdown', this.shutdown, this);
+    this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
   }
 
   private cleanupSceneResources(): void {
-    this.scale.off('resize', this.onResize, this);
     this.slingshot?.destroy();
     this.slingshot = null;
     this.clearOverlayHitZones();
@@ -772,7 +766,7 @@ export class BellClashScene extends Phaser.Scene {
     this.overlayHitZones = [];
   }
 
-  private onResize(): void {
+  protected relayout(): void {
     const oldArena = this.arena;
     this.arena     = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
     const velocityScale = this.arena.scale / oldArena.scale;

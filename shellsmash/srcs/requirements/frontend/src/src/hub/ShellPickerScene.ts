@@ -12,6 +12,7 @@
  */
 
 import Phaser from 'phaser';
+import { ResponsiveScene } from '../shared/responsive-scene';
 import { ALL_POWERS, PowerType } from '../shared/mechanics/power-system';
 import { GAME_POWERS, GameId } from '../shared/mechanics/game-powers';
 import { THEME } from '../shared/theme';
@@ -56,7 +57,7 @@ interface CardState {
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
 
-export class ShellPickerScene extends Phaser.Scene {
+export class ShellPickerScene extends ResponsiveScene {
   // Scene init data
   private gameId!:      GameId;
   private targetScene!: string;
@@ -137,13 +138,7 @@ export class ShellPickerScene extends Phaser.Scene {
 
     if (stale) return;
     this.buildUI();
-
-    // Relayout on window resize / browser zoom — Phaser repositions the camera
-    // but never our GameObjects, so each scene must do this itself. Registered
-    // after the first build so an immediate resize can't run mid-build; removed
-    // on shutdown so the listener doesn't leak across visits.
-    this.scale.on('resize', this.onResize, this);
-    this.events.once('shutdown', () => this.scale.off('resize', this.onResize, this));
+    this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
   }
 
   private drawBackground(): void {
@@ -153,8 +148,7 @@ export class ShellPickerScene extends Phaser.Scene {
     this.bgGfx.fillRect(0, 0, width, height);
   }
 
-  private onResize(): void {
-    if (!this.scene.isActive()) return;
+  protected relayout(): void {
     this.drawBackground();
     this.buildUI();
   }

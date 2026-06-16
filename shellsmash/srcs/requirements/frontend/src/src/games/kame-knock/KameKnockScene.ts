@@ -11,6 +11,7 @@
 
 import Phaser from 'phaser';
 import { api } from '../../hub/api';
+import { ResponsiveScene } from '../../shared/responsive-scene';
 import { ARENA_01 } from '../../shared/arenas/arena01';
 import { ArenaPixels, arenaToScreen, drawSumoRing } from '../../shared/arenas/arena';
 import { BallState, BALL_SRC_R, drawShellBall, stepBall } from '../../shared/mechanics/ball';
@@ -91,7 +92,7 @@ const TARGET_TYPES: TimedTargetKind[] = ['daruma', 'crate', 'drum'];
 /** Fallback power pool when no ShellPicker selection is present. */
 const FALLBACK_POWERS: PowerType[] = [PowerType.NONE, ...GAME_POWERS['kame-knock']];
 
-export class KameKnockScene extends Phaser.Scene {
+export class KameKnockScene extends ResponsiveScene {
   private bgGfx!: Phaser.GameObjects.Graphics;
   private targetGfx!: Phaser.GameObjects.Graphics;
   private ballGfx!: Phaser.GameObjects.Graphics;
@@ -130,7 +131,7 @@ export class KameKnockScene extends Phaser.Scene {
 
   constructor() { super({ key: 'KameKnockScene' }); }
 
-  shutdown(): void {
+  protected onShutdown(): void {
     this.cleanupSceneResources();
   }
 
@@ -188,17 +189,10 @@ export class KameKnockScene extends Phaser.Scene {
     this.updateSidePanels();
     this.showPowerPanel();
 
-    // Phaser does NOT auto-call a Scene's shutdown() method — it only emits the
-    // SHUTDOWN event — so we must wire it ourselves, otherwise the resize
-    // listener (on the game-global ScaleManager) leaks every time this scene is
-    // left and re-entered, and stale handlers fire on later zooms.
-    this.scale.off('resize', this.onResize, this);
-    this.scale.on('resize', this.onResize, this);
-    this.events.once('shutdown', this.shutdown, this);
+    this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
   }
 
   private cleanupSceneResources(): void {
-    this.scale.off('resize', this.onResize, this);
     this.slingshot?.destroy();
     this.slingshot = null;
     this.clearOverlayHitZones();
@@ -745,7 +739,7 @@ export class KameKnockScene extends Phaser.Scene {
     this.overlayHitZones = [];
   }
 
-  private onResize(): void {
+  protected relayout(): void {
     const oldArena = this.arena;
     this.arena     = this.resolveArena();
     const velocityScale = this.arena.scale / oldArena.scale;

@@ -12,6 +12,7 @@
  */
 
 import Phaser from 'phaser';
+import { ResponsiveScene } from '../../shared/responsive-scene';
 import { ARENA_01 } from '../../shared/arenas/arena01';
 import { ArenaPixels, arenaToScreen, drawSumoRing } from '../../shared/arenas/arena';
 import { BallState, BALL_SRC_R, stepBall, isBallMoving, drawShellBall } from '../../shared/mechanics/ball';
@@ -62,7 +63,7 @@ const SIDE_PANEL_PAD          = 16;
 const SIDE_PANEL_TOP          = 74;
 const SCORE_LOG_LIMIT         = 8;
 
-export class BambooBashScene extends Phaser.Scene {
+export class BambooBashScene extends ResponsiveScene {
   private bgGfx!:     Phaser.GameObjects.Graphics;
   private bambooGfx!: Phaser.GameObjects.Graphics;
   private ballGfx!:   Phaser.GameObjects.Graphics;
@@ -156,13 +157,7 @@ export class BambooBashScene extends Phaser.Scene {
     this.updateSidePanels();
     this.showPowerPanel();
 
-    // Phaser does NOT auto-call a Scene's shutdown() method — it only emits the
-    // SHUTDOWN event — so we must wire it ourselves, otherwise the resize
-    // listener below (on the game-global ScaleManager) leaks every time this
-    // scene is left and re-entered, and stale handlers fire on later zooms.
-    this.scale.off('resize', this.onResize, this);
-    this.scale.on('resize', this.onResize, this);
-    this.events.once('shutdown', this.shutdown, this);
+    this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
 
     this.startCountdown();
   }
@@ -219,8 +214,7 @@ export class BambooBashScene extends Phaser.Scene {
     this.running = true;
   }
 
-  shutdown(): void {
-    this.scale.off('resize', this.onResize, this);
+  protected onShutdown(): void {
     this.slingshot.destroy();
     this.overlay?.destroy(true);
     this.powerSidePanel?.destroy();
@@ -548,7 +542,7 @@ export class BambooBashScene extends Phaser.Scene {
 
   // ── Resize ──────────────────────────────────────────────────────────────────
 
-  private onResize(): void {
+  protected relayout(): void {
     const oldArena = this.arena;
     this.arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
 
