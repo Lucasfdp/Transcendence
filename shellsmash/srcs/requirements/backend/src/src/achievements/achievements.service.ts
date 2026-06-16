@@ -5,6 +5,7 @@ import {
   ACHIEVEMENTS, AchievementContext, AchievementDefinition, AchievementView,
 } from './achievements.constants';
 import { UserAchievement } from './entities/user-achievement.entity';
+import { findCosmetic } from '../customization/customization.constants';
 import { UserCosmetic } from '../customization/entities/user-cosmetic.entity';
 import { UserGameStats } from '../game-results/entities/user-game-stats.entity';
 import { User } from '../users/entities/user.entity';
@@ -107,6 +108,8 @@ export class AchievementsService {
   }
 
   private async grantCosmetic(user: User, cosmeticId: string): Promise<void> {
+    if (!findCosmetic(cosmeticId)) throw new InternalServerErrorException('Invalid cosmetic reward');
+
     try {
       await this.userCosmeticsRepo.save(this.userCosmeticsRepo.create({ user, cosmeticId }));
     } catch (err: unknown) {

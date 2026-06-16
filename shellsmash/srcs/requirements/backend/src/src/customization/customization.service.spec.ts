@@ -150,7 +150,7 @@ describe('CustomizationService', () => {
   it('can buy eligible cosmetic when enough coins', async () => {
     const user = makeUser({ coins: 200 });
     usersRepo.findOne = jest.fn().mockResolvedValue(user);
-    achievementsRepo.find = jest.fn().mockResolvedValue([makeAchievement(user, 'first-win')]);
+    achievementsRepo.find = jest.fn().mockResolvedValue([makeAchievement(user, 'matches-50-played')]);
 
     const cosmetics = await service.buy(user, 'dragon');
 
@@ -163,7 +163,7 @@ describe('CustomizationService', () => {
     const user = makeUser({ coins: 200 });
     usersRepo.findOne = jest.fn().mockResolvedValue(user);
     cosmeticsRepo.find = jest.fn().mockResolvedValue([makeCosmetic(user, 'dragon')]);
-    achievementsRepo.find = jest.fn().mockResolvedValue([makeAchievement(user, 'first-win')]);
+    achievementsRepo.find = jest.fn().mockResolvedValue([makeAchievement(user, 'matches-50-played')]);
 
     await service.buy(user, 'dragon');
 
@@ -174,7 +174,7 @@ describe('CustomizationService', () => {
   it('insufficient coins returns an error', async () => {
     const user = makeUser({ coins: 20 });
     usersRepo.findOne = jest.fn().mockResolvedValue(user);
-    achievementsRepo.find = jest.fn().mockResolvedValue([makeAchievement(user, 'first-win')]);
+    achievementsRepo.find = jest.fn().mockResolvedValue([makeAchievement(user, 'matches-50-played')]);
 
     await expect(service.buy(user, 'dragon')).rejects.toThrow(BadRequestException);
   });

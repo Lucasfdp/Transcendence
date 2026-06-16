@@ -40,7 +40,6 @@
 
 import Phaser from 'phaser';
 import { Achievement, api, Cosmetic, MiniGameDefinition, User } from './api';
-import { shellSkinAccentColor } from '../shared/cosmetics';
 import { THEME } from '../shared/theme';
 import { ProfilePanel } from './ProfilePanel';
 
@@ -1558,11 +1557,11 @@ export class HubScene extends Phaser.Scene {
     card.strokeRoundedRect(x, y, w, h, 9);
 
     const preview = this.add.graphics();
-    const accent = cosmetic.accentColor ?? shellSkinAccentColor(cosmetic.id);
+    const accent = cosmetic.accentColor ?? THEME.gold;
     if (cosmetic.type === 'hub_background') {
       preview.fillGradientStyle(0x2b174f, 0x2b174f, accent, accent, cosmetic.owned ? 0.95 : 0.42);
       preview.fillRoundedRect(x + 14, y + 18, 44, 36, 5);
-      preview.fillStyle(cosmetic.id === 'sunset_dojo' ? 0xffd18a : 0xfff5d6, cosmetic.owned ? 0.9 : 0.36);
+      preview.fillStyle(cosmetic.previewColor ?? 0xfff5d6, cosmetic.owned ? 0.9 : 0.36);
       preview.fillCircle(x + 46, y + 28, 7);
       preview.fillStyle(0x1a1005, cosmetic.owned ? 0.65 : 0.30);
       preview.fillTriangle(x + 14, y + 54, x + 28, y + 34, x + 42, y + 54);

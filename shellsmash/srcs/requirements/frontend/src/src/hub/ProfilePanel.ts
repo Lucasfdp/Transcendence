@@ -31,7 +31,6 @@
  */
 
 import Phaser from 'phaser';
-import { shellSkinAccentColor } from '../shared/cosmetics';
 import { THEME } from '../shared/theme';
 import { PowerType } from '../shared/mechanics/power-system';
 
@@ -272,7 +271,7 @@ export class ProfilePanel {
     // ── 8. Shell skin subtitle with hex icon ──────────────────────────────────
     const skinName  = user.shellSkin ?? 'kanagawa';
     const skinY     = nameY + 26;
-    const hexColour = shellSkinAccentColor(skinName);
+    const hexColour = THEME.gold;
     const hexGfx    = this.scene.add.graphics();
     // Draw a small flat-top hexagon (6 vertices)
     const hexR  = 7;

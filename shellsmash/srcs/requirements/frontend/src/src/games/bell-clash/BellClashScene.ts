@@ -9,11 +9,13 @@
  */
 
 import Phaser from 'phaser';
+import { api } from '../../hub/api';
 import { ARENA_01 } from '../../shared/arenas/arena01';
 import { ArenaPixels, arenaToScreen, drawSumoRing } from '../../shared/arenas/arena';
 import { BallState, BALL_SRC_R, drawShellBall, isBallMoving, stepBall } from '../../shared/mechanics/ball';
 import { Slingshot } from '../../shared/mechanics/slingshot';
 import { buildReturnButton } from '../../shared/mechanics/hud';
+import { showAchievementUnlocks } from '../../shared/achievement-popup';
 import { THEME } from '../../shared/theme';
 import { PanelRect, SidePanel, SidePanelRow } from '../../shared/ui/panels/side-panel';
 import { PowerSidePanel } from '../../shared/ui/panels/PowerSidePanel';
@@ -403,7 +405,20 @@ export class BellClashScene extends Phaser.Scene {
     this.ball.vy = 0;
     this.powerSidePanel?.hide();
     this.updateSidePanels();
+    this.submitResult();
     this.showEndScreen();
+  }
+
+  private submitResult(): void {
+    const user = this.registry.get('user') as { isGuest?: boolean } | undefined;
+    if (user?.isGuest) return;
+
+    api.submitGameResult('bell-clash', 'win').then((result) => {
+      console.info('[BellClash] progression:', result);
+      showAchievementUnlocks(this, result.unlockedAchievements ?? []);
+    }).catch((err: unknown) => {
+      console.warn('[BellClash] failed to submit result:', err);
+    });
   }
 
   // ── Power panel ──────────────────────────────────────────────────────────────

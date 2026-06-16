@@ -77,131 +77,64 @@ const reaches = (
   progress: (ctx: AchievementContext) => { current: number; target: number },
 ) => (ctx: AchievementContext): boolean => progress(ctx).current >= progress(ctx).target;
 
+const gamePlayedMilestones = [1, 5, 10, 25, 50] as const;
+const globalProgressMilestones = [1, 5, 10, 25, 50] as const;
+const levelMilestones = [2, 5, 10, 25, 50] as const;
+const dojoCoinMilestones = [1, 50, 100, 250, 500] as const;
+
+const matchAchievements = (): AchievementDefinition[] => globalProgressMilestones.map((target) => ({
+  id: `matches-${target}-played`,
+  title: `Dojo Matches ${target}`,
+  description: `Play ${target} ${target === 1 ? 'match' : 'matches'}.`,
+  unlockDescription: `${target} ${target === 1 ? 'match' : 'matches'} completed.`,
+  reward: target === 10
+    ? cosmeticReward('bamboo', 'Bamboo Shell unlocked')
+    : target === 50
+      ? cosmeticReward('dragon', 'Dragon Shell unlocked')
+      : noReward(`Match ${target} milestone recorded`),
+  progress: globalProgress('gamesPlayed', target),
+  isUnlocked: reaches(globalProgress('gamesPlayed', target)),
+}));
+
+const levelAchievements = (): AchievementDefinition[] => levelMilestones.map((target) => ({
+  id: `level-${target}-reached`,
+  title: `Dojo Level ${target}`,
+  description: `Reach level ${target}.`,
+  unlockDescription: `You reached level ${target}.`,
+  reward: noReward(`Level ${target} milestone recorded`),
+  progress: levelProgress(target),
+  isUnlocked: reaches(levelProgress(target)),
+}));
+
+const dojoCoinAchievements = (): AchievementDefinition[] => dojoCoinMilestones.map((target) => ({
+  id: `dojo-coins-${target}-earned`,
+  title: `Dojo Coins ${target}`,
+  description: `Earn ${target} total dojo ${target === 1 ? 'coin' : 'coins'}.`,
+  unlockDescription: `${target} total dojo ${target === 1 ? 'coin' : 'coins'} earned.`,
+  reward: target === 1 ? coinReward(25, '25 bonus coins') : noReward(`Dojo coins ${target} milestone recorded`),
+  progress: globalProgress('totalCoinsEarned', target),
+  isUnlocked: reaches(globalProgress('totalCoinsEarned', target)),
+}));
+
+const gamePlayedAchievements = (
+  gameId: string,
+  gameName: string,
+): AchievementDefinition[] => gamePlayedMilestones.map((target) => ({
+  id: `${gameId}-${target}-played`,
+  title: `${gameName} ${target}`,
+  description: `Play ${target} ${gameName} ${target === 1 ? 'match' : 'matches'}.`,
+  unlockDescription: `${target} ${gameName} ${target === 1 ? 'match' : 'matches'} completed.`,
+  reward: noReward(`${gameName} ${target}-match milestone recorded`),
+  progress: gameProgress(gameId, 'gamesPlayed', target),
+  isUnlocked: reaches(gameProgress(gameId, 'gamesPlayed', target)),
+}));
+
 export const ACHIEVEMENTS: AchievementDefinition[] = [
-  {
-    id: 'first-match',
-    title: 'First Match',
-    description: 'Complete your first match in the dojo.',
-    unlockDescription: 'You completed your first match. The dojo now knows your shell.',
-    reward: noReward('Progress record unlocked'),
-    progress: globalProgress('gamesPlayed', 1),
-    isUnlocked: reaches(globalProgress('gamesPlayed', 1)),
-  },
-  {
-    id: 'dojo-regular',
-    title: 'Dojo Regular',
-    description: 'Play 10 matches.',
-    unlockDescription: 'Ten matches completed. Your discipline is starting to show.',
-    reward: cosmeticReward('bamboo', 'Bamboo Shell unlocked'),
-    progress: globalProgress('gamesPlayed', 10),
-    isUnlocked: reaches(globalProgress('gamesPlayed', 10)),
-  },
-  {
-    id: 'dojo-veteran',
-    title: 'Dojo Veteran',
-    description: 'Play 50 matches.',
-    unlockDescription: 'Fifty matches completed. You are part of the dojo floorboards now.',
-    reward: noReward('Veteran milestone recorded'),
-    progress: globalProgress('gamesPlayed', 50),
-    isUnlocked: reaches(globalProgress('gamesPlayed', 50)),
-  },
-  {
-    id: 'first-win',
-    title: 'First Victory',
-    description: 'Win one match.',
-    unlockDescription: 'First victory secured. Your technique is starting to stand out.',
-    reward: cosmeticReward('dragon', 'Dragon Shell unlocked'),
-    progress: globalProgress('totalWins', 1),
-    isUnlocked: reaches(globalProgress('totalWins', 1)),
-  },
-  {
-    id: 'rising-shell',
-    title: 'Rising Shell',
-    description: 'Reach level 2.',
-    unlockDescription: 'You reached level 2. Your shell feels lighter.',
-    reward: noReward('Starter rank improved'),
-    progress: levelProgress(2),
-    isUnlocked: reaches(levelProgress(2)),
-  },
-  {
-    id: 'seasoned-shell',
-    title: 'Seasoned Shell',
-    description: 'Reach level 5.',
-    unlockDescription: 'You reached level 5. The dojo respects your persistence.',
-    reward: noReward('Level milestone recorded'),
-    progress: levelProgress(5),
-    isUnlocked: reaches(levelProgress(5)),
-  },
-  {
-    id: 'first-bounty',
-    title: 'First Bounty',
-    description: 'Earn coins for the first time.',
-    unlockDescription: 'You earned your first dojo coins.',
-    reward: coinReward(25, '25 bonus coins'),
-    progress: globalProgress('totalCoinsEarned', 1),
-    isUnlocked: reaches(globalProgress('totalCoinsEarned', 1)),
-  },
-  {
-    id: 'coin-collector',
-    title: 'Coin Collector',
-    description: 'Earn 500 total coins over time.',
-    unlockDescription: 'Five hundred coins earned. Your shell purse is getting heavy.',
-    reward: noReward('Coin milestone recorded'),
-    progress: globalProgress('totalCoinsEarned', 500),
-    isUnlocked: reaches(globalProgress('totalCoinsEarned', 500)),
-  },
-  {
-    id: 'kame-knock-initiate',
-    title: 'Kame Knock Initiate',
-    description: 'Play 1 Kame Knock match.',
-    unlockDescription: 'You stepped into Kame Knock for the first time.',
-    reward: noReward(),
-    progress: gameProgress('kame-knock', 'gamesPlayed', 1),
-    isUnlocked: reaches(gameProgress('kame-knock', 'gamesPlayed', 1)),
-  },
-  {
-    id: 'kame-knock-regular',
-    title: 'Kame Knock Regular',
-    description: 'Play 10 Kame Knock matches.',
-    unlockDescription: 'Ten Kame Knock matches completed. The ring knows your rhythm.',
-    reward: noReward('Kame Knock milestone recorded'),
-    progress: gameProgress('kame-knock', 'gamesPlayed', 10),
-    isUnlocked: reaches(gameProgress('kame-knock', 'gamesPlayed', 10)),
-  },
-  {
-    id: 'bamboo-bash-initiate',
-    title: 'Bamboo Bash Initiate',
-    description: 'Play 1 Bamboo Bash match.',
-    unlockDescription: 'You took your first swing in Bamboo Bash.',
-    reward: noReward(),
-    progress: gameProgress('bamboo-bash', 'gamesPlayed', 1),
-    isUnlocked: reaches(gameProgress('bamboo-bash', 'gamesPlayed', 1)),
-  },
-  {
-    id: 'bamboo-bash-regular',
-    title: 'Bamboo Bash Regular',
-    description: 'Play 10 Bamboo Bash matches.',
-    unlockDescription: 'Ten Bamboo Bash matches completed. Splinters fear you.',
-    reward: noReward('Bamboo Bash milestone recorded'),
-    progress: gameProgress('bamboo-bash', 'gamesPlayed', 10),
-    isUnlocked: reaches(gameProgress('bamboo-bash', 'gamesPlayed', 10)),
-  },
-  {
-    id: 'shell-curl-initiate',
-    title: 'Shell Curl Initiate',
-    description: 'Play 1 Shell Curl match.',
-    unlockDescription: 'You slid into Shell Curl for the first time.',
-    reward: noReward(),
-    progress: gameProgress('shell-curl', 'gamesPlayed', 1),
-    isUnlocked: reaches(gameProgress('shell-curl', 'gamesPlayed', 1)),
-  },
-  {
-    id: 'shell-curl-regular',
-    title: 'Shell Curl Regular',
-    description: 'Play 10 Shell Curl matches.',
-    unlockDescription: 'Ten Shell Curl matches completed. Your line control is improving.',
-    reward: noReward('Shell Curl milestone recorded'),
-    progress: gameProgress('shell-curl', 'gamesPlayed', 10),
-    isUnlocked: reaches(gameProgress('shell-curl', 'gamesPlayed', 10)),
-  },
+  ...matchAchievements(),
+  ...levelAchievements(),
+  ...dojoCoinAchievements(),
+  ...gamePlayedAchievements('kame-knock', 'Kame Knock'),
+  ...gamePlayedAchievements('bamboo-bash', 'Bamboo Bash'),
+  ...gamePlayedAchievements('bell-clash', 'Bell Clash'),
+  ...gamePlayedAchievements('temple-curling', 'Temple Curling'),
 ];

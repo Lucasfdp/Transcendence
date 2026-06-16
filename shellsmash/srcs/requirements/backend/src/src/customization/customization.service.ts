@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { ACHIEVEMENTS } from '../achievements/achievements.constants';
 import { UserAchievement } from '../achievements/entities/user-achievement.entity';
 import { User } from '../users/entities/user.entity';
 import { COSMETICS, CosmeticDefinition, CosmeticView, findCosmetic } from './customization.constants';
@@ -18,7 +19,9 @@ export class CustomizationService {
     @InjectRepository(User)
     private readonly usersRepo: Repository<User>,
     private readonly dataSource: DataSource,
-  ) {}
+  ) {
+    this.validateAchievementCosmeticRewards();
+  }
 
   async listForUser(user: User): Promise<CosmeticView[]> {
     const ownedIds = await this.findOwnedIds(user.id);
@@ -79,6 +82,7 @@ export class CustomizationService {
     cosmeticId: string,
     repo: Repository<UserCosmetic> = this.userCosmeticsRepo,
   ): Promise<void> {
+    this.requireCosmetic(cosmeticId);
     try {
       await repo.save(repo.create({ user, cosmeticId }));
     } catch (err: unknown) {
@@ -121,6 +125,9 @@ export class CustomizationService {
         ...cosmetic,
         owned,
         equipped: this.isEquipped(user, cosmetic),
+        ...(cosmetic.unlockAchievementId ? {
+          unlockRequirement: { type: 'achievement' as const, achievementId: cosmetic.unlockAchievementId },
+        } : {}),
         ...(lockedReason ? { lockedReason } : {}),
       };
     });
@@ -142,5 +149,13 @@ export class CustomizationService {
     if (cosmetic.unlockAchievementId && !achievementIds.has(cosmetic.unlockAchievementId)) return 'achievement-locked';
     if (user.coins < cosmetic.price) return 'not enough coins';
     return 'purchasable';
+  }
+
+  private validateAchievementCosmeticRewards(): void {
+    const missing = ACHIEVEMENTS
+      .filter((achievement) => achievement.reward.type === 'cosmetic' && !findCosmetic(achievement.reward.cosmeticId))
+      .map((achievement) => `${achievement.id}:${achievement.reward.type === 'cosmetic' ? achievement.reward.cosmeticId : ''}`);
+
+    if (missing.length > 0) throw new Error(`Invalid cosmetic achievement rewards: ${missing.join(', ')}`);
   }
 }

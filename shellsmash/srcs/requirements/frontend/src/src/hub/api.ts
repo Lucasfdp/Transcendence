@@ -137,9 +137,11 @@ export interface Cosmetic {
   description: string;
   price: number;
   accentColor: number;
+  previewColor?: number;
   owned: boolean;
   equipped: boolean;
   unlockAchievementId?: string;
+  unlockRequirement?: { type: 'achievement'; achievementId: string };
   lockedReason?: 'achievement-locked' | 'not enough coins' | 'purchasable';
 }
 

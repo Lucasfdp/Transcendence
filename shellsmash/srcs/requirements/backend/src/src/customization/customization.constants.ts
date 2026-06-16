@@ -9,11 +9,13 @@ export interface CosmeticDefinition {
   unlockAchievementId?: string;
   defaultUnlocked?: boolean;
   accentColor: number;
+  previewColor?: number;
 }
 
 export interface CosmeticView extends CosmeticDefinition {
   owned: boolean;
   equipped: boolean;
+  unlockRequirement?: { type: 'achievement'; achievementId: string };
   lockedReason?: 'achievement-locked' | 'not enough coins' | 'purchasable';
 }
 
@@ -33,7 +35,7 @@ export const COSMETICS: CosmeticDefinition[] = [
     name: 'Dragon Shell',
     description: 'A fierce red shell for proven winners.',
     price: 150,
-    unlockAchievementId: 'first-win',
+    unlockAchievementId: 'matches-50-played',
     accentColor: 0x8b0000,
   },
   {
@@ -42,7 +44,7 @@ export const COSMETICS: CosmeticDefinition[] = [
     name: 'Bamboo Shell',
     description: 'A calm green shell awarded to regular dojo players.',
     price: 250,
-    unlockAchievementId: 'dojo-regular',
+    unlockAchievementId: 'matches-10-played',
     accentColor: 0x2d5a1b,
   },
   {
@@ -53,6 +55,7 @@ export const COSMETICS: CosmeticDefinition[] = [
     price: 0,
     defaultUnlocked: true,
     accentColor: 0x14083a,
+    previewColor: 0xfff5d6,
   },
   {
     id: 'sunset_dojo',
@@ -62,6 +65,7 @@ export const COSMETICS: CosmeticDefinition[] = [
     price: 0,
     defaultUnlocked: true,
     accentColor: 0xd97832,
+    previewColor: 0xffd18a,
   },
 ];
 

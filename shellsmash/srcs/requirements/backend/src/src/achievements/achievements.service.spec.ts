@@ -92,11 +92,11 @@ describe('AchievementsService', () => {
     usersRepo = module.get(getRepositoryToken(User));
   });
 
-  it('unlocks first match only once', async () => {
+  it('unlocks first match milestone only once', async () => {
     const user = makeUser({ profile: makeProfile({ gamesPlayed: 1 }) });
 
     const firstPass = await service.evaluateForUser(user);
-    expect(firstPass.some((achievement) => achievement.id === 'first-match')).toBe(true);
+    expect(firstPass.some((achievement) => achievement.id === 'matches-1-played')).toBe(true);
 
     repo.find.mockResolvedValueOnce(firstPass.map((achievement) => makeRecord(user, achievement.id)));
     const secondPass = await service.evaluateForUser(user);
@@ -104,22 +104,22 @@ describe('AchievementsService', () => {
     expect(secondPass).toEqual([]);
   });
 
-  it('unlocks first win when totalWins reaches one', async () => {
-    const user = makeUser({ profile: makeProfile({ gamesPlayed: 1, totalWins: 1 }) });
-
-    const unlocked = await service.evaluateForUser(user);
-
-    expect(unlocked.some((achievement) => achievement.id === 'first-win')).toBe(true);
-    expect(cosmeticsRepo.save).toHaveBeenCalledWith(expect.objectContaining({ cosmeticId: 'dragon' }));
-  });
-
-  it('unlocks dojo regular when gamesPlayed reaches ten', async () => {
+  it('unlocks ten-match milestone when gamesPlayed reaches ten', async () => {
     const user = makeUser({ profile: makeProfile({ gamesPlayed: 10 }) });
 
     const unlocked = await service.evaluateForUser(user);
 
-    expect(unlocked.some((achievement) => achievement.id === 'dojo-regular')).toBe(true);
+    expect(unlocked.some((achievement) => achievement.id === 'matches-10-played')).toBe(true);
     expect(cosmeticsRepo.save).toHaveBeenCalledWith(expect.objectContaining({ cosmeticId: 'bamboo' }));
+  });
+
+  it('unlocks dragon shell at fifty matches', async () => {
+    const user = makeUser({ profile: makeProfile({ gamesPlayed: 50 }) });
+
+    const unlocked = await service.evaluateForUser(user);
+
+    expect(unlocked.some((achievement) => achievement.id === 'matches-50-played')).toBe(true);
+    expect(cosmeticsRepo.save).toHaveBeenCalledWith(expect.objectContaining({ cosmeticId: 'dragon' }));
   });
 
   it('unlocks per-game achievements from game stats context', async () => {
@@ -128,7 +128,42 @@ describe('AchievementsService', () => {
 
     const unlocked = await service.evaluateForUser(user);
 
-    expect(unlocked.some((achievement) => achievement.id === 'kame-knock-initiate')).toBe(true);
+    expect(unlocked.some((achievement) => achievement.id === 'kame-knock-1-played')).toBe(true);
+  });
+
+  it('lists per-game played milestones for each playable mode', async () => {
+    const user = makeUser();
+
+    const achievements = await service.listForUser(user);
+    const expectedModes = ['kame-knock', 'bamboo-bash', 'bell-clash', 'temple-curling'];
+    const expectedTargets = [1, 5, 10, 25, 50];
+
+    for (const mode of expectedModes) {
+      for (const target of expectedTargets) {
+        expect(achievements.some((achievement) => achievement.id === `${mode}-${target}-played`)).toBe(true);
+      }
+    }
+  });
+
+  it('lists general match, level, and dojo coin milestones', async () => {
+    const user = makeUser();
+
+    const achievements = await service.listForUser(user);
+    const progressTargets = [1, 5, 10, 25, 50];
+    const levelTargets = [2, 5, 10, 25, 50];
+    const coinTargets = [1, 50, 100, 250, 500];
+
+    for (const target of progressTargets) {
+      expect(achievements.some((achievement) => achievement.id === `matches-${target}-played`)).toBe(true);
+    }
+
+    for (const target of levelTargets) {
+      expect(achievements.some((achievement) => achievement.id === `level-${target}-reached`)).toBe(true);
+    }
+
+    for (const target of coinTargets) {
+      expect(achievements.some((achievement) => achievement.id === `dojo-coins-${target}-earned`)).toBe(true);
+    }
   });
 
   it('grants coin rewards once when an achievement unlocks', async () => {
@@ -136,20 +171,20 @@ describe('AchievementsService', () => {
 
     const unlocked = await service.evaluateForUser(user);
 
-    expect(unlocked.some((achievement) => achievement.id === 'first-bounty')).toBe(true);
+    expect(unlocked.some((achievement) => achievement.id === 'dojo-coins-1-earned')).toBe(true);
     expect(user.coins).toBe(35);
     expect(usersRepo.save).toHaveBeenCalledWith(expect.objectContaining({ coins: 35 }));
   });
 
   it('lists the full catalog with locked and unlocked state', async () => {
     const user = makeUser();
-    repo.find.mockResolvedValueOnce([makeRecord(user, 'first-match')]);
+    repo.find.mockResolvedValueOnce([makeRecord(user, 'matches-1-played')]);
 
     const achievements = await service.listForUser(user);
 
     expect(achievements.length).toBeGreaterThan(1);
-    expect(achievements.find((achievement) => achievement.id === 'first-match')?.unlocked).toBe(true);
-    expect(achievements.find((achievement) => achievement.id === 'first-win')?.unlocked).toBe(false);
+    expect(achievements.find((achievement) => achievement.id === 'matches-1-played')?.unlocked).toBe(true);
+    expect(achievements.find((achievement) => achievement.id === 'matches-50-played')?.unlocked).toBe(false);
   });
 
   it('includes backend progress values in achievement views', async () => {
@@ -157,8 +192,8 @@ describe('AchievementsService', () => {
 
     const achievements = await service.listForUser(user);
 
-    expect(achievements.find((achievement) => achievement.id === 'dojo-regular')).toEqual(
-      expect.objectContaining({ progressCurrent: 4, progressTarget: 10 }),
+    expect(achievements.find((achievement) => achievement.id === 'matches-5-played')).toEqual(
+      expect.objectContaining({ progressCurrent: 4, progressTarget: 5 }),
     );
   });
 
@@ -170,12 +205,15 @@ describe('AchievementsService', () => {
     const secondPass = await service.evaluateForUser(user);
 
     expect(secondPass).toEqual([]);
-    expect(cosmeticsRepo.save).toHaveBeenCalledTimes(1);
+    expect(cosmeticsRepo.save).not.toHaveBeenCalled();
   });
 
   it('does not duplicate coin rewards when already unlocked', async () => {
     const user = makeUser({ coins: 10, profile: makeProfile({ totalCoinsEarned: 1 }) });
-    repo.find.mockResolvedValueOnce([makeRecord(user, 'first-bounty')]);
+    repo.find.mockResolvedValueOnce([
+      makeRecord(user, 'dojo-coins-1-earned'),
+      makeRecord(user, 'matches-1-played'),
+    ]);
 
     const unlocked = await service.evaluateForUser(user);
 
@@ -186,10 +224,10 @@ describe('AchievementsService', () => {
 
   it('ignores duplicate cosmetic reward rows safely', async () => {
     cosmeticsRepo.save.mockRejectedValueOnce({ code: '23505' });
-    const user = makeUser({ profile: makeProfile({ gamesPlayed: 1, totalWins: 1 }) });
+    const user = makeUser({ profile: makeProfile({ gamesPlayed: 50, totalWins: 1 }) });
 
     const unlocked = await service.evaluateForUser(user);
 
-    expect(unlocked.some((achievement) => achievement.id === 'first-win')).toBe(true);
+    expect(unlocked.some((achievement) => achievement.id === 'matches-50-played')).toBe(true);
   });
 });

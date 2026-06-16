@@ -864,7 +864,7 @@ export class ShellCurlScene extends Phaser.Scene {
     const user = this.registry.get('user') as { isGuest?: boolean } | undefined;
     if (user?.isGuest) return;
 
-    api.submitGameResult('shell-curl', localPlayerWon ? 'win' : 'loss').then((result) => {
+    api.submitGameResult('temple-curling', localPlayerWon ? 'win' : 'loss').then((result) => {
       console.info('[ShellCurl] progression:', result);
       showAchievementUnlocks(this, result.unlockedAchievements ?? []);
     }).catch((err: unknown) => {
