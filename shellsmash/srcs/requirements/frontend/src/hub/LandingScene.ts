@@ -225,9 +225,11 @@ export class LandingScene extends ResponsiveScene {
     // Fast-path: if there's already a valid session, skip the UI entirely.
     try {
       await api.getMe();
+      if (!this.scene.isActive()) return;
       this.transitionToHub();
       return;
     } catch (err) {
+      if (!this.scene.isActive()) return;
       if (!(err instanceof AuthError)) {
         console.warn('[LandingScene] Session check error:', err);
       }
@@ -235,6 +237,7 @@ export class LandingScene extends ResponsiveScene {
 
     // Mount form overlay — CSRF will be fetched lazily per-request.
     this.injectStyles();
+    if (!this.scene.isActive()) return;
     this.mountOverlay();
     this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
   }
@@ -487,6 +490,7 @@ export class LandingScene extends ResponsiveScene {
 
   private removeOverlay(): void {
     this.overlayEl?.remove();
+    document.getElementById('ls-overlay')?.remove();
     this.overlayEl = null;
   }
 
