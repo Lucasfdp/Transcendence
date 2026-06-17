@@ -287,7 +287,7 @@ export class ShellPickerScene extends ResponsiveScene {
     btnZone.on('pointerout',  () => this.paintConfirmBtn(false, btnX, btnY, btnW, btnH));
     btnZone.on('pointerup',   () => void this.onConfirm());
 
-    if ((this.gameId === 'shell-curl' || this.gameId === 'bamboo-bash') && this.currentPlayer === 0) {
+    if ((this.gameId === 'shell-curl' || this.gameId === 'bamboo-bash' || this.gameId === 'kame-knock') && this.currentPlayer === 0) {
       this.buildOnlineButton(btnY);
     }
 
@@ -556,13 +556,15 @@ export class ShellPickerScene extends ResponsiveScene {
     socket.off('game:state');
     socket.off('queue:error');
 
+    let matchId: string | null = null;
     let side = 0;
     socket.on('match:found', (payload: { matchId: string; side: number }) => {
+      matchId = payload.matchId;
       side = payload.side;
       socket.emit('room:ready', { matchId: payload.matchId });
     });
     const onState = (snapshot: GameSnapshot) => {
-      if (snapshot.phase !== 'active' || snapshot.gameId !== this.gameId) return;
+      if (!matchId || snapshot.matchId !== matchId || snapshot.phase !== 'active' || snapshot.gameId !== this.gameId) return;
       socket.off('game:state', onState);
       this.registry.set('onlineMatch', { matchId: snapshot.matchId, side, snapshot });
       this.scene.start(this.targetScene);

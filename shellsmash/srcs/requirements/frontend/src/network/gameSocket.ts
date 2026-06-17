@@ -69,7 +69,26 @@ export interface BambooBashSnapshot {
   winnerSide: number | null;
 }
 
-export type GameSnapshot = CurlingSnapshot | BambooBashSnapshot;
+export interface KameKnockSnapshot {
+  matchId: string;
+  seq: number;
+  gameId: 'kame-knock';
+  mode: MatchMode;
+  phase: 'pending' | 'active' | 'finished' | 'abandoned';
+  currentTurn: number;
+  turnNumber: number;
+  roundNumber: number;
+  totalRounds: number;
+  activeTurnNumber: number | null;
+  score: number[];
+  roundScores: number[];
+  targets: Array<{ id: number; kind: 'daruma' | 'crate' | 'drum'; breakable: boolean; nx: number; ny: number; ageMs: number; lifetimeMs: number; radiusSrc: number; points: number }>;
+  nextTargetId: number;
+  players: SnapshotPlayer[];
+  winnerSide: number | null;
+}
+
+export type GameSnapshot = CurlingSnapshot | BambooBashSnapshot | KameKnockSnapshot;
 
 export interface CurlingThrowEvent {
   matchId: string;
@@ -83,6 +102,16 @@ export interface CurlingThrowEvent {
 export interface BambooBashThrowEvent {
   matchId: string;
   roundNumber: number;
+  side: number;
+  vx: number;
+  vy: number;
+  power: string;
+}
+
+export interface KameKnockThrowEvent {
+  matchId: string;
+  roundNumber: number;
+  turnNumber: number;
   side: number;
   vx: number;
   vy: number;

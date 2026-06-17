@@ -11,6 +11,7 @@ import { MatchSpectator } from './entities/match-spectator.entity';
 import { UserRating } from './entities/user-rating.entity';
 import { BambooBashEngine } from './engines/bamboo-bash.engine';
 import { GameEngineRegistry } from './engines/game-engine.registry';
+import { KameKnockEngine } from './engines/kame-knock.engine';
 import { ShellCurlEngine } from './engines/shell-curl.engine';
 import { GameSessionService } from './game-session.service';
 import { MatchesController } from './matches.controller';
@@ -37,6 +38,7 @@ import { RoomService } from './room.service';
     MatchmakingService,
     ShellCurlEngine,
     BambooBashEngine,
+    KameKnockEngine,
     GameEngineRegistry,
     RoomService,
     GameSessionService,

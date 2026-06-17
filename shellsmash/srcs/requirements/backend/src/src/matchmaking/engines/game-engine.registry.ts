@@ -1,16 +1,18 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { BambooBashEngine } from './bamboo-bash.engine';
 import { GameEngine } from './game-engine';
+import { KameKnockEngine } from './kame-knock.engine';
 import { ShellCurlEngine } from './shell-curl.engine';
 
 @Injectable()
 export class GameEngineRegistry {
   private readonly engines: Map<string, GameEngine>;
 
-  constructor(shellCurl: ShellCurlEngine, bambooBash: BambooBashEngine) {
+  constructor(shellCurl: ShellCurlEngine, bambooBash: BambooBashEngine, kameKnock: KameKnockEngine) {
     this.engines = new Map<string, GameEngine>([
       [shellCurl.gameId, shellCurl],
       [bambooBash.gameId, bambooBash],
+      [kameKnock.gameId, kameKnock],
     ]);
   }
 

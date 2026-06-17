@@ -14,7 +14,7 @@ import { COOKIE_NAME } from '../auth/auth.service';
 import { UsersService } from '../users/users.service';
 import { GameSessionService } from './game-session.service';
 import { MatchmakingService } from './matchmaking.service';
-import { BambooBashThrowEvent, CurlingThrowEvent, GameInputPayload, QueueJoinPayload, SpectatorJoinPayload } from './matchmaking.types';
+import { BambooBashThrowEvent, CurlingThrowEvent, GameInputPayload, KameKnockThrowEvent, QueueJoinPayload, SpectatorJoinPayload } from './matchmaking.types';
 import { PresenceService } from './presence.service';
 import { RoomService } from './room.service';
 
@@ -161,6 +161,23 @@ export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconn
         this.server.to(room.matchId).emit('game:bamboo-throw', throwEvent);
       }
       this.emitState(room.matchId);
+      return;
+    }
+
+    if (payload.action === 'release' && room.gameId === 'kame-knock' && 'roundNumber' in room.state && 'turnNumber' in room.state) {
+      const player = room.players.find((candidate) => candidate.user.id === socket.data.user.id);
+      if (player) {
+        const throwEvent: KameKnockThrowEvent = {
+          matchId: room.matchId,
+          roundNumber: room.state.roundNumber,
+          turnNumber: room.state.turnNumber,
+          side: player.side,
+          vx: Number(payload.payload?.vx ?? 0),
+          vy: Number(payload.payload?.vy ?? 0),
+          power: String(payload.payload?.power ?? 'none'),
+        };
+        this.server.to(room.matchId).emit('game:kame-throw', throwEvent);
+      }
       return;
     }
 

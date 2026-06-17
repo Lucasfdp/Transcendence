@@ -932,7 +932,7 @@ export class HubScene extends Phaser.Scene {
           this.scene.start('ShellPickerScene', {
             gameId:      'kame-knock',
             targetScene: 'KameKnockScene',
-            playerCount: 2,
+            playerCount: 1,
           });
           return;
         }
