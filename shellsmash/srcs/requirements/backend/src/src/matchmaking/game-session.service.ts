@@ -6,6 +6,7 @@ import { UsersService } from '../users/users.service';
 import { Match } from './entities/match.entity';
 import { MatchPlayer } from './entities/match-player.entity';
 import { UserRating } from './entities/user-rating.entity';
+import { GameEngineRegistry } from './engines/game-engine.registry';
 import { GameInputPayload, MatchRoom, RoomPlayer } from './matchmaking.types';
 import { RoomService } from './room.service';
 
@@ -13,6 +14,7 @@ import { RoomService } from './room.service';
 export class GameSessionService {
   constructor(
     private readonly roomService: RoomService,
+    private readonly engines: GameEngineRegistry,
     private readonly usersService: UsersService,
     private readonly gameResultsService: GameResultsService,
     @InjectRepository(Match) private readonly matchRepo: Repository<Match>,
@@ -21,9 +23,9 @@ export class GameSessionService {
   ) {}
 
   handleInput(userId: number, input: GameInputPayload): MatchRoom | null {
-    if (input.action === 'release') return this.roomService.applyRelease(input.matchId, userId, input.payload ?? {});
-    if (input.action === 'settled') return this.roomService.applySettled(input.matchId, userId, input.payload ?? {});
-    return this.roomService.getRoom(input.matchId);
+    const room = this.roomService.getRoom(input.matchId);
+    if (!room) return null;
+    return this.engines.get(room.gameId).handleInput(room, userId, input);
   }
 
   async startIfReady(matchId: string): Promise<MatchRoom | null> {
@@ -36,11 +38,12 @@ export class GameSessionService {
 
   async finishIfEnded(room: MatchRoom): Promise<void> {
     if (room.status !== 'finished' && room.status !== 'abandoned') return;
+    this.roomService.finish(room.matchId, room.state.winnerSide, room.status === 'abandoned');
     await this.persistFinishedRoom(room, room.status === 'abandoned');
   }
 
   async abandon(room: MatchRoom, abandonedPlayer: RoomPlayer): Promise<MatchRoom | null> {
-    const winnerSide = abandonedPlayer.side === 0 ? 1 : 0;
+    const winnerSide = this.engines.get(room.gameId).abandon(room, abandonedPlayer);
     const finished = this.roomService.finish(room.matchId, winnerSide, true);
     if (finished) await this.persistFinishedRoom(finished, true);
     return finished;

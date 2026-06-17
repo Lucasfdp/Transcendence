@@ -924,21 +924,24 @@ export class HubScene extends Phaser.Scene {
 
       // Click
       zone.on('pointerup', () => {
-        // Shell selection is only used by Temple Curling. All other games
-        // launch directly; clear any stale selection so they fall back to
-        // their own default power set.
         if (hs.id === 'kame-knock') {
           // No scene.stop('KameKnockScene') here: it's already shut down while we're
           // in the hub, and stopping an already-stopped scene runs InputPlugin.shutdown()
           // on it — that corrupts the shared Phaser input manager and breaks subsequent
           // pointerup events.
-          this.registry.remove('shellSelection');
-          this.scene.start('KameKnockScene');
+          this.scene.start('ShellPickerScene', {
+            gameId:      'kame-knock',
+            targetScene: 'KameKnockScene',
+            playerCount: 2,
+          });
           return;
         }
         if (hs.id === 'bamboo-bash') {
-          this.registry.remove('shellSelection');
-          this.scene.start('BambooBashScene');
+          this.scene.start('ShellPickerScene', {
+            gameId:      'bamboo-bash',
+            targetScene: 'BambooBashScene',
+            playerCount: 2,
+          });
           return;
         }
         if (hs.id === 'temple-curling') {
@@ -950,8 +953,11 @@ export class HubScene extends Phaser.Scene {
           return;
         }
         if (hs.id === 'bell-clash') {
-          this.registry.remove('shellSelection');
-          this.scene.start('BellClashScene');
+          this.scene.start('ShellPickerScene', {
+            gameId:      'bell-clash',
+            targetScene: 'BellClashScene',
+            playerCount: 1,
+          });
           return;
         }
         if (available && this.scene.manager.getScene('ShellSmashArenaScene')) {

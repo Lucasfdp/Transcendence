@@ -93,10 +93,10 @@ export function stepBall(b: BallState, deltaMs: number, a: ArenaPixels): boolean
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
-/** Draw the turtle-shell ball at its current position. Clears `g` first. */
-export function drawShellBall(g: Phaser.GameObjects.Graphics, b: BallState): void {
+/** Draw the turtle-shell ball at its current position. Clears `g` first by default. */
+export function drawShellBall(g: Phaser.GameObjects.Graphics, b: BallState, clear = true): void {
   const { x, y, r } = b;
-  g.clear();
+  if (clear) g.clear();
 
   // Drop shadow
   g.fillStyle(0x000000, 0.22);

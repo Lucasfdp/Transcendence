@@ -16,13 +16,22 @@ export interface QueueJoinPayload {
 
 export interface GameInputPayload {
   matchId: string;
-  action: 'aim' | 'power' | 'release' | 'settled';
+  action: 'aim' | 'power' | 'release' | 'settled' | 'round:score' | 'bamboo:hit' | 'bamboo:sync';
   payload?: Record<string, unknown>;
 }
 
 export interface CurlingThrowEvent {
   matchId: string;
   id: number;
+  side: number;
+  vx: number;
+  vy: number;
+  power: string;
+}
+
+export interface BambooBashThrowEvent {
+  matchId: string;
+  roundNumber: number;
   side: number;
   vx: number;
   vy: number;
@@ -66,6 +75,38 @@ export interface CurlingSnapshot {
   winnerSide: number | null;
 }
 
+export interface SnapshotPlayer {
+  side: number;
+  userId: number | null;
+  username: string;
+  connected: boolean;
+  ready: boolean;
+}
+
+export interface BambooBashSnapshot {
+  matchId: string;
+  seq: number;
+  gameId: 'bamboo-bash';
+  mode: MatchMode;
+  phase: 'pending' | 'active' | 'finished' | 'abandoned';
+  roundNumber: number;
+  totalRounds: number;
+  roundTimeMs: number;
+  roundStartedAt: number | null;
+  roundEndsAt: number | null;
+  score: number[];
+  liveRoundScores: number[];
+  roundScores: Array<number | null>;
+  bamboos: Array<{ id: number; nx: number; ny: number; stage: number; ageMs: number }>;
+  nextBambooId: number;
+  spawnAccMs: number;
+  lastBambooUpdateAt: number | null;
+  players: SnapshotPlayer[];
+  winnerSide: number | null;
+}
+
+export type GameSnapshot = CurlingSnapshot | BambooBashSnapshot;
+
 export interface RoomPlayer {
   socketId: string;
   user: SocketUser;
@@ -84,5 +125,5 @@ export interface MatchRoom {
   players: RoomPlayer[];
   spectators: Map<string, SocketUser>;
   seq: number;
-  state: CurlingSnapshot;
+  state: GameSnapshot;
 }

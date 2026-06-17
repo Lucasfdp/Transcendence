@@ -989,7 +989,7 @@ export class ShellCurlScene extends ResponsiveScene {
     socket.on('game:state', this.handleOnlineState);
     socket.on('game:end', this.handleOnlineState);
     socket.on('game:throw', this.handleOnlineThrow);
-    if (this.onlineMatch.snapshot) this.applyOnlineSnapshot(this.onlineMatch.snapshot);
+    if (this.onlineMatch.snapshot?.gameId === 'shell-curl') this.applyOnlineSnapshot(this.onlineMatch.snapshot);
     this.updateOnlineStatus('Connected to online match.');
   }
 

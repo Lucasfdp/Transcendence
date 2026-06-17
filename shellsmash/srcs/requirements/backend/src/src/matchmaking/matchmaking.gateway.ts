@@ -14,7 +14,7 @@ import { COOKIE_NAME } from '../auth/auth.service';
 import { UsersService } from '../users/users.service';
 import { GameSessionService } from './game-session.service';
 import { MatchmakingService } from './matchmaking.service';
-import { CurlingThrowEvent, GameInputPayload, QueueJoinPayload, SpectatorJoinPayload } from './matchmaking.types';
+import { BambooBashThrowEvent, CurlingThrowEvent, GameInputPayload, QueueJoinPayload, SpectatorJoinPayload } from './matchmaking.types';
 import { PresenceService } from './presence.service';
 import { RoomService } from './room.service';
 
@@ -131,7 +131,7 @@ export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconn
     const room = this.sessions.handleInput(socket.data.user.id, payload);
     if (!room) return;
 
-    if (payload.action === 'release') {
+    if (payload.action === 'release' && room.gameId === 'shell-curl' && 'objects' in room.state) {
       const object = room.state.objects[room.state.objects.length - 1];
       if (object) {
         const throwEvent: CurlingThrowEvent = {
@@ -144,6 +144,23 @@ export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconn
         };
         this.server.to(room.matchId).emit('game:throw', throwEvent);
       }
+      return;
+    }
+
+    if (payload.action === 'release' && room.gameId === 'bamboo-bash' && 'roundNumber' in room.state) {
+      const player = room.players.find((candidate) => candidate.user.id === socket.data.user.id);
+      if (player) {
+        const throwEvent: BambooBashThrowEvent = {
+          matchId: room.matchId,
+          roundNumber: room.state.roundNumber,
+          side: player.side,
+          vx: Number(payload.payload?.vx ?? 0),
+          vy: Number(payload.payload?.vy ?? 0),
+          power: String(payload.payload?.power ?? 'none'),
+        };
+        this.server.to(room.matchId).emit('game:bamboo-throw', throwEvent);
+      }
+      this.emitState(room.matchId);
       return;
     }
 

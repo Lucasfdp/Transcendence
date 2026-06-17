@@ -9,6 +9,9 @@ import { Match } from './entities/match.entity';
 import { MatchPlayer } from './entities/match-player.entity';
 import { MatchSpectator } from './entities/match-spectator.entity';
 import { UserRating } from './entities/user-rating.entity';
+import { BambooBashEngine } from './engines/bamboo-bash.engine';
+import { GameEngineRegistry } from './engines/game-engine.registry';
+import { ShellCurlEngine } from './engines/shell-curl.engine';
 import { GameSessionService } from './game-session.service';
 import { MatchesController } from './matches.controller';
 import { MatchmakingGateway } from './matchmaking.gateway';
@@ -32,6 +35,9 @@ import { RoomService } from './room.service';
   providers: [
     PresenceService,
     MatchmakingService,
+    ShellCurlEngine,
+    BambooBashEngine,
+    GameEngineRegistry,
     RoomService,
     GameSessionService,
     MatchmakingGateway,

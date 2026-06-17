@@ -17,7 +17,7 @@ import { ALL_POWERS, PowerType } from '../shared/mechanics/power-system';
 import { GAME_POWERS, GameId } from '../shared/mechanics/game-powers';
 import { THEME } from '../shared/theme';
 import { api, ShellInventory } from './api';
-import { getGameSocket, type CurlingSnapshot } from '../network/gameSocket';
+import { getGameSocket, type GameSnapshot } from '../network/gameSocket';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -114,6 +114,7 @@ export class ShellPickerScene extends ResponsiveScene {
     this.currentPlayer = 0;
     this.selections    = [[], []];
     this.onlinePlayerCount = 2;
+    this.registry.remove('onlineMatch');
   }
 
   // ── create ───────────────────────────────────────────────────────────────────
@@ -286,7 +287,7 @@ export class ShellPickerScene extends ResponsiveScene {
     btnZone.on('pointerout',  () => this.paintConfirmBtn(false, btnX, btnY, btnW, btnH));
     btnZone.on('pointerup',   () => void this.onConfirm());
 
-    if (this.gameId === 'shell-curl' && this.playerCount === 2 && this.currentPlayer === 0) {
+    if ((this.gameId === 'shell-curl' || this.gameId === 'bamboo-bash') && this.currentPlayer === 0) {
       this.buildOnlineButton(btnY);
     }
 
@@ -560,8 +561,8 @@ export class ShellPickerScene extends ResponsiveScene {
       side = payload.side;
       socket.emit('room:ready', { matchId: payload.matchId });
     });
-    const onState = (snapshot: CurlingSnapshot) => {
-      if (snapshot.phase !== 'active') return;
+    const onState = (snapshot: GameSnapshot) => {
+      if (snapshot.phase !== 'active' || snapshot.gameId !== this.gameId) return;
       socket.off('game:state', onState);
       this.registry.set('onlineMatch', { matchId: snapshot.matchId, side, snapshot });
       this.scene.start(this.targetScene);
@@ -572,7 +573,7 @@ export class ShellPickerScene extends ResponsiveScene {
       this.subText.setText(payload.message ?? 'Matchmaking failed.').setColor(THEME.red);
       this.onlineBtn?.setText('Find Online Match');
     });
-    socket.emit('queue:join', { gameId: 'shell-curl', mode: 'casual', playerCount: this.onlinePlayerCount, shellSelection: picks });
+    socket.emit('queue:join', { gameId: this.gameId, mode: 'casual', playerCount: this.onlinePlayerCount, shellSelection: picks });
   }
 
   // ── Refresh UI for player 2 ───────────────────────────────────────────────────
