@@ -1,9 +1,16 @@
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  plugins: [react()],
   server: {
     port: 3000,
     force: true,          // always clear the pre-bundle cache on startup
+    hmr: {
+      protocol: 'wss',
+      host: 'localhost',
+      clientPort: 443,
+    },
     watch: {
       usePolling: true,   // needed for Docker volume mounts on Mac
       interval: 500,

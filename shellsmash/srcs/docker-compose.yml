@@ -13,7 +13,6 @@
 #  database       → PostgreSQL, internal only
 #  redis          → Redis, internal only
 #  monitoring     → Grafana / Prometheus stack placeholder
-#  portainer      → Docker management UI (dev only, disable for evaluation)
 # ==============================================================================
 
 services:
@@ -46,8 +45,9 @@ services:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
     volumes:
-      # Nginx configuration (named volume — survives container restarts)
-      - nginx_config:/etc/nginx/http.d
+      # Use the repository config directly so CSP / routing changes are picked
+      # up from source instead of being masked by a stale named volume.
+      - ./requirements/reverse_proxy/conf:/etc/nginx/http.d:ro
       # SSL certificates — mount the generated certs here.
       # Replace with a bind mount to /etc/letsencrypt for production.
       - nginx_ssl:/etc/nginx/ssl:ro
@@ -378,53 +378,6 @@ services:
         max-size: "${LOG_MAX_SIZE:-10m}"
         max-file: "${LOG_MAX_FILE:-3}"
 
-  # ============================================================================
-  # PORTAINER — Docker Management UI
-  # ============================================================================
-  # DEVELOPMENT / DEBUGGING ONLY.
-  #
-  # Portainer provides a web UI for inspecting containers, volumes, networks,
-  # and logs without needing the Docker CLI.
-  #
-  # 42 EVALUATION NOTE:
-  #   Portainer is NOT required for deployment or functionality.
-  #   To disable it, comment out this entire service block before running
-  #   'make up'. The project must work without Portainer.
-  #
-  # Security warning:
-  #   Portainer has full Docker socket access. NEVER expose it publicly.
-  #   Restrict the PORTAINER_PORT firewall rule to localhost only in production.
-  # ============================================================================
-  portainer:
-    build:
-      context: ./requirements/portainer
-      dockerfile: Dockerfile
-    container_name: ${COMPOSE_PROJECT_NAME}_portainer
-    image: ${COMPOSE_PROJECT_NAME}/portainer:latest
-    restart: unless-stopped
-    ports:
-      # Portainer is the only service besides Nginx allowed to have a host port.
-      # Set PORTAINER_PORT=0 or comment this block out to disable external access.
-      - "${PORTAINER_PORT:-9443}:9443"
-    volumes:
-      # Docker socket — required for Portainer to manage containers
-      # WARNING: Granting socket access is equivalent to root on the host.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - portainer_data:/data
-    networks:
-      - frontend_network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "https://localhost:9443/api/status", "--no-check-certificate"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    logging:
-      driver: "${LOG_DRIVER:-json-file}"
-      options:
-        max-size: "${LOG_MAX_SIZE:-10m}"
-        max-file: "${LOG_MAX_FILE:-3}"
-
 # ==============================================================================
 # FUTURE SERVICE PLACEHOLDERS
 # ==============================================================================
@@ -539,7 +492,7 @@ services:
 # Two isolated networks enforce the security perimeter:
 #
 #  frontend_network:
-#    Members: reverse_proxy, frontend, backend, monitoring, portainer
+#    Members: reverse_proxy, frontend, backend, monitoring
 #    Purpose: Traffic that originates from or terminates at the browser.
 #    The reverse proxy is the ONLY entry point from the outside world.
 #
@@ -577,12 +530,10 @@ networks:
 # Volume descriptions:
 #   db_data        — PostgreSQL PGDATA directory (tables, indexes, WAL files)
 #   redis_data     — Redis RDB / AOF persistence files
-#   nginx_config   — Nginx vhost configuration (editable without rebuild)
 #   nginx_ssl      — TLS certificate and private key files
 #   frontend_static— Compiled static assets served by Nginx
 #   logs           — Shared log directory for all services
 #   monitoring_data— Grafana / Prometheus time-series data
-#   portainer_data — Portainer configuration and credentials database
 # ==============================================================================
 
 volumes:
@@ -591,9 +542,6 @@ volumes:
 
   redis_data:
     name: ${COMPOSE_PROJECT_NAME}_redis_data
-
-  nginx_config:
-    name: ${COMPOSE_PROJECT_NAME}_nginx_config
 
   nginx_ssl:
     name: ${COMPOSE_PROJECT_NAME}_nginx_ssl
@@ -606,9 +554,6 @@ volumes:
 
   monitoring_data:
     name: ${COMPOSE_PROJECT_NAME}_monitoring_data
-
-  portainer_data:
-    name: ${COMPOSE_PROJECT_NAME}_portainer_data
 
   # Uncomment when adding the Elasticsearch bonus service:
   # elasticsearch_data:
