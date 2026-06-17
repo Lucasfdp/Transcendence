@@ -41,3 +41,4 @@ environment variables (including 42 OAuth credentials).
 🚧 Early hub MVP — Shell Smash Arena gameplay is not yet implemented;
 the hub currently shows the arena shrine as a placeholder and renders
 the other shrines as sealed/Coming Soon.
+a
