@@ -7,7 +7,7 @@
 # FRONTEND — Vite HMR dev server
 #   Access at:  http://localhost:3000  (direct — HMR WebSocket works natively)
 #   API calls:  proxied to backend:8000 by Vite's built-in proxy (vite.config.js)
-#   Live reload: edit anything in requirements/frontend/src/src/ or public/
+#   Live reload: edit anything in requirements/frontend/src/ or public/
 #
 # BACKEND — NestJS watch mode  (nest start --watch)
 #   Live reload: edit anything in requirements/backend/src/src/
@@ -25,13 +25,14 @@ services:
 
   # ── Frontend: Vite HMR ─────────────────────────────────────────────────────
   # Uses the builder stage (has Vite + all devDependencies).
-  # Only src/ and public/ are bind-mounted so node_modules stays intact.
+  # The whole Vite project is bind-mounted, with node_modules kept in a
+  # container-owned volume so the host tree can stay clean.
   frontend:
     build:
       target: builder
     volumes:
-      - ./requirements/frontend/src/src:/app/src        # TypeScript source
-      - ./requirements/frontend/src/public:/app/public  # Static assets (images, etc.)
+      - ./requirements/frontend/src:/app
+      - /app/node_modules
     command: npm run dev -- --host 0.0.0.0
     ports:
       - "3000:3000"       # Expose directly so the browser's HMR WebSocket works

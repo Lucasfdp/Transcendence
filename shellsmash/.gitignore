@@ -114,9 +114,11 @@ ehthumbs.db
 Thumbs.db
 
 # ------------------------------------------------------------------------------
-# Database dumps — never commit database exports
+# Database dumps — never commit database exportsi
 # ------------------------------------------------------------------------------
 *.sql
 *.dump
 *.bak
 backups/
+
+.vscode/

@@ -1,0 +1,73 @@
+:root {
+  --bg: #0c1015;
+  --bg-soft: #18202b;
+  --panel: rgba(12, 17, 24, 0.82);
+  --panel-strong: rgba(18, 25, 34, 0.96);
+  --line: rgba(241, 211, 145, 0.22);
+  --text: #f1eadb;
+  --muted: #b3a996;
+  --accent: #f1d391;
+  --accent-strong: #e88a3d;
+  --shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
+  --display-font: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+  --body-font: "Trebuchet MS", "Lucida Sans Unicode", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--body-font);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.route-loading {
+  min-height: 100vh;
+}
+
+.game-host {
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.game-host-fullscreen {
+  position: fixed;
+  inset: 0;
+}
+
+.game-host canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.route-loading {
+  display: grid;
+  place-items: center;
+}
+
+.route-loading-badge {
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--accent);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
