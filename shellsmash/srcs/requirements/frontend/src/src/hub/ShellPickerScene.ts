@@ -17,6 +17,7 @@ import { ALL_POWERS, PowerType } from '../shared/mechanics/power-system';
 import { GAME_POWERS, GameId } from '../shared/mechanics/game-powers';
 import { THEME } from '../shared/theme';
 import { api, ShellInventory } from './api';
+import { getGameSocket, type CurlingSnapshot } from '../network/gameSocket';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -83,7 +84,12 @@ export class ShellPickerScene extends ResponsiveScene {
   private descBodyText!: Phaser.GameObjects.Text;
   private confirmBtn!:   Phaser.GameObjects.Text;
   private confirmGfx!:   Phaser.GameObjects.Graphics;
+  private onlineBtn?:    Phaser.GameObjects.Text;
+  private onlineGfx?:    Phaser.GameObjects.Graphics;
+  private onlinePlayerCountText?: Phaser.GameObjects.Text;
+  private onlinePlayerCountControls: Phaser.GameObjects.Text[] = [];
   private pickCountText!: Phaser.GameObjects.Text;
+  private onlinePlayerCount = 2;
 
   // Full-screen background + every object buildUI() creates, so the whole layout
   // can be torn down and rebuilt on resize.
@@ -107,6 +113,7 @@ export class ShellPickerScene extends ResponsiveScene {
     this.playerCount  = data.playerCount ?? 1;
     this.currentPlayer = 0;
     this.selections    = [[], []];
+    this.onlinePlayerCount = 2;
   }
 
   // ── create ───────────────────────────────────────────────────────────────────
@@ -279,6 +286,10 @@ export class ShellPickerScene extends ResponsiveScene {
     btnZone.on('pointerout',  () => this.paintConfirmBtn(false, btnX, btnY, btnW, btnH));
     btnZone.on('pointerup',   () => void this.onConfirm());
 
+    if (this.gameId === 'shell-curl' && this.playerCount === 2 && this.currentPlayer === 0) {
+      this.buildOnlineButton(btnY);
+    }
+
     // Track everything for teardown on rebuild (grid cards are handled by buildGrid).
     this.uiLayer.push(
       returnGfx, returnLabel, returnZone,
@@ -286,6 +297,43 @@ export class ShellPickerScene extends ResponsiveScene {
       this.descGfx, this.descNameText, this.descBodyText,
       this.confirmGfx, this.confirmBtn, btnZone,
     );
+  }
+
+  private buildOnlineButton(localBtnY: number): void {
+    const { width } = this.scale;
+    const btnW = 200;
+    const btnH = 34;
+    const btnX = width / 2 - btnW / 2;
+    const btnY = localBtnY - 42;
+
+    this.onlineGfx = this.add.graphics().setDepth(DEPTH_HUD);
+    this.paintOnlineBtn(false, btnX, btnY, btnW, btnH);
+    this.onlineBtn = this.add.text(width / 2, btnY + btnH / 2, 'Find Online Match', {
+      fontSize: '13px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(DEPTH_HUD + 1);
+
+    const zone = this.add
+      .zone(width / 2, btnY + btnH / 2, btnW, btnH)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(DEPTH_HUD + 2);
+    zone.on('pointerover', () => this.paintOnlineBtn(true, btnX, btnY, btnW, btnH));
+    zone.on('pointerout',  () => this.paintOnlineBtn(false, btnX, btnY, btnW, btnH));
+    zone.on('pointerup',   () => void this.findOnlineMatch());
+
+    this.onlinePlayerCountText = this.add.text(width / 2, btnY - 22, this.onlinePlayerCountLabel(), {
+      fontSize: '12px', color: THEME.text, fontFamily: THEME.font, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(DEPTH_HUD + 1);
+
+    const dec = this.add.text(width / 2 - 92, btnY - 22, '‹', {
+      fontSize: '18px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(DEPTH_HUD + 1).setInteractive({ useHandCursor: true });
+    const inc = this.add.text(width / 2 + 92, btnY - 22, '›', {
+      fontSize: '18px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(DEPTH_HUD + 1).setInteractive({ useHandCursor: true });
+    dec.on('pointerup', () => this.setOnlinePlayerCount(this.onlinePlayerCount - 1));
+    inc.on('pointerup', () => this.setOnlinePlayerCount(this.onlinePlayerCount + 1));
+    this.onlinePlayerCountControls = [dec, inc];
+    this.uiLayer.push(this.onlineGfx, this.onlineBtn, zone, this.onlinePlayerCountText, dec, inc);
   }
 
   // ── Grid ──────────────────────────────────────────────────────────────────────
@@ -482,6 +530,51 @@ export class ShellPickerScene extends ResponsiveScene {
     }
   }
 
+  private async findOnlineMatch(): Promise<void> {
+    const myRun = ++this._confirmRunId;
+    const user = this.registry.get('user') as { isGuest?: boolean } | undefined;
+    const picks = this.selections[0];
+
+    if (!user?.isGuest && picks.length > 0) {
+      try {
+        await api.validateShellSelection(picks);
+      } catch {
+        if (myRun !== this._confirmRunId || !this.scene.isActive()) return;
+        this.subText.setText('Selection invalid. Try again.').setColor(THEME.red);
+        return;
+      }
+    }
+
+    if (myRun !== this._confirmRunId || !this.scene.isActive()) return;
+    this.registry.set('shellSelection', { player0: picks, player1: [] });
+    this.subText.setText(`Searching for ${this.onlinePlayerCount} online players...`).setColor(THEME.textGold);
+    this.onlineBtn?.setText('Searching...');
+
+    const socket = getGameSocket();
+    socket.off('match:found');
+    socket.off('game:state');
+    socket.off('queue:error');
+
+    let side = 0;
+    socket.on('match:found', (payload: { matchId: string; side: number }) => {
+      side = payload.side;
+      socket.emit('room:ready', { matchId: payload.matchId });
+    });
+    const onState = (snapshot: CurlingSnapshot) => {
+      if (snapshot.phase !== 'active') return;
+      socket.off('game:state', onState);
+      this.registry.set('onlineMatch', { matchId: snapshot.matchId, side, snapshot });
+      this.scene.start(this.targetScene);
+    };
+    socket.on('game:state', onState);
+    socket.once('queue:error', (payload: { message?: string }) => {
+      if (!this.scene.isActive()) return;
+      this.subText.setText(payload.message ?? 'Matchmaking failed.').setColor(THEME.red);
+      this.onlineBtn?.setText('Find Online Match');
+    });
+    socket.emit('queue:join', { gameId: 'shell-curl', mode: 'casual', playerCount: this.onlinePlayerCount, shellSelection: picks });
+  }
+
   // ── Refresh UI for player 2 ───────────────────────────────────────────────────
 
   private refreshForNextPlayer(): void {
@@ -489,6 +582,14 @@ export class ShellPickerScene extends ResponsiveScene {
     this.pickCountText.setText(this.pickCountLabel());
     this.confirmBtn.setText(this.confirmLabel());
     this.subText.setText('Pick up to 3 special shells — or go with no power.').setColor(THEME.textMutedHex);
+    this.onlineBtn?.destroy();
+    this.onlineGfx?.destroy();
+    this.onlinePlayerCountText?.destroy();
+    for (const control of this.onlinePlayerCountControls) control.destroy();
+    this.onlineBtn = undefined;
+    this.onlineGfx = undefined;
+    this.onlinePlayerCountText = undefined;
+    this.onlinePlayerCountControls = [];
     this.buildGrid();
   }
 
@@ -509,6 +610,15 @@ export class ShellPickerScene extends ResponsiveScene {
     return 'Start Game';
   }
 
+  private setOnlinePlayerCount(count: number): void {
+    this.onlinePlayerCount = Math.max(2, Math.min(5, count));
+    this.onlinePlayerCountText?.setText(this.onlinePlayerCountLabel());
+  }
+
+  private onlinePlayerCountLabel(): string {
+    return `Online players: ${this.onlinePlayerCount}`;
+  }
+
   private paintConfirmBtn(hovered: boolean, x: number, y: number, w: number, h: number): void {
     this.confirmGfx.clear();
     this.confirmGfx.fillStyle(hovered ? THEME.gold : 0x1a1405, 0.95);
@@ -523,6 +633,15 @@ export class ShellPickerScene extends ResponsiveScene {
     if (this.confirmBtn?.active) {
       this.confirmBtn.setColor(hovered ? '#1a1410' : THEME.textGold);
     }
+  }
+
+  private paintOnlineBtn(hovered: boolean, x: number, y: number, w: number, h: number): void {
+    this.onlineGfx?.clear();
+    this.onlineGfx?.fillStyle(hovered ? 0x2b5b7a : 0x101820, 0.95);
+    this.onlineGfx?.fillRoundedRect(x, y, w, h, 8);
+    this.onlineGfx?.lineStyle(1.5, 0x7fd7ff, hovered ? 0.95 : 0.65);
+    this.onlineGfx?.strokeRoundedRect(x, y, w, h, 8);
+    if (this.onlineBtn?.active) this.onlineBtn.setColor(hovered ? '#e8f8ff' : THEME.textGold);
   }
 
   /** Build an inventory record granting Infinity of every known shell. */

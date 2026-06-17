@@ -3,11 +3,11 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   InternalServerErrorException,
-  NotFoundException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { User } from './entities/user.entity';
 import { Profile } from '../profiles/entities/profile.entity';
+import { ShellsService } from '../shells/shells.service';
 
 const mockProfile = { id: 1, totalWins: 0, totalLosses: 0, gamesPlayed: 0 } as Profile;
 const mockUser: User = {
@@ -27,22 +27,26 @@ const createMockRepo = <T>(): MockRepo<T> => ({
   find: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
+  createQueryBuilder: jest.fn(),
 });
 
 describe('UsersService', () => {
   let service: UsersService;
   let usersRepo: MockRepo<User>;
   let profilesRepo: MockRepo<Profile>;
+  let shellsService: jest.Mocked<Pick<ShellsService, 'seedInventory'>>;
 
   beforeEach(async () => {
     usersRepo   = createMockRepo<User>();
     profilesRepo = createMockRepo<Profile>();
+    shellsService = { seedInventory: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: getRepositoryToken(User),    useValue: usersRepo    },
         { provide: getRepositoryToken(Profile), useValue: profilesRepo },
+        { provide: ShellsService, useValue: shellsService },
       ],
     }).compile();
 
@@ -85,23 +89,31 @@ describe('UsersService', () => {
   // ── findByUsername ────────────────────────────────────────────────────────
 
   describe('findByUsername', () => {
+    const mockQueryBuilder = (result?: User | null, error?: Error) => {
+      const builder = {
+        addSelect: jest.fn().mockReturnThis(),
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn(),
+      };
+      if (error) builder.getOne.mockRejectedValue(error);
+      else builder.getOne.mockResolvedValue(result ?? null);
+      usersRepo.createQueryBuilder!.mockReturnValue(builder);
+      return builder;
+    };
+
     it('returns user when found', async () => {
-      usersRepo.findOne!.mockResolvedValue(mockUser);
+      mockQueryBuilder(mockUser);
       expect(await service.findByUsername('kamegoro')).toBe(mockUser);
     });
 
-    it('throws NotFoundException when user not found', async () => {
-      usersRepo.findOne!.mockResolvedValue(null);
-      await expect(service.findByUsername('ghost')).rejects.toThrow(NotFoundException);
+    it('returns null when user not found', async () => {
+      mockQueryBuilder(null);
+      await expect(service.findByUsername('ghost')).resolves.toBeNull();
     });
 
-    it('re-throws NotFoundException (not wrapped)', async () => {
-      usersRepo.findOne!.mockRejectedValue(new NotFoundException('User not found'));
-      await expect(service.findByUsername('ghost')).rejects.toBeInstanceOf(NotFoundException);
-    });
-
-    it('wraps unexpected errors in InternalServerErrorException', async () => {
-      usersRepo.findOne!.mockRejectedValue(new Error('connection reset'));
+    it('wraps query errors in InternalServerErrorException', async () => {
+      mockQueryBuilder(null, new Error('connection reset'));
       await expect(service.findByUsername('oops')).rejects.toThrow(InternalServerErrorException);
     });
   });
@@ -123,6 +135,7 @@ describe('UsersService', () => {
 
       expect(profilesRepo.create).toHaveBeenCalled();
       expect(profilesRepo.save).toHaveBeenCalledWith(mockProfile);
+      expect(shellsService.seedInventory).toHaveBeenCalledWith(mockUser);
       expect(result).toBe(mockUser);
     });
 

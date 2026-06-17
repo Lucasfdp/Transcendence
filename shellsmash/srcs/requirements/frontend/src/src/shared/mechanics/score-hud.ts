@@ -20,8 +20,8 @@ const BAR_HEIGHT      = 52;   // px
 const STONES_ROW_H    = 18;   // px below main bar
 const STONE_DOT_R     = 5;    // radius of each stone-remaining dot
 const STONE_DOT_GAP   = 14;   // centre-to-centre gap between dots
-const TEAM_0_COLOUR   = 0x2255cc;
-const TEAM_1_COLOUR   = 0xcc2222;
+const PLAYER_COLOURS  = [0x2255cc, 0xcc2222, 0x22aa55, 0xbb55dd, 0xd4a843] as const;
+const PLAYER_HEX      = ['#2255cc', '#cc2222', '#22aa55', '#bb55dd', '#d4a843'] as const;
 const TEAM_LABELS     = ['KAME BLUE', 'KAME RED'] as const;
 
 const PHASE_LABELS: Record<string, string> = {
@@ -75,12 +75,13 @@ export class ScoreHud {
     };
 
     const w = this.scene.scale.width;
-    add('score0',  w * 0.12, BAR_HEIGHT * 0.4,  '0', style('26px', '#2255cc'));
-    add('label0',  w * 0.22, BAR_HEIGHT * 0.4,  TEAM_LABELS[0], style('11px', '#2255cc'));
     add('end',     w * 0.50, BAR_HEIGHT * 0.30, 'END 1 / 3', style('13px', THEME.textGold));
     add('phase',   w * 0.50, BAR_HEIGHT * 0.68, 'AIMING', style('11px', THEME.text));
-    add('label1',  w * 0.78, BAR_HEIGHT * 0.4,  TEAM_LABELS[1], style('11px', '#cc2222'));
-    add('score1',  w * 0.88, BAR_HEIGHT * 0.4,  '0', style('26px', '#cc2222'));
+
+    for (let player = 0; player < 5; player++) {
+      add(`score${player}`, 0, BAR_HEIGHT * 0.38, '0', style('20px', PLAYER_HEX[player]));
+      add(`label${player}`, 0, BAR_HEIGHT * 0.68, this.playerLabel(player, 5), style('9px', PLAYER_HEX[player]));
+    }
   }
 
   private draw(state: TurnState): void {
@@ -96,9 +97,11 @@ export class ScoreHud {
     this.gfx.lineBetween(0, totH, w, totH);
 
     // Active team underline
-    const underW  = w * 0.28;
+    const playerCount = Math.max(2, state.score.length);
+    const slotW = w / playerCount;
+    const underW  = Math.min(w * 0.20, slotW * 0.70);
     const underY  = BAR_HEIGHT - 3;
-    const underX0 = state.currentTeam === 0 ? w * 0.01 : w - w * 0.01 - underW;
+    const underX0 = slotW * state.currentTeam + (slotW - underW) / 2;
     this.gfx.fillStyle(0xd4a843, 0.85);
     this.gfx.fillRect(underX0, underY, underW, 2);
 
@@ -106,23 +109,27 @@ export class ScoreHud {
     this.drawStoneDots(state, w);
 
     // Update text values
-    this.repositionTexts(w);
-    this.texts.get('score0')?.setText(String(state.score[0]));
-    this.texts.get('score1')?.setText(String(state.score[1]));
-    this.texts.get('end')?.setText(`END ${state.currentEnd + 1} / 3`);
+    this.repositionTexts(w, playerCount);
+    for (let player = 0; player < 5; player++) {
+      const visible = player < playerCount;
+      this.texts.get(`score${player}`)?.setVisible(visible).setText(String(state.score[player] ?? 0));
+      this.texts.get(`label${player}`)?.setVisible(visible).setText(this.playerLabel(player, playerCount));
+    }
+    this.texts.get('end')?.setText(`END ${Math.min(3, state.currentEnd + 1)} / 3`);
     this.texts.get('phase')?.setText(PHASE_LABELS[state.phase] ?? state.phase.toUpperCase());
   }
 
   private drawStoneDots(state: TurnState, w: number): void {
     const dotY = BAR_HEIGHT + STONES_ROW_H / 2 + 2;
 
-    for (let team = 0; team < 2; team++) {
-      const count  = state.stonesLeft[team as 0 | 1];
-      const colour = team === 0 ? TEAM_0_COLOUR : TEAM_1_COLOUR;
+    const playerCount = Math.max(2, state.score.length);
+    const slotW = w / playerCount;
+
+    for (let team = 0; team < playerCount; team++) {
+      const count  = state.stonesLeft[team] ?? 0;
+      const colour = PLAYER_COLOURS[team % PLAYER_COLOURS.length];
       const totalW = count * STONE_DOT_GAP;
-      const startX = team === 0
-        ? w * 0.02
-        : w - w * 0.02 - totalW + STONE_DOT_GAP / 2;
+      const startX = slotW * team + (slotW - totalW) / 2 + STONE_DOT_GAP / 2;
 
       for (let i = 0; i < count; i++) {
         const cx = startX + i * STONE_DOT_GAP;
@@ -132,12 +139,18 @@ export class ScoreHud {
     }
   }
 
-  private repositionTexts(w: number): void {
-    this.texts.get('score0')?.setX(w * 0.12);
-    this.texts.get('label0')?.setX(w * 0.22);
+  private repositionTexts(w: number, playerCount: number): void {
     this.texts.get('end')?.setX(w * 0.50);
     this.texts.get('phase')?.setX(w * 0.50);
-    this.texts.get('label1')?.setX(w * 0.78);
-    this.texts.get('score1')?.setX(w * 0.88);
+    for (let player = 0; player < 5; player++) {
+      const x = (player + 0.5) * (w / playerCount);
+      this.texts.get(`score${player}`)?.setX(x);
+      this.texts.get(`label${player}`)?.setX(x);
+    }
+  }
+
+  private playerLabel(player: number, playerCount: number): string {
+    if (playerCount === 2 && player < 2) return TEAM_LABELS[player];
+    return `PLAYER ${player + 1}`;
   }
 }

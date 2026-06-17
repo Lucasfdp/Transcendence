@@ -21,6 +21,7 @@ export class UsersController {
     const user = await this.usersService.findById(req.user.id);
     if (!user) throw new UnauthorizedException();
     const { passwordHash: _pw, ...safe } = user as User & { passwordHash?: unknown };
+    void _pw;
     return safe as Omit<User, 'passwordHash'>;
   }
 

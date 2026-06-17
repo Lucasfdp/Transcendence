@@ -11,6 +11,7 @@ import { CustomizationModule } from './customization/customization.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { HealthModule } from './health/health.module';
 import { ShellsModule } from './shells/shells.module';
+import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -42,6 +43,7 @@ import { AppController } from './app.controller';
     CustomizationModule,
     GameResultsModule,
     ShellsModule,
+    MatchmakingModule,
 
     // Observability — must come after TypeOrmModule so DataSource is available
     MetricsModule,

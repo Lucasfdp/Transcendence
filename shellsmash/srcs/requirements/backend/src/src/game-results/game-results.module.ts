@@ -10,5 +10,6 @@ import { UserGameStats } from './entities/user-game-stats.entity';
   imports:     [TypeOrmModule.forFeature([UserGameStats]), UsersModule, AchievementsModule],
   controllers: [GameResultsController],
   providers:   [GameResultsService],
+  exports:     [GameResultsService],
 })
 export class GameResultsModule {}

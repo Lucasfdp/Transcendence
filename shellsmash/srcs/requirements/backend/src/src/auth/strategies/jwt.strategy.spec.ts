@@ -37,7 +37,7 @@ describe('JwtStrategy', () => {
     it('returns the user for a valid payload', async () => {
       usersService.findById.mockResolvedValue(mockUser);
       const result = await strategy.validate({ sub: 1, username: 'kamegoro', isGuest: false, isDevAccount: false });
-      expect(result).toBe(mockUser);
+      expect(result).toEqual({ id: 1, username: 'kamegoro', isGuest: false, isDevAccount: false });
       expect(usersService.findById).toHaveBeenCalledWith(1);
     });
 

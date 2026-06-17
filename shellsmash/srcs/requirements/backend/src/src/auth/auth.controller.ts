@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Body,
-  ConflictException,
   Controller, Delete, ForbiddenException, Get, HttpCode, HttpException,
   Post, Query, Req, Res,
   UnauthorizedException, UseGuards,
@@ -60,6 +59,7 @@ export class AuthController {
     // passwordHash has select:false so it is absent from findById results.
     // The explicit omission below is a defence-in-depth guard.
     const { passwordHash: _pw, ...safe } = user as typeof user & { passwordHash?: unknown };
+    void _pw;
     return safe;
   }
 

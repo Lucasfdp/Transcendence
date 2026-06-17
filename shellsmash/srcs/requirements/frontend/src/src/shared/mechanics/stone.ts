@@ -45,7 +45,7 @@ export const CURL_STRENGTH = 0.5;
 
 export interface StoneState {
   id:        number;
-  teamId:    0 | 1;
+  teamId:    number;
   x:         number;
   y:         number;
   vx:        number;
@@ -210,8 +210,8 @@ export function resolveStoneCollision(a: StoneState, b: StoneState): void {
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 /** Team colours */
-const TEAM_COLOUR:    [number, number] = [0x2255cc, 0xcc2222];
-const TEAM_DARK:      [number, number] = [0x142e6e, 0x6e1111];
+const TEAM_COLOUR = [0x2255cc, 0xcc2222, 0x22aa55, 0xbb55dd, 0xd4a843] as const;
+const TEAM_DARK   = [0x142e6e, 0x6e1111, 0x0e5a2c, 0x5a236b, 0x6e5414] as const;
 
 /**
  * Draw the stone at its current position.
@@ -247,12 +247,12 @@ export function drawStone(
   g.fillEllipse(x + r * 0.3, y + r * 0.4, r * 2.2, r * 0.85);
 
   // Main body
-  const baseCol = TEAM_COLOUR[s.teamId];
+  const baseCol = TEAM_COLOUR[s.teamId % TEAM_COLOUR.length];
   g.fillStyle(baseCol, 1);
   g.fillCircle(x, y, r);
 
   // Shell-plate pattern — 5 arc segments
-  const darkCol = TEAM_DARK[s.teamId];
+  const darkCol = TEAM_DARK[s.teamId % TEAM_DARK.length];
   g.lineStyle(Math.max(1.5, r * 0.12), darkCol, 0.75);
   const arcs = [
     { ang0: 0.3,  ang1: 1.4,  rx: r * 0.55, ry: r * 0.55 },
