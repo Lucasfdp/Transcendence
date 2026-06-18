@@ -36,6 +36,13 @@ const DEPTH_HUD  = 20;
 // Maximum special (non-NONE) shells a player can pick per game.
 const MAX_PICKS = 3;
 
+const ONLINE_SCENES: Record<string, string> = {
+  'shell-curl': 'ShellCurlScene',
+  'bamboo-bash': 'BambooBashScene',
+  'kame-knock': 'KameKnockScene',
+  'bell-clash': 'BellClashScene',
+};
+
 // ── ShellPickerScene data interface ──────────────────────────────────────────
 
 export interface ShellPickerData {
@@ -54,6 +61,16 @@ interface CardState {
   zone:     Phaser.GameObjects.Zone;
   x:        number;
   y:        number;
+}
+
+interface MatchStatusPayload {
+  inMatch: boolean;
+  matchId?: string;
+  gameId?: string;
+  phase?: GameSnapshot['phase'];
+  side?: number;
+  reconnectExpiresAt?: number | null;
+  snapshot?: GameSnapshot;
 }
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
@@ -86,10 +103,17 @@ export class ShellPickerScene extends ResponsiveScene {
   private confirmGfx!:   Phaser.GameObjects.Graphics;
   private onlineBtn?:    Phaser.GameObjects.Text;
   private onlineGfx?:    Phaser.GameObjects.Graphics;
+  private abandonBtn?:   Phaser.GameObjects.Text;
+  private abandonGfx?:   Phaser.GameObjects.Graphics;
+  private abandonZone?:  Phaser.GameObjects.Zone;
   private onlinePlayerCountText?: Phaser.GameObjects.Text;
   private onlinePlayerCountControls: Phaser.GameObjects.Text[] = [];
   private pickCountText!: Phaser.GameObjects.Text;
   private onlinePlayerCount = 2;
+  private isSearchingOnline = false;
+  private activeMatchStatus: MatchStatusPayload | null = null;
+  private matchStatusTimer?: Phaser.Time.TimerEvent;
+  private sentAwayStatus = false;
 
   // Full-screen background + every object buildUI() creates, so the whole layout
   // can be torn down and rebuilt on resize.
@@ -114,6 +138,9 @@ export class ShellPickerScene extends ResponsiveScene {
     this.currentPlayer = 0;
     this.selections    = [[], []];
     this.onlinePlayerCount = 2;
+    this.isSearchingOnline = false;
+    this.activeMatchStatus = null;
+    this.sentAwayStatus = false;
     this.registry.remove('onlineMatch');
   }
 
@@ -146,7 +173,42 @@ export class ShellPickerScene extends ResponsiveScene {
 
     if (stale) return;
     this.buildUI();
+    this.setupMatchStatus();
     this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
+  }
+
+  private setupMatchStatus(): void {
+    const socket = getGameSocket();
+    socket.off('match:status', this.handleMatchStatus);
+    socket.on('match:status', this.handleMatchStatus);
+    this.requestMatchStatus(true);
+
+    this.events.once('shutdown', () => {
+      socket.off('match:status', this.handleMatchStatus);
+      this.matchStatusTimer?.remove(false);
+      this.matchStatusTimer = undefined;
+      if (this.isSearchingOnline) socket.emit('queue:leave');
+    });
+  }
+
+  private handleMatchStatus = (payload: MatchStatusPayload): void => {
+    if (!this.scene.isActive()) return;
+    this.activeMatchStatus = payload.inMatch ? payload : null;
+    if (this.activeMatchStatus) this.isSearchingOnline = false;
+    else {
+      this.matchStatusTimer?.remove(false);
+      this.matchStatusTimer = undefined;
+    }
+    this.refreshOnlineState();
+
+    if (this.activeMatchStatus?.reconnectExpiresAt && !this.matchStatusTimer) {
+      this.matchStatusTimer = this.time.addEvent({ delay: 500, loop: true, callback: () => this.refreshOnlineState() });
+    }
+  };
+
+  private requestMatchStatus(away = false): void {
+    if (away) this.sentAwayStatus = true;
+    getGameSocket().emit('match:status', away ? { away: true } : undefined);
   }
 
   private drawBackground(): void {
@@ -319,7 +381,7 @@ export class ShellPickerScene extends ResponsiveScene {
       .setDepth(DEPTH_HUD + 2);
     zone.on('pointerover', () => this.paintOnlineBtn(true, btnX, btnY, btnW, btnH));
     zone.on('pointerout',  () => this.paintOnlineBtn(false, btnX, btnY, btnW, btnH));
-    zone.on('pointerup',   () => void this.findOnlineMatch());
+    zone.on('pointerup',   () => void this.onOnlineButton());
 
     this.onlinePlayerCountText = this.add.text(width / 2, btnY - 22, this.onlinePlayerCountLabel(), {
       fontSize: '12px', color: THEME.text, fontFamily: THEME.font, fontStyle: 'bold',
@@ -334,7 +396,92 @@ export class ShellPickerScene extends ResponsiveScene {
     dec.on('pointerup', () => this.setOnlinePlayerCount(this.onlinePlayerCount - 1));
     inc.on('pointerup', () => this.setOnlinePlayerCount(this.onlinePlayerCount + 1));
     this.onlinePlayerCountControls = [dec, inc];
-    this.uiLayer.push(this.onlineGfx, this.onlineBtn, zone, this.onlinePlayerCountText, dec, inc);
+
+    const abandonBtnY = btnY - 42;
+    this.abandonGfx = this.add.graphics().setDepth(DEPTH_HUD);
+    this.paintAbandonBtn(false, btnX, abandonBtnY, btnW, btnH);
+    this.abandonBtn = this.add.text(width / 2, abandonBtnY + btnH / 2, 'Abandon Match', {
+      fontSize: '13px', color: THEME.red, fontFamily: THEME.font, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(DEPTH_HUD + 1);
+    this.abandonZone = this.add
+      .zone(width / 2, abandonBtnY + btnH / 2, btnW, btnH)
+      .setDepth(DEPTH_HUD + 2);
+    this.abandonZone.on('pointerover', () => this.paintAbandonBtn(true, btnX, abandonBtnY, btnW, btnH));
+    this.abandonZone.on('pointerout',  () => this.paintAbandonBtn(false, btnX, abandonBtnY, btnW, btnH));
+    this.abandonZone.on('pointerup',   () => this.abandonActiveMatch());
+
+    this.uiLayer.push(this.onlineGfx, this.onlineBtn, zone, this.onlinePlayerCountText, dec, inc, this.abandonGfx, this.abandonBtn, this.abandonZone);
+    this.refreshOnlineState();
+  }
+
+  private async onOnlineButton(): Promise<void> {
+    if (this.activeMatchStatus) {
+      this.rejoinActiveMatch();
+      return;
+    }
+
+    if (this.isSearchingOnline) {
+      this.cancelOnlineSearch();
+      return;
+    }
+
+    await this.findOnlineMatch();
+  }
+
+  private cancelOnlineSearch(): void {
+    const socket = getGameSocket();
+    socket.emit('queue:leave');
+    this.isSearchingOnline = false;
+    this.subText.setText('Search cancelled. You can start a new search whenever you are ready.').setColor(THEME.textMutedHex);
+    this.refreshOnlineState();
+  }
+
+  private rejoinActiveMatch(): void {
+    const status = this.activeMatchStatus;
+    if (!status?.matchId || status.side === undefined || !status.snapshot || !status.gameId) return;
+    const targetScene = ONLINE_SCENES[status.gameId];
+    if (!targetScene) return;
+    getGameSocket().emit('match:rejoin');
+    this.registry.set('onlineMatch', { matchId: status.matchId, side: status.side, snapshot: status.snapshot });
+    this.scene.start(targetScene);
+  }
+
+  private abandonActiveMatch(): void {
+    if (!this.activeMatchStatus) return;
+    getGameSocket().emit('match:abandon');
+    this.activeMatchStatus = null;
+    this.subText.setText('Match abandoned. You can search for a new match.').setColor(THEME.textMutedHex);
+    this.refreshOnlineState();
+  }
+
+  private refreshOnlineState(): void {
+    if (!this.onlineBtn?.active) return;
+
+    if (this.activeMatchStatus) {
+      if (!this.activeMatchStatus.reconnectExpiresAt && !this.sentAwayStatus) this.requestMatchStatus(true);
+      const remainingMs = this.activeMatchStatus.reconnectExpiresAt ? this.activeMatchStatus.reconnectExpiresAt - Date.now() : 45_000;
+      const remaining = Math.max(0, Math.ceil(remainingMs / 1000));
+      if (this.activeMatchStatus.reconnectExpiresAt && remaining <= 0) this.requestMatchStatus();
+      this.onlineBtn.setText(ONLINE_SCENES[this.activeMatchStatus.gameId ?? ''] ? 'Rejoin Match' : 'Match In Progress');
+      this.onlinePlayerCountText?.setText(`Reconnect window: ${remaining}s`);
+      for (const control of this.onlinePlayerCountControls) control.setAlpha(0.35);
+      this.abandonGfx?.setVisible(true);
+      this.abandonBtn?.setVisible(true);
+      this.abandonZone?.setInteractive({ useHandCursor: true });
+      this.subText.setText(
+        remaining > 0
+          ? `You are in an active match. Rejoin within ${remaining}s or abandon now.`
+          : 'Resolving abandoned match. You will be able to search again shortly.',
+      ).setColor(THEME.textGold);
+      return;
+    }
+
+    for (const control of this.onlinePlayerCountControls) control.setAlpha(1);
+    this.onlinePlayerCountText?.setText(this.onlinePlayerCountLabel());
+    this.onlineBtn.setText(this.isSearchingOnline ? 'Cancel Search' : 'Find Online Match');
+    this.abandonGfx?.setVisible(false);
+    this.abandonBtn?.setVisible(false);
+    this.abandonZone?.disableInteractive();
   }
 
   // ── Grid ──────────────────────────────────────────────────────────────────────
@@ -532,6 +679,7 @@ export class ShellPickerScene extends ResponsiveScene {
   }
 
   private async findOnlineMatch(): Promise<void> {
+    if (this.isSearchingOnline || this.activeMatchStatus) return;
     const myRun = ++this._confirmRunId;
     const user = this.registry.get('user') as { isGuest?: boolean } | undefined;
     const picks = this.selections[0];
@@ -548,17 +696,20 @@ export class ShellPickerScene extends ResponsiveScene {
 
     if (myRun !== this._confirmRunId || !this.scene.isActive()) return;
     this.registry.set('shellSelection', { player0: picks, player1: [] });
+    this.isSearchingOnline = true;
     this.subText.setText(`Searching for ${this.onlinePlayerCount} online players...`).setColor(THEME.textGold);
-    this.onlineBtn?.setText('Searching...');
+    this.refreshOnlineState();
 
     const socket = getGameSocket();
     socket.off('match:found');
     socket.off('game:state');
     socket.off('queue:error');
+    socket.off('queue:left');
 
     let matchId: string | null = null;
     let side = 0;
     socket.on('match:found', (payload: { matchId: string; side: number }) => {
+      this.isSearchingOnline = false;
       matchId = payload.matchId;
       side = payload.side;
       socket.emit('room:ready', { matchId: payload.matchId });
@@ -567,13 +718,20 @@ export class ShellPickerScene extends ResponsiveScene {
       if (!matchId || snapshot.matchId !== matchId || snapshot.phase !== 'active' || snapshot.gameId !== this.gameId) return;
       socket.off('game:state', onState);
       this.registry.set('onlineMatch', { matchId: snapshot.matchId, side, snapshot });
+      this.isSearchingOnline = false;
       this.scene.start(this.targetScene);
     };
     socket.on('game:state', onState);
     socket.once('queue:error', (payload: { message?: string }) => {
       if (!this.scene.isActive()) return;
+      this.isSearchingOnline = false;
       this.subText.setText(payload.message ?? 'Matchmaking failed.').setColor(THEME.red);
-      this.onlineBtn?.setText('Find Online Match');
+      this.refreshOnlineState();
+    });
+    socket.once('queue:left', () => {
+      if (!this.scene.isActive()) return;
+      this.isSearchingOnline = false;
+      this.refreshOnlineState();
     });
     socket.emit('queue:join', { gameId: this.gameId, mode: 'casual', playerCount: this.onlinePlayerCount, shellSelection: picks });
   }
@@ -587,10 +745,16 @@ export class ShellPickerScene extends ResponsiveScene {
     this.subText.setText('Pick up to 3 special shells — or go with no power.').setColor(THEME.textMutedHex);
     this.onlineBtn?.destroy();
     this.onlineGfx?.destroy();
+    this.abandonBtn?.destroy();
+    this.abandonGfx?.destroy();
+    this.abandonZone?.destroy();
     this.onlinePlayerCountText?.destroy();
     for (const control of this.onlinePlayerCountControls) control.destroy();
     this.onlineBtn = undefined;
     this.onlineGfx = undefined;
+    this.abandonBtn = undefined;
+    this.abandonGfx = undefined;
+    this.abandonZone = undefined;
     this.onlinePlayerCountText = undefined;
     this.onlinePlayerCountControls = [];
     this.buildGrid();
@@ -615,7 +779,7 @@ export class ShellPickerScene extends ResponsiveScene {
 
   private setOnlinePlayerCount(count: number): void {
     this.onlinePlayerCount = Math.max(2, Math.min(5, count));
-    this.onlinePlayerCountText?.setText(this.onlinePlayerCountLabel());
+    if (!this.activeMatchStatus) this.onlinePlayerCountText?.setText(this.onlinePlayerCountLabel());
   }
 
   private onlinePlayerCountLabel(): string {
@@ -645,6 +809,15 @@ export class ShellPickerScene extends ResponsiveScene {
     this.onlineGfx?.lineStyle(1.5, 0x7fd7ff, hovered ? 0.95 : 0.65);
     this.onlineGfx?.strokeRoundedRect(x, y, w, h, 8);
     if (this.onlineBtn?.active) this.onlineBtn.setColor(hovered ? '#e8f8ff' : THEME.textGold);
+  }
+
+  private paintAbandonBtn(hovered: boolean, x: number, y: number, w: number, h: number): void {
+    this.abandonGfx?.clear();
+    this.abandonGfx?.fillStyle(hovered ? 0x5a1616 : 0x1d0b0b, 0.95);
+    this.abandonGfx?.fillRoundedRect(x, y, w, h, 8);
+    this.abandonGfx?.lineStyle(1.5, THEME.red, hovered ? 0.95 : 0.65);
+    this.abandonGfx?.strokeRoundedRect(x, y, w, h, 8);
+    if (this.abandonBtn?.active) this.abandonBtn.setColor(hovered ? '#ffe6e6' : THEME.red);
   }
 
   /** Build an inventory record granting Infinity of every known shell. */

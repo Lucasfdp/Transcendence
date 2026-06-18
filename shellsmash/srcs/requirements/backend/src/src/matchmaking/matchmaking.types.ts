@@ -171,6 +171,7 @@ export interface RoomPlayer {
   shellSelection: string[];
   ready: boolean;
   connected: boolean;
+  reconnectExpiresAt?: number;
   disconnectTimer?: NodeJS.Timeout;
 }
 

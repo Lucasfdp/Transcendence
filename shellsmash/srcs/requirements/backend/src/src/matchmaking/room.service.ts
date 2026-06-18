@@ -79,8 +79,16 @@ export class RoomService {
     if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
     player.socketId = socketId;
     player.connected = true;
+    player.reconnectExpiresAt = undefined;
     this.refreshSnapshotPlayers(room);
     return room;
+  }
+
+  getUserMatchStatus(userId: number): { room: MatchRoom; side: number; reconnectExpiresAt: number | null } | null {
+    const room = this.getRoomForUser(userId);
+    const player = room?.players.find((candidate) => candidate.user.id === userId);
+    if (!room || !player || room.status === 'finished' || room.status === 'abandoned') return null;
+    return { room, side: player.side, reconnectExpiresAt: player.reconnectExpiresAt ?? null };
   }
 
   markDisconnected(socketId: string, onTimeout: (room: MatchRoom, player: RoomPlayer) => void, timeoutMs: number): MatchRoom | null {
@@ -92,6 +100,21 @@ export class RoomService {
 
     player.connected = false;
     if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+    player.reconnectExpiresAt = Date.now() + timeoutMs;
+    player.disconnectTimer = setTimeout(() => onTimeout(room, player), timeoutMs);
+    this.refreshSnapshotPlayers(room);
+    return room;
+  }
+
+  markAway(userId: number, socketId: string, onTimeout: (room: MatchRoom, player: RoomPlayer) => void, timeoutMs: number): MatchRoom | null {
+    const room = this.getRoomForUser(userId);
+    const player = room?.players.find((candidate) => candidate.user.id === userId);
+    if (!room || !player || room.status === 'finished' || room.status === 'abandoned') return null;
+
+    player.socketId = socketId;
+    player.connected = false;
+    if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+    player.reconnectExpiresAt = Date.now() + timeoutMs;
     player.disconnectTimer = setTimeout(() => onTimeout(room, player), timeoutMs);
     this.refreshSnapshotPlayers(room);
     return room;

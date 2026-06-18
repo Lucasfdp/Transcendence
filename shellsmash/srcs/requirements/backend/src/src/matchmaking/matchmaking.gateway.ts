@@ -14,7 +14,7 @@ import { COOKIE_NAME } from '../auth/auth.service';
 import { UsersService } from '../users/users.service';
 import { GameSessionService } from './game-session.service';
 import { MatchmakingService } from './matchmaking.service';
-import { BambooBashThrowEvent, BellClashThrowEvent, CurlingThrowEvent, GameInputPayload, KameKnockThrowEvent, QueueJoinPayload, SpectatorJoinPayload } from './matchmaking.types';
+import { BambooBashThrowEvent, BellClashThrowEvent, CurlingThrowEvent, GameInputPayload, KameKnockThrowEvent, MatchRoom, QueueJoinPayload, RoomPlayer, SpectatorJoinPayload } from './matchmaking.types';
 import { PresenceService } from './presence.service';
 import { RoomService } from './room.service';
 
@@ -61,6 +61,7 @@ export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconn
         socket.join(room.matchId);
         socket.emit('reconnect', { matchId: room.matchId, side: room.players.find((p) => p.user.id === user.id)?.side });
         socket.emit('game:state', room.state);
+        this.emitUserMatchStatus(socket);
         this.emitState(room.matchId);
       }
     } catch (err) {
@@ -72,13 +73,7 @@ export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconn
   async handleDisconnect(socket: Socket): Promise<void> {
     this.matchmaking.removeSocket(socket.id);
     this.rooms.removeSpectator(socket.id);
-    const room = this.rooms.markDisconnected(socket.id, async (timedOutRoom, player) => {
-      const finished = await this.sessions.abandon(timedOutRoom, player);
-      if (finished) {
-        this.emitState(finished.matchId);
-        this.server.to(finished.matchId).emit('game:end', finished.state);
-      }
-    }, RECONNECT_TIMEOUT_MS);
+    const room = this.rooms.markDisconnected(socket.id, (timedOutRoom, player) => void this.finishAbandonedMatch(timedOutRoom, player), RECONNECT_TIMEOUT_MS);
     if (room) this.emitState(room.matchId);
     this.presence.disconnect(socket.id);
   }
@@ -115,6 +110,39 @@ export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconn
   onQueueLeave(@ConnectedSocket() socket: Socket): void {
     this.matchmaking.leaveQueue(socket.data.user.id);
     socket.emit('queue:left');
+  }
+
+  @SubscribeMessage('match:status')
+  onMatchStatus(@ConnectedSocket() socket: Socket, @MessageBody() payload?: { away?: boolean }): void {
+    if (payload?.away) {
+      const room = this.rooms.markAway(socket.data.user.id, socket.id, (timedOutRoom, player) => void this.finishAbandonedMatch(timedOutRoom, player), RECONNECT_TIMEOUT_MS);
+      if (room) this.emitState(room.matchId);
+    }
+    this.emitUserMatchStatus(socket);
+  }
+
+  @SubscribeMessage('match:rejoin')
+  onMatchRejoin(@ConnectedSocket() socket: Socket): void {
+    const room = this.rooms.reconnect(socket.id, socket.data.user);
+    if (!room) {
+      this.emitUserMatchStatus(socket);
+      return;
+    }
+    socket.join(room.matchId);
+    socket.emit('game:state', room.state);
+    this.emitUserMatchStatus(socket);
+    this.emitState(room.matchId);
+  }
+
+  @SubscribeMessage('match:abandon')
+  async onMatchAbandon(@ConnectedSocket() socket: Socket): Promise<void> {
+    const room = this.rooms.getRoomForUser(socket.data.user.id);
+    const player = room?.players.find((candidate) => candidate.user.id === socket.data.user.id);
+    if (!room || !player) {
+      this.emitUserMatchStatus(socket);
+      return;
+    }
+    await this.finishAbandonedMatch(room, player);
   }
 
   @SubscribeMessage('room:ready')
@@ -223,5 +251,34 @@ export class MatchmakingGateway implements OnGatewayConnection, OnGatewayDisconn
   private emitState(matchId: string): void {
     const room = this.rooms.getRoom(matchId);
     if (room) this.server.to(matchId).emit('game:state', room.state);
+  }
+
+  private emitUserMatchStatus(socket: Socket): void {
+    const status = this.rooms.getUserMatchStatus(socket.data.user.id);
+    if (!status) {
+      socket.emit('match:status', { inMatch: false });
+      return;
+    }
+
+    socket.emit('match:status', {
+      inMatch: true,
+      matchId: status.room.matchId,
+      gameId: status.room.gameId,
+      phase: status.room.status,
+      side: status.side,
+      reconnectExpiresAt: status.reconnectExpiresAt,
+      snapshot: status.room.state,
+    });
+  }
+
+  private async finishAbandonedMatch(room: MatchRoom, player: RoomPlayer): Promise<void> {
+    const finished = await this.sessions.abandon(room, player);
+    if (!finished) return;
+    this.emitState(finished.matchId);
+    this.server.to(finished.matchId).emit('game:end', finished.state);
+    for (const roomPlayer of finished.players) {
+      const playerSocket = this.server.sockets.sockets.get(roomPlayer.socketId);
+      if (playerSocket) this.emitUserMatchStatus(playerSocket);
+    }
   }
 }
