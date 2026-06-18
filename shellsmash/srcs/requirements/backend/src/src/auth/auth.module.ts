@@ -4,8 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-// TODO(#1): Uncomment once FORTYTWO_CLIENT_ID / FORTYTWO_CLIENT_SECRET are provisioned.
-// import { FortyTwoStrategy } from './strategies/forty-two.strategy';
+import { FortyTwoStrategy } from './strategies/forty-two.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users/users.module';
 import { RateLimiterService } from './rate-limiter.service';
@@ -29,7 +28,7 @@ import { GuestGuard } from './guards/guest.guard';
   providers: [
     AuthService,
     JwtStrategy,
-    // TODO(#1): FortyTwoStrategy,
+    FortyTwoStrategy,
     RateLimiterService,
     GuestCleanupService,
     GuestGuard,

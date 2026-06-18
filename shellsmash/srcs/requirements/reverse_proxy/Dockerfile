@@ -7,7 +7,7 @@
 # This Dockerfile:
 #   1. Installs Nginx + OpenSSL
 #   2. Copies the Nginx configuration template
-#   3. Generates a self-signed certificate for local development
+#   3. Installs an entrypoint that generates a local TLS certificate on startup
 #   4. Creates a non-root user to run Nginx worker processes
 #
 # Production note:
@@ -38,20 +38,8 @@ RUN mkdir -p /etc/nginx/ssl \
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY conf/default.conf /etc/nginx/http.d/default.conf
 
-# ------------------------------------------------------------------------------
-# Self-signed certificate generation (development only)
-# ------------------------------------------------------------------------------
-# In production, replace this step with:
-#   Option A: Mount a Let's Encrypt certificate via a named volume
-#   Option B: Use a Certbot sidecar that writes to the ssl/ volume
-#   Option C: Copy a pre-issued certificate via Docker Secrets
-# ------------------------------------------------------------------------------
-RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/nginx/ssl/key.pem \
-    -out    /etc/nginx/ssl/cert.pem \
-    -subj "/C=FR/ST=IDF/L=Paris/O=42/CN=localhost" \
-    && chmod 600 /etc/nginx/ssl/key.pem \
-    && chmod 644 /etc/nginx/ssl/cert.pem
+COPY tools/entrypoint.sh /usr/local/bin/reverse-proxy-entrypoint.sh
+RUN chmod +x /usr/local/bin/reverse-proxy-entrypoint.sh
 
 # ------------------------------------------------------------------------------
 # Non-root user setup
@@ -70,5 +58,5 @@ RUN ln -sf /dev/stdout /var/log/nginx/access.log \
 
 EXPOSE 80 443
 
-# Nginx runs in the foreground so Docker can manage the process lifecycle.
+ENTRYPOINT ["/usr/local/bin/reverse-proxy-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
