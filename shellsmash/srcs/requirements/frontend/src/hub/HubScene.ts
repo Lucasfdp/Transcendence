@@ -42,6 +42,7 @@ import Phaser from 'phaser';
 import { Achievement, api, Cosmetic, LeaderboardEntry, MiniGameDefinition, User } from './api';
 import { THEME } from '../shared/theme';
 import { ProfilePanel } from './ProfilePanel';
+import { getGameSocket } from '../network/gameSocket';
 
 const HUB_BG = '/assets/hub-background.png';
 
@@ -196,6 +197,11 @@ export class HubScene extends Phaser.Scene {
     const runId = ++this._createRunId;
     this._shutdownFired = false;
     const isStale = () => this._shutdownFired || this._createRunId !== runId;
+
+    // Establish the presence WebSocket immediately so this user appears online
+    // to other players as soon as they reach the hub.  getGameSocket() is a
+    // lazy singleton — safe to call multiple times across scene restarts.
+    getGameSocket();
 
     // Clear stale layer references left over from the previous run.  Phaser
     // destroys all display-list objects on SHUTDOWN, so the arrays may still
@@ -1933,13 +1939,17 @@ export class HubScene extends Phaser.Scene {
       const { width: w, height: h } = this.scale;
 
       // Panel dimensions
-      const ROW_H   = 22;
-      const TAB_H   = 24;
-      const TOP_PAD = 10;
+      const ROW_H      = 22;
+      const TAB_H      = 24;
+      const TOGGLE_H   = 16;
+      const TOP_PAD    = 10;
       // Clamp panel width so it doesn't overflow at narrow viewports (< 500 px)
-      const panelW  = Math.min(250, w * 0.45);
+      const panelW      = Math.min(250, w * 0.45);
       const displayRows = entries.slice(0, 5);
-      const panelH  = TAB_H + TOP_PAD + 18 + displayRows.length * ROW_H + 10;
+      // panelH must cover: tabs + toggle (+ 8px gap) + header offset + rows + bottom pad
+      // Content bottom = TAB_H + (TOGGLE_H+4) + TOP_PAD + 6 + 12 + rows*ROW_H
+      //                = 24   +  20           + 10     + 18     + rows*22  = 72 + rows*22
+      const panelH = TAB_H + (TOGGLE_H + 4) + TOP_PAD + 18 + displayRows.length * ROW_H + 10;
       const panelX  = w - PAD;
       const panelY  = h - PAD - panelH;
 
@@ -1989,20 +1999,19 @@ export class HubScene extends Phaser.Scene {
       const toggleX   = panelX - panelW + 4;
       const toggleY   = panelY + TAB_H + 4;
       const toggleW   = panelW - 8;
-      const toggleH   = 16;
       const friendsOn = this.lbFriendsOnly;
       const togGfx    = this.add.graphics().setDepth(DEPTH_HUD);
       togGfx.fillStyle(friendsOn ? THEME.green : 0x2a2218, 0.80);
-      togGfx.fillRoundedRect(toggleX, toggleY, toggleW, toggleH, 3);
+      togGfx.fillRoundedRect(toggleX, toggleY, toggleW, TOGGLE_H, 3);
       togGfx.lineStyle(1, friendsOn ? THEME.green : THEME.gold, 0.40);
-      togGfx.strokeRoundedRect(toggleX, toggleY, toggleW, toggleH, 3);
+      togGfx.strokeRoundedRect(toggleX, toggleY, toggleW, TOGGLE_H, 3);
       const togTxt = this.add.text(
         toggleX + toggleW / 2,
-        toggleY + toggleH / 2,
+        toggleY + TOGGLE_H / 2,
         friendsOn ? '⬡  Friends Only' : '⬡  All Players',
         { fontSize: this.scaledFont(8), color: friendsOn ? THEME.textGold : THEME.textMutedHex, fontFamily: THEME.font },
       ).setOrigin(0.5).setDepth(DEPTH_HUD);
-      const togHit = this.add.rectangle(toggleX + toggleW / 2, toggleY + toggleH / 2, toggleW, toggleH, 0, 0)
+      const togHit = this.add.rectangle(toggleX + toggleW / 2, toggleY + TOGGLE_H / 2, toggleW, TOGGLE_H, 0, 0)
         .setInteractive({ useHandCursor: true })
         .setDepth(DEPTH_HUD);
       togHit.on('pointerup', () => {
@@ -2012,7 +2021,7 @@ export class HubScene extends Phaser.Scene {
       this.lbLayer.push(togGfx, togTxt, togHit);
 
       // ── Header ──────────────────────────────────────────────────────────────
-      const headerY = panelY + TAB_H + toggleH + TOP_PAD + 6;
+      const headerY = panelY + TAB_H + TOGGLE_H + TOP_PAD + 6;
       const header  = this.add.text(panelX - panelW / 2, headerY, 'DOJO RANKINGS', {
         fontSize: this.scaledFont(10), color: THEME.textGold,
         fontFamily: THEME.font, fontStyle: 'bold',
@@ -2049,6 +2058,25 @@ export class HubScene extends Phaser.Scene {
 
         this.lbLayer.push(nameLabel, winsLabel);
       });
-    }).catch(() => { /* leaderboard is non-critical; silently ignore fetch errors */ });
+    }).catch(() => {
+      if (gen !== this.lbGeneration) return;
+      // Show a minimal panel so the user knows the section exists even when the
+      // API is unavailable (e.g. first boot before any match data exists).
+      const { width: w, height: h } = this.scale;
+      const panelW = Math.min(250, w * 0.45);
+      const panelH = 50;
+      const panelX = w - PAD;
+      const panelY = h - PAD - panelH;
+      const errBg  = this.add.graphics().setDepth(DEPTH_HUD);
+      errBg.fillStyle(THEME.background, 0.80);
+      errBg.fillRoundedRect(panelX - panelW, panelY, panelW, panelH, 8);
+      errBg.lineStyle(1, THEME.gold, 0.25);
+      errBg.strokeRoundedRect(panelX - panelW, panelY, panelW, panelH, 8);
+      const errTxt = this.add.text(panelX - panelW / 2, panelY + panelH / 2, 'DOJO RANKINGS\nCould not load', {
+        fontSize: this.scaledFont(9), color: THEME.textMutedHex,
+        fontFamily: THEME.font, align: 'center',
+      }).setOrigin(0.5).setDepth(DEPTH_HUD);
+      this.lbLayer.push(errBg, errTxt);
+    });
   }
 }

@@ -121,6 +121,16 @@ export class UsersService {
   }
 
   /**
+   * Expose the underlying TypeORM DataSource for callers that need to run raw
+   * SQL queries (e.g. period-filtered leaderboard with match_players join).
+   * Avoids requiring @InjectDataSource() in every controller that imports this
+   * service — the DataSource is already wired up here via the repository.
+   */
+  getDataSource() {
+    return this.usersRepo.manager.connection;
+  }
+
+  /**
    * Hard-delete all guest accounts whose updatedAt is older than `olderThanMs`
    * milliseconds. Called by the guest-cleanup cron job.
    * Returns the count of deleted records.
