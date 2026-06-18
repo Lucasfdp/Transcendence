@@ -95,11 +95,34 @@ export class AuthService {
   }): Promise<User> {
     try {
       let user = await this.usersService.findByFortyTwoId(data.fortyTwoId);
-      if (!user) user = await this.usersService.create(data);
+      if (user) return user;
+
+      const existingEmail = data.email ? await this.usersService.findByEmail(data.email) : null;
+      const uniqueUsername = await this.makeUniqueOAuthUsername(data.username);
+      user = await this.usersService.create({
+        ...data,
+        email: existingEmail ? null : data.email,
+        username: uniqueUsername,
+      });
       return user;
     } catch {
       throw new InternalServerErrorException('Failed to find or create user');
     }
+  }
+
+  private async makeUniqueOAuthUsername(baseUsername: string): Promise<string> {
+    const normalizedBase = baseUsername.trim() || 'player42';
+    const clippedBase = normalizedBase.slice(0, 20);
+    let candidate = clippedBase;
+    let suffix = 2;
+
+    while (await this.usersService.findByUsername(candidate)) {
+      const suffixText = String(suffix);
+      candidate = `${clippedBase.slice(0, Math.max(1, 20 - suffixText.length))}${suffixText}`;
+      suffix += 1;
+    }
+
+    return candidate;
   }
 
   // ── Guest login ───────────────────────────────────────────────────────────────

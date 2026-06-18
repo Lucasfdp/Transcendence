@@ -48,9 +48,10 @@ services:
       # Use the repository config directly so CSP / routing changes are picked
       # up from source instead of being masked by a stale named volume.
       - ./requirements/reverse_proxy/conf:/etc/nginx/http.d:ro
-      # SSL certificates — mount the generated certs here.
-      # Replace with a bind mount to /etc/letsencrypt for production.
-      - nginx_ssl:/etc/nginx/ssl:ro
+      # SSL certificates — bind-mount local mkcert output when present.
+      # Falls back to container-generated self-signed certs if the directory
+      # is empty.
+      - ./secrets/nginx_ssl:/etc/nginx/ssl
       # Shared static assets (optional — frontend can also serve its own)
       - frontend_static:/var/www/html:ro
       # Centralised log storage
@@ -530,7 +531,6 @@ networks:
 # Volume descriptions:
 #   db_data        — PostgreSQL PGDATA directory (tables, indexes, WAL files)
 #   redis_data     — Redis RDB / AOF persistence files
-#   nginx_ssl      — TLS certificate and private key files
 #   frontend_static— Compiled static assets served by Nginx
 #   logs           — Shared log directory for all services
 #   monitoring_data— Grafana / Prometheus time-series data
@@ -542,9 +542,6 @@ volumes:
 
   redis_data:
     name: ${COMPOSE_PROJECT_NAME}_redis_data
-
-  nginx_ssl:
-    name: ${COMPOSE_PROJECT_NAME}_nginx_ssl
 
   frontend_static:
     name: ${COMPOSE_PROJECT_NAME}_frontend_static

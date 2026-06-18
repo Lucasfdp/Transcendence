@@ -49,6 +49,14 @@ export class UsersService {
     }
   }
 
+  async findByEmail(email: string): Promise<User | null> {
+    try {
+      return await this.usersRepo.findOne({ where: { email }, relations: ['profile'] });
+    } catch {
+      throw new InternalServerErrorException('Failed to find user by email');
+    }
+  }
+
   async create(data: {
     fortyTwoId?:   string | null;
     username:      string;
