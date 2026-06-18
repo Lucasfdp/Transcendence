@@ -17,6 +17,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RateLimiterService } from './rate-limiter.service';
 import { User } from '../users/entities/user.entity';
 import { FortyTwoAuthGuard } from './guards/ft-auth.guard';
+import { GithubAuthGuard } from './guards/github-auth.guard';
 
 // ── CSRF cookie name (NOT httpOnly — must be readable by JS) ─────────────────
 const CSRF_COOKIE = 'csrf_token';
@@ -191,6 +192,26 @@ export class AuthController {
   @Get('42/callback')
   @UseGuards(FortyTwoAuthGuard)
   async fortyTwoCallback(
+    @Req() req: Request & { user?: User },
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!req.user) {
+      res.redirect('/?auth_error=oauth_failed');
+      return;
+    }
+    this.authService.issueAuthCookie(res, req.user);
+    res.redirect('/');
+  }
+
+  @Get('github')
+  @UseGuards(GithubAuthGuard)
+  githubLogin(): void {
+    // Passport handles the redirect to the provider.
+  }
+
+  @Get('github/callback')
+  @UseGuards(GithubAuthGuard)
+  async githubCallback(
     @Req() req: Request & { user?: User },
     @Res() res: Response,
   ): Promise<void> {

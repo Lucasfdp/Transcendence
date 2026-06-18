@@ -102,6 +102,7 @@ services:
       args:
         - FRONTEND_ENV=${FRONTEND_ENV:-development}
         - VITE_API_URL=${VITE_API_URL:-https://localhost/api}
+        - VITE_GITHUB_AUTH_URL=${VITE_GITHUB_AUTH_URL:-}
     container_name: ${COMPOSE_PROJECT_NAME}_frontend
     image: ${COMPOSE_PROJECT_NAME}/frontend:latest
     restart: unless-stopped
@@ -122,6 +123,7 @@ services:
     environment:
       - NODE_ENV=${FRONTEND_ENV:-development}
       - VITE_API_URL=${VITE_API_URL:-https://localhost/api}
+      - VITE_GITHUB_AUTH_URL=${VITE_GITHUB_AUTH_URL:-}
       - REACT_APP_API_URL=${REACT_APP_API_URL:-https://localhost/api}
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:${FRONTEND_PORT:-3000}/"]
@@ -203,6 +205,9 @@ services:
       - FORTYTWO_CLIENT_ID=${FORTYTWO_CLIENT_ID:-}
       - FORTYTWO_CLIENT_SECRET=${FORTYTWO_CLIENT_SECRET:-}
       - FORTYTWO_CALLBACK_URL=${FORTYTWO_CALLBACK_URL:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GITHUB_CALLBACK_URL=${GITHUB_CALLBACK_URL:-}
       # Metrics — bearer token for GET /api/metrics (scrape by Prometheus)
       - METRICS_TOKEN=${METRICS_TOKEN}
     healthcheck:

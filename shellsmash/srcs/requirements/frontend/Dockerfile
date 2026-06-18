@@ -5,8 +5,10 @@ FROM node:20-alpine AS builder
 LABEL stage="builder"
 ARG FRONTEND_ENV=production
 ARG VITE_API_URL=https://localhost/api
+ARG VITE_GITHUB_AUTH_URL=
 ENV NODE_ENV=${FRONTEND_ENV}
 ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_GITHUB_AUTH_URL=${VITE_GITHUB_AUTH_URL}
 WORKDIR /app
 COPY src/package.json ./
 COPY src/package-lock.json* ./

@@ -8,6 +8,7 @@ import { User } from '../users/entities/user.entity';
 const mockUser: User = {
   id:           1,
   fortyTwoId:   'dev-testuser',
+  githubId:     null,
   username:     'testuser',
   email:        'testuser@dev.local',
   xp:           0,
@@ -36,6 +37,8 @@ describe('AuthService', () => {
           provide: UsersService,
           useValue: {
             findByFortyTwoId: jest.fn(),
+            findByGithubId:   jest.fn(),
+            findByEmail:      jest.fn(),
             findByUsername:   jest.fn(),
             create:           jest.fn(),
             findById:         jest.fn(),

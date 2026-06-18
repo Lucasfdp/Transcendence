@@ -110,6 +110,30 @@ export class AuthService {
     }
   }
 
+  async findOrCreateGithubUser(data: {
+    githubId: string;
+    username: string;
+    email?:   string | null;
+    avatar?:  string | null;
+  }): Promise<User> {
+    try {
+      let user = await this.usersService.findByGithubId(data.githubId);
+      if (user) return user;
+
+      const existingEmail = data.email ? await this.usersService.findByEmail(data.email) : null;
+      const uniqueUsername = await this.makeUniqueOAuthUsername(data.username);
+      user = await this.usersService.create({
+        githubId: data.githubId,
+        email: existingEmail ? null : (data.email ?? null),
+        username: uniqueUsername,
+        avatar: data.avatar ?? undefined,
+      });
+      return user;
+    } catch {
+      throw new InternalServerErrorException('Failed to find or create GitHub user');
+    }
+  }
+
   private async makeUniqueOAuthUsername(baseUsername: string): Promise<string> {
     const normalizedBase = baseUsername.trim() || 'player42';
     const clippedBase = normalizedBase.slice(0, 20);

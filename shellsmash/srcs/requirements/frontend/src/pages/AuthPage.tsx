@@ -78,6 +78,76 @@ export function AuthPage(): JSX.Element {
     window.location.assign(url);
   };
 
+  const handleGuestLogin = async () => {
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    setError('');
+    try {
+      if (!csrfReady) {
+        await api.getCsrfToken();
+        setCsrfReady(true);
+      }
+      await api.guestLogin();
+      navigate('/', { replace: true });
+    } catch (err: unknown) {
+      if (err instanceof AuthError) {
+        if (err.status === 429) {
+          setError('Too many guest sessions. Wait a moment and try again.');
+        } else if (err.status === 401 || err.status === 403) {
+          setError('Guest access is temporarily unavailable.');
+        } else {
+          setError('Could not create a guest session.');
+        }
+      } else if (err instanceof NetworkError) {
+        setError('Could not reach the server.');
+      } else {
+        setError('Could not create a guest session.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    if (isSubmitting) return;
+
+    const nextUsername = username.trim();
+    if (!nextUsername || !password) {
+      setError('Enter your username and password.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+    try {
+      if (!csrfReady) {
+        await api.getCsrfToken();
+        setCsrfReady(true);
+      }
+      await api.register(nextUsername, password);
+      navigate('/', { replace: true });
+    } catch (err: unknown) {
+      if (err instanceof AuthError) {
+        if (err.status === 409) {
+          setError('That username is already taken.');
+        } else if (err.status === 429) {
+          setError('Too many registration attempts. Wait a moment and try again.');
+        } else if (err.status === 401 || err.status === 403) {
+          setError('Registration is temporarily unavailable.');
+        } else {
+          setError('Could not create the account.');
+        }
+      } else if (err instanceof NetworkError) {
+        setError('Could not reach the server.');
+      } else {
+        setError('Could not create the account.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   if (status === 'checking') {
     return <RouteLoading />;
   }
@@ -108,6 +178,8 @@ export function AuthPage(): JSX.Element {
           onPasswordChange={setPassword}
           onSubmit={handleLocalLogin}
           onOAuthLogin={handleOAuthLogin}
+          onGuestLogin={handleGuestLogin}
+          onRegister={handleRegister}
         />
       </section>
     </main>

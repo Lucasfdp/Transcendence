@@ -30,6 +30,14 @@ export class UsersService {
     }
   }
 
+  async findByGithubId(githubId: string): Promise<User | null> {
+    try {
+      return await this.usersRepo.findOne({ where: { githubId }, relations: ['profile'] });
+    } catch {
+      throw new InternalServerErrorException('Failed to find user by GitHub id');
+    }
+  }
+
   /**
    * Returns the user with that username, or null if none exists.
    * Includes the passwordHash field (excluded from normal SELECT by `select: false`).
@@ -59,6 +67,7 @@ export class UsersService {
 
   async create(data: {
     fortyTwoId?:   string | null;
+    githubId?:     string | null;
     username:      string;
     email?:        string | null;
     avatar?:       string;

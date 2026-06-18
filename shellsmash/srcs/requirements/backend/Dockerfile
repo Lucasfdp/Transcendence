@@ -34,3 +34,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=5 \
     CMD wget --quiet --tries=1 --spider http://localhost:8000/api/health || exit 1
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["node", "dist/main.js"]

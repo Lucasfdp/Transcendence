@@ -32,10 +32,14 @@ function GitHubLogo(): JSX.Element {
 }
 
 interface OAuthButtonsProps {
+  isSubmitting: boolean;
   onOAuthLogin: (url: string) => void;
 }
 
-export function OAuthButtons({ onOAuthLogin }: OAuthButtonsProps): JSX.Element {
+export function OAuthButtons({
+  isSubmitting,
+  onOAuthLogin,
+}: OAuthButtonsProps): JSX.Element {
   return (
     <div className="auth-card__oauth">
       <div className="auth-card__divider">
@@ -46,6 +50,7 @@ export function OAuthButtons({ onOAuthLogin }: OAuthButtonsProps): JSX.Element {
         <button
           className="oauth-button oauth-button--42"
           type="button"
+          disabled={isSubmitting}
           onClick={() => onOAuthLogin(api.loginUrl())}
         >
           <FortyTwoLogo />
@@ -55,8 +60,8 @@ export function OAuthButtons({ onOAuthLogin }: OAuthButtonsProps): JSX.Element {
         <button
           className="oauth-button oauth-button--github"
           type="button"
+          disabled={isSubmitting || !GITHUB_AUTH_URL}
           onClick={() => onOAuthLogin(GITHUB_AUTH_URL)}
-          disabled={!GITHUB_AUTH_URL}
           title={GITHUB_AUTH_URL ? 'Continue with GitHub' : 'GitHub OAuth is not configured yet'}
         >
           <GitHubLogo />

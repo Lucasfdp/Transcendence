@@ -14,6 +14,10 @@ export class User {
   @Column({ unique: true, nullable: true })
   fortyTwoId: string | null;
 
+  /** Null for guest, local, and 42 OAuth accounts. */
+  @Column({ unique: true, nullable: true })
+  githubId: string | null;
+
   /**
    * scrypt-derived hash: "<hex-salt>:<hex-hash>".
    * Null for guest accounts and 42 OAuth accounts (no local password).

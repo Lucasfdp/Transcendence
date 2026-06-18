@@ -9,6 +9,8 @@ interface AuthCardProps {
   onPasswordChange: (value: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onOAuthLogin: (url: string) => void;
+  onGuestLogin: () => void;
+  onRegister: () => void;
 }
 
 export function AuthCard({
@@ -20,6 +22,8 @@ export function AuthCard({
   onPasswordChange,
   onSubmit,
   onOAuthLogin,
+  onGuestLogin,
+  onRegister,
 }: AuthCardProps): JSX.Element {
   return (
     <section className="auth-card" aria-labelledby="login-title">
@@ -63,9 +67,34 @@ export function AuthCard({
         >
           {isSubmitting ? 'Signing in...' : 'Sign in'}
         </button>
+
+        <div className="auth-card__aux-links" aria-label="Secondary actions">
+          <button
+            className="auth-card__text-link"
+            type="button"
+            disabled={isSubmitting}
+            onClick={onGuestLogin}
+          >
+            {isSubmitting ? 'Entering as guest...' : 'Enter as Guest'}
+          </button>
+
+          <span className="auth-card__aux-separator" aria-hidden="true">|</span>
+
+          <button
+            className="auth-card__text-link"
+            type="button"
+            disabled={isSubmitting}
+            onClick={onRegister}
+          >
+            {isSubmitting ? 'Registering...' : 'Register'}
+          </button>
+        </div>
       </form>
 
-      <OAuthButtons onOAuthLogin={onOAuthLogin} />
+      <OAuthButtons
+        isSubmitting={isSubmitting}
+        onOAuthLogin={onOAuthLogin}
+      />
     </section>
   );
 }
