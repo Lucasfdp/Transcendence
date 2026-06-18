@@ -27,6 +27,7 @@ export interface CurlingSnapshot {
     username: string;
     connected: boolean;
     ready: boolean;
+    reconnectExpiresAt: number | null;
   }>;
   objects: Array<{
     id: number;
@@ -45,6 +46,7 @@ export interface SnapshotPlayer {
   username: string;
   connected: boolean;
   ready: boolean;
+  reconnectExpiresAt: number | null;
 }
 
 export interface BambooBashSnapshot {

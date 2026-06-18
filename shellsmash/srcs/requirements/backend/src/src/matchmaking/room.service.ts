@@ -61,7 +61,7 @@ export class RoomService {
     const player = room?.players.find((p) => p.user.id === userId);
     if (!room || !player) return null;
     player.ready = true;
-    this.refreshSnapshotPlayers(room);
+    this.refreshSnapshotPlayers(room, true);
     return room;
   }
 
@@ -80,7 +80,7 @@ export class RoomService {
     player.socketId = socketId;
     player.connected = true;
     player.reconnectExpiresAt = undefined;
-    this.refreshSnapshotPlayers(room);
+    this.refreshSnapshotPlayers(room, true);
     return room;
   }
 
@@ -102,7 +102,7 @@ export class RoomService {
     if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
     player.reconnectExpiresAt = Date.now() + timeoutMs;
     player.disconnectTimer = setTimeout(() => onTimeout(room, player), timeoutMs);
-    this.refreshSnapshotPlayers(room);
+    this.refreshSnapshotPlayers(room, true);
     return room;
   }
 
@@ -116,7 +116,7 @@ export class RoomService {
     if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
     player.reconnectExpiresAt = Date.now() + timeoutMs;
     player.disconnectTimer = setTimeout(() => onTimeout(room, player), timeoutMs);
-    this.refreshSnapshotPlayers(room);
+    this.refreshSnapshotPlayers(room, true);
     return room;
   }
 
@@ -149,14 +149,15 @@ export class RoomService {
     return room;
   }
 
-  private refreshSnapshotPlayers(room: MatchRoom): void {
+  private refreshSnapshotPlayers(room: MatchRoom, bumpSeq = false): void {
     room.state.players = room.players.map((player) => ({
       side: player.side,
       userId: player.user.id,
       username: player.user.username,
       connected: player.connected,
       ready: player.ready,
+      reconnectExpiresAt: player.reconnectExpiresAt ?? null,
     }));
-    room.state.seq = room.seq;
+    room.state.seq = bumpSeq ? ++room.seq : room.seq;
   }
 }

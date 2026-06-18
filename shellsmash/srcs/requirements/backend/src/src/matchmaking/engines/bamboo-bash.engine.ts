@@ -228,6 +228,7 @@ export class BambooBashEngine implements GameEngine {
       username: player.user.username,
       connected: player.connected,
       ready: player.ready,
+      reconnectExpiresAt: player.reconnectExpiresAt ?? null,
     };
   }
 

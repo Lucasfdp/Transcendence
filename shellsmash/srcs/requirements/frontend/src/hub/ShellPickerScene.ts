@@ -106,6 +106,7 @@ export class ShellPickerScene extends ResponsiveScene {
   private abandonBtn?:   Phaser.GameObjects.Text;
   private abandonGfx?:   Phaser.GameObjects.Graphics;
   private abandonZone?:  Phaser.GameObjects.Zone;
+  private onlinePlayerCountGfx?: Phaser.GameObjects.Graphics;
   private onlinePlayerCountText?: Phaser.GameObjects.Text;
   private onlinePlayerCountControls: Phaser.GameObjects.Text[] = [];
   private pickCountText!: Phaser.GameObjects.Text;
@@ -364,53 +365,67 @@ export class ShellPickerScene extends ResponsiveScene {
 
   private buildOnlineButton(localBtnY: number): void {
     const { width } = this.scale;
+    const compact = width < 680;
     const btnW = 200;
     const btnH = 34;
-    const btnX = width / 2 - btnW / 2;
+    const rowGap = 12;
+    const actionBtnW = compact ? 180 : btnW;
+    const btnX = width / 2 - actionBtnW / 2;
     const btnY = localBtnY - 42;
+    const selectorW = compact ? 260 : 300;
+    const selectorH = 36;
+    const selectorX = width / 2 - selectorW / 2;
+    const selectorY = btnY - 54;
 
     this.onlineGfx = this.add.graphics().setDepth(DEPTH_HUD);
-    this.paintOnlineBtn(false, btnX, btnY, btnW, btnH);
-    this.onlineBtn = this.add.text(width / 2, btnY + btnH / 2, 'Find Online Match', {
+    this.paintOnlineBtn(false, btnX, btnY, actionBtnW, btnH);
+    this.onlineBtn = this.add.text(btnX + actionBtnW / 2, btnY + btnH / 2, 'Find Online Match', {
       fontSize: '13px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(DEPTH_HUD + 1);
 
     const zone = this.add
-      .zone(width / 2, btnY + btnH / 2, btnW, btnH)
+      .zone(btnX + actionBtnW / 2, btnY + btnH / 2, actionBtnW, btnH)
       .setInteractive({ useHandCursor: true })
       .setDepth(DEPTH_HUD + 2);
-    zone.on('pointerover', () => this.paintOnlineBtn(true, btnX, btnY, btnW, btnH));
-    zone.on('pointerout',  () => this.paintOnlineBtn(false, btnX, btnY, btnW, btnH));
+    zone.on('pointerover', () => this.paintOnlineBtn(true, btnX, btnY, actionBtnW, btnH));
+    zone.on('pointerout',  () => this.paintOnlineBtn(false, btnX, btnY, actionBtnW, btnH));
     zone.on('pointerup',   () => void this.onOnlineButton());
 
-    this.onlinePlayerCountText = this.add.text(width / 2, btnY - 22, this.onlinePlayerCountLabel(), {
-      fontSize: '12px', color: THEME.text, fontFamily: THEME.font, fontStyle: 'bold',
+    this.onlinePlayerCountGfx = this.add.graphics().setDepth(DEPTH_HUD);
+    this.onlinePlayerCountGfx.fillStyle(0x161006, 0.96);
+    this.onlinePlayerCountGfx.fillRoundedRect(selectorX, selectorY, selectorW, selectorH, 10);
+    this.onlinePlayerCountGfx.lineStyle(2, THEME.gold, 0.8);
+    this.onlinePlayerCountGfx.strokeRoundedRect(selectorX, selectorY, selectorW, selectorH, 10);
+
+    this.onlinePlayerCountText = this.add.text(width / 2, selectorY + selectorH / 2, this.onlinePlayerCountLabel(), {
+      fontSize: '14px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(DEPTH_HUD + 1);
 
-    const dec = this.add.text(width / 2 - 92, btnY - 22, '‹', {
-      fontSize: '18px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
+    const dec = this.add.text(selectorX + 24, selectorY + selectorH / 2, '‹', {
+      fontSize: '26px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(DEPTH_HUD + 1).setInteractive({ useHandCursor: true });
-    const inc = this.add.text(width / 2 + 92, btnY - 22, '›', {
-      fontSize: '18px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
+    const inc = this.add.text(selectorX + selectorW - 24, selectorY + selectorH / 2, '›', {
+      fontSize: '26px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(DEPTH_HUD + 1).setInteractive({ useHandCursor: true });
     dec.on('pointerup', () => this.setOnlinePlayerCount(this.onlinePlayerCount - 1));
     inc.on('pointerup', () => this.setOnlinePlayerCount(this.onlinePlayerCount + 1));
     this.onlinePlayerCountControls = [dec, inc];
 
-    const abandonBtnY = btnY - 42;
+    const abandonBtnX = compact ? btnX : btnX + actionBtnW + rowGap;
+    const abandonBtnY = compact ? selectorY - 42 : btnY;
     this.abandonGfx = this.add.graphics().setDepth(DEPTH_HUD);
-    this.paintAbandonBtn(false, btnX, abandonBtnY, btnW, btnH);
-    this.abandonBtn = this.add.text(width / 2, abandonBtnY + btnH / 2, 'Abandon Match', {
+    this.paintAbandonBtn(false, abandonBtnX, abandonBtnY, actionBtnW, btnH);
+    this.abandonBtn = this.add.text(abandonBtnX + actionBtnW / 2, abandonBtnY + btnH / 2, 'Abandon Match', {
       fontSize: '13px', color: THEME.red, fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(DEPTH_HUD + 1);
     this.abandonZone = this.add
-      .zone(width / 2, abandonBtnY + btnH / 2, btnW, btnH)
+      .zone(abandonBtnX + actionBtnW / 2, abandonBtnY + btnH / 2, actionBtnW, btnH)
       .setDepth(DEPTH_HUD + 2);
-    this.abandonZone.on('pointerover', () => this.paintAbandonBtn(true, btnX, abandonBtnY, btnW, btnH));
-    this.abandonZone.on('pointerout',  () => this.paintAbandonBtn(false, btnX, abandonBtnY, btnW, btnH));
+    this.abandonZone.on('pointerover', () => this.paintAbandonBtn(true, abandonBtnX, abandonBtnY, actionBtnW, btnH));
+    this.abandonZone.on('pointerout',  () => this.paintAbandonBtn(false, abandonBtnX, abandonBtnY, actionBtnW, btnH));
     this.abandonZone.on('pointerup',   () => this.abandonActiveMatch());
 
-    this.uiLayer.push(this.onlineGfx, this.onlineBtn, zone, this.onlinePlayerCountText, dec, inc, this.abandonGfx, this.abandonBtn, this.abandonZone);
+    this.uiLayer.push(this.onlineGfx, this.onlineBtn, zone, this.onlinePlayerCountGfx, this.onlinePlayerCountText, dec, inc, this.abandonGfx, this.abandonBtn, this.abandonZone);
     this.refreshOnlineState();
   }
 
@@ -748,6 +763,7 @@ export class ShellPickerScene extends ResponsiveScene {
     this.abandonBtn?.destroy();
     this.abandonGfx?.destroy();
     this.abandonZone?.destroy();
+    this.onlinePlayerCountGfx?.destroy();
     this.onlinePlayerCountText?.destroy();
     for (const control of this.onlinePlayerCountControls) control.destroy();
     this.onlineBtn = undefined;
@@ -755,6 +771,7 @@ export class ShellPickerScene extends ResponsiveScene {
     this.abandonBtn = undefined;
     this.abandonGfx = undefined;
     this.abandonZone = undefined;
+    this.onlinePlayerCountGfx = undefined;
     this.onlinePlayerCountText = undefined;
     this.onlinePlayerCountControls = [];
     this.buildGrid();

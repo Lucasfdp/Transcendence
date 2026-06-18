@@ -598,6 +598,13 @@ export class KameKnockScene extends ResponsiveScene {
     this.onlineStatusText?.setText(message);
   }
 
+  private markOnlineAway(): void {
+    const phase = this.onlineMatch?.snapshot?.phase;
+    if (this.onlineMatch && phase !== 'finished' && phase !== 'abandoned') {
+      getGameSocket().emit('match:status', { away: true });
+    }
+  }
+
   private applyOnlineSnapshot(snapshot: KameKnockSnapshot, initial = false): void {
     if (!this.onlineMatch || snapshot.matchId !== this.onlineMatch.matchId || snapshot.seq < this.lastOnlineSeq) return;
     this.lastOnlineSeq = snapshot.seq;
@@ -828,7 +835,7 @@ export class KameKnockScene extends ResponsiveScene {
   // ── HUD ──────────────────────────────────────────────────────────────────────
 
   private buildHud(): void {
-    this.hudObjects = buildReturnButton(this);
+    this.hudObjects = buildReturnButton(this, 'HubScene', () => this.markOnlineAway());
     this.ballText   = this.add.text(this.scale.width / 2, 16, this.formatBallText(), {
       fontSize: '26px', color: THEME.text, fontFamily: THEME.font, fontStyle: 'bold',
     }).setOrigin(0.5, 0).setDepth(DEPTH_HUD);
@@ -1195,7 +1202,7 @@ export class KameKnockScene extends ResponsiveScene {
     this.drawBall();
 
     this.hudObjects.forEach((object) => object.destroy());
-    this.hudObjects = buildReturnButton(this);
+    this.hudObjects = buildReturnButton(this, 'HubScene', () => this.markOnlineAway());
     this.ballText?.setPosition(this.scale.width / 2, 16);
     this.onlineStatusText?.setPosition(this.scale.width / 2, 48);
     this.countdownText?.setPosition(this.scale.width / 2, this.scale.height / 2);

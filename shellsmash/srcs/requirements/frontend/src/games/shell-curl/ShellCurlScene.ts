@@ -255,7 +255,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
     // HUD
     this.scoreHud   = new ScoreHud(this, DEPTH_HUD);
-    this.hudObjects = buildReturnButton(this);
+    this.hudObjects = buildReturnButton(this, 'HubScene', () => this.markOnlineAway());
 
     // Slingshot (shared mechanic) — starts detached; attached when stone is placed
     this.slingshot = new Slingshot(
@@ -1145,6 +1145,13 @@ export class ShellCurlScene extends ResponsiveScene {
     this.onlineStatusText?.setText(message);
   }
 
+  private markOnlineAway(): void {
+    const phase = this.onlineMatch?.snapshot?.phase;
+    if (this.onlineMatch && phase !== 'finished' && phase !== 'abandoned') {
+      getGameSocket().emit('match:status', { away: true });
+    }
+  }
+
   private applyOnlineSnapshot(snapshot: CurlingSnapshot): void {
     if (!this.onlineMatch || snapshot.matchId !== this.onlineMatch.matchId || snapshot.seq < this.lastOnlineSeq) return;
     if (this.onlineReplaying) {
@@ -1479,7 +1486,7 @@ export class ShellCurlScene extends ResponsiveScene {
     this.scoreHud.update(this.turnManager.state);
 
     this.hudObjects.forEach(o => o.destroy());
-    this.hudObjects = buildReturnButton(this);
+    this.hudObjects = buildReturnButton(this, 'HubScene', () => this.markOnlineAway());
     this.updatePowerPanel();
   }
 

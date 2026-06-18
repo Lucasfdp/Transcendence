@@ -545,6 +545,13 @@ export class BellClashScene extends ResponsiveScene {
     this.onlineStatusText?.setText(message);
   }
 
+  private markOnlineAway(): void {
+    const phase = this.onlineMatch?.snapshot?.phase;
+    if (this.onlineMatch && phase !== 'finished' && phase !== 'abandoned') {
+      getGameSocket().emit('match:status', { away: true });
+    }
+  }
+
   private applyOnlineSnapshot(snapshot: BellClashSnapshot, initial = false): void {
     if (!this.onlineMatch || snapshot.matchId !== this.onlineMatch.matchId || snapshot.seq < this.lastOnlineSeq) return;
     this.lastOnlineSeq = snapshot.seq;
@@ -752,7 +759,7 @@ export class BellClashScene extends ResponsiveScene {
   // ── HUD ──────────────────────────────────────────────────────────────────────
 
   private buildHud(): void {
-    this.hudObjects = buildReturnButton(this);
+    this.hudObjects = buildReturnButton(this, 'HubScene', () => this.markOnlineAway());
 
     this.scoreText = this.add.text(16, 16, this.formatScoreText(), {
       fontSize: '22px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
@@ -1217,7 +1224,7 @@ export class BellClashScene extends ResponsiveScene {
     this.drawBalls();
 
     this.hudObjects.forEach((object) => object.destroy());
-    this.hudObjects = buildReturnButton(this);
+    this.hudObjects = buildReturnButton(this, 'HubScene', () => this.markOnlineAway());
     this.scoreText?.setPosition(16, 16);
     this.lastHitText?.setPosition(16, 44);
     this.shotText?.setPosition(this.scale.width / 2, 16);

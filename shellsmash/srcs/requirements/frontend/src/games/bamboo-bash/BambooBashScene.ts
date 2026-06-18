@@ -678,6 +678,13 @@ export class BambooBashScene extends ResponsiveScene {
     this.onlineStatusText?.setText(message);
   }
 
+  private markOnlineAway(): void {
+    const phase = this.onlineMatch?.snapshot?.phase;
+    if (this.onlineMatch && phase !== 'finished' && phase !== 'abandoned') {
+      getGameSocket().emit('match:status', { away: true });
+    }
+  }
+
   private playOnlineThrow(event: BambooBashThrowEvent): void {
     if (!this.onlineMatch || event.matchId !== this.onlineMatch.matchId || event.roundNumber !== this.onlineRoundNumber) return;
     const ball = this.onlineBalls.get(event.side);
@@ -879,7 +886,7 @@ export class BambooBashScene extends ResponsiveScene {
   // ── HUD ─────────────────────────────────────────────────────────────────────
 
   private buildHud(): void {
-    this.hudObjects = buildReturnButton(this);
+    this.hudObjects = buildReturnButton(this, 'HubScene', () => this.markOnlineAway());
 
     this.scoreText = this.add.text(16, 16, `SCORE  ${this.score}`, {
       fontSize: '22px', color: THEME.textGold, fontFamily: THEME.font, fontStyle: 'bold',
@@ -1226,7 +1233,7 @@ export class BambooBashScene extends ResponsiveScene {
     this.drawBalls();
 
     this.hudObjects.forEach((o) => o.destroy());
-    this.hudObjects = buildReturnButton(this);
+    this.hudObjects = buildReturnButton(this, 'HubScene', () => this.markOnlineAway());
     this.scoreText.setPosition(16, 16);
     this.timerText.setPosition(this.scale.width / 2, 16);
     this.onlineStatusText?.setPosition(this.scale.width / 2, 48);

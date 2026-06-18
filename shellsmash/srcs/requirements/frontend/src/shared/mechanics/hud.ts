@@ -12,6 +12,7 @@ import { THEME } from '../theme';
 export function buildReturnButton(
   scene: Phaser.Scene,
   targetScene = 'HubScene',
+  beforeReturn?: () => void,
 ): Phaser.GameObjects.GameObject[] {
   const PAD = 14;
   const BW  = 172;
@@ -36,7 +37,10 @@ export function buildReturnButton(
     .zone(bx + BW / 2, by + BH / 2, BW, BH)
     .setInteractive({ useHandCursor: true })
     .setDepth(22)
-    .on('pointerup', () => scene.scene.start(targetScene));
+    .on('pointerup', () => {
+      beforeReturn?.();
+      scene.scene.start(targetScene);
+    });
 
   return [g, label, zone];
 }

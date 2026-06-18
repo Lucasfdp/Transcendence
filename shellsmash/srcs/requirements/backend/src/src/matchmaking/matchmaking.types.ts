@@ -101,6 +101,7 @@ export interface SnapshotPlayer {
   username: string;
   connected: boolean;
   ready: boolean;
+  reconnectExpiresAt: number | null;
 }
 
 export interface BambooBashSnapshot {
