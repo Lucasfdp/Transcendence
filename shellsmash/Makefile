@@ -11,6 +11,7 @@ OVERRIDE_FILE	:= srcs/docker-compose.override.yml
 DEV_COMPOSE	:= -f $(COMPOSE_FILE) -f $(OVERRIDE_FILE)
 ENV_FILE		:= .env
 PROJECT_NAME	:= transcendence
+CERT_DIR		:= secrets/nginx_ssl
 
 # --- COLOR DEFINITON ---
 ifeq ($(shell tput colors 2>/dev/null),)
@@ -42,19 +43,19 @@ endif
 # ==============================================================================
 
 ## up: Build images (if needed) and start all services in detached mode
-up: check-env
+up: check-env certs
 	@echo "$(GREEN)Starting all services...$(RESET)"
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build
 	@echo "$(GREEN)All services are up. Run 'make ps' to verify.$(RESET)"
 
 ## dev: Start with hot-reload override (Vite HMR + NestJS watch). Access frontend at http://localhost:3000
-dev: check-env
+dev: check-env certs
 	@echo "$(GREEN)Starting in DEV mode (hot-reload)...$(RESET)"
 	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --remove-orphans
 	@echo "$(GREEN)Dev server running. Frontend: http://localhost:3000$(RESET)"
 
 ## prod: Start WITHOUT the dev override — production-like mode (uses serve + compiled dist)
-prod: check-env
+prod: check-env certs
 	@echo "$(GREEN)Starting in PROD mode (no override)...$(RESET)"
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build
 	@echo "$(GREEN)Production-mode services up. Frontend: https://localhost$(RESET)"
@@ -161,6 +162,17 @@ health:
 # HELPERS
 # ==============================================================================
 
+## certs: Generate trusted local TLS certs with mkcert if available
+certs:
+	@if [ ! -s "$(CERT_DIR)/cert.pem" ] || [ ! -s "$(CERT_DIR)/key.pem" ]; then \
+		if command -v mkcert >/dev/null 2>&1; then \
+			echo "$(CYAN)Generating local TLS certs with mkcert...$(RESET)"; \
+			./scripts/generate-local-certs.sh; \
+		else \
+			echo "$(YELLOW)mkcert not found; reverse proxy will fall back to a self-signed cert.$(RESET)"; \
+		fi; \
+	fi
+
 ## check-env: Verify .env file exists (copy from .env.example if missing)
 check-env:
 	@if [ ! -f $(ENV_FILE) ]; then \
@@ -216,4 +228,4 @@ help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /'
 	@echo ""
 
-.PHONY: up dev prod down restart build logs ps clean fclean re shell status inspect volumes networks db test health check-env push help
+.PHONY: up dev prod down restart build logs ps clean fclean re shell status inspect volumes networks db test health certs check-env push help
