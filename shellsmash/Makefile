@@ -69,6 +69,34 @@ down:
 ## restart: Restart all services (preserves volumes)
 restart: down up
 
+## restart-front: Restart only the frontend container
+restart-front:
+	@echo "$(YELLOW)Restarting frontend only...$(RESET)"
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) restart frontend
+	@echo "$(GREEN)Frontend restarted.$(RESET)"
+
+## restart-back: Restart only the backend container
+restart-back:
+	@echo "$(YELLOW)Restarting backend only...$(RESET)"
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) restart backend
+	@echo "$(GREEN)Backend restarted.$(RESET)"
+
+## rebuild-front: Rebuild and recreate only the frontend service
+rebuild-front: check-env certs
+	@echo "$(CYAN)Rebuilding frontend only...$(RESET)"
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --no-deps frontend
+	@echo "$(GREEN)Frontend rebuilt and restarted.$(RESET)"
+
+## rebuild-back: Rebuild and recreate only the backend service
+rebuild-back: check-env certs
+	@echo "$(CYAN)Rebuilding backend only...$(RESET)"
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --no-deps backend
+	@echo "$(GREEN)Backend rebuilt and restarted.$(RESET)"
+
+## refresh-app: Rebuild frontend and restart backend to validate app changes quickly
+refresh-app: rebuild-front restart-back
+	@echo "$(GREEN)Frontend rebuilt and backend restarted.$(RESET)"
+
 ## build: Build or rebuild all images without starting containers
 build: check-env
 	@echo "$(CYAN)Building all images...$(RESET)"
@@ -228,4 +256,4 @@ help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /'
 	@echo ""
 
-.PHONY: up dev prod down restart build logs ps clean fclean re shell status inspect volumes networks db test health certs check-env push help
+.PHONY: up dev prod down restart restart-front restart-back rebuild-front rebuild-back refresh-app build logs ps clean fclean re shell status inspect volumes networks db test health certs check-env push help

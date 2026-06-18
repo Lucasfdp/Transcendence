@@ -101,7 +101,7 @@ services:
       dockerfile: Dockerfile
       args:
         - FRONTEND_ENV=${FRONTEND_ENV:-development}
-        - VITE_API_URL=${VITE_API_URL:-https://localhost/api}
+        - VITE_API_URL=${VITE_API_URL:-/api}
         - VITE_GITHUB_AUTH_URL=${VITE_GITHUB_AUTH_URL:-}
     container_name: ${COMPOSE_PROJECT_NAME}_frontend
     image: ${COMPOSE_PROJECT_NAME}/frontend:latest
@@ -122,9 +122,9 @@ services:
       - frontend_network
     environment:
       - NODE_ENV=${FRONTEND_ENV:-development}
-      - VITE_API_URL=${VITE_API_URL:-https://localhost/api}
+      - VITE_API_URL=${VITE_API_URL:-/api}
       - VITE_GITHUB_AUTH_URL=${VITE_GITHUB_AUTH_URL:-}
-      - REACT_APP_API_URL=${REACT_APP_API_URL:-https://localhost/api}
+      - REACT_APP_API_URL=${REACT_APP_API_URL:-/api}
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:${FRONTEND_PORT:-3000}/"]
       interval: 30s
