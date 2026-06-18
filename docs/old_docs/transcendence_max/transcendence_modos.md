@@ -8,20 +8,20 @@
 
 ## Mecánica base
 
-* Vista cenital.
-* Río vertical o diagonal.
-* El agua empuja constantemente hacia abajo.
-* Obstáculos: troncos, rocas, remolinos, bambú, cascadas.
-* Power-ups flotando.
-* Gana quien llegue antes o quien consiga más puntos.
+- Vista cenital.
+- Río vertical o diagonal.
+- El agua empuja constantemente hacia abajo.
+- Obstáculos: troncos, rocas, remolinos, bambú, cascadas.
+- Power-ups flotando.
+- Gana quien llegue antes o quien consiga más puntos.
 
 ## Multijugador
 
 Puede ser:
 
-* **1v1 carrera directa.**
-* **2-4 jugadores todos contra todos.**
-* **Modo time attack con ghosts.**
+- **1v1 carrera directa.**
+- **2-4 jugadores todos contra todos.**
+- **Modo time attack con ghosts.**
 
 ## Miniatura para el hub
 
@@ -39,10 +39,10 @@ Lanzas tu tortuga como una bola de billar contra objetos del escenario.
 
 ## Mecánica base
 
-* Arena rectangular o circular.
-* El jugador apunta, carga fuerza y suelta.
-* La tortuga rebota contra paredes, cajas, tambores, muñecos, campanas o estatuas.
-* Cuantos más objetos destruyes en cadena, más puntos.
+- Arena rectangular o circular.
+- El jugador apunta, carga fuerza y suelta.
+- La tortuga rebota contra paredes, cajas, tambores, muñecos, campanas o estatuas.
+- Cuantos más objetos destruyes en cadena, más puntos.
 
 ## Multijugador
 
@@ -81,17 +81,17 @@ Modo de empujar, romper o cortar cañas de bambú usando embestidas.
 
 ## Mecánica base
 
-* Campo lleno de bambúes verticales.
-* Las tortugas cargan y chocan contra ellos.
-* Algunos bambúes son débiles, otros resistentes.
-* Algunos esconden monedas o power-ups.
-* El mapa se va abriendo según destruyes bambú.
+- Campo lleno de bambúes verticales.
+- Las tortugas cargan y chocan contra ellos.
+- Algunos bambúes son débiles, otros resistentes.
+- Algunos esconden monedas o power-ups.
+- El mapa se va abriendo según destruyes bambú.
 
 ## Multijugador
 
-* Gana quien recoja más monedas.
-* O quien destruya más bambú.
-* O modo “territorio”: cada bambú destruido marca zona del jugador.
+- Gana quien recoja más monedas.
+- O quien destruya más bambú.
+- O modo “territorio”: cada bambú destruido marca zona del jugador.
 
 ## Lo bueno
 
@@ -111,10 +111,10 @@ Dos tortugas empujan faroles, piedras o bolas ceremoniales hacia zonas de puntua
 
 ## Mecánica base
 
-* Arena con varios objetos pesados.
-* Cada jugador embiste objetos para moverlos.
-* Hay círculos de puntuación en el suelo.
-* Cuando un objeto queda dentro de un círculo, genera puntos.
+- Arena con varios objetos pesados.
+- Cada jugador embiste objetos para moverlos.
+- Hay círculos de puntuación en el suelo.
+- Cuando un objeto queda dentro de un círculo, genera puntos.
 
 ## Multijugador
 
@@ -146,10 +146,10 @@ Juego de control de zona. Las tortugas arrastran pétalos de sakura hacia su lad
 
 ## Mecánica base
 
-* Mapa dividido en dos zonas.
-* Caen pétalos por toda la arena.
-* Las tortugas se mueven con impulso y arrastran pétalos detrás.
-* Hay que llevarlos a tu base.
+- Mapa dividido en dos zonas.
+- Caen pétalos por toda la arena.
+- Las tortugas se mueven con impulso y arrastran pétalos detrás.
+- Hay que llevarlos a tu base.
 
 ## Multijugador
 
@@ -177,10 +177,10 @@ Curling japonés con tortugas.
 
 ## Mecánica base
 
-* Cada jugador lanza su tortuga por turnos.
-* El objetivo es quedar lo más cerca posible del centro de una diana.
-* Hay fricción, rebotes y obstáculos suaves.
-* Se pueden golpear tortugas rivales para sacarlas.
+- Cada jugador lanza su tortuga por turnos.
+- El objetivo es quedar lo más cerca posible del centro de una diana.
+- Hay fricción, rebotes y obstáculos suaves.
+- Se pueden golpear tortugas rivales para sacarlas.
 
 ## Multijugador
 
@@ -204,26 +204,26 @@ Supervivencia en arena. Hay que esquivar ataques de estatuas oni.
 
 ## Mecánica base
 
-* Las tortugas están en una arena cerrada.
-* Estatuas, máscaras oni o tambores lanzan proyectiles.
-* El jugador solo puede impulsarse y rebotar.
-* Aguanta el mayor tiempo posible.
+- Las tortugas están en una arena cerrada.
+- Estatuas, máscaras oni o tambores lanzan proyectiles.
+- El jugador solo puede impulsarse y rebotar.
+- Aguanta el mayor tiempo posible.
 
 ## Multijugador
 
 Puede ser:
 
-* Competitivo: gana el último vivo.
-* Cooperativo: dos tortugas sobreviven juntas.
-* 1v1 con sabotajes.
+- Competitivo: gana el último vivo.
+- Cooperativo: dos tortugas sobreviven juntas.
+- 1v1 con sabotajes.
 
 ## Power-ups
 
-* Escudo.
-* Dash.
-* Peso extra.
-* Invisibilidad breve.
-* Rebote espiritual.
+- Escudo.
+- Dash.
+- Peso extra.
+- Invisibilidad breve.
+- Rebote espiritual.
 
 ## Miniatura para el hub
 
@@ -239,10 +239,10 @@ Hay una campana gigante en el centro. Los jugadores tienen que golpearla desde d
 
 ## Mecánica base
 
-* Cada impacto mueve la campana o llena una barra.
-* Golpes más fuertes suman más puntos.
-* Golpear desde el ángulo correcto da bonus.
-* El rival puede bloquearte o desviarte.
+- Cada impacto mueve la campana o llena una barra.
+- Golpes más fuertes suman más puntos.
+- Golpear desde el ángulo correcto da bonus.
+- El rival puede bloquearte o desviarte.
 
 ## Multijugador
 
@@ -266,10 +266,10 @@ Carrera por relevos con tortugas y checkpoints.
 
 ## Mecánica base
 
-* Mapa con puertas/checkpoints.
-* Hay que pasar por anillos en orden.
-* Cada tortuga tiene un pequeño cooldown de impulso.
-* Se premia trazar bien la ruta.
+- Mapa con puertas/checkpoints.
+- Hay que pasar por anillos en orden.
+- Cada tortuga tiene un pequeño cooldown de impulso.
+- Se premia trazar bien la ruta.
 
 ## Multijugador
 
@@ -294,10 +294,10 @@ Empujar bolas de mochi gigantes.
 
 ## Mecánica base
 
-* Aparecen bolas blandas de mochi en la arena.
-* Hay que empujarlas hacia hornos, cestas o zonas de puntuación.
-* Las bolas rebotan de forma gomosa.
-* Algunas se dividen en bolas pequeñas.
+- Aparecen bolas blandas de mochi en la arena.
+- Hay que empujarlas hacia hornos, cestas o zonas de puntuación.
+- Las bolas rebotan de forma gomosa.
+- Algunas se dividen en bolas pequeñas.
 
 ## Multijugador
 
@@ -360,12 +360,12 @@ Es el más fácil de comunicar con miniaturas y el más compatible con el sistem
 
 También sirve para probar mecánicas sin necesidad de matchmaking complejo:
 
-* puede ser single-player,
-* puede ser por turnos,
-* puede ser 1v1,
-* puede tener ranking,
-* puede dar monedas,
-* puede generar misiones diarias.
+- puede ser single-player,
+- puede ser por turnos,
+- puede ser 1v1,
+- puede tener ranking,
+- puede dar monedas,
+- puede generar misiones diarias.
 
 Ejemplo de descripción para el hub:
 
@@ -375,4 +375,3 @@ Lanza tu tortuga contra objetivos, encadena rebotes y consigue la mayor puntuaci
 ```
 
 Y visualmente sería muy claro: tortuga vista desde arriba, línea de trayectoria, objetivos rompibles, números de puntos, efectos de impacto.
-

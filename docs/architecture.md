@@ -8,15 +8,15 @@ ft_transcendence uses a containerised microservice architecture where each conce
 
 ## Container Responsibilities
 
-| Container | Role | Technology |
-|-----------|------|------------|
-| `reverse_proxy` | TLS termination, request routing | Nginx |
-| `frontend` | Single-page application | React / Vue / Svelte (TBD) |
-| `backend` | REST API + WebSocket server | Django / FastAPI / NestJS (TBD) |
-| `database` | Relational data persistence | PostgreSQL 16 |
-| `redis` | Caching, queues, pub/sub | Redis 7 |
-| `monitoring` | Metrics + log dashboards | Grafana / Prometheus (TBD) |
-| `portainer` | Docker management UI (dev only) | Portainer CE |
+| Container       | Role                             | Technology                      |
+| --------------- | -------------------------------- | ------------------------------- |
+| `reverse_proxy` | TLS termination, request routing | Nginx                           |
+| `frontend`      | Single-page application          | React / Vue / Svelte (TBD)      |
+| `backend`       | REST API + WebSocket server      | Django / FastAPI / NestJS (TBD) |
+| `database`      | Relational data persistence      | PostgreSQL 16                   |
+| `redis`         | Caching, queues, pub/sub         | Redis 7                         |
+| `monitoring`    | Metrics + log dashboards         | Grafana / Prometheus (TBD)      |
+| `portainer`     | Docker management UI (dev only)  | Portainer CE                    |
 
 ---
 
@@ -101,13 +101,13 @@ User action (browser)
 
 ## Volume Map
 
-| Volume | Container mount | Purpose |
-|--------|----------------|---------|
-| `db_data` | `/var/lib/postgresql/data` | PostgreSQL tables and indexes |
-| `redis_data` | `/data` | Redis RDB / AOF files |
-| `nginx_config` | `/etc/nginx/conf.d` | Nginx vhost configs |
-| `nginx_ssl` | `/etc/nginx/ssl` | TLS certificates |
-| `frontend_static` | `/app/dist` (frontend), `/var/www/html` (nginx) | Compiled SPA files |
-| `logs` | `/var/log/*` | Centralised log storage |
-| `monitoring_data` | `/var/lib/monitoring` | Metrics time-series data |
-| `portainer_data` | `/data` | Portainer credentials |
+| Volume            | Container mount                                 | Purpose                       |
+| ----------------- | ----------------------------------------------- | ----------------------------- |
+| `db_data`         | `/var/lib/postgresql/data`                      | PostgreSQL tables and indexes |
+| `redis_data`      | `/data`                                         | Redis RDB / AOF files         |
+| `nginx_config`    | `/etc/nginx/conf.d`                             | Nginx vhost configs           |
+| `nginx_ssl`       | `/etc/nginx/ssl`                                | TLS certificates              |
+| `frontend_static` | `/app/dist` (frontend), `/var/www/html` (nginx) | Compiled SPA files            |
+| `logs`            | `/var/log/*`                                    | Centralised log storage       |
+| `monitoring_data` | `/var/lib/monitoring`                           | Metrics time-series data      |
+| `portainer_data`  | `/data`                                         | Portainer credentials         |

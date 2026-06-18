@@ -4,6 +4,7 @@
 
 You are working on **ShellSmash**, a multiplayer gaming hub (ft_transcendence project).
 The stack is:
+
 - **Backend:** NestJS + TypeORM + PostgreSQL + Redis, running on port 8000 behind Nginx
 - **Frontend:** React + Phaser.js (TypeScript, Vite), all game UI is Phaser scenes
 - **Auth:** httpOnly JWT cookie (`auth_token`), CSRF double-submit, 42 OAuth + local
@@ -28,27 +29,31 @@ These must work together: the friends leaderboard filters the main leaderboard t
 ## What Already Exists (do not duplicate)
 
 ### Entities you will use
+
 - `User` entity at `srcs/requirements/backend/src/src/users/entities/user.entity.ts`
-  - Fields: `id`, `username`, `turtleName`, `shellSkin`, `level`, `xp`, `coins`, `avatar`, `isGuest`, `createdAt`
+    - Fields: `id`, `username`, `turtleName`, `shellSkin`, `level`, `xp`, `coins`, `avatar`, `isGuest`, `createdAt`
 - `Profile` entity at `srcs/requirements/backend/src/src/profiles/entities/profile.entity.ts`
-  - Fields: `totalWins`, `totalLosses`, `gamesPlayed`, `totalCoinsEarned`, `bio`
+    - Fields: `totalWins`, `totalLosses`, `gamesPlayed`, `totalCoinsEarned`, `bio`
 - `UserGameStats` entity at `srcs/requirements/backend/src/src/game-results/entities/user-game-stats.entity.ts`
-  - Fields: `userId`, `gameId`, `gamesPlayed`, `totalWins`, `totalLosses`
+    - Fields: `userId`, `gameId`, `gamesPlayed`, `totalWins`, `totalLosses`
 - `UserRating` entity at `srcs/requirements/backend/src/src/matchmaking/entities/user-rating.entity.ts`
-  - Fields: `userId`, `gameId`, `rating`, `wins`, `losses`, `draws`
+    - Fields: `userId`, `gameId`, `rating`, `wins`, `losses`, `draws`
 - `Match` / `MatchPlayer` entities under `srcs/requirements/backend/src/src/matchmaking/entities/`
-  - `Match.createdAt` is a real `timestamptz` — use it for weekly/monthly filtering
+    - `Match.createdAt` is a real `timestamptz` — use it for weekly/monthly filtering
 
 ### Services you will call
+
 - `UsersService` — `findById`, `findByUsername`, `findAll`, `save`
 - `PresenceService` (in `MatchmakingModule`) — `isOnline(userId: number): boolean`
-  - This service is in-process; inject it or expose it via a shared module
+    - This service is in-process; inject it or expose it via a shared module
 
 ### Frontend API client
+
 `srcs/requirements/frontend/src/hub/api.ts` — all backend calls go through `apiFetch`.
 Add every new endpoint here following the same pattern (typed return, `credentials: 'include'`).
 
 ### Frontend profile UI
+
 `srcs/requirements/frontend/src/hub/ProfilePanel.ts` — the existing profile panel is a
 Phaser `Container`. It already renders wins/losses/played. Friends list and online dots
 should be added as a new tab or section inside this panel, not a separate scene.
@@ -62,6 +67,7 @@ should be added as a new tab or section inside this panel, not a separate scene.
 Create `srcs/requirements/backend/src/src/friends/` with:
 
 **`entities/friendship.entity.ts`**
+
 ```
 @Entity('friendships')
 @Index(['requesterId', 'addresseeId'], { unique: true })
@@ -76,6 +82,7 @@ Friendship {
 ```
 
 **`friends.service.ts`** — methods:
+
 - `sendRequest(requesterId, addresseeId)` — insert pending; throw `ConflictException` if a row already exists in either direction; throw `BadRequestException` if self-friending
 - `acceptRequest(addresseeId, requesterId)` — update status to 'accepted'; throw `NotFoundException` if no pending row
 - `removeOrDecline(actorId, otherId)` — delete the row regardless of direction or status
@@ -86,19 +93,21 @@ Friendship {
 - `getFriendIds(userId): Promise<number[]>` — used by the leaderboard
 
 **`FriendView` interface:**
+
 ```typescript
 interface FriendView {
-  userId: number;
-  username: string;
-  turtleName: string | null;
-  shellSkin: string;
-  avatar: string | null;
-  level: number;
-  isOnline: boolean;  // from PresenceService.isOnline()
+	userId: number;
+	username: string;
+	turtleName: string | null;
+	shellSkin: string;
+	avatar: string | null;
+	level: number;
+	isOnline: boolean; // from PresenceService.isOnline()
 }
 ```
 
 **`friends.controller.ts`** — all routes under `/friends`, all behind `JwtAuthGuard`:
+
 - `GET /friends` → `listFriends(req.user.id)` — returns `FriendView[]` with live `isOnline`
 - `GET /friends/pending` → `listPending(req.user.id)`
 - `POST /friends/request` — body `{ username: string }` — look up by username, then `sendRequest`
@@ -117,12 +126,14 @@ Add a migration: `srcs/requirements/backend/src/src/migrations/<timestamp>-creat
 ### 2. Backend — Online status on user endpoints
 
 Inject `PresenceService` into `UsersController` (which is inside `UsersModule`). Because `PresenceService` lives in `MatchmakingModule`, either:
+
 - Export `PresenceService` from `MatchmakingModule` and import `MatchmakingModule` into `UsersModule`, OR
 - Move `PresenceService` to a new `PresenceModule` that both import
 
 Pick whichever avoids a circular dependency. Use `forwardRef` only as a last resort.
 
 Add `isOnline: boolean` to the response of:
+
 - `GET /users/:username` — single user public profile
 - `GET /users/leaderboard` — each entry in the leaderboard array
 
@@ -139,6 +150,7 @@ GET /users/leaderboard?period=all|monthly|weekly&scope=global|friends
 ```
 
 Query params:
+
 - `period`: `'all'` (default) | `'monthly'` | `'weekly'`
 - `scope`: `'global'` (default) | `'friends'`
 
@@ -147,18 +159,19 @@ When `scope=friends`, call `FriendsService.getFriendIds(req.user.id)` and filter
 When `period` is not `'all'`, join `MatchPlayer` on `userId` and filter `Match.createdAt` to the relevant window (last 7 days for weekly, current calendar month for monthly) and aggregate `wins` from that subset. Do this via a TypeORM QueryBuilder subquery — do NOT pull all matches into memory.
 
 Leaderboard entry shape:
+
 ```typescript
 interface LeaderboardEntry {
-  rank:        number;      // 1-indexed position in the sorted result
-  userId:      number;
-  username:    string;
-  turtleName:  string | null;
-  shellSkin:   string;
-  avatar:      string | null;
-  level:       number;
-  wins:        number;      // period-filtered wins OR profile.totalWins for 'all'
-  gamesPlayed: number;      // period-filtered OR profile.gamesPlayed for 'all'
-  isOnline:    boolean;
+	rank: number; // 1-indexed position in the sorted result
+	userId: number;
+	username: string;
+	turtleName: string | null;
+	shellSkin: string;
+	avatar: string | null;
+	level: number;
+	wins: number; // period-filtered wins OR profile.totalWins for 'all'
+	gamesPlayed: number; // period-filtered OR profile.gamesPlayed for 'all'
+	isOnline: boolean;
 }
 ```
 
@@ -229,6 +242,7 @@ getLeaderboard: (
 The leaderboard is currently rendered in `HubScene.ts` in a method called `buildLeaderboardPanel` (look for `lbLayer`). It calls `api.getAllUsers()` and sorts client-side. Replace this with the new endpoint.
 
 Changes to `HubScene.ts`:
+
 - Replace the `getAllUsers()` call with `api.getLeaderboard('all', 'global')`
 - Add three tab buttons above the leaderboard: **All Time**, **Monthly**, **Weekly** — clicking each re-fetches with the matching `period` param and redraws the list
 - Add a **Friends** toggle button — when active, passes `scope: 'friends'` to the current period fetch

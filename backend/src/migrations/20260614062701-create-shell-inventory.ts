@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
  * Creates the shell_inventory table and back-fills 999 of every shell type
@@ -9,9 +9,9 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * it is always free and never stored.
  */
 export class CreateShellInventory20260614062701 implements MigrationInterface {
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    // ── Create table ──────────────────────────────────────────────────────────
-    await queryRunner.query(`
+	public async up(queryRunner: QueryRunner): Promise<void> {
+		// ── Create table ──────────────────────────────────────────────────────────
+		await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS shell_inventory (
         id          SERIAL PRIMARY KEY,
         user_id     INTEGER      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -21,13 +21,13 @@ export class CreateShellInventory20260614062701 implements MigrationInterface {
       )
     `);
 
-    await queryRunner.query(`
+		await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS idx_shell_inventory_user
       ON shell_inventory (user_id)
     `);
 
-    // ── Backfill existing users with 999 of every shell ───────────────────────
-    await queryRunner.query(`
+		// ── Backfill existing users with 999 of every shell ───────────────────────
+		await queryRunner.query(`
       INSERT INTO shell_inventory (user_id, shell_type, quantity)
       SELECT u.id, s.shell_type, 999
       FROM users u
@@ -43,9 +43,9 @@ export class CreateShellInventory20260614062701 implements MigrationInterface {
           AND si.shell_type = s.shell_type
       )
     `);
-  }
+	}
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TABLE IF EXISTS shell_inventory`);
-  }
+	public async down(queryRunner: QueryRunner): Promise<void> {
+		await queryRunner.query(`DROP TABLE IF EXISTS shell_inventory`);
+	}
 }

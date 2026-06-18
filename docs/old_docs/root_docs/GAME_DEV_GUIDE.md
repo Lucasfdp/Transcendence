@@ -62,29 +62,31 @@ src/
 Create `src/games/<your-game>/<YourScene>.ts`. Use this as a starting template:
 
 ```typescript
-import Phaser from 'phaser';
-import { THEME } from '../../shared/theme';
-import { buildReturnButton } from '../../shared/mechanics/hud';
+import Phaser from "phaser";
+import { THEME } from "../../shared/theme";
+import { buildReturnButton } from "../../shared/mechanics/hud";
 
 export class YourScene extends Phaser.Scene {
-  private hudObjects: Phaser.GameObjects.GameObject[] = [];
+	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 
-  constructor() { super({ key: 'YourScene' }); }
+	constructor() {
+		super({ key: "YourScene" });
+	}
 
-  create(): void {
-    this.cameras.main.setBackgroundColor(THEME.background);
-    this.hudObjects = buildReturnButton(this);
-    this.scale.on('resize', this.onResize, this);
-  }
+	create(): void {
+		this.cameras.main.setBackgroundColor(THEME.background);
+		this.hudObjects = buildReturnButton(this);
+		this.scale.on("resize", this.onResize, this);
+	}
 
-  shutdown(): void {
-    this.scale.off('resize', this.onResize, this);
-  }
+	shutdown(): void {
+		this.scale.off("resize", this.onResize, this);
+	}
 
-  private onResize(): void {
-    this.hudObjects.forEach(o => o.destroy());
-    this.hudObjects = buildReturnButton(this);
-  }
+	private onResize(): void {
+		this.hudObjects.forEach((o) => o.destroy());
+		this.hudObjects = buildReturnButton(this);
+	}
 }
 ```
 
@@ -95,11 +97,17 @@ export class YourScene extends Phaser.Scene {
 Open `src/main.ts` and add your import and scene key:
 
 ```typescript
-import { YourScene } from './games/your-game/YourScene';
+import { YourScene } from "./games/your-game/YourScene";
 
 new Phaser.Game({
-  // ...
-  scene: [AuthCallbackScene, HubScene, BambooBashScene, ShellCurlScene, YourScene],
+	// ...
+	scene: [
+		AuthCallbackScene,
+		HubScene,
+		BambooBashScene,
+		ShellCurlScene,
+		YourScene,
+	],
 });
 ```
 
@@ -144,9 +152,9 @@ Adds a "Return to Hub" button in the top-right corner. Returns the created GameO
 
 ```typescript
 function buildReturnButton(
-  scene: Phaser.Scene,
-  targetScene?: string  // default: 'HubScene'
-): Phaser.GameObjects.GameObject[]
+	scene: Phaser.Scene,
+	targetScene?: string, // default: 'HubScene'
+): Phaser.GameObjects.GameObject[];
 ```
 
 **Usage:**
@@ -156,7 +164,7 @@ function buildReturnButton(
 this.hudObjects = buildReturnButton(this);
 
 // onResize()
-this.hudObjects.forEach(o => o.destroy());
+this.hudObjects.forEach((o) => o.destroy());
 this.hudObjects = buildReturnButton(this);
 ```
 
@@ -168,26 +176,26 @@ Drag-to-launch controller. Player grabs the ball, pulls back, releases to fire. 
 
 **`SlingshotConfig` properties:**
 
-| Property | Type | Description |
-|---|---|---|
-| `maxDrag` | `number` | Maximum pull distance in canvas px. Multiply your source-px constant by `arena.scale`. |
-| `launchSpeed` | `number` | Canvas px/s at full drag. Multiply your source-px constant by `arena.scale`. |
-| `grabRadiusFactor?` | `number` | Grab zone = `ball.r × this`. Default `3.5`. |
-| `depth?` | `number` | Render depth for the aim line graphics. Default `1`. |
+| Property            | Type     | Description                                                                            |
+| ------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `maxDrag`           | `number` | Maximum pull distance in canvas px. Multiply your source-px constant by `arena.scale`. |
+| `launchSpeed`       | `number` | Canvas px/s at full drag. Multiply your source-px constant by `arena.scale`.           |
+| `grabRadiusFactor?` | `number` | Grab zone = `ball.r × this`. Default `3.5`.                                            |
+| `depth?`            | `number` | Render depth for the aim line graphics. Default `1`.                                   |
 
 **Usage:**
 
 ```typescript
 const sling = new Slingshot(this, this.ball, {
-  maxDrag:      MAX_DRAG_SRC     * arena.scale,
-  launchSpeed:  LAUNCH_SPEED_SRC * arena.scale,
-  depth: 2,
+	maxDrag: MAX_DRAG_SRC * arena.scale,
+	launchSpeed: LAUNCH_SPEED_SRC * arena.scale,
+	depth: 2,
 });
-sling.attach();   // registers pointer handlers
+sling.attach(); // registers pointer handlers
 
 // On resize:
 sling.cancel();
-sling.maxDrag     = MAX_DRAG_SRC     * newArena.scale;
+sling.maxDrag = MAX_DRAG_SRC * newArena.scale;
 sling.launchSpeed = LAUNCH_SPEED_SRC * newArena.scale;
 
 // In shutdown():
@@ -202,24 +210,24 @@ Serialisable turn-based state machine for 2-team games. `TurnState` is a readonl
 
 **`TurnState` shape:**
 
-| Field | Type | Description |
-|---|---|---|
-| `currentTeam` | `0 \| 1` | Which team is throwing this turn. |
-| `currentEnd` | `number` | 0-indexed end number. |
-| `stonesLeft` | `[number, number]` | Stones remaining this end per team. |
-| `score` | `[number, number]` | Cumulative score `[team0, team1]`. |
-| `phase` | `TurnPhase` | `aiming \| sweeping \| settling \| scoring \| gameover` |
-| `hasHammer` | `boolean` | True when the current team has last-stone advantage. |
+| Field         | Type               | Description                                             |
+| ------------- | ------------------ | ------------------------------------------------------- |
+| `currentTeam` | `0 \| 1`           | Which team is throwing this turn.                       |
+| `currentEnd`  | `number`           | 0-indexed end number.                                   |
+| `stonesLeft`  | `[number, number]` | Stones remaining this end per team.                     |
+| `score`       | `[number, number]` | Cumulative score `[team0, team1]`.                      |
+| `phase`       | `TurnPhase`        | `aiming \| sweeping \| settling \| scoring \| gameover` |
+| `hasHammer`   | `boolean`          | True when the current team has last-stone advantage.    |
 
 **Key methods:**
 
-| Method | Description |
-|---|---|
-| `new TurnManager({ totalEnds, stonesPerTeam })` | Constructor. |
-| `.state` | Read-only snapshot of current state. |
-| `.setPhase(phase)` | Transition to a new `TurnPhase` without changing other state. |
-| `.endEnd(team, pts)` | Award `pts` to `team` (or `null` for blank end), advance to next end, reset `stonesLeft`. |
-| `.advanceTurn()` | Move to next throw within the end (swaps `currentTeam`, decrements `stonesLeft`). |
+| Method                                          | Description                                                                               |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `new TurnManager({ totalEnds, stonesPerTeam })` | Constructor.                                                                              |
+| `.state`                                        | Read-only snapshot of current state.                                                      |
+| `.setPhase(phase)`                              | Transition to a new `TurnPhase` without changing other state.                             |
+| `.endEnd(team, pts)`                            | Award `pts` to `team` (or `null` for blank end), advance to next end, reset `stonesLeft`. |
+| `.advanceTurn()`                                | Move to next throw within the end (swaps `currentTeam`, decrements `stonesLeft`).         |
 
 ---
 
@@ -228,11 +236,12 @@ Serialisable turn-based state machine for 2-team games. `TurnState` is a readonl
 Top-bar widget showing both teams' scores and the current end. Ideal for turn-based games.
 
 ```typescript
-import { ScoreHud } from '../../shared/mechanics/score-hud';
+import { ScoreHud } from "../../shared/mechanics/score-hud";
 
 // create()
 this.scoreHud = new ScoreHud(this, turnManager.state, {
-  team0Label: 'Red', team1Label: 'Gold',
+	team0Label: "Red",
+	team1Label: "Gold",
 });
 
 // update() — after state changes
@@ -248,12 +257,12 @@ this.scoreHud.rebuild();
 
 Lets players reduce friction on a moving stone by tapping/clicking during the sweeping phase.
 
-| Export | Description |
-|---|---|
-| `SWEEP_THRESHOLD` | Minimum tap rate (taps/s) required for the friction bonus. |
-| `SWEEP_FRICTION_MULT` | Per-frame friction multiplier while sweeping is active (`< 1` = less friction). |
-| `new SweepController(scene, stone)` | Attach to one stone per turn. Listens for pointer events. |
-| `.destroy()` | Remove listeners. Call at end of sweeping phase. |
+| Export                              | Description                                                                     |
+| ----------------------------------- | ------------------------------------------------------------------------------- |
+| `SWEEP_THRESHOLD`                   | Minimum tap rate (taps/s) required for the friction bonus.                      |
+| `SWEEP_FRICTION_MULT`               | Per-frame friction multiplier while sweeping is active (`< 1` = less friction). |
+| `new SweepController(scene, stone)` | Attach to one stone per turn. Listens for pointer events.                       |
+| `.destroy()`                        | Remove listeners. Call at end of sweeping phase.                                |
 
 ---
 
@@ -261,12 +270,12 @@ Lets players reduce friction on a moving stone by tapping/clicking during the sw
 
 Used by Bamboo Bash (single-ball, bouncing-off-ellipse game). Not needed for stone-based games.
 
-| Export | Description |
-|---|---|
-| `BALL_SRC_R` | Reference radius in source px. Multiply by `arena.scale` for canvas px. |
-| `stepBall(ball, delta, arena)` | Advance physics one frame. Returns `true` if ball is still moving. |
-| `isBallMoving(ball)` | `true` when speed exceeds `MIN_SPEED`. |
-| `drawShellBall(gfx, ball)` | Draw the decorative shell-pattern ball onto a `Graphics` object. |
+| Export                         | Description                                                             |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| `BALL_SRC_R`                   | Reference radius in source px. Multiply by `arena.scale` for canvas px. |
+| `stepBall(ball, delta, arena)` | Advance physics one frame. Returns `true` if ball is still moving.      |
+| `isBallMoving(ball)`           | `true` when speed exceeds `MIN_SPEED`.                                  |
+| `drawShellBall(gfx, ball)`     | Draw the decorative shell-pattern ball onto a `Graphics` object.        |
 
 ---
 
@@ -274,14 +283,14 @@ Used by Bamboo Bash (single-ball, bouncing-off-ellipse game). Not needed for sto
 
 Used by Shell Curl and any future curling-style game. Supports friction, curl bias, freeze state, and elastic collision resolution.
 
-| Export | Description |
-|---|---|
-| `stepStone(stone, delta, arena)` | Advance physics one frame. Enforces frozen-stone invariant. Returns `true` while moving. |
-| `resolveStoneCollision(a, b)` | Elastic collision. Treats frozen stones as infinite-mass walls. |
-| `isStoneOutOfBounds(stone, arena)` | `true` when stone has left the sheet (always `false` for enclosed horizontal sheets). |
-| `FRICTION_ICE = 0.990` | Default per-frame friction multiplier at 60 fps. |
-| `BOUNCE_DAMP = 0.55` | Speed retention after wall bounce. |
-| `DEFAULT_CURL_BIAS = 0` | Curl applied to plain stones. Override per-stone for spin effects. |
+| Export                             | Description                                                                              |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- |
+| `stepStone(stone, delta, arena)`   | Advance physics one frame. Enforces frozen-stone invariant. Returns `true` while moving. |
+| `resolveStoneCollision(a, b)`      | Elastic collision. Treats frozen stones as infinite-mass walls.                          |
+| `isStoneOutOfBounds(stone, arena)` | `true` when stone has left the sheet (always `false` for enclosed horizontal sheets).    |
+| `FRICTION_ICE = 0.990`             | Default per-frame friction multiplier at 60 fps.                                         |
+| `BOUNCE_DAMP = 0.55`               | Speed retention after wall bounce.                                                       |
+| `DEFAULT_CURL_BIAS = 0`            | Curl applied to plain stones. Override per-stone for spin effects.                       |
 
 ---
 
@@ -291,17 +300,17 @@ Used by Shell Curl and any future curling-style game. Supports friction, curl bi
 
 Used by Bamboo Bash. Describes a sumo ring: an ellipse boundary with a central house target. Balls bounce off the ellipse wall.
 
-| Export | Description |
-|---|---|
-| `ArenaDef` | Source-px geometry: `srcW, srcH, cx, cy, rx, ry, houseRadii[]`. |
-| `ArenaPixels` | Same fields resolved to canvas pixels, plus `scale`. |
+| Export                     | Description                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| `ArenaDef`                 | Source-px geometry: `srcW, srcH, cx, cy, rx, ry, houseRadii[]`.                   |
+| `ArenaPixels`              | Same fields resolved to canvas pixels, plus `scale`.                              |
 | `arenaToScreen(def, w, h)` | Letterbox-fit the def into the canvas. Call in `create()` and every `onResize()`. |
-| `drawSumoRing(gfx, arena)` | Draw the ring boundary and house rings onto a `Graphics` object. |
+| `drawSumoRing(gfx, arena)` | Draw the ring boundary and house rings onto a `Graphics` object.                  |
 
 **Pre-built definition:**
 
 ```typescript
-import { ARENA_01 } from '../../shared/arenas/arena01';
+import { ARENA_01 } from "../../shared/arenas/arena01";
 const arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
 ```
 
@@ -311,28 +320,32 @@ const arena = arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
 
 Used by Shell Curl. Describes a rectangular playing field with configurable orientation.
 
-| Export | Description |
-|---|---|
-| `RectArenaDef` | Source-px geometry: `srcW, srcH, sheetX/Y/W/H, houseRadius, houseCentreOffset, orientation`. |
-| `RectArenaPixels` | Canvas-pixel geometry. Includes `houseFarCX/Y`, `houseNearCX/Y`, `houseRadii[4]`, `deliveryX/Y`, `hogX/Y`, `scale`. |
-| `rectArenaToScreen(def, w, h)` | Letterbox-fit the rect arena def. Call in `create()` and every `onResize()`. |
-| `drawIceSheet(gfx, arena)` | Draw ice fill, pebble texture, house rings, hog lines, and hack mark. |
-| `isStoneInHouse(stone, arena)` | `true` when stone is within the outermost house ring at the scoring end. |
-| `distanceToHouseButton(stone, arena)` | Distance to house button (use for scoring tie-breaks). |
-| `isStoneOutOfBounds(stone, arena)` | Horizontal sheets always `false` (enclosed). Vertical sheets check walls. |
+| Export                                | Description                                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `RectArenaDef`                        | Source-px geometry: `srcW, srcH, sheetX/Y/W/H, houseRadius, houseCentreOffset, orientation`.                        |
+| `RectArenaPixels`                     | Canvas-pixel geometry. Includes `houseFarCX/Y`, `houseNearCX/Y`, `houseRadii[4]`, `deliveryX/Y`, `hogX/Y`, `scale`. |
+| `rectArenaToScreen(def, w, h)`        | Letterbox-fit the rect arena def. Call in `create()` and every `onResize()`.                                        |
+| `drawIceSheet(gfx, arena)`            | Draw ice fill, pebble texture, house rings, hog lines, and hack mark.                                               |
+| `isStoneInHouse(stone, arena)`        | `true` when stone is within the outermost house ring at the scoring end.                                            |
+| `distanceToHouseButton(stone, arena)` | Distance to house button (use for scoring tie-breaks).                                                              |
+| `isStoneOutOfBounds(stone, arena)`    | Horizontal sheets always `false` (enclosed). Vertical sheets check walls.                                           |
 
 **Orientation options:**
 
-| Value | Behaviour |
-|---|---|
-| `'horizontal'` | Stone travels left → right. Right end is the scoring house. All four walls bounce. Used by Shell Curl. |
-| `'vertical'` | Stone travels top → bottom. Bottom is the scoring house. Left/right walls bounce; far end removes stones. |
+| Value          | Behaviour                                                                                                 |
+| -------------- | --------------------------------------------------------------------------------------------------------- |
+| `'horizontal'` | Stone travels left → right. Right end is the scoring house. All four walls bounce. Used by Shell Curl.    |
+| `'vertical'`   | Stone travels top → bottom. Bottom is the scoring house. Left/right walls bounce; far end removes stones. |
 
 **Pre-built definition:**
 
 ```typescript
-import { CURL_SHEET } from '../../shared/arenas/curl-sheet';
-const arena = rectArenaToScreen(CURL_SHEET, this.scale.width, this.scale.height);
+import { CURL_SHEET } from "../../shared/arenas/curl-sheet";
+const arena = rectArenaToScreen(
+	CURL_SHEET,
+	this.scale.width,
+	this.scale.height,
+);
 ```
 
 ---
@@ -343,15 +356,18 @@ All measurements are in source pixels at your chosen reference resolution (e.g. 
 
 ```typescript
 // src/shared/arenas/my-arena.ts
-import { RectArenaDef } from '../mechanics/rect-arena';
+import { RectArenaDef } from "../mechanics/rect-arena";
 
 export const MY_ARENA: RectArenaDef = {
-  srcW: 1920, srcH: 1080,
-  sheetX: 120, sheetY: 100,
-  sheetW: 1680, sheetH: 880,
-  houseRadius: 200,
-  houseCentreOffset: 360,
-  orientation: 'horizontal',
+	srcW: 1920,
+	srcH: 1080,
+	sheetX: 120,
+	sheetY: 100,
+	sheetW: 1680,
+	sheetH: 880,
+	houseRadius: 200,
+	houseCentreOffset: 360,
+	orientation: "horizontal",
 };
 ```
 
@@ -364,23 +380,23 @@ export const MY_ARENA: RectArenaDef = {
 Import `THEME` in every scene and component. Never hardcode colours inline.
 
 ```typescript
-import { THEME } from '../../shared/theme';
+import { THEME } from "../../shared/theme";
 ```
 
-| Token | Value | Usage |
-|---|---|---|
-| `THEME.background` | `0x1a1410` | Default scene background — very dark warm brown. |
-| `THEME.red` | `0xa23b3b` | Primary accent — muted temple red. |
-| `THEME.gold` | `0xd4a843` | Primary highlight — warm gold. Borders, active elements. |
-| `THEME.green` | `0x3a5a40` | Secondary — dark forest green. |
-| `THEME.redMuted` | `0x5a2424` | Locked/disabled state of red. |
-| `THEME.goldMuted` | `0x6e5a2c` | Locked/disabled state of gold. |
-| `THEME.greenMuted` | `0x223028` | Locked/disabled state of green. |
-| `THEME.textMuted` | `0x6b6258` | Muted text (hex number, for `Graphics`). |
-| `THEME.text` | `'#e6ddd0'` | Main body text (CSS string, for `Text` objects). |
-| `THEME.textGold` | `'#d4a843'` | Gold text for scores/highlights (CSS string). |
-| `THEME.textMutedHex` | `'#6b6258'` | Muted text (CSS string, for `Text` objects). |
-| `THEME.font` | `'monospace'` | Font family for all `Text` objects. |
+| Token                | Value         | Usage                                                    |
+| -------------------- | ------------- | -------------------------------------------------------- |
+| `THEME.background`   | `0x1a1410`    | Default scene background — very dark warm brown.         |
+| `THEME.red`          | `0xa23b3b`    | Primary accent — muted temple red.                       |
+| `THEME.gold`         | `0xd4a843`    | Primary highlight — warm gold. Borders, active elements. |
+| `THEME.green`        | `0x3a5a40`    | Secondary — dark forest green.                           |
+| `THEME.redMuted`     | `0x5a2424`    | Locked/disabled state of red.                            |
+| `THEME.goldMuted`    | `0x6e5a2c`    | Locked/disabled state of gold.                           |
+| `THEME.greenMuted`   | `0x223028`    | Locked/disabled state of green.                          |
+| `THEME.textMuted`    | `0x6b6258`    | Muted text (hex number, for `Graphics`).                 |
+| `THEME.text`         | `'#e6ddd0'`   | Main body text (CSS string, for `Text` objects).         |
+| `THEME.textGold`     | `'#d4a843'`   | Gold text for scores/highlights (CSS string).            |
+| `THEME.textMutedHex` | `'#6b6258'`   | Muted text (CSS string, for `Text` objects).             |
+| `THEME.font`         | `'monospace'` | Font family for all `Text` objects.                      |
 
 **Examples:**
 
@@ -390,10 +406,10 @@ gfx.fillStyle(THEME.gold, 1);
 gfx.lineStyle(2, THEME.red, 0.9);
 
 // Phaser Text (uses CSS string)
-this.add.text(x, y, 'SCORE  0', {
-  fontSize: '22px',
-  color: THEME.textGold,
-  fontFamily: THEME.font,
+this.add.text(x, y, "SCORE  0", {
+	fontSize: "22px",
+	color: THEME.textGold,
+	fontFamily: THEME.font,
 });
 ```
 
@@ -407,39 +423,43 @@ The power system lets each game offer a subset of the 11 built-in powers without
 
 ### 6.2 `PowerType` enum
 
-| Value | Effect |
-|---|---|
-| `PowerType.NONE` | Standard stone — no effect. |
-| `PowerType.HEAVY` | Larger stone, harder to deflect. |
-| `PowerType.BOMB` | Explodes on rest, pushing nearby stones outward. |
-| `PowerType.SPLITTER` | Splits into 3 child stones on first collision. |
-| `PowerType.GHOST` | Passes through other stones without collision. |
-| `PowerType.MAGNET` | Attracts nearby enemy stones while in motion. |
-| `PowerType.SPINNING` | Strong curl bias — arcs dramatically across the sheet. |
-| `PowerType.BOUNCER` | No speed loss on wall bounce (full elastic). |
-| `PowerType.SHIELD` | If stone rests inside the house, becomes very hard to dislodge. |
-| `PowerType.FREEZE` | Freezes any stone it collides with in place. |
-| `PowerType.SLICK` | Near-frictionless — travels much further. |
+| Value                | Effect                                                          |
+| -------------------- | --------------------------------------------------------------- |
+| `PowerType.NONE`     | Standard stone — no effect.                                     |
+| `PowerType.HEAVY`    | Larger stone, harder to deflect.                                |
+| `PowerType.BOMB`     | Explodes on rest, pushing nearby stones outward.                |
+| `PowerType.SPLITTER` | Splits into 3 child stones on first collision.                  |
+| `PowerType.GHOST`    | Passes through other stones without collision.                  |
+| `PowerType.MAGNET`   | Attracts nearby enemy stones while in motion.                   |
+| `PowerType.SPINNING` | Strong curl bias — arcs dramatically across the sheet.          |
+| `PowerType.BOUNCER`  | No speed loss on wall bounce (full elastic).                    |
+| `PowerType.SHIELD`   | If stone rests inside the house, becomes very hard to dislodge. |
+| `PowerType.FREEZE`   | Freezes any stone it collides with in place.                    |
+| `PowerType.SLICK`    | Near-frictionless — travels much further.                       |
 
 ### 6.3 `PowerDef` hooks
 
-| Hook | Required | Description |
-|---|---|---|
-| `onApply(stone, arena)` | Yes | Called immediately on launch. Mutate stone properties (`r`, `frictionOverride`, `curlBias`, etc.). |
-| `onUpdate?(stone, dt, arena)` | No | Called every frame while the stone is moving. Use for continuous effects (magnet pull, etc.). |
-| `onCollide?(stone, other, arena)` | No | Called on first contact with another stone (before resolution). Use for Splitter, Freeze, Ghost. |
-| `onStop?(stone, arena, all)` | No | Called once when the stone comes to rest. Use for Bomb explosion, Shield activation. |
+| Hook                              | Required | Description                                                                                        |
+| --------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `onApply(stone, arena)`           | Yes      | Called immediately on launch. Mutate stone properties (`r`, `frictionOverride`, `curlBias`, etc.). |
+| `onUpdate?(stone, dt, arena)`     | No       | Called every frame while the stone is moving. Use for continuous effects (magnet pull, etc.).      |
+| `onCollide?(stone, other, arena)` | No       | Called on first contact with another stone (before resolution). Use for Splitter, Freeze, Ghost.   |
+| `onStop?(stone, arena, all)`      | No       | Called once when the stone comes to rest. Use for Bomb explosion, Shield activation.               |
 
 ### 6.4 Using powers in your game
 
 ```typescript
 import {
-  PowerRegistry, ALL_POWERS, PowerType,
-} from '../../shared/mechanics/power-system';
+	PowerRegistry,
+	ALL_POWERS,
+	PowerType,
+} from "../../shared/mechanics/power-system";
 
 // Pick which powers your game allows
 const registry = new PowerRegistry([
-  PowerType.HEAVY, PowerType.BOMB, PowerType.FREEZE,
+	PowerType.HEAVY,
+	PowerType.BOMB,
+	PowerType.FREEZE,
 ]);
 
 // Get the PowerDef for the player's chosen type
@@ -464,16 +484,16 @@ def.onStop?.(stone, arena, allStones);
 
 Phaser draws objects from lowest depth to highest. Follow this layer stack:
 
-| Depth | Layer | Contents |
-|---|---|---|
-| 0 | Background | Scene background, tatami/ice fill, static decorations. |
-| 1 | Arena | Ring/sheet markings. |
-| 2 | Aim gfx | Slingshot aim line (`depth` param in `SlingshotConfig`). |
-| 3 | Gameplay | Balls, stones, bamboo, obstacles. |
-| 4 | FX | Score pop-ups, hit flashes, particle effects. |
-| 10 | Power UI | Power picker, turn indicator. |
-| 20 | HUD | Score HUD bar, timer, return button. |
-| 30 | Overlays | End-of-round result panel, game-over screen. |
+| Depth | Layer      | Contents                                                 |
+| ----- | ---------- | -------------------------------------------------------- |
+| 0     | Background | Scene background, tatami/ice fill, static decorations.   |
+| 1     | Arena      | Ring/sheet markings.                                     |
+| 2     | Aim gfx    | Slingshot aim line (`depth` param in `SlingshotConfig`). |
+| 3     | Gameplay   | Balls, stones, bamboo, obstacles.                        |
+| 4     | FX         | Score pop-ups, hit flashes, particle effects.            |
+| 10    | Power UI   | Power picker, turn indicator.                            |
+| 20    | HUD        | Score HUD bar, timer, return button.                     |
+| 30    | Overlays   | End-of-round result panel, game-over screen.             |
 
 > `buildReturnButton` uses depths 20–22 internally. `ScoreHud` uses depth 20. Keep overlays at depth 30+ so they cover everything.
 
@@ -489,10 +509,10 @@ The pattern is always the same:
 2. Cancel any in-flight drag: `sling.cancel()`.
 3. Update `sling.maxDrag` and `sling.launchSpeed` using the new `arena.scale`.
 4. Reposition moving objects by carrying over their relative position:
-   ```typescript
-   const relX = (ball.x - oldArena.cx) / oldArena.rx;
-   ball.x = newArena.cx + relX * newArena.rx;
-   ```
+    ```typescript
+    const relX = (ball.x - oldArena.cx) / oldArena.rx;
+    ball.x = newArena.cx + relX * newArena.rx;
+    ```
 5. Rescale velocities: `vx *= newArena.scale / oldArena.scale`.
 6. Destroy and rebuild HUD: `buildReturnButton`, `scoreHud.rebuild()`.
 7. Redraw all `Graphics` layers.
@@ -505,17 +525,19 @@ The pattern is always the same:
 
 Thin REST wrappers for communicating with the backend.
 
-| Method | Returns | Description |
-|---|---|---|
-| `api.getMe()` | `Promise<User>` | Returns `{ displayName, username, avatarUrl }`. Use in end screens to personalise results. |
-| `api.submitScore(game, score)` | `Promise<void>` | Post a score for leaderboard tracking. `game` must match your game's ID string. |
+| Method                         | Returns         | Description                                                                                |
+| ------------------------------ | --------------- | ------------------------------------------------------------------------------------------ |
+| `api.getMe()`                  | `Promise<User>` | Returns `{ displayName, username, avatarUrl }`. Use in end screens to personalise results. |
+| `api.submitScore(game, score)` | `Promise<void>` | Post a score for leaderboard tracking. `game` must match your game's ID string.            |
 
 **Pattern for end screens:**
 
 ```typescript
 api.getMe()
-  .then(me => nameText.setText(me.displayName ?? me.username ?? 'You'))
-  .catch(() => { /* keep 'You' fallback */ });
+	.then((me) => nameText.setText(me.displayName ?? me.username ?? "You"))
+	.catch(() => {
+		/* keep 'You' fallback */
+	});
 ```
 
 ---

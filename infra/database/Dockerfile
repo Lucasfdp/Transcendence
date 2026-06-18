@@ -20,7 +20,7 @@
 #   /var/lib/postgresql/data → named volume db_data (defined in compose)
 # ==============================================================================
 
-FROM postgres:16-alpine
+FROM postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
 
 LABEL maintainer="ft_transcendence"
 LABEL description="PostgreSQL database service"

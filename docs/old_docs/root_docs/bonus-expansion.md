@@ -24,10 +24,12 @@ How to add bonus services to the ft_transcendence Docker infrastructure.
 **Volumes:** None (stateless; tokens stored in Redis)
 
 **Implementation options:**
+
 - Integrate 42 OAuth directly into the main backend (simplest)
 - Create a dedicated `auth_service` that issues JWTs (more scalable)
 
 **42 OAuth flow:**
+
 ```
 User clicks "Login with 42"
   → Browser → /api/auth/42 → backend
@@ -40,6 +42,7 @@ User clicks "Login with 42"
 ```
 
 **Environment variables needed:**
+
 ```
 FORTYTWO_CLIENT_ID=<from 42 intra app settings>
 FORTYTWO_CLIENT_SECRET=<from 42 intra app settings>
@@ -57,11 +60,13 @@ FORTYTWO_CALLBACK_URL=https://<your-domain>/api/auth/42/callback
 **Volumes:** Chat history stored in PostgreSQL (shared `db_data` volume or separate DB)
 
 **Technology options:**
+
 - Django Channels (if using Django)
 - Socket.io with Redis adapter (if using Node)
 - Dedicated Go chat server
 
 **Nginx route to add:**
+
 ```nginx
 location /ws/chat/ {
     proxy_pass http://chat_service:8002;
@@ -82,6 +87,7 @@ location /ws/chat/ {
 **Volumes:** Uses existing `db_data` (matchmaking records) and `redis_data` (queues)
 
 **Data flow:**
+
 ```
 User requests match → Backend → Matchmaking service
   → Checks Redis queue for opponent
@@ -100,17 +106,18 @@ User requests match → Backend → Matchmaking service
 **Volume:** Requires a new `elasticsearch_data` volume (data can be large: plan 1–10 GB)
 
 **Compose snippet:**
+
 ```yaml
 elasticsearch:
-  image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
-  environment:
-    - discovery.type=single-node
-    - ES_JAVA_OPTS=-Xms512m -Xmx512m
-    - xpack.security.enabled=false  # Enable in production
-  volumes:
-    - elasticsearch_data:/usr/share/elasticsearch/data
-  networks:
-    - backend_network
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    environment:
+        - discovery.type=single-node
+        - ES_JAVA_OPTS=-Xms512m -Xmx512m
+        - xpack.security.enabled=false # Enable in production
+    volumes:
+        - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+        - backend_network
 ```
 
 **Security note:** Enable X-Pack security (TLS + authentication) before exposing Elasticsearch beyond `localhost`.
@@ -127,23 +134,24 @@ elasticsearch:
 
 ```yaml
 prometheus:
-  image: prom/prometheus:v2.51.0
-  volumes:
-    - ./requirements/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    - monitoring_data:/prometheus
-  networks: [frontend_network, backend_network]
+    image: prom/prometheus:v2.51.0
+    volumes:
+        - ./requirements/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+        - monitoring_data:/prometheus
+    networks: [frontend_network, backend_network]
 
 grafana:
-  image: grafana/grafana:10.4.0
-  environment:
-    - GF_SECURITY_ADMIN_USER=${GF_ADMIN_USER}
-    - GF_SECURITY_ADMIN_PASSWORD=${GF_ADMIN_PASSWORD}
-  volumes:
-    - grafana_data:/var/lib/grafana
-  networks: [frontend_network]
+    image: grafana/grafana:10.4.0
+    environment:
+        - GF_SECURITY_ADMIN_USER=${GF_ADMIN_USER}
+        - GF_SECURITY_ADMIN_PASSWORD=${GF_ADMIN_PASSWORD}
+    volumes:
+        - grafana_data:/var/lib/grafana
+    networks: [frontend_network]
 ```
 
 **Metrics to instrument in the backend:**
+
 - `http_requests_total` — request count by endpoint and status code
 - `http_request_duration_seconds` — latency histogram
 - `websocket_connections_active` — live WebSocket count
@@ -167,6 +175,7 @@ POST /ai/move
 ```
 
 **Implementation options:**
+
 - Rule-based (simple heuristic, no ML)
 - Minimax with alpha-beta pruning (deterministic AI)
 - Pre-trained reinforcement learning model (requires GPU in production)
@@ -185,13 +194,13 @@ POST /ai/move
 
 ```yaml
 blockchain_service:
-  build: ./requirements/blockchain_service
-  secrets: [blockchain_private_key]
-  networks: [frontend_network, backend_network]
+    build: ./requirements/blockchain_service
+    secrets: [blockchain_private_key]
+    networks: [frontend_network, backend_network]
 ```
 
 ```yaml
 secrets:
-  blockchain_private_key:
-    file: ./srcs/secrets/blockchain_key.txt
+    blockchain_private_key:
+        file: ./srcs/secrets/blockchain_key.txt
 ```

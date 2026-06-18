@@ -35,13 +35,13 @@
 
 - Nuevos servicios de Compose: `vault` y sidecars/companions de Vault Agent para `backend`, `database`, `redis` y `monitoring`.
 - Nuevos comandos operativos:
-  - `make vault-init`
-  - `make vault-unseal`
-  - `make vault-seed-dev`
-  - `make vault-rotate SERVICE=...`
+    - `make vault-init`
+    - `make vault-unseal`
+    - `make vault-seed-dev`
+    - `make vault-rotate SERVICE=...`
 - Nuevo comportamiento externo:
-  - peticiones maliciosas a `/api/*` pueden responder `403/406` en Nginx antes de llegar a NestJS
-  - si Vault está sealed o faltan secretos renderizados, los servicios dependientes no arrancan sanos
+    - peticiones maliciosas a `/api/*` pueden responder `403/406` en Nginx antes de llegar a NestJS
+    - si Vault está sealed o faltan secretos renderizados, los servicios dependientes no arrancan sanos
 
 ## Test Plan
 

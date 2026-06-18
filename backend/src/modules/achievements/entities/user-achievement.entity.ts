@@ -1,20 +1,24 @@
 import {
-  Column, Entity, Index, ManyToOne, PrimaryGeneratedColumn,
-} from 'typeorm';
-import { User } from '../../users/entities/user.entity';
+	Column,
+	Entity,
+	Index,
+	ManyToOne,
+	PrimaryGeneratedColumn,
+} from "typeorm";
+import { User } from "../../users/entities/user.entity";
 
-@Entity('user_achievements')
-@Index(['user', 'achievementId'], { unique: true })
+@Entity("user_achievements")
+@Index(["user", "achievementId"], { unique: true })
 export class UserAchievement {
-  @PrimaryGeneratedColumn()
-  id: number;
+	@PrimaryGeneratedColumn()
+	id: number;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  user: User;
+	@ManyToOne(() => User, { onDelete: "CASCADE" })
+	user: User;
 
-  @Column()
-  achievementId: string;
+	@Column()
+	achievementId: string;
 
-  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
-  unlockedAt: Date;
+	@Column({ type: "timestamptz", default: () => "CURRENT_TIMESTAMP" })
+	unlockedAt: Date;
 }

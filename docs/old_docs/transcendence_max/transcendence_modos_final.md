@@ -10,11 +10,11 @@ Lanzas tu tortuga como una bola de billar contra objetos del escenario.
 
 ## Mecánica base
 
-* Arena rectangular o circular.
-* El jugador apunta, carga fuerza y suelta.
-* La tortuga rebota contra paredes, cajas, tambores, muñecos, campanas o estatuas.
-* Los objetos se crean y posicionan aleatoriamente en cada turno.
-* Cuantos más objetos destruyes en cadena, más puntos.
+- Arena rectangular o circular.
+- El jugador apunta, carga fuerza y suelta.
+- La tortuga rebota contra paredes, cajas, tambores, muñecos, campanas o estatuas.
+- Los objetos se crean y posicionan aleatoriamente en cada turno.
+- Cuantos más objetos destruyes en cadena, más puntos.
 
 ## Multijugador
 
@@ -51,17 +51,17 @@ Una tortuga rebotando contra varios darumas con explosiones de madera y puntos f
 
 Modo de empujar, romper o cortar cañas de bambú usando embestidas.
 
-## Mecánica base 
+## Mecánica base
 
- * Pequeños grupos de bambúes crecen en el escenario.
- * Cada grupo crece en 3 tiempos, dando 1, 2 o 3 de bambú.
- * Todos tienen 1 punto de vida/impacto.
- * Este modo es por tiempo.
+- Pequeños grupos de bambúes crecen en el escenario.
+- Cada grupo crece en 3 tiempos, dando 1, 2 o 3 de bambú.
+- Todos tienen 1 punto de vida/impacto.
+- Este modo es por tiempo.
 
 ## Multijugador
 
-* Gana quien recoja más bambú.
-* O quien destruya más bambú.
+- Gana quien recoja más bambú.
+- O quien destruya más bambú.
 
 ## Lo bueno
 
@@ -71,7 +71,7 @@ Es muy fácil de entender visualmente. Miniatura clara: tortuga embistiendo bamb
 
 Puede tener enemigos neutrales, como monos que lanzan fruta o pájaros que molestan.
 
- ---------------------------------------------------------------------------
+---
 
 **Kame Knock**.
 
@@ -79,12 +79,12 @@ Es el más fácil de comunicar con miniaturas y el más compatible con el sistem
 
 También sirve para probar mecánicas sin necesidad de matchmaking complejo:
 
-* puede ser single-player,
-* puede ser por turnos,
-* puede ser 1v1,
-* puede tener ranking,
-* puede dar monedas,
-* puede generar misiones diarias.
+- puede ser single-player,
+- puede ser por turnos,
+- puede ser 1v1,
+- puede tener ranking,
+- puede dar monedas,
+- puede generar misiones diarias.
 
 Ejemplo de descripción para el hub:
 
@@ -94,4 +94,3 @@ Lanza tu tortuga contra objetivos, encadena rebotes y consigue la mayor puntuaci
 ```
 
 Y visualmente sería muy claro: tortuga vista desde arriba, línea de trayectoria, objetivos rompibles, números de puntos, efectos de impacto.
-

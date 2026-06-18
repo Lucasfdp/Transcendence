@@ -38,13 +38,13 @@ Browser
 
 **Key files**
 
-| File | Purpose |
-|------|---------|
-| `docker-compose.yml` | Production service definitions |
+| File                          | Purpose                                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------- |
+| `docker-compose.yml`          | Production service definitions                                                        |
 | `docker-compose.override.yml` | Dev overrides — hot-reload for frontend (Vite HMR) and backend (`nest start --watch`) |
-| `.env` | All secrets and tunable values (never commit real values) |
-| `.env.example` | Safe-to-commit template |
-| `Makefile` | Developer shortcuts (`make up`, `make dev`, `make logs`, etc.) |
+| `.env`                        | All secrets and tunable values (never commit real values)                             |
+| `.env.example`                | Safe-to-commit template                                                               |
+| `Makefile`                    | Developer shortcuts (`make up`, `make dev`, `make logs`, etc.)                        |
 
 **Two Docker networks** enforce a security perimeter:
 
@@ -87,8 +87,8 @@ Root module. Wires up ConfigModule (global), TypeORM (async factory using Config
 Handles login and JWT issuance.
 
 - `AuthController` — two endpoints:
-  - `GET /api/auth/dev-login?username=<name>` — creates or finds a local user and returns a JWT. Double-gated: only works when `NODE_ENV !== 'production'` **and** `ENABLE_DEV_LOGIN=true`.
-  - `GET /api/auth/me` — returns the current user from the JWT (JWT-guarded).
+    - `GET /api/auth/dev-login?username=<name>` — creates or finds a local user and returns a JWT. Double-gated: only works when `NODE_ENV !== 'production'` **and** `ENABLE_DEV_LOGIN=true`.
+    - `GET /api/auth/me` — returns the current user from the JWT (JWT-guarded).
 - `AuthService` — `findOrCreateUser()`, `issueJwt()`, `devLogin()`. All async calls are wrapped in try/catch with `InternalServerErrorException`.
 - `JwtStrategy` — validates Bearer tokens and loads the full user from the database.
 - `FortyTwoStrategy` — stub for 42 OAuth (disabled; see TODO #1 in the code).
@@ -127,6 +127,7 @@ Standard PostgreSQL container. Accessible only inside `backend_network` — the 
 - Initialisation scripts can be dropped in `tools/` and will run on first boot.
 
 To access the database directly during development:
+
 ```
 docker compose exec database psql -U $POSTGRES_USER $POSTGRES_DB
 ```
@@ -168,11 +169,11 @@ The main hub world. See [§7 Hub Scene](#7-hub-scene).
 
 ### Supporting files
 
-| File | Purpose |
-|------|---------|
+| File                               | Purpose                                                                                                                                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `frontend/src/features/hub/api.ts` | Typed wrappers around `fetch` — all API calls go through `apiFetch()` which attaches the JWT Bearer token automatically. Exports `api.getMe()`, `api.getAllUsers()`, `api.getMiniGames()`, `api.devLogin()`. |
-| `frontend/src/shared/theme.ts` | Central colour palette (warm Japanese-temple: deep charcoal background, gold accents, muted red). All Phaser graphics calls reference `THEME.*` constants so colours are changed in one place. |
-| `public/assets/hub-background.png` | Optional background image. If missing or failed to load, the procedural night-sky scene renders as a full fallback. |
+| `frontend/src/shared/theme.ts`     | Central colour palette (warm Japanese-temple: deep charcoal background, gold accents, muted red). All Phaser graphics calls reference `THEME.*` constants so colours are changed in one place.               |
+| `public/assets/hub-background.png` | Optional background image. If missing or failed to load, the procedural night-sky scene renders as a full fallback.                                                                                          |
 
 ---
 
@@ -203,15 +204,15 @@ On click: if the game is `available` and its scene is registered, the scene star
 
 **Current zone map:**
 
-| Zone | Status |
-|------|--------|
-| Kame Knock | available |
-| Bell Clash | coming soon |
-| River Rush | coming soon |
-| Bamboo Bash | coming soon |
-| Oni Dodge | coming soon |
+| Zone         | Status      |
+| ------------ | ----------- |
+| Kame Knock   | available   |
+| Bell Clash   | coming soon |
+| River Rush   | coming soon |
+| Bamboo Bash  | coming soon |
+| Oni Dodge    | coming soon |
 | Sakura Sweep | coming soon |
-| Shell Cards | coming soon |
+| Shell Cards  | coming soon |
 
 ### Cherry Blossom Petal Effect
 
@@ -285,31 +286,31 @@ JWT-protected request:
 
 ### User
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | int (PK) | auto-increment |
-| fortyTwoId | string (unique) | `"dev-<username>"` for dev logins |
-| username | string (unique) | |
-| email | string (unique) | |
-| avatar | string (nullable) | URL to avatar image |
-| level | int | default 1 |
-| xp | int | default 0 |
+| Column     | Type              | Notes                                |
+| ---------- | ----------------- | ------------------------------------ |
+| id         | int (PK)          | auto-increment                       |
+| fortyTwoId | string (unique)   | `"dev-<username>"` for dev logins    |
+| username   | string (unique)   |                                      |
+| email      | string (unique)   |                                      |
+| avatar     | string (nullable) | URL to avatar image                  |
+| level      | int               | default 1                            |
+| xp         | int               | default 0                            |
 | turtleName | string (nullable) | display name; falls back to username |
-| shellSkin | string | default `"kanagawa"` |
-| createdAt | timestamp | |
-| updatedAt | timestamp | |
-| profile | Profile | one-to-one, eager-loaded |
+| shellSkin  | string            | default `"kanagawa"`                 |
+| createdAt  | timestamp         |                                      |
+| updatedAt  | timestamp         |                                      |
+| profile    | Profile           | one-to-one, eager-loaded             |
 
 ### Profile
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | int (PK) | |
-| user | User | one-to-one FK |
-| totalWins | int | default 0 |
-| totalLosses | int | default 0 |
-| gamesPlayed | int | default 0 |
-| bio | string (nullable) | player bio text |
+| Column      | Type              | Notes           |
+| ----------- | ----------------- | --------------- |
+| id          | int (PK)          |                 |
+| user        | User              | one-to-one FK   |
+| totalWins   | int               | default 0       |
+| totalLosses | int               | default 0       |
+| gamesPlayed | int               | default 0       |
+| bio         | string (nullable) | player bio text |
 
 ---
 
@@ -342,11 +343,11 @@ To add a new game:
 
 Coverage is output in LCOV format (for SonarCloud) and a text summary. Three spec files are included:
 
-| File | Covers |
-|------|--------|
-| `auth/auth.service.spec.ts` | `findOrCreateUser`, `issueJwt`, `devLogin` — happy path, missing user, error propagation |
-| `users/users.service.spec.ts` | All five service methods, including `NotFoundException` re-throw vs wrapping |
-| `auth/strategies/jwt.strategy.spec.ts` | `validate()` with valid payload and missing user |
+| File                                   | Covers                                                                                   |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `auth/auth.service.spec.ts`            | `findOrCreateUser`, `issueJwt`, `devLogin` — happy path, missing user, error propagation |
+| `users/users.service.spec.ts`          | All five service methods, including `NotFoundException` re-throw vs wrapping             |
+| `auth/strategies/jwt.strategy.spec.ts` | `validate()` with valid payload and missing user                                         |
 
 ### ESLint
 
@@ -368,19 +369,19 @@ A pre-commit hook runs `lint-staged` on every `git commit`. Any staged `.ts` fil
 
 Run from the repo root (where `.env` lives).
 
-| Command | What it does |
-|---------|-------------|
-| `make up` | Build and start all services in production mode |
-| `make dev` | Start with `docker-compose.override.yml` (hot-reload) |
-| `make down` | Stop and remove containers |
-| `make re` | Full rebuild — equivalent to `down` then `up` |
-| `make fclean` | Remove containers, volumes, and images |
-| `make logs SERVICE=backend` | Tail logs for a specific service |
-| `make ps` | Show running container status |
-| `make db` | Open a psql shell in the database container |
-| `make test` | Run backend Jest tests |
-| `make health` | Curl the `/api/health` endpoint |
-| `make push` | Tag and push images to a registry |
+| Command                     | What it does                                          |
+| --------------------------- | ----------------------------------------------------- |
+| `make up`                   | Build and start all services in production mode       |
+| `make dev`                  | Start with `docker-compose.override.yml` (hot-reload) |
+| `make down`                 | Stop and remove containers                            |
+| `make re`                   | Full rebuild — equivalent to `down` then `up`         |
+| `make fclean`               | Remove containers, volumes, and images                |
+| `make logs SERVICE=backend` | Tail logs for a specific service                      |
+| `make ps`                   | Show running container status                         |
+| `make db`                   | Open a psql shell in the database container           |
+| `make test`                 | Run backend Jest tests                                |
+| `make health`               | Curl the `/api/health` endpoint                       |
+| `make push`                 | Tag and push images to a registry                     |
 
 ---
 
@@ -388,14 +389,14 @@ Run from the repo root (where `.env` lives).
 
 All variables live in `.env` at the repo root. Key ones to know during development:
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `BACKEND_ENV` | `development` | Sets `NODE_ENV` inside the backend container |
-| `ENABLE_DEV_LOGIN` | `true` (in dev) | Enables `GET /api/auth/dev-login`. **Never set in production.** |
-| `JWT_SECRET` | `changeme_jwt_secret` | Signs all JWTs — use a strong random string in production |
-| `POSTGRES_*` | see `.env` | Database credentials |
-| `VITE_API_URL` | `https://localhost/api` | API base URL injected into the Vite build |
-| `FORTYTWO_CLIENT_ID/SECRET` | empty | 42 OAuth credentials — leave empty until keys are obtained |
-| `DOMAIN_NAME` | `localhost` | Used by Nginx server_name in production |
+| Variable                    | Default                 | Purpose                                                         |
+| --------------------------- | ----------------------- | --------------------------------------------------------------- |
+| `BACKEND_ENV`               | `development`           | Sets `NODE_ENV` inside the backend container                    |
+| `ENABLE_DEV_LOGIN`          | `true` (in dev)         | Enables `GET /api/auth/dev-login`. **Never set in production.** |
+| `JWT_SECRET`                | `changeme_jwt_secret`   | Signs all JWTs — use a strong random string in production       |
+| `POSTGRES_*`                | see `.env`              | Database credentials                                            |
+| `VITE_API_URL`              | `https://localhost/api` | API base URL injected into the Vite build                       |
+| `FORTYTWO_CLIENT_ID/SECRET` | empty                   | 42 OAuth credentials — leave empty until keys are obtained      |
+| `DOMAIN_NAME`               | `localhost`             | Used by Nginx server_name in production                         |
 
 > **Never commit real secrets.** `.env` is listed in `.gitignore`. Use `.env.example` as the committed template.

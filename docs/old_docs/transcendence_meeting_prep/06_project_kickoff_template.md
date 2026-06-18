@@ -9,12 +9,12 @@
 ## Team Members
 
 | Name | Preferred Role(s) | Strengths | Technologies Known |
-|--------|--------|--------|--------|
-| | | | |
-| | | | |
-| | | | |
-| | | | |
-| | | | |
+| ---- | ----------------- | --------- | ------------------ |
+|      |                   |           |                    |
+|      |                   |           |                    |
+|      |                   |           |                    |
+|      |                   |           |                    |
+|      |                   |           |                    |
 
 ---
 
@@ -35,18 +35,18 @@ Each team member should answer:
 
 Rate 1-5
 
-| Area | Rating |
-|--------|--------|
-| Frontend | |
-| Backend | |
-| Database | |
-| DevOps | |
-| Architecture | |
-| Security | |
-| Testing | |
-| Documentation | |
-| Project Management | |
-| UI/UX | |
+| Area               | Rating |
+| ------------------ | ------ |
+| Frontend           |        |
+| Backend            |        |
+| Database           |        |
+| DevOps             |        |
+| Architecture       |        |
+| Security           |        |
+| Testing            |        |
+| Documentation      |        |
+| Project Management |        |
+| UI/UX              |        |
 
 ## Personal Goals
 
@@ -79,11 +79,11 @@ Choose one:
 # Candidate Project Ideas
 
 | Idea | Pros | Cons | Module Potential |
-|--------|--------|--------|--------|
-| | | | |
-| | | | |
-| | | | |
-| | | | |
+| ---- | ---- | ---- | ---------------- |
+|      |      |      |                  |
+|      |      |      |                  |
+|      |      |      |                  |
+|      |      |      |                  |
 
 ---
 
@@ -110,7 +110,7 @@ Categories:
 
 Winning Category:
 
-___________________________
+---
 
 ---
 
@@ -118,13 +118,13 @@ ___________________________
 
 Complete:
 
-We are building a __________________________________________
+We are building a ********************\_\_********************
 
-for __________________________________________
+for ********************\_\_********************
 
-that allows users to __________________________________________
+that allows users to ********************\_\_********************
 
-____________________________________________________________
+---
 
 ---
 
@@ -155,20 +155,20 @@ If we had to submit in four weeks, what absolutely must work?
 ## Chosen Modules
 
 | Module | Major/Minor | Points | Owner |
-|----------|----------|----------|----------|
-| | | | |
-| | | | |
-| | | | |
-| | | | |
-| | | | |
+| ------ | ----------- | ------ | ----- |
+|        |             |        |       |
+|        |             |        |       |
+|        |             |        |       |
+|        |             |        |       |
+|        |             |        |       |
 
 Current Total:
 
-_____________
+---
 
 Target Total:
 
-_____________
+---
 
 ---
 
@@ -185,7 +185,7 @@ Candidates:
 
 Decision:
 
-____________________________
+---
 
 ## Backend
 
@@ -199,7 +199,7 @@ Candidates:
 
 Decision:
 
-____________________________
+---
 
 ## Database
 
@@ -211,7 +211,7 @@ Candidates:
 
 Decision:
 
-____________________________
+---
 
 ## Deployment
 
@@ -222,22 +222,22 @@ Candidates:
 
 Decision:
 
-____________________________
+---
 
 ---
 
 # Ownership Map
 
-| Area | Owner | Backup |
-|--------|--------|--------|
-| Frontend | | |
-| Backend | | |
-| Database | | |
-| Authentication | | |
-| DevOps | | |
-| Testing | | |
-| Documentation | | |
-| CI/CD | | |
+| Area           | Owner | Backup |
+| -------------- | ----- | ------ |
+| Frontend       |       |        |
+| Backend        |       |        |
+| Database       |       |        |
+| Authentication |       |        |
+| DevOps         |       |        |
+| Testing        |       |        |
+| Documentation  |       |        |
+| CI/CD          |       |        |
 
 ---
 
@@ -245,15 +245,15 @@ ____________________________
 
 ## Technical Risks
 
-| Risk | Severity | Mitigation |
-|--------|--------|--------|
-| Authentication | | |
-| WebSockets | | |
-| Docker | | |
-| Deployment | | |
-| Database Design | | |
-| AI Features | | |
-| Multiplayer Logic | | |
+| Risk              | Severity | Mitigation |
+| ----------------- | -------- | ---------- |
+| Authentication    |          |            |
+| WebSockets        |          |            |
+| Docker            |          |            |
+| Deployment        |          |            |
+| Database Design   |          |            |
+| AI Features       |          |            |
+| Multiplayer Logic |          |            |
 
 ---
 
@@ -269,9 +269,9 @@ Potential concerns:
 
 Notes:
 
-____________________________________________________________
+---
 
-____________________________________________________________
+---
 
 ---
 
@@ -297,29 +297,29 @@ A task is complete only if:
 
 Choice:
 
-____________________________
+---
 
 ## Meeting Schedule
 
 Weekly Meeting:
 
-____________________________
+---
 
 Standups:
 
-____________________________
+---
 
 ---
 
 # Research Assignments
 
-| Topic | Owner | Due Date |
-|--------|--------|--------|
-| Authentication | | |
-| Docker Setup | | |
-| WebSockets | | |
-| Database Design | | |
-| Framework Comparison | | |
+| Topic                | Owner | Due Date |
+| -------------------- | ----- | -------- |
+| Authentication       |       |          |
+| Docker Setup         |       |          |
+| WebSockets           |       |          |
+| Database Design      |       |          |
+| Framework Comparison |       |          |
 
 ---
 
@@ -339,10 +339,10 @@ ____________________________
 
 # Notes
 
-____________________________________________________________
+---
 
-____________________________________________________________
+---
 
-____________________________________________________________
+---
 
-____________________________________________________________
+---

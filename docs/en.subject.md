@@ -8,31 +8,31 @@
 
 - [I. AI Instructions](#i-ai-instructions)
 - [II. Preamble](#ii-preamble)
-  - [II.1 Team Organization and Project Management](#ii1-team-organization-and-project-management)
-    - [II.1.1 Required Team Roles](#ii11-required-team-roles)
-    - [II.1.2 Recommended Project Management Practices](#ii12-recommended-project-management-practices)
+    - [II.1 Team Organization and Project Management](#ii1-team-organization-and-project-management)
+        - [II.1.1 Required Team Roles](#ii11-required-team-roles)
+        - [II.1.2 Recommended Project Management Practices](#ii12-recommended-project-management-practices)
 - [III. Mandatory Part](#iii-mandatory-part)
-  - [III.1 What Are We Doing?](#iii1-what-are-we-doing)
-  - [III.2 General Requirements](#iii2-general-requirements)
-  - [III.3 Technical Requirements](#iii3-technical-requirements)
+    - [III.1 What Are We Doing?](#iii1-what-are-we-doing)
+    - [III.2 General Requirements](#iii2-general-requirements)
+    - [III.3 Technical Requirements](#iii3-technical-requirements)
 - [IV. Modules](#iv-modules)
-  - [IV.1 Web](#iv1-web)
-  - [IV.2 Accessibility and Internationalization](#iv2-accessibility-and-internationalization)
-  - [IV.3 User Management](#iv3-user-management)
-  - [IV.4 Artificial Intelligence](#iv4-artificial-intelligence)
-  - [IV.5 Cybersecurity](#iv5-cybersecurity)
-  - [IV.6 Gaming and User Experience](#iv6-gaming-and-user-experience)
-  - [IV.7 Devops](#iv7-devops)
-  - [IV.8 Data and Analytics](#iv8-data-and-analytics)
-  - [IV.9 Blockchain](#iv9-blockchain)
-  - [IV.10 Modules of Choice](#iv10-modules-of-choice)
+    - [IV.1 Web](#iv1-web)
+    - [IV.2 Accessibility and Internationalization](#iv2-accessibility-and-internationalization)
+    - [IV.3 User Management](#iv3-user-management)
+    - [IV.4 Artificial Intelligence](#iv4-artificial-intelligence)
+    - [IV.5 Cybersecurity](#iv5-cybersecurity)
+    - [IV.6 Gaming and User Experience](#iv6-gaming-and-user-experience)
+    - [IV.7 Devops](#iv7-devops)
+    - [IV.8 Data and Analytics](#iv8-data-and-analytics)
+    - [IV.9 Blockchain](#iv9-blockchain)
+    - [IV.10 Modules of Choice](#iv10-modules-of-choice)
 - [V. Project Ideas and Examples](#v-project-ideas-and-examples)
-  - [V.1 Example: Building a Pong Game](#v1-example-building-a-pong-game)
-  - [V.2 Gaming Projects](#v2-gaming-projects)
-  - [V.3 Social and Collaborative Projects](#v3-social-and-collaborative-projects)
-  - [V.4 Creative and Media Projects](#v4-creative-and-media-projects)
-  - [V.5 Productivity and Tools Projects](#v5-productivity-and-tools-projects)
-  - [V.6 Specialized Projects](#v6-specialized-projects)
+    - [V.1 Example: Building a Pong Game](#v1-example-building-a-pong-game)
+    - [V.2 Gaming Projects](#v2-gaming-projects)
+    - [V.3 Social and Collaborative Projects](#v3-social-and-collaborative-projects)
+    - [V.4 Creative and Media Projects](#v4-creative-and-media-projects)
+    - [V.5 Productivity and Tools Projects](#v5-productivity-and-tools-projects)
+    - [V.6 Specialized Projects](#v6-specialized-projects)
 - [VI. README Requirements](#vi-readme-requirements)
 - [VII. Bonus Part](#vii-bonus-part)
 - [VIII. Submission and Peer-Evaluation](#viii-submission-and-peer-evaluation)
@@ -94,35 +94,35 @@ Proper team organization is crucial. You must establish clear roles and responsi
 Your team must assign the following roles. With 4 members, one person may have multiple roles.
 
 - **Product Owner (PO)**
-  - Defines the product vision.
-  - Prioritizes features.
-  - Ensures the project meets user needs.
-  - Maintains the product backlog.
-  - Makes decisions on features and priorities.
-  - Validates completed work.
-  - Communicates with stakeholders such as evaluators and peers.
+    - Defines the product vision.
+    - Prioritizes features.
+    - Ensures the project meets user needs.
+    - Maintains the product backlog.
+    - Makes decisions on features and priorities.
+    - Validates completed work.
+    - Communicates with stakeholders such as evaluators and peers.
 
 - **Project Manager (PM) / Scrum Master**
-  - Facilitates team coordination.
-  - Removes obstacles.
-  - Organizes meetings and planning sessions.
-  - Tracks progress and deadlines.
-  - Ensures team communication.
-  - Manages risks and blockers.
+    - Facilitates team coordination.
+    - Removes obstacles.
+    - Organizes meetings and planning sessions.
+    - Tracks progress and deadlines.
+    - Ensures team communication.
+    - Manages risks and blockers.
 
 - **Technical Lead / Architect**
-  - Oversees technical decisions and architecture.
-  - Defines the technical architecture.
-  - Chooses the technology stack.
-  - Ensures code quality and best practices.
-  - Reviews critical code changes.
+    - Oversees technical decisions and architecture.
+    - Defines the technical architecture.
+    - Chooses the technology stack.
+    - Ensures code quality and best practices.
+    - Reviews critical code changes.
 
 - **Developers (all team members)**
-  - Implement features and modules.
-  - Write code for assigned features.
-  - Participate in code reviews.
-  - Test their implementations.
-  - Document their work.
+    - Implement features and modules.
+    - Write code for assigned features.
+    - Participate in code reviews.
+    - Test their implementations.
+    - Document their work.
 
 **Team size guidance**
 
@@ -177,9 +177,9 @@ If these requirements are not respected, the project will be rejected.
 - The project must be a web application with a frontend, backend, and database.
 - Git must be used with clear and meaningful commit messages.
 - The repository must show:
-  - Commits from all team members.
-  - Clear commit messages describing changes.
-  - Proper work distribution across the team.
+    - Commits from all team members.
+    - Clear commit messages describing changes.
+    - Proper work distribution across the team.
 - Deployment must use a containerization solution such as Docker or Podman and run with a single command.
 - The website must be compatible with the latest stable version of Google Chrome.
 - No warnings or errors should appear in the browser console.
@@ -211,11 +211,11 @@ These requirements are also mandatory.
 - Store credentials such as API keys and environment variables in a local `.env` file ignored by Git, and provide an `.env.example`.
 - The database must have a clear schema and well-defined relations.
 - The application must include a basic user management system with secure signup and login.
-  - At minimum, email and password authentication with proper security, including hashed and salted passwords.
-  - Additional methods such as OAuth or 2FA can be implemented through modules.
+    - At minimum, email and password authentication with proper security, including hashed and salted passwords.
+    - Additional methods such as OAuth or 2FA can be implemented through modules.
 - All forms and user input must be validated in both frontend and backend.
 - Any connection to the backend from a browser, script, or external API must use HTTPS.
-  - Internal backend connections, such as between the web server and database inside containers, may be unencrypted.
+    - Internal backend connections, such as between the web server and database inside containers, may be unencrypted.
 
 **What counts as a framework in this project**
 
@@ -269,29 +269,29 @@ Choose modules only after your project idea is clear. It may be wise to aim for 
 ### IV.1 Web
 
 - **Major:** Use a framework for both frontend and backend.
-  - Frontend framework examples: React, Vue, Angular, Svelte.
-  - Backend framework examples: Express, NestJS, Django, Flask, Ruby on Rails.
-  - Full-stack frameworks such as Next.js, Nuxt.js, and SvelteKit count for both if you use both frontend and backend capabilities.
+    - Frontend framework examples: React, Vue, Angular, Svelte.
+    - Backend framework examples: Express, NestJS, Django, Flask, Ruby on Rails.
+    - Full-stack frameworks such as Next.js, Nuxt.js, and SvelteKit count for both if you use both frontend and backend capabilities.
 
 - **Minor:** Use a frontend framework.
 - **Minor:** Use a backend framework.
 
 - **Major:** Implement real-time features using WebSockets or similar technology.
-  - Real-time client updates.
-  - Graceful handling of connection and disconnection.
-  - Efficient broadcasting.
+    - Real-time client updates.
+    - Graceful handling of connection and disconnection.
+    - Efficient broadcasting.
 
 - **Major:** Allow users to interact with other users.
-  - Basic chat system for sending and receiving messages.
-  - Profile system.
-  - Friends system with add/remove and friends list.
+    - Basic chat system for sending and receiving messages.
+    - Profile system.
+    - Friends system with add/remove and friends list.
 
 - **Major:** Public API for database interaction.
-  - Secured API key.
-  - Rate limiting.
-  - Documentation.
-  - At least 5 endpoints.
-  - Must include examples of `GET`, `POST`, `PUT`, and `DELETE`.
+    - Secured API key.
+    - Rate limiting.
+    - Documentation.
+    - At least 5 endpoints.
+    - Must include examples of `GET`, `POST`, `PUT`, and `DELETE`.
 
 - **Minor:** Use an ORM for the database.
 - **Minor:** Complete notification system for create, update, and delete actions.
@@ -301,63 +301,63 @@ Choose modules only after your project idea is clear. It may be wise to aim for 
 - **Minor:** Custom design system with at least 10 reusable components, proper color palette, typography, and icons.
 - **Minor:** Advanced search with filters, sorting, and pagination.
 - **Minor:** File upload and management system.
-  - Multiple file types.
-  - Client-side and server-side validation.
-  - Secure file storage and access control.
-  - Preview where relevant.
-  - Upload progress indicators.
-  - Deletion support.
+    - Multiple file types.
+    - Client-side and server-side validation.
+    - Secure file storage and access control.
+    - Preview where relevant.
+    - Upload progress indicators.
+    - Deletion support.
 
 ### IV.2 Accessibility and Internationalization
 
 - **Major:** Full WCAG 2.1 AA accessibility compliance with screen reader support, keyboard navigation, and assistive technologies.
 
 - **Minor:** Support at least 3 languages.
-  - Implement an i18n system.
-  - Provide at least 3 complete translations.
-  - Add a language switcher.
-  - Make all user-facing text translatable.
+    - Implement an i18n system.
+    - Provide at least 3 complete translations.
+    - Add a language switcher.
+    - Make all user-facing text translatable.
 
 - **Minor:** Support right-to-left (RTL) languages.
-  - Support at least one RTL language such as Arabic or Hebrew.
-  - Fully mirror the layout, not just text direction.
-  - Add RTL-specific UI adjustments where needed.
-  - Allow seamless switching between LTR and RTL.
+    - Support at least one RTL language such as Arabic or Hebrew.
+    - Fully mirror the layout, not just text direction.
+    - Add RTL-specific UI adjustments where needed.
+    - Allow seamless switching between LTR and RTL.
 
 - **Minor:** Support additional browsers.
-  - Full compatibility with at least 2 extra browsers such as Firefox, Safari, or Edge.
-  - Test and fix all features in those browsers.
-  - Document browser-specific limitations.
-  - Maintain a consistent UI and UX.
+    - Full compatibility with at least 2 extra browsers such as Firefox, Safari, or Edge.
+    - Test and fix all features in those browsers.
+    - Document browser-specific limitations.
+    - Maintain a consistent UI and UX.
 
 ### IV.3 User Management
 
 - **Major:** Standard user management and authentication.
-  - Users can update profile information.
-  - Users can upload an avatar, with a default avatar when none is provided.
-  - Users can add friends and view online status.
-  - Users have a profile page.
+    - Users can update profile information.
+    - Users can upload an avatar, with a default avatar when none is provided.
+    - Users can add friends and view online status.
+    - Users have a profile page.
 
 - **Minor:** Game statistics and match history.
-  - Track wins, losses, ranking, level, and similar data.
-  - Display match history with dates, results, and opponents.
-  - Show achievements and progression.
-  - Integrate leaderboards.
-  - Requires at least one implemented game.
+    - Track wins, losses, ranking, level, and similar data.
+    - Display match history with dates, results, and opponents.
+    - Show achievements and progression.
+    - Integrate leaderboards.
+    - Requires at least one implemented game.
 
 - **Minor:** Remote authentication with OAuth 2.0 such as Google, GitHub, or 42.
 
 - **Major:** Advanced permissions system.
-  - View, edit, and delete users.
-  - Manage roles such as admin, user, guest, or moderator.
-  - Different views and actions based on role.
+    - View, edit, and delete users.
+    - Manage roles such as admin, user, guest, or moderator.
+    - Different views and actions based on role.
 
 - **Major:** Organization system.
-  - Create, edit, and delete organizations.
-  - Add and remove users from organizations.
-  - View organizations.
-  - Allow users to perform specific actions in an organization.
-  - Minimum expected operations: create, read, update.
+    - Create, edit, and delete organizations.
+    - Add and remove users from organizations.
+    - View organizations.
+    - Allow users to perform specific actions in an organization.
+    - Minimum expected operations: create, read, update.
 
 - **Minor:** Complete 2FA system.
 - **Minor:** User activity analytics and insights dashboard.
@@ -365,26 +365,26 @@ Choose modules only after your project idea is clear. It may be wise to aim for 
 ### IV.4 Artificial Intelligence
 
 - **Major:** AI opponent for games.
-  - It must be challenging and able to win occasionally.
-  - It should simulate human-like behavior rather than perfect play.
-  - If the game has customization options, the AI must be able to use them.
-  - You must be able to explain the implementation during evaluation.
-  - Requires at least one implemented game.
+    - It must be challenging and able to win occasionally.
+    - It should simulate human-like behavior rather than perfect play.
+    - If the game has customization options, the AI must be able to use them.
+    - You must be able to explain the implementation during evaluation.
+    - Requires at least one implemented game.
 
 - **Major:** Complete RAG (Retrieval-Augmented Generation) system.
-  - Interact with a large dataset.
-  - Let users ask questions and receive relevant answers.
-  - Implement context retrieval and response generation properly.
+    - Interact with a large dataset.
+    - Let users ask questions and receive relevant answers.
+    - Implement context retrieval and response generation properly.
 
 - **Major:** Complete LLM system interface.
-  - Generate text and/or images from user input.
-  - Handle streaming responses correctly.
-  - Implement error handling and rate limiting.
+    - Generate text and/or images from user input.
+    - Handle streaming responses correctly.
+    - Implement error handling and rate limiting.
 
 - **Major:** Recommendation system using machine learning.
-  - Personalized recommendations based on user behavior.
-  - Collaborative filtering or content-based filtering.
-  - Continuous improvement over time.
+    - Personalized recommendations based on user behavior.
+    - Collaborative filtering or content-based filtering.
+    - Continuous improvement over time.
 
 - **Minor:** Content moderation AI.
 - **Minor:** Voice or speech integration for accessibility or interaction.
@@ -394,145 +394,145 @@ Choose modules only after your project idea is clear. It may be wise to aim for 
 ### IV.5 Cybersecurity
 
 - **Major:** Hardened `WAF/ModSecurity` plus `HashiCorp Vault` for secrets.
-  - Configure strict ModSecurity / WAF rules.
-  - Manage secrets in Vault, including API keys, credentials, and environment variables, encrypted and isolated.
+    - Configure strict ModSecurity / WAF rules.
+    - Manage secrets in Vault, including API keys, credentials, and environment variables, encrypted and isolated.
 
 ### IV.6 Gaming and User Experience
 
 - **Major:** Complete web-based game where users can play each other.
-  - Real-time multiplayer game such as Pong, Chess, Tic-Tac-Toe, or card games.
-  - Live matches.
-  - Clear rules and win/loss conditions.
-  - Can be 2D or 3D.
+    - Real-time multiplayer game such as Pong, Chess, Tic-Tac-Toe, or card games.
+    - Live matches.
+    - Clear rules and win/loss conditions.
+    - Can be 2D or 3D.
 
 - **Major:** Remote players.
-  - Two players on separate computers can play the same game in real time.
-  - Handle latency and disconnections gracefully.
-  - Provide smooth remote gameplay.
-  - Implement reconnection logic.
+    - Two players on separate computers can play the same game in real time.
+    - Handle latency and disconnections gracefully.
+    - Provide smooth remote gameplay.
+    - Implement reconnection logic.
 
 - **Major:** Multiplayer game with more than two players.
-  - Support at least 3 simultaneous players.
-  - Fair gameplay.
-  - Proper synchronization across clients.
-  - Requires at least one implemented game.
+    - Support at least 3 simultaneous players.
+    - Fair gameplay.
+    - Proper synchronization across clients.
+    - Requires at least one implemented game.
 
 - **Major:** Add another game with user history and matchmaking.
-  - Implement a second distinct game.
-  - Track user history and statistics for it.
-  - Add matchmaking.
-  - Maintain performance and responsiveness.
-  - Requires a first implemented game.
+    - Implement a second distinct game.
+    - Track user history and statistics for it.
+    - Add matchmaking.
+    - Maintain performance and responsiveness.
+    - Requires a first implemented game.
 
 - **Major:** Advanced 3D graphics using a library such as Three.js or Babylon.js.
-  - Immersive 3D environment.
-  - Advanced rendering techniques.
-  - Smooth performance and interaction.
+    - Immersive 3D environment.
+    - Advanced rendering techniques.
+    - Smooth performance and interaction.
 
 - **Minor:** Advanced chat features.
-  - Block users.
-  - Invite users to games from chat.
-  - Game or tournament notifications in chat.
-  - Access user profiles from chat.
-  - Persist chat history.
-  - Typing indicators and read receipts.
-  - Requires the basic chat from the `User interaction` module.
+    - Block users.
+    - Invite users to games from chat.
+    - Game or tournament notifications in chat.
+    - Access user profiles from chat.
+    - Persist chat history.
+    - Typing indicators and read receipts.
+    - Requires the basic chat from the `User interaction` module.
 
 - **Minor:** Tournament system.
-  - Brackets and clear matchup order.
-  - Track who plays against whom.
-  - Matchmaking for participants.
-  - Tournament registration and management.
-  - Requires at least one implemented game.
+    - Brackets and clear matchup order.
+    - Track who plays against whom.
+    - Matchmaking for participants.
+    - Tournament registration and management.
+    - Requires at least one implemented game.
 
 - **Minor:** Game customization options.
-  - Power-ups, attacks, or special abilities.
-  - Different maps or themes.
-  - Customizable settings.
-  - Default options must exist.
-  - Requires at least one implemented game.
+    - Power-ups, attacks, or special abilities.
+    - Different maps or themes.
+    - Customizable settings.
+    - Default options must exist.
+    - Requires at least one implemented game.
 
 - **Minor:** Gamification system.
-  - Implement at least 3 of the following: achievements, badges, leaderboards, XP or levels, daily challenges, rewards.
-  - Persist the system in the database.
-  - Provide visual feedback such as notifications or progress bars.
-  - Define clear rules and progression.
+    - Implement at least 3 of the following: achievements, badges, leaderboards, XP or levels, daily challenges, rewards.
+    - Persist the system in the database.
+    - Provide visual feedback such as notifications or progress bars.
+    - Define clear rules and progression.
 
 - **Minor:** Spectator mode.
-  - Users can watch ongoing games.
-  - Spectators receive real-time updates.
-  - Optional spectator chat.
-  - Requires at least one implemented game.
+    - Users can watch ongoing games.
+    - Spectators receive real-time updates.
+    - Optional spectator chat.
+    - Requires at least one implemented game.
 
 ### IV.7 Devops
 
 - **Major:** Log management infrastructure using `ELK`.
-  - Elasticsearch for storing and indexing logs.
-  - Logstash for collecting and transforming logs.
-  - Kibana for dashboards and visualization.
-  - Log retention and archiving policies.
-  - Secure access to all components.
+    - Elasticsearch for storing and indexing logs.
+    - Logstash for collecting and transforming logs.
+    - Kibana for dashboards and visualization.
+    - Log retention and archiving policies.
+    - Secure access to all components.
 
 - **Major:** Monitoring with `Prometheus` and `Grafana`.
-  - Collect metrics with Prometheus.
-  - Configure exporters and integrations.
-  - Create custom Grafana dashboards.
-  - Set alerting rules.
-  - Secure Grafana access.
+    - Collect metrics with Prometheus.
+    - Configure exporters and integrations.
+    - Create custom Grafana dashboards.
+    - Set alerting rules.
+    - Secure Grafana access.
 
 - **Major:** Backend as microservices.
-  - Loosely coupled services.
-  - Clear interfaces.
-  - Communication via REST APIs or message queues.
-  - Single responsibility per service.
+    - Loosely coupled services.
+    - Clear interfaces.
+    - Communication via REST APIs or message queues.
+    - Single responsibility per service.
 
 - **Minor:** Health checks and status page with automated backups and disaster recovery procedures.
 
 ### IV.8 Data and Analytics
 
 - **Major:** Advanced analytics dashboard with data visualization.
-  - Interactive charts such as line, bar, or pie.
-  - Real-time updates.
-  - Export functions such as PDF or CSV.
-  - Custom date ranges and filters.
+    - Interactive charts such as line, bar, or pie.
+    - Real-time updates.
+    - Export functions such as PDF or CSV.
+    - Custom date ranges and filters.
 
 - **Minor:** Data export and import functionality.
-  - Export to formats such as JSON, CSV, or XML.
-  - Validate imports.
-  - Support bulk operations.
+    - Export to formats such as JSON, CSV, or XML.
+    - Validate imports.
+    - Support bulk operations.
 
 - **Minor:** GDPR compliance features.
-  - Let users request their data.
-  - Delete data with confirmation.
-  - Export user data in a readable format.
-  - Send confirmation emails for data operations.
+    - Let users request their data.
+    - Delete data with confirmation.
+    - Export user data in a readable format.
+    - Send confirmation emails for data operations.
 
 ### IV.9 Blockchain
 
 - **Major:** Store tournament scores on the blockchain.
-  - Use Avalanche and Solidity smart contracts on a test blockchain.
-  - Record, manage, and retrieve tournament scores with smart contracts.
-  - Ensure integrity and immutability.
+    - Use Avalanche and Solidity smart contracts on a test blockchain.
+    - Record, manage, and retrieve tournament scores with smart contracts.
+    - Ensure integrity and immutability.
 
 - **Minor:** Use ICP (Internet Computer Protocol) for a blockchain backend.
-  - Incompatible with SSR.
+    - Incompatible with SSR.
 
 ### IV.10 Modules of Choice
 
 - **Major:** Implement a custom module not listed above.
-  - It must be substantial and technically complex.
-  - The `README.md` must justify:
-    - Why the module was chosen.
-    - Which technical challenges it addresses.
-    - How it adds value to the project.
-    - Why it deserves major status worth 2 points.
-  - Trivial or shortcut implementations will be rejected.
-  - The module should be relevant to the project context.
+    - It must be substantial and technically complex.
+    - The `README.md` must justify:
+        - Why the module was chosen.
+        - Which technical challenges it addresses.
+        - How it adds value to the project.
+        - Why it deserves major status worth 2 points.
+    - Trivial or shortcut implementations will be rejected.
+    - The module should be relevant to the project context.
 
 - **Minor:** Same principle as above, but smaller in scope and complexity.
-  - It must still demonstrate technical skill and creativity.
-  - It must add meaningful value.
-  - It must be justified in `README.md`.
+    - It must still demonstrate technical skill and creativity.
+    - It must add meaningful value.
+    - It must be justified in `README.md`.
 
 ## V. Project Ideas and Examples
 
@@ -543,161 +543,161 @@ This section gives example project directions and sample module combinations to 
 Possible way to reach 14 points:
 
 - Gaming and user experience:
-  - Web-based game `2`
-  - Remote players `2`
-  - Tournament system `1`
-  - Game customization `1`
-  - Total: `6`
+    - Web-based game `2`
+    - Remote players `2`
+    - Tournament system `1`
+    - Game customization `1`
+    - Total: `6`
 
 - User Management:
-  - Standard user management `2`
-  - OAuth `1`
-  - Total: `3`
+    - Standard user management `2`
+    - OAuth `1`
+    - Total: `3`
 
 - Web:
-  - Frontend + backend frameworks `2`
-  - ORM `1`
-  - Total: `3`
+    - Frontend + backend frameworks `2`
+    - ORM `1`
+    - Total: `3`
 
 - Artificial Intelligence:
-  - AI opponent `2`
+    - AI opponent `2`
 
 **Grand total: 14**
 
 ### V.2 Gaming Projects
 
 - **Multiplayer Pong**
-  - Classic Pong with tournaments, remote play, AI opponents, and power-ups.
-  - Suggested modules: Web-based game, Remote players, Tournament system, AI Opponent, Game customization.
-  - Point potential: `14+`
+    - Classic Pong with tournaments, remote play, AI opponents, and power-ups.
+    - Suggested modules: Web-based game, Remote players, Tournament system, AI Opponent, Game customization.
+    - Point potential: `14+`
 
 - **Online Chess Platform**
-  - Real-time chess with matchmaking, ELO rating, analysis, and spectator mode.
-  - Suggested modules: Web-based game, Remote players, AI Opponent, Spectator mode, Game statistics.
-  - Point potential: `15+`
+    - Real-time chess with matchmaking, ELO rating, analysis, and spectator mode.
+    - Suggested modules: Web-based game, Remote players, AI Opponent, Spectator mode, Game statistics.
+    - Point potential: `15+`
 
 - **Card Game Arena**
-  - Multiplayer card games such as Poker or Uno with tournaments and leaderboards.
-  - Suggested modules: Web-based game, Multiplayer 3+, Tournament system, Gamification.
-  - Point potential: `14+`
+    - Multiplayer card games such as Poker or Uno with tournaments and leaderboards.
+    - Suggested modules: Web-based game, Multiplayer 3+, Tournament system, Gamification.
+    - Point potential: `14+`
 
 - **Battle Royale Mini-Game**
-  - Simple browser battle royale with multiple players.
-  - Suggested modules: Web-based game, Multiplayer 3+, Real-time features, Game customization.
-  - Point potential: `14+`
+    - Simple browser battle royale with multiple players.
+    - Suggested modules: Web-based game, Multiplayer 3+, Real-time features, Game customization.
+    - Point potential: `14+`
 
 - **Trivia / Quiz Platform**
-  - Real-time multiplayer quizzes with categories and tournaments.
-  - Suggested modules: Web-based game, Multiplayer 3+, Tournament system, Gamification, Analytics dashboard.
-  - Point potential: `15+`
+    - Real-time multiplayer quizzes with categories and tournaments.
+    - Suggested modules: Web-based game, Multiplayer 3+, Tournament system, Gamification, Analytics dashboard.
+    - Point potential: `15+`
 
 ### V.3 Social and Collaborative Projects
 
 - **Social Network**
-  - Profiles, posts, comments, likes, friends, real-time chat, notifications.
-  - Suggested modules: User interaction, Real-time features, Notification system, Advanced chat, File upload.
-  - Point potential: `14+`
+    - Profiles, posts, comments, likes, friends, real-time chat, notifications.
+    - Suggested modules: User interaction, Real-time features, Notification system, Advanced chat, File upload.
+    - Point potential: `14+`
 
 - **Collaborative Workspace**
-  - Real-time editing, project management, team chat, file sharing.
-  - Suggested modules: Real-time collaborative features, User interaction, Organization system, File upload, Advanced permissions.
-  - Point potential: `15+`
+    - Real-time editing, project management, team chat, file sharing.
+    - Suggested modules: Real-time collaborative features, User interaction, Organization system, File upload, Advanced permissions.
+    - Point potential: `15+`
 
 - **Forum Platform**
-  - Boards, categories, moderation tools, user reputation.
-  - Suggested modules: User interaction, Advanced permissions, Gamification, Content moderation AI, Advanced search.
-  - Point potential: `14+`
+    - Boards, categories, moderation tools, user reputation.
+    - Suggested modules: User interaction, Advanced permissions, Gamification, Content moderation AI, Advanced search.
+    - Point potential: `14+`
 
 - **Event Management Platform**
-  - Events, RSVP, calendar integration, notifications.
-  - Suggested modules: User interaction, Notification system, Organization system, Public API, Advanced search.
-  - Point potential: `14+`
+    - Events, RSVP, calendar integration, notifications.
+    - Suggested modules: User interaction, Notification system, Organization system, Public API, Advanced search.
+    - Point potential: `14+`
 
 - **Learning Management System**
-  - Courses, assignments, quizzes, progress tracking, teacher-student interaction.
-  - Suggested modules: User interaction, Organization system, Advanced permissions, File upload, Analytics dashboard.
-  - Point potential: `15+`
+    - Courses, assignments, quizzes, progress tracking, teacher-student interaction.
+    - Suggested modules: User interaction, Organization system, Advanced permissions, File upload, Analytics dashboard.
+    - Point potential: `15+`
 
 ### V.4 Creative and Media Projects
 
 - **Music Streaming Platform**
-  - Upload and stream music, playlists, recommendations, social features.
-  - Suggested modules: File upload, User interaction, Recommendation system, Advanced search, Analytics dashboard.
-  - Point potential: `15+`
+    - Upload and stream music, playlists, recommendations, social features.
+    - Suggested modules: File upload, User interaction, Recommendation system, Advanced search, Analytics dashboard.
+    - Point potential: `15+`
 
 - **Video Sharing Platform**
-  - Upload videos, comments, likes, subscriptions, recommendations.
-  - Suggested modules: File upload, User interaction, Recommendation system, Content moderation AI, Advanced search.
-  - Point potential: `16+`
+    - Upload videos, comments, likes, subscriptions, recommendations.
+    - Suggested modules: File upload, User interaction, Recommendation system, Content moderation AI, Advanced search.
+    - Point potential: `16+`
 
 - **Art Gallery**
-  - Share artwork with galleries, comments, likes, artist profiles.
-  - Suggested modules: File upload, User interaction, Image recognition, Advanced search, Custom design system.
-  - Point potential: `14+`
+    - Share artwork with galleries, comments, likes, artist profiles.
+    - Suggested modules: File upload, User interaction, Image recognition, Advanced search, Custom design system.
+    - Point potential: `14+`
 
 - **Blogging Platform**
-  - Publish posts with comments, tags, categories, and reader engagement.
-  - Suggested modules: User interaction, SSR, Advanced search, Sentiment analysis, Multiple languages.
-  - Point potential: `14+`
+    - Publish posts with comments, tags, categories, and reader engagement.
+    - Suggested modules: User interaction, SSR, Advanced search, Sentiment analysis, Multiple languages.
+    - Point potential: `14+`
 
 - **Recipe Sharing Platform**
-  - Recipes, ratings, comments, meal planning, shopping lists.
-  - Suggested modules: User interaction, File upload, Advanced search, Recommendation system, PWA.
-  - Point potential: `14+`
+    - Recipes, ratings, comments, meal planning, shopping lists.
+    - Suggested modules: User interaction, File upload, Advanced search, Recommendation system, PWA.
+    - Point potential: `14+`
 
 ### V.5 Productivity and Tools Projects
 
 - **Task Management System**
-  - Projects, tasks, assignments, deadlines, team collaboration, progress tracking.
-  - Suggested modules: Organization system, User interaction, Real-time collaborative features, Notification system, Analytics dashboard.
-  - Point potential: `15+`
+    - Projects, tasks, assignments, deadlines, team collaboration, progress tracking.
+    - Suggested modules: Organization system, User interaction, Real-time collaborative features, Notification system, Analytics dashboard.
+    - Point potential: `15+`
 
 - **Code Collaboration Platform**
-  - Code snippets, collaborative coding, version control, discussions.
-  - Suggested modules: User interaction, Real-time collaborative features, Public API, Advanced search, Custom design system.
-  - Point potential: `14+`
+    - Code snippets, collaborative coding, version control, discussions.
+    - Suggested modules: User interaction, Real-time collaborative features, Public API, Advanced search, Custom design system.
+    - Point potential: `14+`
 
 - **Booking System**
-  - Resource reservations, calendars, notifications.
-  - Suggested modules: User interaction, Organization system, Notification system, Public API, Advanced search.
-  - Point potential: `14+`
+    - Resource reservations, calendars, notifications.
+    - Suggested modules: User interaction, Organization system, Notification system, Public API, Advanced search.
+    - Point potential: `14+`
 
 - **Marketplace Platform**
-  - Buy and sell items, ratings, messaging, payments, search.
-  - Suggested modules: User interaction, File upload, Advanced search, Recommendation system, Public API.
-  - Point potential: `14+`
+    - Buy and sell items, ratings, messaging, payments, search.
+    - Suggested modules: User interaction, File upload, Advanced search, Recommendation system, Public API.
+    - Point potential: `14+`
 
 - **Fitness Tracker**
-  - Workouts, progress, challenges, leaderboards, social features.
-  - Suggested modules: User interaction, Gamification, Analytics dashboard, PWA, Data export/import.
-  - Point potential: `14+`
+    - Workouts, progress, challenges, leaderboards, social features.
+    - Suggested modules: User interaction, Gamification, Analytics dashboard, PWA, Data export/import.
+    - Point potential: `14+`
 
 ### V.6 Specialized Projects
 
 - **Real-time Trading Simulator**
-  - Stock and crypto simulation with real-time data and portfolios.
-  - Suggested modules: Real-time features, User interaction, Analytics dashboard, Public API, Advanced 3D graphics.
-  - Point potential: `15+`
+    - Stock and crypto simulation with real-time data and portfolios.
+    - Suggested modules: Real-time features, User interaction, Analytics dashboard, Public API, Advanced 3D graphics.
+    - Point potential: `15+`
 
 - **Language Learning Platform**
-  - Lessons, exercises, progress tracking, peer practice.
-  - Suggested modules: User interaction, Gamification, Multiple languages, Voice integration, Analytics dashboard.
-  - Point potential: `15+`
+    - Lessons, exercises, progress tracking, peer practice.
+    - Suggested modules: User interaction, Gamification, Multiple languages, Voice integration, Analytics dashboard.
+    - Point potential: `15+`
 
 - **Pet Adoption Platform**
-  - Browse pets, adoption process, profiles, messaging.
-  - Suggested modules: User interaction, File upload, Advanced search, Organization system, Notification system.
-  - Point potential: `14+`
+    - Browse pets, adoption process, profiles, messaging.
+    - Suggested modules: User interaction, File upload, Advanced search, Organization system, Notification system.
+    - Point potential: `14+`
 
 - **Travel Planning Platform**
-  - Trip planning, itineraries, recommendations, social features.
-  - Suggested modules: User interaction, Real-time collaborative features, Recommendation system, Multiple languages, Advanced search.
-  - Point potential: `15+`
+    - Trip planning, itineraries, recommendations, social features.
+    - Suggested modules: User interaction, Real-time collaborative features, Recommendation system, Multiple languages, Advanced search.
+    - Point potential: `15+`
 
 - **Crowdfunding Platform**
-  - Campaigns, donations, updates, community engagement.
-  - Suggested modules: User interaction, File upload, Public API, Analytics dashboard, Notification system.
-  - Point potential: `14+`
+    - Campaigns, donations, updates, community engagement.
+    - Suggested modules: User interaction, File upload, Public API, Analytics dashboard, Notification system.
+    - Point potential: `14+`
 
 When choosing a project, it should:
 
@@ -714,7 +714,7 @@ A `README.md` must be present at the root of the Git repository. It should allow
 The `README.md` must include at least:
 
 - The very first line must be italicized and read:
-  - `This project has been created as part of the 42 curriculum by <login1>[, <login2>[, <login3>[...]]].`
+    - `This project has been created as part of the 42 curriculum by <login1>[, <login2>[, <login3>[...]]].`
 - A `Description` section that clearly presents the project, its goal, and a brief overview.
 - An `Instructions` section with relevant compilation, installation, and execution information.
 - A `Resources` section listing references such as documentation, articles, or tutorials, and also explaining how AI was used, for which tasks, and for which parts of the project.
@@ -729,42 +729,42 @@ Further required details:
 ### Additional Sections Required for This Activity
 
 - **Team Information**
-  - Assigned roles for each member.
-  - Brief description of responsibilities.
+    - Assigned roles for each member.
+    - Brief description of responsibilities.
 
 - **Project Management**
-  - How work was organized and distributed.
-  - Which project management tools were used.
-  - Which communication channels were used.
+    - How work was organized and distributed.
+    - Which project management tools were used.
+    - Which communication channels were used.
 
 - **Technical Stack**
-  - Frontend technologies and frameworks.
-  - Backend technologies and frameworks.
-  - Database system and justification.
-  - Other significant technologies or libraries.
-  - Justification for major technical choices.
+    - Frontend technologies and frameworks.
+    - Backend technologies and frameworks.
+    - Database system and justification.
+    - Other significant technologies or libraries.
+    - Justification for major technical choices.
 
 - **Database Schema**
-  - Visual representation or textual description.
-  - Tables or collections and their relationships.
-  - Key fields and data types.
+    - Visual representation or textual description.
+    - Tables or collections and their relationships.
+    - Key fields and data types.
 
 - **Features List**
-  - Complete list of implemented features.
-  - Which team member worked on each feature.
-  - Brief explanation of each feature.
+    - Complete list of implemented features.
+    - Which team member worked on each feature.
+    - Brief explanation of each feature.
 
 - **Modules**
-  - List of chosen major and minor modules.
-  - Point calculation.
-  - Justification for each module, especially custom modules.
-  - Explanation of implementation.
-  - Which team member worked on each module.
+    - List of chosen major and minor modules.
+    - Point calculation.
+    - Justification for each module, especially custom modules.
+    - Explanation of implementation.
+    - Which team member worked on each module.
 
 - **Individual Contributions**
-  - Detailed breakdown of each member's contributions.
-  - Features, modules, or components implemented by each person.
-  - Challenges faced and how they were solved.
+    - Detailed breakdown of each member's contributions.
+    - Features, modules, or components implemented by each person.
+    - Challenges faced and how they were solved.
 
 Other useful information is welcome, such as usage documentation, limitations, license, or credits.
 

@@ -1,4 +1,5 @@
 # Shell Smash — Fix Account Registration
+
 > **Context for the implementer:** NestJS 10 + TypeORM + PostgreSQL backend,
 > Phaser 3 + Vite frontend (TypeScript). Auth is cookie-based JWT with a
 > double-submit CSRF pattern. The frontend is served through an nginx proxy.
@@ -18,10 +19,10 @@ branch and becomes a generic `NetworkError`:
 ```typescript
 // hub/api.ts — current (broken)
 if (res.status === 401 || res.status === 403) {
-  throw new AuthError(res.status, `${res.status} on ${path}`);
+	throw new AuthError(res.status, `${res.status} on ${path}`);
 }
 if (!res.ok) {
-  throw new NetworkError(`API error ${res.status} on ${path}`); // swallows 409, 429
+	throw new NetworkError(`API error ${res.status} on ${path}`); // swallows 409, 429
 }
 ```
 
@@ -31,8 +32,8 @@ before inspecting the status, so neither branch ever fires:
 ```typescript
 // LandingScene.ts — friendlyError() — 409 / 429 checks are dead code
 if (err instanceof AuthError) {
-  if (err.status === 429) return 'Too many attempts…';   // never reached
-  if (err.status === 409) return 'That username is already taken.'; // never reached
+	if (err.status === 429) return "Too many attempts…"; // never reached
+	if (err.status === 409) return "That username is already taken."; // never reached
 }
 ```
 
@@ -51,10 +52,10 @@ sends with a structured JSON error body that the frontend needs to act on:
 const AUTH_ERROR_STATUSES = new Set([401, 403, 409, 422, 429]);
 
 if (AUTH_ERROR_STATUSES.has(res.status)) {
-  throw new AuthError(res.status, `${res.status} on ${path}`);
+	throw new AuthError(res.status, `${res.status} on ${path}`);
 }
 if (!res.ok) {
-  throw new NetworkError(`API error ${res.status} on ${path}`);
+	throw new NetworkError(`API error ${res.status} on ${path}`);
 }
 ```
 
@@ -133,6 +134,7 @@ async localRegister(...)
 ### How to diagnose
 
 Open DevTools → Network tab → find `GET /api/auth/csrf-token`.
+
 1. Confirm the response sets `Set-Cookie: csrf_token=<hex>` with no
    `HttpOnly` flag.
 2. Confirm `document.cookie` in the console includes `csrf_token=<same hex>`.
@@ -149,7 +151,7 @@ Open DevTools → Network tab → find `GET /api/auth/csrf-token`.
 
 ```typescript
 const existing = await this.usersService.findByUsername(username);
-if (existing) throw new ConflictException('Username is already taken');
+if (existing) throw new ConflictException("Username is already taken");
 ```
 
 There is a TOCTOU race: two concurrent requests for the same username can
@@ -225,6 +227,7 @@ docker compose logs backend --follow
 ```
 
 Submit the registration form and watch for:
+
 - `POST /api/auth/register` log line
 - Any unhandled exception stacktrace
 - TypeORM SQL query logs (enabled when `NODE_ENV=development`)
@@ -232,6 +235,7 @@ Submit the registration form and watch for:
 ### Step 2 — Inspect the raw HTTP exchange
 
 DevTools → Network → find `POST /api/auth/register`:
+
 - **Request headers:** `Content-Type: application/json`, `X-CSRF-Token: <hex>`,
   `Cookie: csrf_token=<hex>` (and possibly `auth_token=...` if a stale session
   exists).
@@ -248,7 +252,7 @@ DevTools → Network → find `POST /api/auth/register`:
 
 ```javascript
 // Paste in browser console after the landing page loads
-console.log('csrf cookie:', document.cookie.match(/csrf_token=([^;]+)/)?.[1]);
+console.log("csrf cookie:", document.cookie.match(/csrf_token=([^;]+)/)?.[1]);
 ```
 
 Then submit the form and check the `X-CSRF-Token` header on the POST matches.
@@ -283,11 +287,11 @@ cookie propagation from nginx, not in the backend logic.
 
 ## Files to modify (summary)
 
-| Action | Path | Change |
-|--------|------|--------|
-| **Modify** | `srcs/requirements/frontend/src/src/hub/api.ts` | Extend `AUTH_ERROR_STATUSES` to include 409 and 429 |
-| **Modify** | `srcs/requirements/backend/src/src/auth/auth.controller.ts` | Change `@HttpCode(201)` → `@HttpCode(200)` on `localRegister` |
-| **Modify** | `srcs/requirements/backend/src/src/users/users.service.ts` | Catch PostgreSQL error code `23505` in `create()` and re-throw as `ConflictException` |
+| Action     | Path                                                        | Change                                                                                |
+| ---------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Modify** | `srcs/requirements/frontend/src/src/hub/api.ts`             | Extend `AUTH_ERROR_STATUSES` to include 409 and 429                                   |
+| **Modify** | `srcs/requirements/backend/src/src/auth/auth.controller.ts` | Change `@HttpCode(201)` → `@HttpCode(200)` on `localRegister`                         |
+| **Modify** | `srcs/requirements/backend/src/src/users/users.service.ts`  | Catch PostgreSQL error code `23505` in `create()` and re-throw as `ConflictException` |
 
 ---
 
@@ -296,16 +300,16 @@ cookie propagation from nginx, not in the backend logic.
 ```typescript
 // auth/auth.service.spec.ts (or auth.controller.spec.ts)
 
-it('should return { ok: true } and set auth cookie on successful registration')
-it('should return 409 when username is already taken')
-it('should return 400 when password is shorter than 8 characters')
-it('should return 400 when username contains invalid characters')
-it('should return 429 after 5 failed attempts within 60 seconds')
-it('should return 401 when CSRF token is missing')
-it('should return 401 when CSRF header does not match cookie')
+it("should return { ok: true } and set auth cookie on successful registration");
+it("should return 409 when username is already taken");
+it("should return 400 when password is shorter than 8 characters");
+it("should return 400 when username contains invalid characters");
+it("should return 429 after 5 failed attempts within 60 seconds");
+it("should return 401 when CSRF token is missing");
+it("should return 401 when CSRF header does not match cookie");
 
 // users/users.service.spec.ts
-it('should throw ConflictException when PostgreSQL returns error code 23505')
+it("should throw ConflictException when PostgreSQL returns error code 23505");
 ```
 
 ---

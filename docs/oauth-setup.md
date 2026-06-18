@@ -69,9 +69,9 @@ You should still verify the full callback flow locally after setting the credent
 2. Go to `Settings > Developer settings > OAuth Apps`.
 3. Click `New OAuth App`.
 4. Fill the fields:
-   - `Application name`: choose your app name
-   - `Homepage URL`: `https://localhost`
-   - `Authorization callback URL`: `https://localhost/api/auth/github/callback`
+    - `Application name`: choose your app name
+    - `Homepage URL`: `https://localhost`
+    - `Authorization callback URL`: `https://localhost/api/auth/github/callback`
 5. Create the app.
 
 ### Save the credentials
@@ -102,8 +102,8 @@ GitHub OAuth is not implemented yet in NestJS. To make the button work you still
 2. Create `github.strategy.ts`.
 3. Create `GithubAuthGuard`.
 4. Add backend routes:
-   - `GET /api/auth/github`
-   - `GET /api/auth/github/callback`
+    - `GET /api/auth/github`
+    - `GET /api/auth/github/callback`
 5. Find or create the local user from the GitHub profile.
 6. Issue the auth cookie and redirect back to `/`.
 

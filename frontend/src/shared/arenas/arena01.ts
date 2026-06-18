@@ -8,13 +8,13 @@
  * Geometry helpers and rendering live in game/arenas/arena.ts.
  */
 
-import { ArenaDef } from './arena';
+import { ArenaDef } from "./arena";
 
 export const ARENA_01: ArenaDef = {
-  srcW: 1920,
-  srcH: 1080,
-  cx: 961,
-  cy: 540,
-  rx: 705,
-  ry: 491,
+	srcW: 1920,
+	srcH: 1080,
+	cx: 961,
+	cy: 540,
+	rx: 705,
+	ry: 491,
 };

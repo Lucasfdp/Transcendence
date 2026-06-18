@@ -78,14 +78,14 @@ game-results/
 
 ```typescript
 // dto/submit-result.dto.ts
-import { IsString, IsIn } from 'class-validator';
+import { IsString, IsIn } from "class-validator";
 
 export class SubmitResultDto {
-  @IsString()
-  gameId: string; // e.g. 'kame-knock'
+	@IsString()
+	gameId: string; // e.g. 'kame-knock'
 
-  @IsIn(['win', 'loss'])
-  outcome: 'win' | 'loss';
+	@IsIn(["win", "loss"])
+	outcome: "win" | "loss";
 }
 ```
 
@@ -93,8 +93,8 @@ export class SubmitResultDto {
 
 ```typescript
 // game-results/progression.constants.ts
-export const XP_PER_WIN   = 150;
-export const XP_PER_LOSS  = 40;
+export const XP_PER_WIN = 150;
+export const XP_PER_LOSS = 40;
 export const COINS_PER_WIN = 50;
 export const COINS_PER_LOSS = 0;
 
@@ -110,7 +110,7 @@ export const COINS_PER_LOSS = 0;
  * ProfilePanel.ts too.
  */
 export function xpForNextLevel(currentLevel: number): number {
-  return currentLevel * 1_000;
+	return currentLevel * 1_000;
 }
 ```
 
@@ -118,64 +118,78 @@ export function xpForNextLevel(currentLevel: number): number {
 
 ```typescript
 // game-results/game-results.service.ts
-import { Injectable } from '@nestjs/common';
-import { UsersService } from '../users/users.service';
-import { User } from '../users/entities/user.entity';
-import { SubmitResultDto } from './dto/submit-result.dto';
+import { Injectable } from "@nestjs/common";
+import { UsersService } from "../users/users.service";
+import { User } from "../users/entities/user.entity";
+import { SubmitResultDto } from "./dto/submit-result.dto";
 import {
-  XP_PER_WIN, XP_PER_LOSS, COINS_PER_WIN, COINS_PER_LOSS, xpForNextLevel,
-} from './progression.constants';
+	XP_PER_WIN,
+	XP_PER_LOSS,
+	COINS_PER_WIN,
+	COINS_PER_LOSS,
+	xpForNextLevel,
+} from "./progression.constants";
 
 export interface ProgressionResult {
-  xpGained:    number;
-  coinsGained: number;
-  newXp:       number;
-  newLevel:    number;
-  newCoins:    number;
-  leveledUp:   boolean;
+	xpGained: number;
+	coinsGained: number;
+	newXp: number;
+	newLevel: number;
+	newCoins: number;
+	leveledUp: boolean;
 }
 
 @Injectable()
 export class GameResultsService {
-  constructor(private readonly usersService: UsersService) {}
+	constructor(private readonly usersService: UsersService) {}
 
-  async submitResult(user: User, dto: SubmitResultDto): Promise<ProgressionResult> {
-    const isWin     = dto.outcome === 'win';
-    const xpGained  = isWin ? XP_PER_WIN  : XP_PER_LOSS;
-    const coinsGained = isWin ? COINS_PER_WIN : COINS_PER_LOSS;
+	async submitResult(
+		user: User,
+		dto: SubmitResultDto,
+	): Promise<ProgressionResult> {
+		const isWin = dto.outcome === "win";
+		const xpGained = isWin ? XP_PER_WIN : XP_PER_LOSS;
+		const coinsGained = isWin ? COINS_PER_WIN : COINS_PER_LOSS;
 
-    // ── XP + level-up (loop to handle multiple level-ups in one call)
-    let xp    = user.xp    + xpGained;
-    let level = user.level;
-    let leveledUp = false;
+		// ── XP + level-up (loop to handle multiple level-ups in one call)
+		let xp = user.xp + xpGained;
+		let level = user.level;
+		let leveledUp = false;
 
-    while (xp >= xpForNextLevel(level)) {
-      xp -= xpForNextLevel(level);
-      level += 1;
-      leveledUp = true;
-    }
+		while (xp >= xpForNextLevel(level)) {
+			xp -= xpForNextLevel(level);
+			level += 1;
+			leveledUp = true;
+		}
 
-    // ── Coins
-    const coins = user.coins + coinsGained;
+		// ── Coins
+		const coins = user.coins + coinsGained;
 
-    // ── Profile stats (totalWins, totalLosses, gamesPlayed)
-    const profile = user.profile;
-    if (isWin)  profile.totalWins   += 1;
-    else        profile.totalLosses += 1;
-    profile.gamesPlayed += 1;
+		// ── Profile stats (totalWins, totalLosses, gamesPlayed)
+		const profile = user.profile;
+		if (isWin) profile.totalWins += 1;
+		else profile.totalLosses += 1;
+		profile.gamesPlayed += 1;
 
-    // ── Persist both entities atomically
-    // UsersService.save() calls usersRepo.save() which cascades to profile
-    // because User has cascade: true on the profile relation.
-    user.xp    = xp;
-    user.level = level;
-    user.coins = coins;
-    user.profile = profile;
+		// ── Persist both entities atomically
+		// UsersService.save() calls usersRepo.save() which cascades to profile
+		// because User has cascade: true on the profile relation.
+		user.xp = xp;
+		user.level = level;
+		user.coins = coins;
+		user.profile = profile;
 
-    await this.usersService.save(user);
+		await this.usersService.save(user);
 
-    return { xpGained, coinsGained, newXp: xp, newLevel: level, newCoins: coins, leveledUp };
-  }
+		return {
+			xpGained,
+			coinsGained,
+			newXp: xp,
+			newLevel: level,
+			newCoins: coins,
+			leveledUp,
+		};
+	}
 }
 ```
 
@@ -188,39 +202,45 @@ export class GameResultsService {
 
 ```typescript
 // game-results/game-results.controller.ts
-import { Controller, Post, Body, UseGuards, Request, HttpCode } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { GameResultsService } from './game-results.service';
-import { SubmitResultDto } from './dto/submit-result.dto';
-import { UsersService } from '../users/users.service';
-import { UnauthorizedException } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+	Controller,
+	Post,
+	Body,
+	UseGuards,
+	Request,
+	HttpCode,
+} from "@nestjs/common";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { GameResultsService } from "./game-results.service";
+import { SubmitResultDto } from "./dto/submit-result.dto";
+import { UsersService } from "../users/users.service";
+import { UnauthorizedException } from "@nestjs/common";
+import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 
-@ApiTags('game-results')
+@ApiTags("game-results")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('game-results')
+@Controller("game-results")
 export class GameResultsController {
-  constructor(
-    private readonly gameResultsService: GameResultsService,
-    private readonly usersService: UsersService,
-  ) {}
+	constructor(
+		private readonly gameResultsService: GameResultsService,
+		private readonly usersService: UsersService,
+	) {}
 
-  /**
-   * POST /api/game-results
-   * Records the outcome of a completed game session for the authenticated user.
-   * Returns the progression delta so the frontend can animate XP gain.
-   */
-  @Post()
-  @HttpCode(200)
-  async submitResult(
-    @Request() req,
-    @Body() dto: SubmitResultDto,
-  ) {
-    const user = await this.usersService.findById((req.user as { id: number }).id);
-    if (!user) throw new UnauthorizedException();
-    return this.gameResultsService.submitResult(user, dto);
-  }
+	/**
+	 * POST /api/game-results
+	 * Records the outcome of a completed game session for the authenticated user.
+	 * Returns the progression delta so the frontend can animate XP gain.
+	 */
+	@Post()
+	@HttpCode(200)
+	async submitResult(@Request() req, @Body() dto: SubmitResultDto) {
+		const user = await this.usersService.findById(
+			(req.user as { id: number }).id,
+		);
+		if (!user) throw new UnauthorizedException();
+		return this.gameResultsService.submitResult(user, dto);
+	}
 }
 ```
 
@@ -228,15 +248,15 @@ export class GameResultsController {
 
 ```typescript
 // game-results/game-results.module.ts
-import { Module } from '@nestjs/common';
-import { GameResultsController } from './game-results.controller';
-import { GameResultsService }    from './game-results.service';
-import { UsersModule }           from '../users/users.module';
+import { Module } from "@nestjs/common";
+import { GameResultsController } from "./game-results.controller";
+import { GameResultsService } from "./game-results.service";
+import { UsersModule } from "../users/users.module";
 
 @Module({
-  imports:     [UsersModule],
-  controllers: [GameResultsController],
-  providers:   [GameResultsService],
+	imports: [UsersModule],
+	controllers: [GameResultsController],
+	providers: [GameResultsService],
 })
 export class GameResultsModule {}
 ```
@@ -255,8 +275,8 @@ Register in `app.module.ts` imports array.
 ```typescript
 // srcs/requirements/frontend/src/src/hub/api.ts
 export interface User {
-  // ...existing fields...
-  coins: number;  // add this
+	// ...existing fields...
+	coins: number; // add this
 }
 ```
 
@@ -312,7 +332,7 @@ record stats against their ephemeral account (harmless but wasteful):
 
 ```typescript
 if (!currentUser.isGuest) {
-  await this.onGameOver(localPlayerWon);
+	await this.onGameOver(localPlayerWon);
 }
 ```
 
@@ -323,12 +343,14 @@ a coins display. The `User` object will now have `coins` after the `/me` fix:
 
 ```typescript
 // After XP bar section, add:
-const coinsLabel = this.add.text(xpBarX + xpBarW + 12, yForCoins, `⬡ ${this.user.coins}`, {
-  fontSize: '12px',
-  color: THEME.textGold,
-  fontFamily: THEME.font,
-  fontStyle: 'bold',
-}).setDepth(HUD_DEPTH);
+const coinsLabel = this.add
+	.text(xpBarX + xpBarW + 12, yForCoins, `⬡ ${this.user.coins}`, {
+		fontSize: "12px",
+		color: THEME.textGold,
+		fontFamily: THEME.font,
+		fontStyle: "bold",
+	})
+	.setDepth(HUD_DEPTH);
 this.hudLayer.push(coinsLabel);
 ```
 
@@ -342,12 +364,14 @@ from `/api/users/me`.
 
 ```typescript
 // After the XP divider section, before the stats row:
-children.push(this.scene.add.text(PAD, coinsY, `⬡  ${user.coins ?? 0} coins`, {
-  fontSize: '13px',
-  color: THEME.textGold,
-  fontFamily: THEME.font,
-  fontStyle: 'bold',
-}));
+children.push(
+	this.scene.add.text(PAD, coinsY, `⬡  ${user.coins ?? 0} coins`, {
+		fontSize: "13px",
+		color: THEME.textGold,
+		fontFamily: THEME.font,
+		fontStyle: "bold",
+	}),
+);
 ```
 
 Increase `PH` (panel height constant at top of file) by ~24px to accommodate the
@@ -431,15 +455,23 @@ returned by the repository.
 ```typescript
 // game-results/game-results.service.spec.ts
 
-describe('GameResultsService', () => {
-  it('should award XP and coins on win, increment totalWins and gamesPlayed')
-  it('should award XP (reduced) on loss, increment totalLosses and gamesPlayed')
-  it('should level up when XP crosses threshold')
-  it('should handle multiple level-ups in a single call (XP award > one threshold)')
-  it('should carry over excess XP after level-up (e.g. 50 XP left after leveling)')
-  it('should not modify user when isGuest is true')
-  it('should throw InternalServerErrorException when usersService.save fails')
-})
+describe("GameResultsService", () => {
+	it("should award XP and coins on win, increment totalWins and gamesPlayed");
+	it(
+		"should award XP (reduced) on loss, increment totalLosses and gamesPlayed",
+	);
+	it("should level up when XP crosses threshold");
+	it(
+		"should handle multiple level-ups in a single call (XP award > one threshold)",
+	);
+	it(
+		"should carry over excess XP after level-up (e.g. 50 XP left after leveling)",
+	);
+	it("should not modify user when isGuest is true");
+	it(
+		"should throw InternalServerErrorException when usersService.save fails",
+	);
+});
 ```
 
 Jest + `@nestjs/testing` with a mock `UsersService`. Aim for ≥ 90% branch coverage
@@ -462,19 +494,19 @@ on `submitResult`.
 
 ## 10. Files to create / modify (summary)
 
-| Action | Path |
-|--------|------|
-| **Modify** | `srcs/requirements/backend/src/src/users/users.controller.ts` |
-| **Modify** | `srcs/requirements/backend/src/src/users/users.module.ts` |
-| **Modify** | `srcs/requirements/backend/src/src/users/entities/user.entity.ts` |
-| **Modify** | `srcs/requirements/backend/src/src/app.module.ts` |
-| **Create** | `srcs/requirements/backend/src/src/game-results/game-results.module.ts` |
-| **Create** | `srcs/requirements/backend/src/src/game-results/game-results.controller.ts` |
-| **Create** | `srcs/requirements/backend/src/src/game-results/game-results.service.ts` |
-| **Create** | `srcs/requirements/backend/src/src/game-results/progression.constants.ts` |
-| **Create** | `srcs/requirements/backend/src/src/game-results/dto/submit-result.dto.ts` |
+| Action     | Path                                                                          |
+| ---------- | ----------------------------------------------------------------------------- |
+| **Modify** | `srcs/requirements/backend/src/src/users/users.controller.ts`                 |
+| **Modify** | `srcs/requirements/backend/src/src/users/users.module.ts`                     |
+| **Modify** | `srcs/requirements/backend/src/src/users/entities/user.entity.ts`             |
+| **Modify** | `srcs/requirements/backend/src/src/app.module.ts`                             |
+| **Create** | `srcs/requirements/backend/src/src/game-results/game-results.module.ts`       |
+| **Create** | `srcs/requirements/backend/src/src/game-results/game-results.controller.ts`   |
+| **Create** | `srcs/requirements/backend/src/src/game-results/game-results.service.ts`      |
+| **Create** | `srcs/requirements/backend/src/src/game-results/progression.constants.ts`     |
+| **Create** | `srcs/requirements/backend/src/src/game-results/dto/submit-result.dto.ts`     |
 | **Create** | `srcs/requirements/backend/src/src/game-results/game-results.service.spec.ts` |
-| **Modify** | `srcs/requirements/frontend/src/src/hub/api.ts` |
-| **Modify** | `srcs/requirements/frontend/src/src/hub/HubScene.ts` |
-| **Modify** | `srcs/requirements/frontend/src/src/hub/ProfilePanel.ts` |
-| **Modify** | Each game scene that has a game-over state |
+| **Modify** | `srcs/requirements/frontend/src/src/hub/api.ts`                               |
+| **Modify** | `srcs/requirements/frontend/src/src/hub/HubScene.ts`                          |
+| **Modify** | `srcs/requirements/frontend/src/src/hub/ProfilePanel.ts`                      |
+| **Modify** | Each game scene that has a game-over state                                    |

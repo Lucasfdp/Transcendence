@@ -1,6 +1,6 @@
-import { Global, Module } from '@nestjs/common';
-import { MetricsController } from './metrics.controller';
-import { MetricsService } from './metrics.service';
+import { Global, Module } from "@nestjs/common";
+import { MetricsController } from "./metrics.controller";
+import { MetricsService } from "./metrics.service";
 
 /**
  * Global so MetricsService (and MetricsInterceptor via main.ts) can be
@@ -8,8 +8,8 @@ import { MetricsService } from './metrics.service';
  */
 @Global()
 @Module({
-  providers:   [MetricsService],
-  controllers: [MetricsController],
-  exports:     [MetricsService],
+	providers: [MetricsService],
+	controllers: [MetricsController],
+	exports: [MetricsService],
 })
 export class MetricsModule {}

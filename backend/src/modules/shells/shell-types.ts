@@ -8,13 +8,30 @@
  */
 
 export const VALID_SHELL_TYPES = new Set<string>([
-  'none',
-  // Original 10 shells
-  'heavy', 'bomb', 'splitter', 'ghost', 'magnet',
-  'spinning', 'bouncer', 'shield', 'freeze', 'slick',
-  // New shells
-  'rocket', 'giant', 'tiny', 'boomerang', 'repel',
-  'sticky', 'lightning', 'vortex', 'clone', 'ricochet', 'phantom',
+	"none",
+	// Original 10 shells
+	"heavy",
+	"bomb",
+	"splitter",
+	"ghost",
+	"magnet",
+	"spinning",
+	"bouncer",
+	"shield",
+	"freeze",
+	"slick",
+	// New shells
+	"rocket",
+	"giant",
+	"tiny",
+	"boomerang",
+	"repel",
+	"sticky",
+	"lightning",
+	"vortex",
+	"clone",
+	"ricochet",
+	"phantom",
 ]);
 
 /**
@@ -22,8 +39,25 @@ export const VALID_SHELL_TYPES = new Set<string>([
  * Does NOT include 'none' — that's free and unstorable.
  */
 export const SEEDED_SHELL_TYPES: readonly string[] = [
-  'heavy', 'bomb', 'splitter', 'ghost', 'magnet',
-  'spinning', 'bouncer', 'shield', 'freeze', 'slick',
-  'rocket', 'giant', 'tiny', 'boomerang', 'repel',
-  'sticky', 'lightning', 'vortex', 'clone', 'ricochet', 'phantom',
+	"heavy",
+	"bomb",
+	"splitter",
+	"ghost",
+	"magnet",
+	"spinning",
+	"bouncer",
+	"shield",
+	"freeze",
+	"slick",
+	"rocket",
+	"giant",
+	"tiny",
+	"boomerang",
+	"repel",
+	"sticky",
+	"lightning",
+	"vortex",
+	"clone",
+	"ricochet",
+	"phantom",
 ] as const;

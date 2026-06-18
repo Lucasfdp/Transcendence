@@ -13,11 +13,11 @@ files are:
 - `srcs/requirements/frontend/src/src/hub/theme.ts` — colour constants
 
 The palette (`THEME`) is: background `#1a1410`, gold `#d4a843`, red `#a23b3b`,
-green `#3a5a40`, muted text `#6b6258`, text `#e6ddd0`.  All font is `monospace`.
+green `#3a5a40`, muted text `#6b6258`, text `#e6ddd0`. All font is `monospace`.
 
 The canvas uses `Phaser.Scale.RESIZE` — `this.scale.width/height` are live.
 Letterbox transform: `bgScale = Math.min(w/SRC_W, h/SRC_H)`, offsets `bgOffX`
-/ `bgOffY`.  A `handleResize()` → `applyResize()` pattern redraws every layer
+/ `bgOffY`. A `handleResize()` → `applyResize()` pattern redraws every layer
 on window resize; layers are arrays of `GameObject[]` cleared with
 `clearLayer()` before redraw.
 
@@ -34,15 +34,17 @@ on wide viewports the top/bottom show raw black. The tree guard clips trees
 off the bottom edge. The overall scene has no foreground depth.
 
 **Fix the letterbox to cover-and-crop:**
+
 ```typescript
 // Instead of Math.min, use Math.max so the image always covers the canvas.
 // Then clip: set a rectangular mask on bgImage equal to canvas bounds.
 this.bgScale = Math.max(width / SRC_W, height / SRC_H);
 // bgOffX / bgOffY can go negative (image larger than canvas = cropped edges)
-this.bgOffX  = (width  - SRC_W * this.bgScale) / 2;
-this.bgOffY  = (height - SRC_H * this.bgScale) / 2;
+this.bgOffX = (width - SRC_W * this.bgScale) / 2;
+this.bgOffY = (height - SRC_H * this.bgScale) / 2;
 ```
-Apply this same change inside `applyResize()`.  Remove the tree bounds guard
+
+Apply this same change inside `applyResize()`. Remove the tree bounds guard
 (it is no longer needed because the image fills the canvas).
 
 **Add depth layers to `drawBackground()`** (all added to `bgLayer`):
@@ -57,11 +59,11 @@ Apply this same change inside `applyResize()`.  Remove the tree bounds guard
 
 3. **Hanging stone lanterns** — draw 3–4 procedural lanterns spaced along the
    upper portion of the canvas. Each lantern:
-   - A thin vertical rope line from top of canvas
-   - A small oval body (`0x8b4513`, warm orange) with a glowing fill
-     (`0xff8c00` at 30% alpha inside)
-   - A `0xff6600` point light glow using `this.add.pointlight()` (radius ~60,
-     intensity ~0.4) to cast warm light downward
+    - A thin vertical rope line from top of canvas
+    - A small oval body (`0x8b4513`, warm orange) with a glowing fill
+      (`0xff8c00` at 30% alpha inside)
+    - A `0xff6600` point light glow using `this.add.pointlight()` (radius ~60,
+      intensity ~0.4) to cast warm light downward
 
 4. **Restore blossom trees** without the bounds guard — the cover-and-crop
    letterbox means the canvas is always fully covered.
@@ -70,26 +72,28 @@ Apply this same change inside `applyResize()`.  Remove the tree bounds guard
 
 ### 2. Hotspot buttons — Replace flat rectangles with shrine-marker frames
 
-**Problem:** The buttons are plain dark rectangles.  They need Japanese shrine
+**Problem:** The buttons are plain dark rectangles. They need Japanese shrine
 aesthetics.
 
 In `buildHotspots()`, for each hotspot zone, replace the current rectangle
 border/label with:
 
 **Frame style:**
+
 - Outer border: 2px gold stroke (`THEME.gold`) with rounded corners (radius 6)
 - Inner fill: `0x1a1005` at 85% alpha — dark lacquered wood look
 - A thin inner accent border 3px inset: `THEME.gold` at 15% alpha
 
 **Zone icon** (drawn in top-left corner of each button, 18×18 area):
 Map each `id` to a small icon drawn with Graphics:
-- `kame-knock`        → a small shield / torii arch outline
-- `river-rush`        → a wave (two small arc strokes)
-- `bamboo-bash`       → three vertical lines (bamboo stalks)
-- `oni-dodge`         → a small horned circle (oni mask)
-- `sakura-sweep`      → a 5-petal flower (5 small ellipses arranged radially)
-- `bell-clash`        → a small bell outline (rounded trapezoid with curved top)
-- `shell-cards`       → a small rectangle with corner pip (card shape)
+
+- `kame-knock` → a small shield / torii arch outline
+- `river-rush` → a wave (two small arc strokes)
+- `bamboo-bash` → three vertical lines (bamboo stalks)
+- `oni-dodge` → a small horned circle (oni mask)
+- `sakura-sweep` → a 5-petal flower (5 small ellipses arranged radially)
+- `bell-clash` → a small bell outline (rounded trapezoid with curved top)
+- `shell-cards` → a small rectangle with corner pip (card shape)
 
 **Locked/coming-soon state:**
 When a minigame's `status !== 'available'`, overlay a translucent red `0x330000`
@@ -113,11 +117,12 @@ Make the following additions/changes to `build()`:
 
 **A. Win-rate bar** — below the stats row, add a single horizontal bar that
 splits proportionally: gold segment = wins / played, red segment = losses /
-played, grey = remainder. Label it "WIN RATE  XX%" right-aligned. Skip if
+played, grey = remainder. Label it "WIN RATE XX%" right-aligned. Skip if
 `gamesPlayed === 0` and show the italic placeholder instead.
 
 **B. Rank belt** — above the player name, add a small coloured sash/badge that
 maps level to a rank:
+
 ```
 1–4   → "Novice Shell"      colour 0x8b7355  (tan)
 5–9   → "Bronze Claw"       colour 0xcd7f32  (bronze)
@@ -125,16 +130,18 @@ maps level to a rank:
 20–29 → "Gold Shell"        colour 0xd4a843  (gold)
 30+   → "Grand Kame"        colour 0x00e5ff  (cyan)
 ```
+
 Draw it as a small pill (rounded rectangle) with the rank text inside, centred
 below the avatar frame, above the player name.
 
 **C. Shell skin icon** — replace the `⬡  kanagawa` text with a small drawn
-hexagon in the skin's accent colour next to the skin name.  Map skin names to
+hexagon in the skin's accent colour next to the skin name. Map skin names to
 colours:
+
 - `kanagawa` → `0x1a3a5c`
-- `dragon`   → `0x8b0000`
-- `bamboo`   → `0x2d5a1b`
-- default    → `THEME.gold`
+- `dragon` → `0x8b0000`
+- `bamboo` → `0x2d5a1b`
+- default → `THEME.gold`
 
 **D. Slide-in animation** — change `show()` so the container starts at
 `x - 30` and tweens to its final position simultaneously with the alpha fade,
@@ -150,6 +157,7 @@ win-rate bar and rank belt without crowding.
 In `drawHUD()`:
 
 **A. Avatar ring** — instead of a plain filled circle, draw the avatar as:
+
 - Dark fill circle (existing)
 - An XP progress arc around the outside: draw a `Graphics.strokeArc()` from
   `-Math.PI/2` to `-Math.PI/2 + 2π * xpFraction` in gold, lineWidth 3.

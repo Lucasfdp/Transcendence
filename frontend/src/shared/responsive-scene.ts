@@ -32,62 +32,62 @@
  * - Set `resizeDebounceMs > 0` to coalesce bursts of resize events.
  */
 
-import Phaser from 'phaser';
+import Phaser from "phaser";
 
 export abstract class ResponsiveScene extends Phaser.Scene {
-  /** Override (>0) to debounce relayout() against bursts of resize events. */
-  protected resizeDebounceMs = 0;
+	/** Override (>0) to debounce relayout() against bursts of resize events. */
+	protected resizeDebounceMs = 0;
 
-  private _resizeTimer: ReturnType<typeof setTimeout> | null = null;
-  private _responsiveOn = false;
+	private _resizeTimer: ReturnType<typeof setTimeout> | null = null;
+	private _responsiveOn = false;
 
-  /**
-   * Recompute the scene's layout from the current `this.scale.width/height`.
-   * Called on every resize — NOT on the initial build (do that in create()).
-   */
-  protected abstract relayout(): void;
+	/**
+	 * Recompute the scene's layout from the current `this.scale.width/height`.
+	 * Called on every resize — NOT on the initial build (do that in create()).
+	 */
+	protected abstract relayout(): void;
 
-  /**
-   * Teardown hook, called once on scene SHUTDOWN (Phaser does not auto-call
-   * shutdown()). Override to destroy resources; the resize listener is already
-   * removed for you. Default: no-op.
-   */
-  protected onShutdown(): void {}
+	/**
+	 * Teardown hook, called once on scene SHUTDOWN (Phaser does not auto-call
+	 * shutdown()). Override to destroy resources; the resize listener is already
+	 * removed for you. Default: no-op.
+	 */
+	protected onShutdown(): void {}
 
-  /** Begin relayout-on-resize. Call once, AFTER the initial layout is built. */
-  protected enableResponsive(): void {
-    if (this._responsiveOn) return;
-    this._responsiveOn = true;
-    this.scale.on(Phaser.Scale.Events.RESIZE, this._onResizeEvent, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this._teardown, this);
-  }
+	/** Begin relayout-on-resize. Call once, AFTER the initial layout is built. */
+	protected enableResponsive(): void {
+		if (this._responsiveOn) return;
+		this._responsiveOn = true;
+		this.scale.on(Phaser.Scale.Events.RESIZE, this._onResizeEvent, this);
+		this.events.once(Phaser.Scenes.Events.SHUTDOWN, this._teardown, this);
+	}
 
-  private _onResizeEvent(): void {
-    if (this.resizeDebounceMs <= 0) {
-      this._runRelayout();
-      return;
-    }
-    if (this._resizeTimer !== null) clearTimeout(this._resizeTimer);
-    this._resizeTimer = setTimeout(() => {
-      this._resizeTimer = null;
-      this._runRelayout();
-    }, this.resizeDebounceMs);
-  }
+	private _onResizeEvent(): void {
+		if (this.resizeDebounceMs <= 0) {
+			this._runRelayout();
+			return;
+		}
+		if (this._resizeTimer !== null) clearTimeout(this._resizeTimer);
+		this._resizeTimer = setTimeout(() => {
+			this._resizeTimer = null;
+			this._runRelayout();
+		}, this.resizeDebounceMs);
+	}
 
-  private _runRelayout(): void {
-    // A debounce timer (or a late event) can fire after shutdown — guard the
-    // dead scene rather than relayout into destroyed objects.
-    if (!this.scene.isActive()) return;
-    this.relayout();
-  }
+	private _runRelayout(): void {
+		// A debounce timer (or a late event) can fire after shutdown — guard the
+		// dead scene rather than relayout into destroyed objects.
+		if (!this.scene.isActive()) return;
+		this.relayout();
+	}
 
-  private _teardown(): void {
-    if (this._resizeTimer !== null) {
-      clearTimeout(this._resizeTimer);
-      this._resizeTimer = null;
-    }
-    this.scale.off(Phaser.Scale.Events.RESIZE, this._onResizeEvent, this);
-    this._responsiveOn = false;
-    this.onShutdown();
-  }
+	private _teardown(): void {
+		if (this._resizeTimer !== null) {
+			clearTimeout(this._resizeTimer);
+			this._resizeTimer = null;
+		}
+		this.scale.off(Phaser.Scale.Events.RESIZE, this._onResizeEvent, this);
+		this._responsiveOn = false;
+		this.onShutdown();
+	}
 }

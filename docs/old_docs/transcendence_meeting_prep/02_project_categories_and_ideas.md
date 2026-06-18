@@ -1,28 +1,30 @@
 # Transcendence Idea Categories
 
 ## Gaming Platform
+
 - Competitive Games
-  - Pong
-  - Chess
-  - Checkers
-  - Connect Four
-  - Battleship
+    - Pong
+    - Chess
+    - Checkers
+    - Connect Four
+    - Battleship
 - Arcade Games
-  - Snake
-  - Breakout
-  - Asteroids
-  - Space Invaders
+    - Snake
+    - Breakout
+    - Asteroids
+    - Space Invaders
 - Multiplayer Party Games
-  - Trivia
-  - Drawing Game
-  - Mafia
-  - Card Games
+    - Trivia
+    - Drawing Game
+    - Mafia
+    - Card Games
 - Strategy Games
-  - Risk-style
-  - Tower Defense
-  - Resource Management
+    - Risk-style
+    - Tower Defense
+    - Resource Management
 
 ## Social Platform
+
 - Social Network
 - Community Platform
 - Student Community
@@ -31,6 +33,7 @@
 - Hobby Communities
 
 ## Collaborative Platform
+
 - Shared Whiteboard
 - Team Workspace
 - Collaborative Documents
@@ -38,6 +41,7 @@
 - Collaborative Coding
 
 ## Content Platform
+
 - Blogging Platform
 - Recipe Sharing
 - Video Sharing
@@ -46,6 +50,7 @@
 - Portfolio Platform
 
 ## Productivity Platform
+
 - Task Manager
 - Notion-style Workspace
 - Booking System
@@ -53,6 +58,7 @@
 - Team Planner
 
 ## Education Platform
+
 - Quiz Battles
 - Coding Challenges
 - Language Learning
@@ -60,6 +66,7 @@
 - Flashcards
 
 ## Marketplace Platform
+
 - Buy & Sell
 - Freelance Marketplace
 - Book Exchange
@@ -67,12 +74,14 @@
 - Service Marketplace
 
 ## Analytics Platform
+
 - Trading Simulator
 - Business Dashboard
 - Team Analytics
 - Personal Analytics
 
 ## AI Platform
+
 - RAG Knowledge Base
 - AI Tutor
 - AI Study Assistant
@@ -80,7 +89,9 @@
 - Recommendation Platform
 
 ## Hybrid Platform
+
 Mix multiple categories:
+
 - Gaming + Social
 - Gaming + AI
 - Social + Marketplace

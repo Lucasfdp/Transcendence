@@ -1,16 +1,16 @@
 import {
-  Check,
-  Column,
-  CreateDateColumn,
-  Entity,
-  Index,
-  ManyToOne,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
-} from 'typeorm';
-import { User } from '../../users/entities/user.entity';
+	Check,
+	Column,
+	CreateDateColumn,
+	Entity,
+	Index,
+	ManyToOne,
+	PrimaryGeneratedColumn,
+	UpdateDateColumn,
+} from "typeorm";
+import { User } from "../../users/entities/user.entity";
 
-export type FriendshipStatus = 'pending' | 'accepted' | 'blocked';
+export type FriendshipStatus = "pending" | "accepted" | "blocked";
 
 /**
  * Represents a directed relationship between two users.
@@ -26,32 +26,32 @@ export type FriendshipStatus = 'pending' | 'accepted' | 'blocked';
  * The CHECK constraint prevents self-friending at the DB level.
  * The composite unique index prevents duplicate rows in either direction.
  */
-@Entity('friendships')
-@Index(['requesterId', 'addresseeId'], { unique: true })
+@Entity("friendships")
+@Index(["requesterId", "addresseeId"], { unique: true })
 @Check('"requesterId" <> "addresseeId"')
 export class Friendship {
-  @PrimaryGeneratedColumn()
-  id: number;
+	@PrimaryGeneratedColumn()
+	id: number;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: false })
-  requester: User;
+	@ManyToOne(() => User, { onDelete: "CASCADE", nullable: false })
+	requester: User;
 
-  @Column()
-  requesterId: number;
+	@Column()
+	requesterId: number;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: false })
-  addressee: User;
+	@ManyToOne(() => User, { onDelete: "CASCADE", nullable: false })
+	addressee: User;
 
-  @Column()
-  addresseeId: number;
+	@Column()
+	addresseeId: number;
 
-  /** varchar instead of enum so migrations are simpler and portable. */
-  @Column({ type: 'varchar', length: 16, default: 'pending' })
-  status: FriendshipStatus;
+	/** varchar instead of enum so migrations are simpler and portable. */
+	@Column({ type: "varchar", length: 16, default: "pending" })
+	status: FriendshipStatus;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+	@CreateDateColumn({ type: "timestamptz" })
+	createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+	@UpdateDateColumn({ type: "timestamptz" })
+	updatedAt: Date;
 }

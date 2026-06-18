@@ -150,64 +150,64 @@ Desventajas:
 
 ### Raiz del proyecto
 
-| Actual | Destino |
-| --- | --- |
-| `shellsmash/Makefile` | `Makefile` |
-| `shellsmash/srcs/docker-compose.yml` | `docker-compose.yml` |
+| Actual                                        | Destino                       |
+| --------------------------------------------- | ----------------------------- |
+| `shellsmash/Makefile`                         | `Makefile`                    |
+| `shellsmash/srcs/docker-compose.yml`          | `docker-compose.yml`          |
 | `shellsmash/srcs/docker-compose.override.yml` | `docker-compose.override.yml` |
-| `shellsmash/.env.example` | `.env.example` |
-| `shellsmash/.gitignore` | `.gitignore` |
-| `shellsmash/.sonarcloud.properties` | `.sonarcloud.properties` |
-| `shellsmash/README.md` | `README.md` |
-| `shellsmash/scripts/` | `scripts/` |
-| `shellsmash/srcs/secrets/` | `secrets/` |
+| `shellsmash/.env.example`                     | `.env.example`                |
+| `shellsmash/.gitignore`                       | `.gitignore`                  |
+| `shellsmash/.sonarcloud.properties`           | `.sonarcloud.properties`      |
+| `shellsmash/README.md`                        | `README.md`                   |
+| `shellsmash/scripts/`                         | `scripts/`                    |
+| `shellsmash/srcs/secrets/`                    | `secrets/`                    |
 
 El `Makefile` de la raiz actual debe compararse con `shellsmash/Makefile`. Si no contiene nada imprescindible, se reemplaza por el de `shellsmash/`.
 
 ### Documentacion
 
-| Actual | Destino |
-| --- | --- |
-| `shellsmash/docs/*` | `docs/*` |
-| `docs/*.md` | `docs/old_docs/root_docs/` |
-| `docs/*.docx` | `docs/old_docs/root_docs/` |
-| `docs/transcendence_max/` | `docs/old_docs/transcendence_max/` |
+| Actual                             | Destino                                     |
+| ---------------------------------- | ------------------------------------------- |
+| `shellsmash/docs/*`                | `docs/*`                                    |
+| `docs/*.md`                        | `docs/old_docs/root_docs/`                  |
+| `docs/*.docx`                      | `docs/old_docs/root_docs/`                  |
+| `docs/transcendence_max/`          | `docs/old_docs/transcendence_max/`          |
 | `docs/transcendence_meeting_prep/` | `docs/old_docs/transcendence_meeting_prep/` |
 
 Despues del movimiento, `docs/` debe ser la unica carpeta de documentacion activa. Los documentos historicos no se borran: se archivan bajo `docs/old_docs/`.
 
 ### Assets publicos y compartidos
 
-| Actual | Destino |
-| --- | --- |
-| `concept_art/*.png` | `public/assets/concept-art/` |
+| Actual                                          | Destino                                     |
+| ----------------------------------------------- | ------------------------------------------- |
+| `concept_art/*.png`                             | `public/assets/concept-art/`                |
 | `shellsmash/assets/textures/arenas/arena01.png` | `public/assets/textures/arenas/arena01.png` |
-| Assets usados solo por React | `frontend/src/assets/` |
-| Assets servidos estaticamente o compartidos | `public/assets/` |
+| Assets usados solo por React                    | `frontend/src/assets/`                      |
+| Assets servidos estaticamente o compartidos     | `public/assets/`                            |
 
 Regla: si un recurso se importa desde TypeScript y forma parte del bundle, va en `frontend/src/assets/`. Si debe servirse por URL estable, compartirse con Nginx, docs o varios servicios, va en `public/`.
 
 ### Frontend
 
-| Actual | Destino |
-| --- | --- |
-| `shellsmash/srcs/requirements/frontend/Dockerfile` | `frontend/Dockerfile` |
-| `shellsmash/srcs/requirements/frontend/tools/` | `frontend/tools/` |
-| `shellsmash/srcs/requirements/frontend/src/package.json` | `frontend/package.json` |
-| `shellsmash/srcs/requirements/frontend/src/package-lock.json` | `frontend/package-lock.json` |
-| `shellsmash/srcs/requirements/frontend/src/index.html` | `frontend/index.html` |
-| `shellsmash/srcs/requirements/frontend/src/vite.config.js` | `frontend/vite.config.js` |
-| `shellsmash/srcs/requirements/frontend/src/tsconfig.json` | `frontend/tsconfig.json` |
-| `shellsmash/srcs/requirements/frontend/src/main.tsx` | `frontend/src/main.tsx` |
-| `shellsmash/srcs/requirements/frontend/src/app/` | `frontend/src/app/` |
-| `shellsmash/srcs/requirements/frontend/src/components/` | `frontend/src/components/` |
-| `shellsmash/srcs/requirements/frontend/src/games/` | `frontend/src/games/` |
-| `shellsmash/srcs/requirements/frontend/src/hooks/` | `frontend/src/hooks/` |
-| `shellsmash/srcs/requirements/frontend/src/hub/` | `frontend/src/features/hub/` |
-| `shellsmash/srcs/requirements/frontend/src/network/` | `frontend/src/services/network/` |
-| `shellsmash/srcs/requirements/frontend/src/routes/` | `frontend/src/routes/` |
-| `shellsmash/srcs/requirements/frontend/src/shared/` | `frontend/src/shared/` |
-| `shellsmash/srcs/requirements/frontend/src/styles.css` | `frontend/src/styles/global.css` |
+| Actual                                                        | Destino                          |
+| ------------------------------------------------------------- | -------------------------------- |
+| `shellsmash/srcs/requirements/frontend/Dockerfile`            | `frontend/Dockerfile`            |
+| `shellsmash/srcs/requirements/frontend/tools/`                | `frontend/tools/`                |
+| `shellsmash/srcs/requirements/frontend/src/package.json`      | `frontend/package.json`          |
+| `shellsmash/srcs/requirements/frontend/src/package-lock.json` | `frontend/package-lock.json`     |
+| `shellsmash/srcs/requirements/frontend/src/index.html`        | `frontend/index.html`            |
+| `shellsmash/srcs/requirements/frontend/src/vite.config.js`    | `frontend/vite.config.js`        |
+| `shellsmash/srcs/requirements/frontend/src/tsconfig.json`     | `frontend/tsconfig.json`         |
+| `shellsmash/srcs/requirements/frontend/src/main.tsx`          | `frontend/src/main.tsx`          |
+| `shellsmash/srcs/requirements/frontend/src/app/`              | `frontend/src/app/`              |
+| `shellsmash/srcs/requirements/frontend/src/components/`       | `frontend/src/components/`       |
+| `shellsmash/srcs/requirements/frontend/src/games/`            | `frontend/src/games/`            |
+| `shellsmash/srcs/requirements/frontend/src/hooks/`            | `frontend/src/hooks/`            |
+| `shellsmash/srcs/requirements/frontend/src/hub/`              | `frontend/src/features/hub/`     |
+| `shellsmash/srcs/requirements/frontend/src/network/`          | `frontend/src/services/network/` |
+| `shellsmash/srcs/requirements/frontend/src/routes/`           | `frontend/src/routes/`           |
+| `shellsmash/srcs/requirements/frontend/src/shared/`           | `frontend/src/shared/`           |
+| `shellsmash/srcs/requirements/frontend/src/styles.css`        | `frontend/src/styles/global.css` |
 
 No mover:
 
@@ -248,21 +248,21 @@ frontend/src/
 
 ### Backend
 
-| Actual | Destino |
-| --- | --- |
-| `shellsmash/srcs/requirements/backend/Dockerfile` | `backend/Dockerfile` |
-| `shellsmash/srcs/requirements/backend/tools/` | `backend/tools/` |
-| `shellsmash/srcs/requirements/backend/src/package.json` | `backend/package.json` |
-| `shellsmash/srcs/requirements/backend/src/package-lock.json` | `backend/package-lock.json` |
-| `shellsmash/srcs/requirements/backend/src/nest-cli.json` | `backend/nest-cli.json` |
-| `shellsmash/srcs/requirements/backend/src/tsconfig.json` | `backend/tsconfig.json` |
-| `shellsmash/srcs/requirements/backend/src/tsconfig.build.json` | `backend/tsconfig.build.json` |
-| `shellsmash/srcs/requirements/backend/src/jest.config.ts` | `backend/jest.config.ts` |
-| `shellsmash/srcs/requirements/backend/src/src/main.ts` | `backend/src/main.ts` |
-| `shellsmash/srcs/requirements/backend/src/src/app.module.ts` | `backend/src/app.module.ts` |
-| `shellsmash/srcs/requirements/backend/src/src/app.controller.ts` | `backend/src/app.controller.ts` |
-| `shellsmash/srcs/requirements/backend/src/src/migrations/` | `backend/src/migrations/` |
-| `shellsmash/srcs/requirements/backend/src/src/*` | `backend/src/modules/*` cuando sean modulos de dominio |
+| Actual                                                           | Destino                                                |
+| ---------------------------------------------------------------- | ------------------------------------------------------ |
+| `shellsmash/srcs/requirements/backend/Dockerfile`                | `backend/Dockerfile`                                   |
+| `shellsmash/srcs/requirements/backend/tools/`                    | `backend/tools/`                                       |
+| `shellsmash/srcs/requirements/backend/src/package.json`          | `backend/package.json`                                 |
+| `shellsmash/srcs/requirements/backend/src/package-lock.json`     | `backend/package-lock.json`                            |
+| `shellsmash/srcs/requirements/backend/src/nest-cli.json`         | `backend/nest-cli.json`                                |
+| `shellsmash/srcs/requirements/backend/src/tsconfig.json`         | `backend/tsconfig.json`                                |
+| `shellsmash/srcs/requirements/backend/src/tsconfig.build.json`   | `backend/tsconfig.build.json`                          |
+| `shellsmash/srcs/requirements/backend/src/jest.config.ts`        | `backend/jest.config.ts`                               |
+| `shellsmash/srcs/requirements/backend/src/src/main.ts`           | `backend/src/main.ts`                                  |
+| `shellsmash/srcs/requirements/backend/src/src/app.module.ts`     | `backend/src/app.module.ts`                            |
+| `shellsmash/srcs/requirements/backend/src/src/app.controller.ts` | `backend/src/app.controller.ts`                        |
+| `shellsmash/srcs/requirements/backend/src/src/migrations/`       | `backend/src/migrations/`                              |
+| `shellsmash/srcs/requirements/backend/src/src/*`                 | `backend/src/modules/*` cuando sean modulos de dominio |
 
 Estructura NestJS recomendada:
 
@@ -300,14 +300,14 @@ Regla: cada dominio debe conservar juntos `module`, `controller`, `service`, `dt
 
 ### Infraestructura
 
-| Actual | Destino |
-| --- | --- |
-| `shellsmash/srcs/requirements/database/` | `infra/database/` |
-| `shellsmash/srcs/requirements/monitoring/` | `infra/monitoring/` |
-| `shellsmash/srcs/requirements/portainer/` | `infra/portainer/` |
-| `shellsmash/srcs/requirements/redis/` | `infra/redis/` |
-| `shellsmash/srcs/requirements/reverse_proxy/` | `infra/reverse-proxy/` |
-| `shellsmash/srcs/networks/` | eliminar si solo contiene documentacion antigua o mover a `docs/old_docs/infra-networks/` |
+| Actual                                        | Destino                                                                                   |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `shellsmash/srcs/requirements/database/`      | `infra/database/`                                                                         |
+| `shellsmash/srcs/requirements/monitoring/`    | `infra/monitoring/`                                                                       |
+| `shellsmash/srcs/requirements/portainer/`     | `infra/portainer/`                                                                        |
+| `shellsmash/srcs/requirements/redis/`         | `infra/redis/`                                                                            |
+| `shellsmash/srcs/requirements/reverse_proxy/` | `infra/reverse-proxy/`                                                                    |
+| `shellsmash/srcs/networks/`                   | eliminar si solo contiene documentacion antigua o mover a `docs/old_docs/infra-networks/` |
 
 Despues de mover infraestructura, actualizar `docker-compose.yml`:
 
@@ -348,9 +348,9 @@ Validacion:
 2. Mover `docker-compose.yml` y `docker-compose.override.yml` a la raiz.
 3. Mover `.env.example`, `.gitignore`, `.sonarcloud.properties`, `README.md`, `scripts/` y `secrets/`.
 4. Ajustar rutas internas del Makefile:
-   - `COMPOSE_FILE := docker-compose.yml`
-   - `OVERRIDE_FILE := docker-compose.override.yml`
-   - `CERT_DIR := secrets/nginx_ssl`
+    - `COMPOSE_FILE := docker-compose.yml`
+    - `OVERRIDE_FILE := docker-compose.override.yml`
+    - `CERT_DIR := secrets/nginx_ssl`
 5. Ajustar rutas del script de certificados si asume que vive dentro de `shellsmash/`.
 
 Validacion:
@@ -429,11 +429,11 @@ Validacion:
 2. Eliminar `srcs/requirements/` si todo fue migrado.
 3. Eliminar docs duplicados tras archivar historicos.
 4. Revisar referencias antiguas con busquedas:
-   - `shellsmash/`
-   - `srcs/`
-   - `requirements/`
-   - `concept_art/`
-   - `assets/textures/`
+    - `shellsmash/`
+    - `srcs/`
+    - `requirements/`
+    - `concept_art/`
+    - `assets/textures/`
 5. Actualizar README con la nueva estructura y comandos.
 
 Validacion:

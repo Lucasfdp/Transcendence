@@ -1,10 +1,13 @@
 # Transcendence Module Combination Cheat Sheet
 
 ## 1. Classic Pong Platform (14 pts)
+
 ### Core Idea
+
 Competitive Pong with user accounts and tournaments.
 
 ### Modules
+
 - Frameworks (Major) = 2
 - Web-based Game (Major) = 2
 - Remote Players (Major) = 2
@@ -22,6 +25,7 @@ Competitive Pong with user accounts and tournaments.
 ## 2. Online Chess Platform (15 pts)
 
 ### Modules
+
 - Frameworks (Major) = 2
 - Web-based Game (Major) = 2
 - Remote Players (Major) = 2
@@ -40,6 +44,7 @@ Competitive Pong with user accounts and tournaments.
 ## 3. Quiz Battle Platform (15 pts)
 
 ### Modules
+
 - Frameworks (Major) = 2
 - Web-based Game (Major) = 2
 - Multiplayer 3+ (Major) = 2
@@ -59,6 +64,7 @@ Competitive Pong with user accounts and tournaments.
 ## 4. Social Network (15 pts)
 
 ### Modules
+
 - Frameworks (Major) = 2
 - User Interaction (Major) = 2
 - Real-Time Features (Major) = 2
@@ -78,6 +84,7 @@ Competitive Pong with user accounts and tournaments.
 ## 5. Collaborative Workspace (16 pts)
 
 ### Modules
+
 - Frameworks (Major) = 2
 - Real-Time Collaboration (Minor) = 1
 - User Interaction (Major) = 2
@@ -98,6 +105,7 @@ Competitive Pong with user accounts and tournaments.
 ## 6. Learning Management System (16 pts)
 
 ### Modules
+
 - Frameworks (Major) = 2
 - User Interaction (Major) = 2
 - Organization System (Major) = 2
@@ -117,6 +125,7 @@ Competitive Pong with user accounts and tournaments.
 ## 7. AI Study Assistant (15 pts)
 
 ### Modules
+
 - Frameworks (Major) = 2
 - User Interaction (Major) = 2
 - RAG System (Major) = 2
@@ -135,6 +144,7 @@ Competitive Pong with user accounts and tournaments.
 ## 8. Marketplace Platform (15 pts)
 
 ### Modules
+
 - Frameworks (Major) = 2
 - User Interaction (Major) = 2
 - File Upload (Minor) = 1
@@ -154,9 +164,11 @@ Competitive Pong with user accounts and tournaments.
 ## 9. Gaming Hub (18 pts)
 
 ### Core Idea
+
 Multiple games inside one platform.
 
 ### Modules
+
 - Frameworks (Major) = 2
 - User Interaction (Major) = 2
 - Web-based Game (Major) = 2
@@ -176,9 +188,11 @@ Multiple games inside one platform.
 ## 10. Portfolio-Friendly "Safe" Build (14 pts)
 
 ### Goal
+
 Maximize chances of finishing on time.
 
 ### Modules
+
 - Frameworks (Major) = 2
 - User Interaction (Major) = 2
 - Standard User Management (Major) = 2
@@ -198,25 +212,30 @@ Maximize chances of finishing on time.
 # Recommendation Matrix
 
 If your team likes games:
+
 - Quiz Platform
 - Chess Platform
 - Gaming Hub
 
 If your team likes web development:
+
 - Collaborative Workspace
 - LMS
 - Social Network
 
 If your team likes AI:
+
 - AI Study Assistant
 - Quiz Platform with AI-generated questions
 
 If your team wants the safest route:
+
 - Collaborative Workspace
 - Social Network
 - Portfolio-Friendly Safe Build
 
 If your team wants the highest technical challenge:
+
 - Gaming Hub
 - AI Study Assistant
 - Multiplayer Strategy Game (custom module)

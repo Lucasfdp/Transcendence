@@ -5,6 +5,7 @@
 You are a senior DevOps/backend engineer implementing a production-grade monitoring stack for **Shell Smash**, a multiplayer browser game built as a 42-school ft_transcendence project.
 
 ### Current state
+
 - **Backend**: NestJS 10 on port 8000, PostgreSQL 16, Redis 7, Nginx reverse proxy
 - **Monitoring placeholder**: A single Alpine container that does nothing. The `docker-compose.yml` already has a `monitoring` service wired to both networks with `GF_ADMIN_USER`, `GF_ADMIN_PASSWORD`, `PROMETHEUS_SCRAPE_INTERVAL` env vars injected from `.env`
 - **Healthcheck in docker-compose** expects `http://localhost:3001/` to return 200 (Grafana's default port)
@@ -12,6 +13,7 @@ You are a senior DevOps/backend engineer implementing a production-grade monitor
 - **Log volume**: `logs` is mounted to `/var/log/monitoring`
 
 ### Existing `.env` variables already available
+
 ```
 MONITORING_PORT=3001
 GF_ADMIN_USER=admin
@@ -28,6 +30,7 @@ Replace the placeholder monitoring container with a real observability stack. Th
 ### Architecture
 
 Run **two processes** inside the single `monitoring` container using **supervisord**:
+
 1. **Prometheus** on port `9090` (internal only, not exposed outside the container)
 2. **Grafana** on port `3001` (mapped to `MONITORING_PORT`)
 
@@ -42,6 +45,7 @@ Rationale: the project has a single `monitoring` service in `docker-compose.yml`
 ### 1. Replace `srcs/requirements/monitoring/Dockerfile`
 
 Use a multi-stage approach:
+
 - **Stage 1**: Download Prometheus binary from the official GitHub release (not via apk — Alpine's package is outdated). Verify the SHA256 checksum.
 - **Stage 2**: Base on `grafana/grafana:10-alpine`. Copy the Prometheus binary in. Install `supervisor` via apk. Wire everything together.
 
@@ -51,12 +55,12 @@ The final image must run as a non-root user where possible (Grafana already does
 
 Scrape the following targets (all internal Docker DNS names):
 
-| Job | Target | Notes |
-|-----|--------|-------|
-| `backend` | `backend:8000` | NestJS `/api/metrics` endpoint (see §4) |
-| `postgres` | `database:5432` | Via `postgres_exporter` binary bundled in the image |
-| `redis` | `redis:6379` | Via `redis_exporter` binary bundled in the image |
-| `prometheus` | `localhost:9090` | Self-scrape |
+| Job          | Target           | Notes                                               |
+| ------------ | ---------------- | --------------------------------------------------- |
+| `backend`    | `backend:8000`   | NestJS `/api/metrics` endpoint (see §4)             |
+| `postgres`   | `database:5432`  | Via `postgres_exporter` binary bundled in the image |
+| `redis`      | `redis:6379`     | Via `redis_exporter` binary bundled in the image    |
+| `prometheus` | `localhost:9090` | Self-scrape                                         |
 
 Use `${PROMETHEUS_SCRAPE_INTERVAL}` as the global `scrape_interval` (pass it in via environment variable substitution or a templated entrypoint).
 
@@ -67,27 +71,30 @@ Security: Prometheus binds to `127.0.0.1:9090` so it is not reachable from outsi
 Place config files in the image under `/etc/grafana/provisioning/`:
 
 **`datasources/prometheus.yml`**
+
 ```yaml
 apiVersion: 1
 datasources:
-  - name: Prometheus
-    type: prometheus
-    url: http://localhost:9090
-    isDefault: true
-    access: proxy
+    - name: Prometheus
+      type: prometheus
+      url: http://localhost:9090
+      isDefault: true
+      access: proxy
 ```
 
 **`dashboards/provider.yml`**
+
 ```yaml
 apiVersion: 1
 providers:
-  - name: default
-    type: file
-    options:
-      path: /var/lib/grafana/dashboards
+    - name: default
+      type: file
+      options:
+          path: /var/lib/grafana/dashboards
 ```
 
 **Dashboard JSON files** (place in `/var/lib/grafana/dashboards/` in the image):
+
 1. `shellsmash-overview.json` — top-level: HTTP req/s, P95 latency, active users (from NestJS metrics), error rate (4xx/5xx split)
 2. `shellsmash-infra.json` — Postgres connections/queries, Redis memory/ops, container CPU/memory via cAdvisor metrics if available, otherwise process metrics from NestJS
 
@@ -100,6 +107,7 @@ Install: `prom-client` (no NestJS wrapper needed — use it directly for simplic
 **`GET /api/metrics`** — returns Prometheus text format. Gate behind `NODE_ENV !== 'production'` OR require a bearer token set via `METRICS_TOKEN` env var (preferred for production safety).
 
 Collect:
+
 - Default Node.js metrics via `collectDefaultMetrics()` (event loop lag, heap, GC, etc.)
 - HTTP request counter: `http_requests_total` with labels `method`, `route`, `status_code`
 - HTTP request duration histogram: `http_request_duration_seconds` with labels `method`, `route`
@@ -181,41 +189,49 @@ Update the `monitoring` service in `srcs/docker-compose.yml`:
 
 ```yaml
 monitoring:
-  build:
-    context: ./requirements/monitoring
-    dockerfile: Dockerfile
-  container_name: ${COMPOSE_PROJECT_NAME}_monitoring
-  image: ${COMPOSE_PROJECT_NAME}/monitoring:latest
-  restart: unless-stopped
-  ports:
-    - "${MONITORING_PORT:-3001}:${MONITORING_PORT:-3001}"   # Grafana — localhost only ideally
-  expose:
-    - "${MONITORING_PORT:-3001}"
-  volumes:
-    - monitoring_data:/var/lib/monitoring
-    - logs:/var/log/monitoring
-  networks:
-    - frontend_network
-    - backend_network
-  environment:
-    - GF_ADMIN_USER=${GF_ADMIN_USER:-admin}
-    - GF_ADMIN_PASSWORD=${GF_ADMIN_PASSWORD:-changeme}
-    - PROMETHEUS_SCRAPE_INTERVAL=${PROMETHEUS_SCRAPE_INTERVAL:-15s}
-    - MONITORING_PORT=${MONITORING_PORT:-3001}
-    - METRICS_TOKEN=${METRICS_TOKEN}
-  depends_on:
-    backend:
-      condition: service_healthy
-    database:
-      condition: service_healthy
-    redis:
-      condition: service_healthy
-  healthcheck:
-    test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:${MONITORING_PORT:-3001}/api/health"]
-    interval: 30s
-    timeout: 10s
-    retries: 5
-    start_period: 60s   # Grafana + Prometheus both need time to init
+    build:
+        context: ./requirements/monitoring
+        dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME}_monitoring
+    image: ${COMPOSE_PROJECT_NAME}/monitoring:latest
+    restart: unless-stopped
+    ports:
+        - "${MONITORING_PORT:-3001}:${MONITORING_PORT:-3001}" # Grafana — localhost only ideally
+    expose:
+        - "${MONITORING_PORT:-3001}"
+    volumes:
+        - monitoring_data:/var/lib/monitoring
+        - logs:/var/log/monitoring
+    networks:
+        - frontend_network
+        - backend_network
+    environment:
+        - GF_ADMIN_USER=${GF_ADMIN_USER:-admin}
+        - GF_ADMIN_PASSWORD=${GF_ADMIN_PASSWORD:-changeme}
+        - PROMETHEUS_SCRAPE_INTERVAL=${PROMETHEUS_SCRAPE_INTERVAL:-15s}
+        - MONITORING_PORT=${MONITORING_PORT:-3001}
+        - METRICS_TOKEN=${METRICS_TOKEN}
+    depends_on:
+        backend:
+            condition: service_healthy
+        database:
+            condition: service_healthy
+        redis:
+            condition: service_healthy
+    healthcheck:
+        test:
+            [
+                "CMD",
+                "wget",
+                "--quiet",
+                "--tries=1",
+                "--spider",
+                "http://localhost:${MONITORING_PORT:-3001}/api/health",
+            ]
+        interval: 30s
+        timeout: 10s
+        retries: 5
+        start_period: 60s # Grafana + Prometheus both need time to init
 ```
 
 Also add `METRICS_TOKEN` to the backend service environment.

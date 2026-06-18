@@ -6,13 +6,13 @@ This is a minigame for **Shell Smash** (ft_transcendence), a Phaser 3 Japanese-t
 
 ### Existing reusable mechanics (study before writing anything new)
 
-| File | What it provides |
-|---|---|
-| `game/arenas/arena.ts` | `ArenaDef` → `ArenaPixels` letterbox transform, `isInsideArena`, `arenaEdgeFraction`, `drawSumoRing` |
-| `game/mechanics/ball.ts` | `BallState`, `stepBall` (integrate + ellipse reflect + friction), `drawShellBall` |
-| `game/mechanics/slingshot.ts` | `Slingshot` drag-to-launch controller with `onLaunch` callback |
-| `game/mechanics/hud.ts` | `buildReturnButton` |
-| `hub/theme.ts` | `THEME` palette (gold, red, green, text, font) |
+| File                          | What it provides                                                                                     |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `game/arenas/arena.ts`        | `ArenaDef` → `ArenaPixels` letterbox transform, `isInsideArena`, `arenaEdgeFraction`, `drawSumoRing` |
+| `game/mechanics/ball.ts`      | `BallState`, `stepBall` (integrate + ellipse reflect + friction), `drawShellBall`                    |
+| `game/mechanics/slingshot.ts` | `Slingshot` drag-to-launch controller with `onLaunch` callback                                       |
+| `game/mechanics/hud.ts`       | `buildReturnButton`                                                                                  |
+| `hub/theme.ts`                | `THEME` palette (gold, red, green, text, font)                                                       |
 
 ### Architecture rules already established
 
@@ -40,23 +40,23 @@ Generalises `BallState` for a **rectangular ice sheet** with very low friction a
 
 ```typescript
 export interface StoneState {
-  id: number;
-  teamId: 0 | 1;          // which team owns this stone
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  r: number;              // radius in canvas px
-  power: PowerType;       // active power-up (see powers.ts)
-  stopped: boolean;
-  /** Set by PowerType.SPINNING — additional lateral drift multiplier */
-  curlBias: number;       // positive = curves right, negative = left
+	id: number;
+	teamId: 0 | 1; // which team owns this stone
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	r: number; // radius in canvas px
+	power: PowerType; // active power-up (see powers.ts)
+	stopped: boolean;
+	/** Set by PowerType.SPINNING — additional lateral drift multiplier */
+	curlBias: number; // positive = curves right, negative = left
 }
 
 // Constants (all in source px, scaled by arena.scale at call sites)
-export const STONE_SRC_R   = 28;
-export const FRICTION_ICE  = 0.9982;   // per-frame at 60 fps — very low friction
-export const BOUNCE_DAMP   = 0.55;     // speed retained on sheet-wall bounce
+export const STONE_SRC_R = 28;
+export const FRICTION_ICE = 0.9982; // per-frame at 60 fps — very low friction
+export const BOUNCE_DAMP = 0.55; // speed retained on sheet-wall bounce
 export const MIN_SPEED_SRC = 4;
 
 /**
@@ -64,16 +64,24 @@ export const MIN_SPEED_SRC = 4;
  * arena: RectArenaPixels (see below)
  * Returns true while the stone is still moving.
  */
-export function stepStone(s: StoneState, deltaMs: number, a: RectArenaPixels): boolean
+export function stepStone(
+	s: StoneState,
+	deltaMs: number,
+	a: RectArenaPixels,
+): boolean;
 
 /**
  * Elastic circle-circle collision between two stones.
  * Call after stepStone for every pair — O(n²) is fine for ≤ 16 stones.
  */
-export function resolveStoneCollision(a: StoneState, b: StoneState): void
+export function resolveStoneCollision(a: StoneState, b: StoneState): void;
 
 /** Draw the stone at its current position. Style is determined by teamId + power. */
-export function drawStone(g: Phaser.GameObjects.Graphics, s: StoneState, isActive: boolean): void
+export function drawStone(
+	g: Phaser.GameObjects.Graphics,
+	s: StoneState,
+	isActive: boolean,
+): void;
 ```
 
 **Physics details:**
@@ -102,34 +110,49 @@ A rectangular arena — same coordinate-system contract as `arena.ts` but axis-a
 
 ```typescript
 export interface RectArenaDef {
-  srcW: number;     // source canvas width
-  srcH: number;     // source canvas height
-  // Sheet bounds in source px (the playfield rectangle, not the full canvas)
-  sheetX: number;   // left edge of sheet
-  sheetY: number;   // top edge of sheet
-  sheetW: number;   // sheet width
-  sheetH: number;   // sheet height
-  // House (target circles) — one at each end
-  houseRadius: number;    // outermost ring radius in source px
-  houseCentreOffset: number;  // distance from sheet end to house centre (source px)
+	srcW: number; // source canvas width
+	srcH: number; // source canvas height
+	// Sheet bounds in source px (the playfield rectangle, not the full canvas)
+	sheetX: number; // left edge of sheet
+	sheetY: number; // top edge of sheet
+	sheetW: number; // sheet width
+	sheetH: number; // sheet height
+	// House (target circles) — one at each end
+	houseRadius: number; // outermost ring radius in source px
+	houseCentreOffset: number; // distance from sheet end to house centre (source px)
 }
 
 export interface RectArenaPixels {
-  // All values in canvas px
-  sheetX: number; sheetY: number; sheetW: number; sheetH: number;
-  houseTopCX: number;    houseTopCY: number;    // house at delivery end (top)
-  houseBottomCX: number; houseBottomCY: number; // scoring house (bottom)
-  houseRadii: number[];  // [outer, mid, inner, button] ring radii in canvas px
-  deliveryLineY: number; // Y threshold — stone must cross to count as delivered
-  hogLineY: number;      // Y threshold — stone must clear hog line or is removed
-  scale: number;
+	// All values in canvas px
+	sheetX: number;
+	sheetY: number;
+	sheetW: number;
+	sheetH: number;
+	houseTopCX: number;
+	houseTopCY: number; // house at delivery end (top)
+	houseBottomCX: number;
+	houseBottomCY: number; // scoring house (bottom)
+	houseRadii: number[]; // [outer, mid, inner, button] ring radii in canvas px
+	deliveryLineY: number; // Y threshold — stone must cross to count as delivered
+	hogLineY: number; // Y threshold — stone must clear hog line or is removed
+	scale: number;
 }
 
-export function rectArenaToScreen(def: RectArenaDef, canvasW: number, canvasH: number): RectArenaPixels
+export function rectArenaToScreen(
+	def: RectArenaDef,
+	canvasW: number,
+	canvasH: number,
+): RectArenaPixels;
 
-export function isStoneInHouse(s: StoneState, a: RectArenaPixels): boolean
-export function distanceToHouseButton(s: StoneState, a: RectArenaPixels): number
-export function drawIceSheet(g: Phaser.GameObjects.Graphics, a: RectArenaPixels): void
+export function isStoneInHouse(s: StoneState, a: RectArenaPixels): boolean;
+export function distanceToHouseButton(
+	s: StoneState,
+	a: RectArenaPixels,
+): number;
+export function drawIceSheet(
+	g: Phaser.GameObjects.Graphics,
+	a: RectArenaPixels,
+): void;
 ```
 
 **`drawIceSheet()` — pure Graphics:**
@@ -152,29 +175,29 @@ Reusable turn state machine. Used by Shell Curl; importable by any turn-based ga
 
 ```typescript
 export type TurnPhase =
-  | 'aiming'      // player is setting aim / power
-  | 'sweeping'    // stone is in flight, player can sweep
-  | 'settling'    // all stones decelerating, no input
-  | 'scoring'     // end has finished, showing score
-  | 'gameover';   // all ends played
+	| "aiming" // player is setting aim / power
+	| "sweeping" // stone is in flight, player can sweep
+	| "settling" // all stones decelerating, no input
+	| "scoring" // end has finished, showing score
+	| "gameover"; // all ends played
 
 export interface TurnState {
-  currentTeam: 0 | 1;
-  currentEnd: number;       // 0-indexed
-  stonesLeft: [number, number]; // stones remaining for [team0, team1] this end
-  score: [number, number];  // cumulative score across ends
-  phase: TurnPhase;
+	currentTeam: 0 | 1;
+	currentEnd: number; // 0-indexed
+	stonesLeft: [number, number]; // stones remaining for [team0, team1] this end
+	score: [number, number]; // cumulative score across ends
+	phase: TurnPhase;
 }
 
 export class TurnManager {
-  constructor(opts: { totalEnds: number; stonesPerTeam: number })
-  readonly state: TurnState
-  nextThrow(): void          // advance to next player's turn
-  endEnd(): void             // tally scoring, advance end, reset stonesLeft
-  isGameOver(): boolean
-  /** Who throws next? Alternates per throw; last-stone advantage: team that
+	constructor(opts: { totalEnds: number; stonesPerTeam: number });
+	readonly state: TurnState;
+	nextThrow(): void; // advance to next player's turn
+	endEnd(): void; // tally scoring, advance end, reset stonesLeft
+	isGameOver(): boolean;
+	/** Who throws next? Alternates per throw; last-stone advantage: team that
       scored previous end throws last this end. */
-  upNext(): 0 | 1
+	upNext(): 0 | 1;
 }
 ```
 
@@ -186,42 +209,50 @@ The extension system. Other games that want power-ups import from here.
 
 ```typescript
 export enum PowerType {
-  NONE      = 'none',
-  HEAVY     = 'heavy',      // very hard to deflect; slower
-  BOMB      = 'bomb',       // explodes on stop: pushes all nearby stones outward
-  SPLITTER  = 'splitter',   // splits into 3 smaller stones on first collision
-  GHOST     = 'ghost',      // passes through first stone it hits
-  MAGNET    = 'magnet',     // on stop, pulls all stones in house toward it
-  SPINNING  = 'spinning',   // extreme curl drift — curves dramatically
-  BOUNCER   = 'bouncer',    // reflects off side-walls with no damping (normal BOUNCE_DAMP still applies to end walls)
-  SHIELD    = 'shield',     // immune to being pushed out of scoring zone — if would exit house, stops at edge instead
-  FREEZE    = 'freeze',     // freezes the nearest enemy stone in place (it cannot be moved for the rest of the end)
-  SLICK     = 'slick',      // reduces friction to near-zero; travels much further than normal
+	NONE = "none",
+	HEAVY = "heavy", // very hard to deflect; slower
+	BOMB = "bomb", // explodes on stop: pushes all nearby stones outward
+	SPLITTER = "splitter", // splits into 3 smaller stones on first collision
+	GHOST = "ghost", // passes through first stone it hits
+	MAGNET = "magnet", // on stop, pulls all stones in house toward it
+	SPINNING = "spinning", // extreme curl drift — curves dramatically
+	BOUNCER = "bouncer", // reflects off side-walls with no damping (normal BOUNCE_DAMP still applies to end walls)
+	SHIELD = "shield", // immune to being pushed out of scoring zone — if would exit house, stops at edge instead
+	FREEZE = "freeze", // freezes the nearest enemy stone in place (it cannot be moved for the rest of the end)
+	SLICK = "slick", // reduces friction to near-zero; travels much further than normal
 }
 
 export interface PowerDef {
-  type: PowerType;
-  label: string;         // display name
-  accentColour: number;  // badge colour on stone + HUD icon
-  description: string;   // one-line tooltip shown in power picker
-  /** Mutate stone properties on launch */
-  onApply(stone: StoneState, arena: RectArenaPixels): void;
-  /** Called every frame while stone is moving (optional) */
-  onUpdate?(stone: StoneState, deltaMs: number, arena: RectArenaPixels): void;
-  /** Called when this stone collides with another (optional) */
-  onCollide?(stone: StoneState, other: StoneState, arena: RectArenaPixels): void;
-  /** Called when stone comes to rest (optional) */
-  onStop?(stone: StoneState, arena: RectArenaPixels, allStones: StoneState[]): void;
+	type: PowerType;
+	label: string; // display name
+	accentColour: number; // badge colour on stone + HUD icon
+	description: string; // one-line tooltip shown in power picker
+	/** Mutate stone properties on launch */
+	onApply(stone: StoneState, arena: RectArenaPixels): void;
+	/** Called every frame while stone is moving (optional) */
+	onUpdate?(stone: StoneState, deltaMs: number, arena: RectArenaPixels): void;
+	/** Called when this stone collides with another (optional) */
+	onCollide?(
+		stone: StoneState,
+		other: StoneState,
+		arena: RectArenaPixels,
+	): void;
+	/** Called when stone comes to rest (optional) */
+	onStop?(
+		stone: StoneState,
+		arena: RectArenaPixels,
+		allStones: StoneState[],
+	): void;
 }
 
 /** Registry — games add only the powers they want to offer */
 export class PowerRegistry {
-  register(def: PowerDef): void
-  get(type: PowerType): PowerDef
-  available(): PowerDef[]
+	register(def: PowerDef): void;
+	get(type: PowerType): PowerDef;
+	available(): PowerDef[];
 }
 
-export const ALL_POWERS: Record<PowerType, PowerDef>
+export const ALL_POWERS: Record<PowerType, PowerDef>;
 ```
 
 **Implement all powers listed in the enum.** Full implementation notes:
@@ -252,11 +283,11 @@ Handles the sweeping interaction during a stone's flight.
  * Attach during the 'sweeping' phase; detach on 'settling'.
  */
 export class SweepController {
-  constructor(scene: Phaser.Scene, stone: StoneState)
-  attach(): void
-  detach(): void
-  /** Call each frame — returns the friction multiplier override for this frame */
-  getSweepMultiplier(): number  // 1.0 normally, 0.9994 when actively sweeping
+	constructor(scene: Phaser.Scene, stone: StoneState);
+	attach(): void;
+	detach(): void;
+	/** Call each frame — returns the friction multiplier override for this frame */
+	getSweepMultiplier(): number; // 1.0 normally, 0.9994 when actively sweeping
 }
 ```
 
@@ -274,13 +305,14 @@ Reusable scoreboard widget.
  * Works for any 2-team turn-based game.
  */
 export class ScoreHud {
-  constructor(scene: Phaser.Scene, depth: number)
-  update(state: TurnState): void   // call whenever TurnState changes
-  destroy(): void
+	constructor(scene: Phaser.Scene, depth: number);
+	update(state: TurnState): void; // call whenever TurnState changes
+	destroy(): void;
 }
 ```
 
 Layout (all Graphics + Text, no images):
+
 - Dark bar across the top: `0x0a1208`, height 52px, full width.
 - Team 0 block (left): team colour circle + "KAME TEAM" label + score number.
 - Centre: `END X / Y` text + current phase label.
@@ -296,18 +328,18 @@ Layout (all Graphics + Text, no images):
 
 ```typescript
 export const CURL_SHEET: RectArenaDef = {
-  srcW: 1920,
-  srcH: 1080,
-  sheetX: 560,
-  sheetY: 40,
-  sheetW: 800,
-  sheetH: 1000,
-  houseRadius: 180,
-  houseCentreOffset: 120,
+	srcW: 1920,
+	srcH: 1080,
+	sheetX: 560,
+	sheetY: 40,
+	sheetW: 800,
+	sheetH: 1000,
+	houseRadius: 180,
+	houseCentreOffset: 120,
 };
 ```
 
-*(Source-pixel values — tune during implementation. The sheet is portrait-oriented in a landscape canvas, centred horizontally.)*
+_(Source-pixel values — tune during implementation. The sheet is portrait-oriented in a landscape canvas, centred horizontally.)_
 
 ---
 
@@ -379,6 +411,7 @@ phase: gameover
 ### Scoring
 
 After all stones are delivered:
+
 - Count all stopped stones inside `isStoneInHouse()`.
 - The team with the stone **closest to the house button** scores 1 point per stone closer than the nearest opponent stone.
 - `TurnManager.endEnd()` records the score.
@@ -394,15 +427,16 @@ A horizontal row of power icons at the bottom of the screen, shown only during `
 
 ```typescript
 export class PowerPicker {
-  constructor(scene: Phaser.Scene, registry: PowerRegistry, depth: number)
-  show(availablePowers: PowerType[]): void
-  hide(): void
-  getSelected(): PowerType
-  destroy(): void
+	constructor(scene: Phaser.Scene, registry: PowerRegistry, depth: number);
+	show(availablePowers: PowerType[]): void;
+	hide(): void;
+	getSelected(): PowerType;
+	destroy(): void;
 }
 ```
 
 Layout (pure Graphics + Text):
+
 - Row of up to 5 power tokens, centred horizontally, 20px above bottom edge.
 - Each token: 52×52px rounded rect, dark fill `0x0d1a0d`, border in power's `accentColour`, power icon drawn with Graphics (simple symbol), label text below.
 - Selected token: gold border `0xd4a843`, slightly larger scale (1.12), accent fill at 20% opacity.
@@ -509,23 +543,23 @@ These apply throughout — do not deviate:
 
 These source-pixel values give a satisfying curling feel at 1920×1080 source resolution. Scale all of them by `arena.scale` at runtime:
 
-| Constant | Value | Notes |
-|---|---|---|
-| `FRICTION_ICE` | 0.9982 / frame at 60 fps | Stones travel ~60% of the sheet before stopping |
-| `FRICTION_SLICK` (SLICK power) | 0.9998 | Near-frictionless, reaches far end reliably |
-| `BOUNCE_DAMP` | 0.55 | Side-wall bounces kill significant speed |
-| `STONE_BOUNCE_DAMP` (stone-stone) | 0.92 | Stone-on-stone retains most speed |
-| `MIN_SPEED_SRC` | 4 px/s | Stop threshold |
-| `CURL_STRENGTH_SRC` | 0.018 | Default lateral drift per frame |
-| `LAUNCH_SPEED_SRC` | 820 px/s | Full-drag launch (lower than bamboo-bash — ice, not a slingshot) |
-| `MAX_DRAG_SRC` | 280 px | Max pull distance |
-| `BOMB_RADIUS_SRC` | 160 px | Explosion push radius |
-| `BOMB_IMPULSE_SRC` | 380 px/s | Radial velocity added to pushed stones |
-| `MAGNET_RANGE_SRC` | 220 px | Range within which magnet attracts |
-| `MAGNET_PULL_SRC` | 55 px/s | Attraction velocity |
-| `SWEEP_FRICTION_MULT` | 0.9994 | Friction while sweeping (replaces FRICTION_ICE that frame) |
-| `SWEEP_THRESHOLD` | 280 px/s | Pointer speed required to trigger sweep |
-| `HEAVY_MASS_RATIO` | 2.5 | Mass scale for HEAVY stone in collision impulse |
+| Constant                          | Value                    | Notes                                                            |
+| --------------------------------- | ------------------------ | ---------------------------------------------------------------- |
+| `FRICTION_ICE`                    | 0.9982 / frame at 60 fps | Stones travel ~60% of the sheet before stopping                  |
+| `FRICTION_SLICK` (SLICK power)    | 0.9998                   | Near-frictionless, reaches far end reliably                      |
+| `BOUNCE_DAMP`                     | 0.55                     | Side-wall bounces kill significant speed                         |
+| `STONE_BOUNCE_DAMP` (stone-stone) | 0.92                     | Stone-on-stone retains most speed                                |
+| `MIN_SPEED_SRC`                   | 4 px/s                   | Stop threshold                                                   |
+| `CURL_STRENGTH_SRC`               | 0.018                    | Default lateral drift per frame                                  |
+| `LAUNCH_SPEED_SRC`                | 820 px/s                 | Full-drag launch (lower than bamboo-bash — ice, not a slingshot) |
+| `MAX_DRAG_SRC`                    | 280 px                   | Max pull distance                                                |
+| `BOMB_RADIUS_SRC`                 | 160 px                   | Explosion push radius                                            |
+| `BOMB_IMPULSE_SRC`                | 380 px/s                 | Radial velocity added to pushed stones                           |
+| `MAGNET_RANGE_SRC`                | 220 px                   | Range within which magnet attracts                               |
+| `MAGNET_PULL_SRC`                 | 55 px/s                  | Attraction velocity                                              |
+| `SWEEP_FRICTION_MULT`             | 0.9994                   | Friction while sweeping (replaces FRICTION_ICE that frame)       |
+| `SWEEP_THRESHOLD`                 | 280 px/s                 | Pointer speed required to trigger sweep                          |
+| `HEAVY_MASS_RATIO`                | 2.5                      | Mass scale for HEAVY stone in collision impulse                  |
 
 ---
 

@@ -1,6 +1,7 @@
 # Transcendence Modules and Points
 
 ## Web
+
 - Framework Frontend + Backend (Major) = 2
 - Frontend Framework (Minor) = 1
 - Backend Framework (Minor) = 1
@@ -17,12 +18,14 @@
 - File Upload System (Minor) = 1
 
 ## Accessibility & Internationalization
+
 - WCAG Accessibility (Major) = 2
 - Multiple Languages (Minor) = 1
 - RTL Support (Minor) = 1
 - Additional Browsers (Minor) = 1
 
 ## User Management
+
 - Standard User Management (Major) = 2
 - Game Statistics (Minor) = 1
 - OAuth (Minor) = 1
@@ -32,6 +35,7 @@
 - User Analytics (Minor) = 1
 
 ## Artificial Intelligence
+
 - AI Opponent (Major) = 2
 - RAG System (Major) = 2
 - LLM Interface (Major) = 2
@@ -42,9 +46,11 @@
 - Image Recognition (Minor) = 1
 
 ## Cybersecurity
+
 - WAF + Vault (Major) = 2
 
 ## Gaming & UX
+
 - Web-based Game (Major) = 2
 - Remote Players (Major) = 2
 - Multiplayer 3+ (Major) = 2
@@ -57,20 +63,24 @@
 - Spectator Mode (Minor) = 1
 
 ## DevOps
+
 - ELK Stack (Major) = 2
 - Prometheus + Grafana (Major) = 2
 - Microservices (Major) = 2
 - Health Checks + Backups (Minor) = 1
 
 ## Data & Analytics
+
 - Analytics Dashboard (Major) = 2
 - Data Import/Export (Minor) = 1
 - GDPR Features (Minor) = 1
 
 ## Blockchain
+
 - Tournament Scores on Blockchain (Major) = 2
 - ICP Backend (Minor) = 1
 
 ## Custom Modules
+
 - Custom Major = 2
 - Custom Minor = 1

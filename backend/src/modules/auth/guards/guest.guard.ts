@@ -1,6 +1,9 @@
 import {
-  CanActivate, ExecutionContext, ForbiddenException, Injectable,
-} from '@nestjs/common';
+	CanActivate,
+	ExecutionContext,
+	ForbiddenException,
+	Injectable,
+} from "@nestjs/common";
 
 /**
  * Reject requests made by guest sessions on routes that require a real account
@@ -11,13 +14,15 @@ import {
  */
 @Injectable()
 export class GuestGuard implements CanActivate {
-  canActivate(ctx: ExecutionContext): boolean {
-    const req = ctx.switchToHttp().getRequest<{ user?: { isGuest?: boolean } }>();
-    if (req.user?.isGuest) {
-      throw new ForbiddenException(
-        'Guest accounts cannot perform this action. Please log in.',
-      );
-    }
-    return true;
-  }
+	canActivate(ctx: ExecutionContext): boolean {
+		const req = ctx
+			.switchToHttp()
+			.getRequest<{ user?: { isGuest?: boolean } }>();
+		if (req.user?.isGuest) {
+			throw new ForbiddenException(
+				"Guest accounts cannot perform this action. Please log in.",
+			);
+		}
+		return true;
+	}
 }

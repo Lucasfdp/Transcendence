@@ -117,14 +117,14 @@ docker compose -f srcs/docker-compose.yml exec -T database \
 
 ## Environment-Specific Notes
 
-| Setting | Development | Production |
-|---------|-------------|------------|
-| `BACKEND_ENV` | `development` | `production` |
-| `FRONTEND_ENV` | `development` | `production` |
-| SSL | Self-signed (auto-generated) | Let's Encrypt or CA-issued |
-| Portainer | Enabled | Disabled |
-| Debug logging | `LOG_LEVEL=debug` | `LOG_LEVEL=warning` |
-| Hot reload | Yes (dev server) | No (compiled static) |
+| Setting        | Development                  | Production                 |
+| -------------- | ---------------------------- | -------------------------- |
+| `BACKEND_ENV`  | `development`                | `production`               |
+| `FRONTEND_ENV` | `development`                | `production`               |
+| SSL            | Self-signed (auto-generated) | Let's Encrypt or CA-issued |
+| Portainer      | Enabled                      | Disabled                   |
+| Debug logging  | `LOG_LEVEL=debug`            | `LOG_LEVEL=warning`        |
+| Hot reload     | Yes (dev server)             | No (compiled static)       |
 
 ---
 

@@ -1,11 +1,11 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get } from "@nestjs/common";
 import {
-  HealthCheck,
-  HealthCheckResult,
-  HealthCheckService,
-  TypeOrmHealthIndicator,
-} from '@nestjs/terminus';
-import { RedisHealthIndicator } from './redis.health';
+	HealthCheck,
+	HealthCheckResult,
+	HealthCheckService,
+	TypeOrmHealthIndicator,
+} from "@nestjs/terminus";
+import { RedisHealthIndicator } from "./redis.health";
 
 /**
  * GET /api/health
@@ -19,20 +19,20 @@ import { RedisHealthIndicator } from './redis.health';
  * Response shape (503):
  *   { status: 'error', error: { redis: { status: 'down', message: '...' } }, ... }
  */
-@Controller('health')
+@Controller("health")
 export class HealthController {
-  constructor(
-    private readonly health: HealthCheckService,
-    private readonly db: TypeOrmHealthIndicator,
-    private readonly redis: RedisHealthIndicator,
-  ) {}
+	constructor(
+		private readonly health: HealthCheckService,
+		private readonly db: TypeOrmHealthIndicator,
+		private readonly redis: RedisHealthIndicator,
+	) {}
 
-  @Get()
-  @HealthCheck()
-  check(): Promise<HealthCheckResult> {
-    return this.health.check([
-      () => this.db.pingCheck('database'),
-      () => this.redis.pingCheck('redis'),
-    ]);
-  }
+	@Get()
+	@HealthCheck()
+	check(): Promise<HealthCheckResult> {
+		return this.health.check([
+			() => this.db.pingCheck("database"),
+			() => this.redis.pingCheck("redis"),
+		]);
+	}
 }

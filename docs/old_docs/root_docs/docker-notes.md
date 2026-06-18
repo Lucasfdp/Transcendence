@@ -44,25 +44,25 @@ A volume is persistent storage that lives outside the container's writable layer
 
 ### Why volumes instead of bind mounts?
 
-| | Named Volume | Bind Mount |
-|--|--|--|
-| Portability | ✅ Works on any host | ❌ Path must exist on host |
-| Performance | ✅ Managed by Docker | ✅ Direct host I/O |
-| Backup | Via `docker volume` commands | Direct file system access |
-| 42 compliance | ✅ Preferred | ⚠️ Check project rules |
+|               | Named Volume                 | Bind Mount                 |
+| ------------- | ---------------------------- | -------------------------- |
+| Portability   | ✅ Works on any host         | ❌ Path must exist on host |
+| Performance   | ✅ Managed by Docker         | ✅ Direct host I/O         |
+| Backup        | Via `docker volume` commands | Direct file system access  |
+| 42 compliance | ✅ Preferred                 | ⚠️ Check project rules     |
 
 ### Named volumes in this project
 
 ```yaml
 volumes:
-  db_data:      # PostgreSQL data directory
-  redis_data:   # Redis persistence files
-  nginx_config: # Nginx vhost configs
-  nginx_ssl:    # TLS certificates
-  frontend_static: # Compiled SPA assets
-  logs:         # All service logs
-  monitoring_data: # Grafana / Prometheus data
-  portainer_data:  # Portainer config
+    db_data: # PostgreSQL data directory
+    redis_data: # Redis persistence files
+    nginx_config: # Nginx vhost configs
+    nginx_ssl: # TLS certificates
+    frontend_static: # Compiled SPA assets
+    logs: # All service logs
+    monitoring_data: # Grafana / Prometheus data
+    portainer_data: # Portainer config
 ```
 
 ### Useful volume commands
@@ -97,10 +97,10 @@ Within a Docker Compose project, containers can reach each other by **service na
 
 ### This project's networks
 
-| Network | Subnet | Members |
-|---------|--------|---------|
+| Network            | Subnet        | Members                                                 |
+| ------------------ | ------------- | ------------------------------------------------------- |
 | `frontend_network` | 172.20.0.0/24 | reverse_proxy, frontend, backend, monitoring, portainer |
-| `backend_network` | 172.20.1.0/24 | backend, database, redis, monitoring |
+| `backend_network`  | 172.20.1.0/24 | backend, database, redis, monitoring                    |
 
 **The key rule:** `database` and `redis` are exclusively on `backend_network`. Even if the `frontend` container is compromised, it has no network route to the database.
 
@@ -124,25 +124,26 @@ The `depends_on` directive in Compose supports `condition: service_healthy`. Thi
 
 ```yaml
 healthcheck:
-  test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-  interval: 10s      # How often to run the check
-  timeout: 5s        # Maximum time for one check to complete
-  retries: 5         # Failures before marking unhealthy
-  start_period: 30s  # Grace period after container start
+    test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+    interval: 10s # How often to run the check
+    timeout: 5s # Maximum time for one check to complete
+    retries: 5 # Failures before marking unhealthy
+    start_period: 30s # Grace period after container start
 ```
 
 ---
 
 ## Restart Policies
 
-| Policy | Behaviour |
-|--------|-----------|
-| `no` | Never restart (default) |
-| `always` | Always restart, even after `docker stop` |
+| Policy           | Behaviour                                      |
+| ---------------- | ---------------------------------------------- |
+| `no`             | Never restart (default)                        |
+| `always`         | Always restart, even after `docker stop`       |
 | `unless-stopped` | Restart on failure but not if manually stopped |
-| `on-failure` | Restart only on non-zero exit code |
+| `on-failure`     | Restart only on non-zero exit code             |
 
 This project uses `restart: unless-stopped` for all services. This means:
+
 - Services restart automatically after a crash or host reboot.
 - `make down` / `docker stop` stops them without an automatic restart.
 
@@ -151,6 +152,7 @@ This project uses `restart: unless-stopped` for all services. This means:
 ## Environment Variables
 
 Environment variables are passed to containers from:
+
 1. The `.env` file (loaded by Compose automatically when `--env-file` is specified)
 2. The `environment:` block in `docker-compose.yml`
 3. Build arguments (`ARG` / `--build-arg`) for image build time

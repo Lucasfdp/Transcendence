@@ -14,6 +14,7 @@ more) are shown as "sealed" / Coming Soon and will open up as they're
 built.
 
 Players have:
+
 - A persistent profile (level, XP, win/loss record)
 - A customizable turtle (`turtleName`, `shellSkin`)
 - A spot on the Dojo Rankings leaderboard

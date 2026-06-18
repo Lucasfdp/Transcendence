@@ -66,15 +66,15 @@
 
 ## Network Membership Summary
 
-| Service | frontend_network | backend_network | Host port |
-|---------|:---:|:---:|:---:|
-| reverse_proxy | ✅ | — | 80, 443 |
-| frontend | ✅ | — | — |
-| backend | ✅ | ✅ | — |
-| database | — | ✅ | — |
-| redis | — | ✅ | — |
-| monitoring | ✅ | ✅ | — |
-| portainer | ✅ | — | 9443 |
+| Service       | frontend_network | backend_network | Host port |
+| ------------- | :--------------: | :-------------: | :-------: |
+| reverse_proxy |        ✅        |        —        |  80, 443  |
+| frontend      |        ✅        |        —        |     —     |
+| backend       |        ✅        |       ✅        |     —     |
+| database      |        —         |       ✅        |     —     |
+| redis         |        —         |       ✅        |     —     |
+| monitoring    |        ✅        |       ✅        |     —     |
+| portainer     |        ✅        |        —        |   9443    |
 
 ---
 
@@ -100,12 +100,12 @@ portainer     → no service dependencies
 
 ## Port Reference
 
-| Service | Internal port | External port | Protocol |
-|---------|--------------|---------------|----------|
-| reverse_proxy | 80 / 443 | 80 / 443 | HTTP / HTTPS |
-| frontend | 3000 | — (via Nginx) | HTTP |
-| backend | 8000 | — (via Nginx) | HTTP / WS |
-| database | 5432 | — (internal only) | TCP |
-| redis | 6379 | — (internal only) | TCP |
-| monitoring | 3000 | — (via Nginx or direct) | HTTP |
-| portainer | 9443 | 9443 | HTTPS |
+| Service       | Internal port | External port           | Protocol     |
+| ------------- | ------------- | ----------------------- | ------------ |
+| reverse_proxy | 80 / 443      | 80 / 443                | HTTP / HTTPS |
+| frontend      | 3000          | — (via Nginx)           | HTTP         |
+| backend       | 8000          | — (via Nginx)           | HTTP / WS    |
+| database      | 5432          | — (internal only)       | TCP          |
+| redis         | 6379          | — (internal only)       | TCP          |
+| monitoring    | 3000          | — (via Nginx or direct) | HTTP         |
+| portainer     | 9443          | 9443                    | HTTPS        |

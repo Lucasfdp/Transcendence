@@ -6,12 +6,12 @@ You are implementing the login and landing experience for **Shell Smash**, a Pha
 
 ### Existing stack (do not change unless instructed)
 
-| Layer | Tech |
-|---|---|
-| Frontend | Phaser 3, TypeScript, Vite, `Scale.RESIZE` |
-| Backend | NestJS, TypeORM, PostgreSQL, Passport.js |
-| Auth | 42 OAuth (`passport-42`), JWT (signed, stored in `localStorage`) |
-| Infra | Docker Compose, Nginx reverse proxy (TLS termination), Redis |
+| Layer    | Tech                                                             |
+| -------- | ---------------------------------------------------------------- |
+| Frontend | Phaser 3, TypeScript, Vite, `Scale.RESIZE`                       |
+| Backend  | NestJS, TypeORM, PostgreSQL, Passport.js                         |
+| Auth     | 42 OAuth (`passport-42`), JWT (signed, stored in `localStorage`) |
+| Infra    | Docker Compose, Nginx reverse proxy (TLS termination), Redis     |
 
 ### Existing auth files you must read before touching anything
 
@@ -27,13 +27,13 @@ You are implementing the login and landing experience for **Shell Smash**, a Pha
 ```typescript
 // src/shared/theme.ts
 export const THEME = {
-  background: 0x1a1410,   // very dark warm brown
-  red:        0xa23b3b,   // muted temple red
-  gold:       0xd4a843,   // warm gold — primary highlight
-  green:      0x3a5a40,   // dark forest green
-  text:       '#e6ddd0',  // warm off-white
-  textGold:   '#d4a843',
-  font:       'monospace',
+	background: 0x1a1410, // very dark warm brown
+	red: 0xa23b3b, // muted temple red
+	gold: 0xd4a843, // warm gold — primary highlight
+	green: 0x3a5a40, // dark forest green
+	text: "#e6ddd0", // warm off-white
+	textGold: "#d4a843",
+	font: "monospace",
 };
 ```
 
@@ -54,12 +54,12 @@ Create `src/hub/LandingScene.ts` and register it as **the first scene** in `src/
 2. **Detect an existing valid session** — if a JWT is already in `localStorage`, call `GET /api/auth/me`. If the response is 200, transition to `HubScene` without showing the landing screen. If 401 (expired/invalid), clear the token and show the landing screen.
 
 3. **Render the landing screen** when no valid session exists. The screen must contain:
-   - The game logo / title ("Shell Smash" in large gold text) centred at approximately 35% of canvas height.
-   - A brief Japanese-themed subtitle line ("Enter the Dojo") beneath it, in muted text.
-   - Two large interactive buttons stacked vertically and centred at ~60% height:
-     - **"Login / Create Account"** — primary button (gold border, dark background).
-     - **"Quick Game"** — secondary button (red border, slightly smaller or lower contrast to establish visual hierarchy).
-   - A small "Dev Login" link (text only, no button styling) visible **only** when both `NODE_ENV !== 'production'` AND `ENABLE_DEV_LOGIN === 'true'` are in the Vite env. Gate this client-side check using `import.meta.env.VITE_DEV_LOGIN_ENABLED === 'true'`. The link should appear at the very bottom of the screen in muted text.
+    - The game logo / title ("Shell Smash" in large gold text) centred at approximately 35% of canvas height.
+    - A brief Japanese-themed subtitle line ("Enter the Dojo") beneath it, in muted text.
+    - Two large interactive buttons stacked vertically and centred at ~60% height:
+        - **"Login / Create Account"** — primary button (gold border, dark background).
+        - **"Quick Game"** — secondary button (red border, slightly smaller or lower contrast to establish visual hierarchy).
+    - A small "Dev Login" link (text only, no button styling) visible **only** when both `NODE_ENV !== 'production'` AND `ENABLE_DEV_LOGIN === 'true'` are in the Vite env. Gate this client-side check using `import.meta.env.VITE_DEV_LOGIN_ENABLED === 'true'`. The link should appear at the very bottom of the screen in muted text.
 
 4. **Handle `Scale.RESIZE`** — all elements must reposition correctly when the window is resized. Follow the same pattern used in `HubScene`: register a listener in `create()`, unregister in `shutdown()`, and rebuild layout elements in the handler.
 
@@ -67,11 +67,11 @@ Create `src/hub/LandingScene.ts` and register it as **the first scene** in `src/
 
 #### Button behaviour
 
-| Button | Action |
-|---|---|
+| Button                 | Action                                                                                                                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Login / Create Account | Call `window.location.href = api.loginUrl()` to begin the 42 OAuth flow. The backend issues a JWT and redirects back to the frontend with `?token=`. On return, `LandingScene` picks this up (step 1 above) and routes to `HubScene`. |
-| Quick Game | Call `POST /api/auth/guest` (new endpoint — see backend section). Store the returned short-lived JWT in `localStorage` under the key `jwt_guest_token` (distinct from `jwt_token`). Transition to `HubScene`. |
-| Dev Login (dev only) | Call `api.devLogin('KameMaster')`. On success, transition to `HubScene`. On error, show an inline error message beneath the link. |
+| Quick Game             | Call `POST /api/auth/guest` (new endpoint — see backend section). Store the returned short-lived JWT in `localStorage` under the key `jwt_guest_token` (distinct from `jwt_token`). Transition to `HubScene`.                         |
+| Dev Login (dev only)   | Call `api.devLogin('KameMaster')`. On success, transition to `HubScene`. On error, show an inline error message beneath the link.                                                                                                     |
 
 #### UX details
 
@@ -110,13 +110,13 @@ Extend `auth.service.ts` `devLogin()` to seed the dev user with maximum stats on
 
 ```typescript
 // When creating the dev user for the first time, set:
-user.level   = 99;
-user.xp      = 999999;
+user.level = 99;
+user.xp = 999999;
 // And on their Profile:
-profile.totalWins   = 999;
+profile.totalWins = 999;
 profile.totalLosses = 0;
 profile.gamesPlayed = 999;
-profile.bio         = 'The legendary KameMaster. Undefeated.';
+profile.bio = "The legendary KameMaster. Undefeated.";
 ```
 
 These values must only be set at account creation time, not on every `devLogin` call. Use the existing `findOrCreate` pattern: check if the user already exists, and only apply seed stats when creating a new record.
@@ -134,10 +134,10 @@ These must all be implemented. Do not skip any.
 `localStorage` is XSS-vulnerable. Migrate JWT storage from `localStorage` to **httpOnly, SameSite=Strict, Secure cookies** set by the backend.
 
 - Backend: after issuing a JWT (OAuth callback, dev login), set a cookie:
-  ```
-  Set-Cookie: auth_token=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400
-  ```
-  Return `{ ok: true }` as the JSON body — the token itself must not appear in the response body.
+    ```
+    Set-Cookie: auth_token=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400
+    ```
+    Return `{ ok: true }` as the JSON body — the token itself must not appear in the response body.
 - Frontend `apiFetch`: replace the `Authorization: Bearer` header with `credentials: 'include'` on all fetch calls. Remove all `localStorage.getItem('jwt_token')` and `localStorage.setItem` calls.
 - Guest tokens follow the same pattern with `Max-Age=7200` (2 h).
 - `api.devLogin` must also use cookie auth — the `/auth/dev-login` response sets a cookie, not a JSON token body.
@@ -155,10 +155,12 @@ Because auth is now cookie-based, add CSRF protection to all state-mutating endp
 #### 4.3 Dev login endpoint
 
 The existing double-gate is correct and must be preserved:
+
 ```typescript
 if (process.env.NODE_ENV === 'production') throw new ForbiddenException(...)
 if (process.env.ENABLE_DEV_LOGIN !== 'true') throw new ForbiddenException(...)
 ```
+
 Do not loosen either condition. The Vite client-side guard (`import.meta.env.VITE_DEV_LOGIN_ENABLED`) hides the UI but is not a security boundary — the backend gate is the enforcer.
 
 #### 4.4 Input validation
@@ -168,12 +170,12 @@ Do not loosen either condition. The Vite client-side guard (`import.meta.env.VIT
 
 #### 4.5 Rate limiting summary
 
-| Endpoint | Limit |
-|---|---|
-| `POST /api/auth/guest` | 10 req / IP / min |
-| `GET /api/auth/dev-login` | 5 req / IP / min |
-| `GET /api/auth/me` | 60 req / IP / min |
-| All other `/api/auth/*` | 20 req / IP / min |
+| Endpoint                  | Limit             |
+| ------------------------- | ----------------- |
+| `POST /api/auth/guest`    | 10 req / IP / min |
+| `GET /api/auth/dev-login` | 5 req / IP / min  |
+| `GET /api/auth/me`        | 60 req / IP / min |
+| All other `/api/auth/*`   | 20 req / IP / min |
 
 Use `@nestjs/throttler` with per-route overrides via the `@Throttle()` decorator.
 
@@ -205,13 +207,13 @@ Rewrite `api.ts` to:
 
 ### 7. Backend — new endpoint summary
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `POST` | `/api/auth/guest` | None | Create guest user, return httpOnly cookie. |
-| `DELETE` | `/api/auth/session` | Cookie | Clear auth cookie (logout). |
-| `GET` | `/api/auth/csrf-token` | None | Return CSRF token for subsequent requests. |
-| `GET` | `/api/auth/42` | None | Redirect to 42 OAuth (existing, restore from TODO#1). |
-| `GET` | `/api/auth/42/callback` | 42 OAuth | Handle callback, set cookie, redirect to `/`. |
+| Method   | Path                    | Auth     | Description                                           |
+| -------- | ----------------------- | -------- | ----------------------------------------------------- |
+| `POST`   | `/api/auth/guest`       | None     | Create guest user, return httpOnly cookie.            |
+| `DELETE` | `/api/auth/session`     | Cookie   | Clear auth cookie (logout).                           |
+| `GET`    | `/api/auth/csrf-token`  | None     | Return CSRF token for subsequent requests.            |
+| `GET`    | `/api/auth/42`          | None     | Redirect to 42 OAuth (existing, restore from TODO#1). |
+| `GET`    | `/api/auth/42/callback` | 42 OAuth | Handle callback, set cookie, redirect to `/`.         |
 
 ---
 
@@ -251,21 +253,21 @@ VITE_DEV_LOGIN_ENABLED=false
 Write or update tests for every new backend endpoint. Minimum coverage:
 
 - `POST /api/auth/guest`:
-  - Returns 200 and sets `Set-Cookie` on success.
-  - Returns 429 after exceeding rate limit.
-  - Guest username is unique per call.
+    - Returns 200 and sets `Set-Cookie` on success.
+    - Returns 429 after exceeding rate limit.
+    - Guest username is unique per call.
 - `GET /api/auth/dev-login`:
-  - Returns 403 when `NODE_ENV === 'production'`.
-  - Returns 403 when `ENABLE_DEV_LOGIN !== 'true'`.
-  - Returns 200 and sets cookie when both gates pass.
-  - Returns 400 when username contains invalid characters.
-  - Returns 400 when username exceeds 20 characters.
+    - Returns 403 when `NODE_ENV === 'production'`.
+    - Returns 403 when `ENABLE_DEV_LOGIN !== 'true'`.
+    - Returns 200 and sets cookie when both gates pass.
+    - Returns 400 when username contains invalid characters.
+    - Returns 400 when username exceeds 20 characters.
 - `DELETE /api/auth/session`:
-  - Clears the cookie (`Set-Cookie: auth_token=; Max-Age=0`).
-  - Returns 401 when called without a valid cookie.
+    - Clears the cookie (`Set-Cookie: auth_token=; Max-Age=0`).
+    - Returns 401 when called without a valid cookie.
 - Guest cleanup cron:
-  - Deletes guest records older than 3 hours.
-  - Does not delete non-guest records or recent guest records.
+    - Deletes guest records older than 3 hours.
+    - Does not delete non-guest records or recent guest records.
 
 Test framework: Jest (already configured). Use `supertest` for HTTP integration tests. Mock `UsersService` and `JwtService` in unit tests.
 

@@ -17,16 +17,16 @@
  * CSS (%, vh/vw) so it needs no manual repositioning.
  */
 
-import Phaser from 'phaser';
-import { ResponsiveScene } from '../../shared/responsive-scene';
-import { api, AuthError, NetworkError } from './api';
-import { THEME } from '../../shared/theme';
-import { drawBackground } from '../../shared/drawBackground';
+import Phaser from "phaser";
+import { ResponsiveScene } from "../../shared/responsive-scene";
+import { api, AuthError, NetworkError } from "./api";
+import { THEME } from "../../shared/theme";
+import { drawBackground } from "../../shared/drawBackground";
 
 const RESIZE_DEBOUNCE_MS = 100;
-const FADE_MS            = 280;
+const FADE_MS = 280;
 
-const DEPTH_BG    =  0;
+const DEPTH_BG = 0;
 const DEPTH_TITLE = 20;
 
 // ── CSS for the DOM overlay ────────────────────────────────────────────────────
@@ -182,344 +182,401 @@ const OVERLAY_CSS = `
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class LandingScene extends ResponsiveScene {
-  private bgLayer:      Phaser.GameObjects.GameObject[] = [];
-  private titleLayer:   Phaser.GameObjects.GameObject[] = [];
-  private overlayEl:    HTMLElement | null = null;
-  private styleEl:      HTMLStyleElement | null = null;
-  private transitioning = false;
-  protected resizeDebounceMs = RESIZE_DEBOUNCE_MS;
+	private bgLayer: Phaser.GameObjects.GameObject[] = [];
+	private titleLayer: Phaser.GameObjects.GameObject[] = [];
+	private overlayEl: HTMLElement | null = null;
+	private styleEl: HTMLStyleElement | null = null;
+	private transitioning = false;
+	protected resizeDebounceMs = RESIZE_DEBOUNCE_MS;
 
-  constructor() { super({ key: 'LandingScene' }); }
+	constructor() {
+		super({ key: "LandingScene" });
+	}
 
-  // ── shutdown ─────────────────────────────────────────────────────────────────
+	// ── shutdown ─────────────────────────────────────────────────────────────────
 
-  protected onShutdown(): void {
-    this.removeOverlay();
-  }
+	protected onShutdown(): void {
+		this.removeOverlay();
+	}
 
-  // ── preload ──────────────────────────────────────────────────────────────────
+	// ── preload ──────────────────────────────────────────────────────────────────
 
-  preload(): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const g = this.make.graphics({ x: 0, y: 0 } as any, false);
-    g.fillStyle(0xFFB7C5, 1);
-    g.fillEllipse(10, 6, 20, 12);
-    g.fillStyle(0xFFE4EC, 0.75);
-    g.fillEllipse(10, 5, 12, 7);
-    g.generateTexture('petal', 20, 12);
-    g.destroy();
-  }
+	preload(): void {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const g = this.make.graphics({ x: 0, y: 0 } as any, false);
+		g.fillStyle(0xffb7c5, 1);
+		g.fillEllipse(10, 6, 20, 12);
+		g.fillStyle(0xffe4ec, 0.75);
+		g.fillEllipse(10, 5, 12, 7);
+		g.generateTexture("petal", 20, 12);
+		g.destroy();
+	}
 
-  // ── create ───────────────────────────────────────────────────────────────────
+	// ── create ───────────────────────────────────────────────────────────────────
 
-  async create(): Promise<void> {
-    // Reset per-run state — scene instances are reused across scene.start() calls,
-    // so flags and layer refs from the previous run must be cleared here.
-    this.transitioning = false;
-    this.bgLayer       = [];
-    this.titleLayer    = [];
+	async create(): Promise<void> {
+		// Reset per-run state — scene instances are reused across scene.start() calls,
+		// so flags and layer refs from the previous run must be cleared here.
+		this.transitioning = false;
+		this.bgLayer = [];
+		this.titleLayer = [];
 
-    this.drawBg();
-    this.drawTitle();
+		this.drawBg();
+		this.drawTitle();
 
-    // Fast-path: if there's already a valid session, skip the UI entirely.
-    try {
-      await api.getMe();
-      if (!this.scene.isActive()) return;
-      this.transitionToHub();
-      return;
-    } catch (err) {
-      if (!this.scene.isActive()) return;
-      if (!(err instanceof AuthError)) {
-        console.warn('[LandingScene] Session check error:', err);
-      }
-    }
+		// Fast-path: if there's already a valid session, skip the UI entirely.
+		try {
+			await api.getMe();
+			if (!this.scene.isActive()) return;
+			this.transitionToHub();
+			return;
+		} catch (err) {
+			if (!this.scene.isActive()) return;
+			if (!(err instanceof AuthError)) {
+				console.warn("[LandingScene] Session check error:", err);
+			}
+		}
 
-    // Mount form overlay — CSRF will be fetched lazily per-request.
-    this.injectStyles();
-    if (!this.scene.isActive()) return;
-    this.mountOverlay();
-    this.enableResponsive();   // relayout on resize/zoom (see ResponsiveScene)
-  }
+		// Mount form overlay — CSRF will be fetched lazily per-request.
+		this.injectStyles();
+		if (!this.scene.isActive()) return;
+		this.mountOverlay();
+		this.enableResponsive(); // relayout on resize/zoom (see ResponsiveScene)
+	}
 
-  // ── Resize ───────────────────────────────────────────────────────────────────
+	// ── Resize ───────────────────────────────────────────────────────────────────
 
-  protected relayout(): void {
-    if (this.transitioning) return;
-    this.clearLayer(this.bgLayer);
-    this.drawBg();
-    this.clearLayer(this.titleLayer);
-    this.drawTitle();
-    // DOM overlay is CSS-driven — no manual repositioning needed.
-  }
+	protected relayout(): void {
+		if (this.transitioning) return;
+		this.clearLayer(this.bgLayer);
+		this.drawBg();
+		this.clearLayer(this.titleLayer);
+		this.drawTitle();
+		// DOM overlay is CSS-driven — no manual repositioning needed.
+	}
 
-  // ── Canvas helpers ────────────────────────────────────────────────────────────
+	// ── Canvas helpers ────────────────────────────────────────────────────────────
 
-  private clearLayer(layer: Phaser.GameObjects.GameObject[]): void {
-    for (const obj of layer) { if (obj?.active) obj.destroy(); }
-    layer.length = 0;
-  }
+	private clearLayer(layer: Phaser.GameObjects.GameObject[]): void {
+		for (const obj of layer) {
+			if (obj?.active) obj.destroy();
+		}
+		layer.length = 0;
+	}
 
-  private drawBg(): void {
-    this.bgLayer.push(...drawBackground(this, DEPTH_BG));
-  }
+	private drawBg(): void {
+		this.bgLayer.push(...drawBackground(this, DEPTH_BG));
+	}
 
-  private drawTitle(): void {
-    const { width, height } = this.scale;
-    const s     = Math.min(Math.min(width, height) / 1080, 1.0);
-    const cx    = width / 2;
-    const titleY = height * 0.30;
+	private drawTitle(): void {
+		const { width, height } = this.scale;
+		const s = Math.min(Math.min(width, height) / 1080, 1.0);
+		const cx = width / 2;
+		const titleY = height * 0.3;
 
-    // Dark vignette in the title area for readability against the sky
-    const vig = this.add.graphics().setDepth(DEPTH_TITLE - 1);
-    this.titleLayer.push(vig);
-    vig.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.55, 0.55, 0, 0);
-    vig.fillRect(0, 0, width, height * 0.55);
+		// Dark vignette in the title area for readability against the sky
+		const vig = this.add.graphics().setDepth(DEPTH_TITLE - 1);
+		this.titleLayer.push(vig);
+		vig.fillGradientStyle(
+			0x000000,
+			0x000000,
+			0x000000,
+			0x000000,
+			0.55,
+			0.55,
+			0,
+			0,
+		);
+		vig.fillRect(0, 0, width, height * 0.55);
 
-    const strokeW = Math.max(2, Math.round(6 * s));
+		const strokeW = Math.max(2, Math.round(6 * s));
 
-    const title = this.add.text(cx, titleY, 'SHELL SMASH', {
-      fontSize:        `${Math.max(28, Math.round(64 * s))}px`,
-      color:           THEME.textGold,
-      fontFamily:      THEME.font,
-      fontStyle:       'bold',
-      stroke:          '#000000',
-      strokeThickness: strokeW,
-    }).setOrigin(0.5).setDepth(DEPTH_TITLE);
-    this.titleLayer.push(title);
+		const title = this.add
+			.text(cx, titleY, "SHELL SMASH", {
+				fontSize: `${Math.max(28, Math.round(64 * s))}px`,
+				color: THEME.textGold,
+				fontFamily: THEME.font,
+				fontStyle: "bold",
+				stroke: "#000000",
+				strokeThickness: strokeW,
+			})
+			.setOrigin(0.5)
+			.setDepth(DEPTH_TITLE);
+		this.titleLayer.push(title);
 
-    const sub = this.add.text(cx, titleY + Math.round(72 * s), 'Sumo Turtle Arena', {
-      fontSize:        `${Math.max(14, Math.round(22 * s))}px`,
-      color:           THEME.text,
-      fontFamily:      THEME.font,
-      stroke:          '#000000',
-      strokeThickness: Math.max(1, Math.round(3 * s)),
-    }).setOrigin(0.5).setDepth(DEPTH_TITLE);
-    this.titleLayer.push(sub);
-  }
+		const sub = this.add
+			.text(cx, titleY + Math.round(72 * s), "Sumo Turtle Arena", {
+				fontSize: `${Math.max(14, Math.round(22 * s))}px`,
+				color: THEME.text,
+				fontFamily: THEME.font,
+				stroke: "#000000",
+				strokeThickness: Math.max(1, Math.round(3 * s)),
+			})
+			.setOrigin(0.5)
+			.setDepth(DEPTH_TITLE);
+		this.titleLayer.push(sub);
+	}
 
-  // ── DOM overlay ───────────────────────────────────────────────────────────────
+	// ── DOM overlay ───────────────────────────────────────────────────────────────
 
-  private injectStyles(): void {
-    if (document.getElementById('ls-styles')) return;
-    const style      = document.createElement('style');
-    style.id         = 'ls-styles';
-    style.textContent = OVERLAY_CSS;
-    document.head.appendChild(style);
-    this.styleEl = style;
-  }
+	private injectStyles(): void {
+		if (document.getElementById("ls-styles")) return;
+		const style = document.createElement("style");
+		style.id = "ls-styles";
+		style.textContent = OVERLAY_CSS;
+		document.head.appendChild(style);
+		this.styleEl = style;
+	}
 
-  private mountOverlay(mode: 'login' | 'register' = 'login'): void {
-    this.removeOverlay();
+	private mountOverlay(mode: "login" | "register" = "login"): void {
+		this.removeOverlay();
 
-    const overlay = document.createElement('div');
-    overlay.id    = 'ls-overlay';
+		const overlay = document.createElement("div");
+		overlay.id = "ls-overlay";
 
-    // ── Form panel ────────────────────────────────────────────────────────────
-    const panel   = document.createElement('div');
-    panel.id      = 'ls-panel';
+		// ── Form panel ────────────────────────────────────────────────────────────
+		const panel = document.createElement("div");
+		panel.id = "ls-panel";
 
-    const modeTitle      = document.createElement('p');
-    modeTitle.id         = 'ls-mode-title';
-    modeTitle.textContent = mode === 'login' ? '⛩  Login' : '⛩  Create Account';
-    panel.appendChild(modeTitle);
+		const modeTitle = document.createElement("p");
+		modeTitle.id = "ls-mode-title";
+		modeTitle.textContent =
+			mode === "login" ? "⛩  Login" : "⛩  Create Account";
+		panel.appendChild(modeTitle);
 
-    const usernameInput          = document.createElement('input');
-    usernameInput.type           = 'text';
-    usernameInput.placeholder    = 'Username';
-    usernameInput.autocomplete   = 'username';
-    usernameInput.maxLength      = 20;
-    panel.appendChild(usernameInput);
+		const usernameInput = document.createElement("input");
+		usernameInput.type = "text";
+		usernameInput.placeholder = "Username";
+		usernameInput.autocomplete = "username";
+		usernameInput.maxLength = 20;
+		panel.appendChild(usernameInput);
 
-    const passwordInput          = document.createElement('input');
-    passwordInput.type           = 'password';
-    passwordInput.placeholder    = 'Password';
-    passwordInput.autocomplete   = mode === 'login' ? 'current-password' : 'new-password';
-    panel.appendChild(passwordInput);
+		const passwordInput = document.createElement("input");
+		passwordInput.type = "password";
+		passwordInput.placeholder = "Password";
+		passwordInput.autocomplete =
+			mode === "login" ? "current-password" : "new-password";
+		panel.appendChild(passwordInput);
 
-    const errorEl      = document.createElement('p');
-    errorEl.id         = 'ls-error';
-    errorEl.textContent = '';
-    panel.appendChild(errorEl);
+		const errorEl = document.createElement("p");
+		errorEl.id = "ls-error";
+		errorEl.textContent = "";
+		panel.appendChild(errorEl);
 
-    const submitBtn      = document.createElement('button');
-    submitBtn.id         = 'ls-submit';
-    submitBtn.textContent = mode === 'login' ? 'Login' : 'Create Account';
-    panel.appendChild(submitBtn);
+		const submitBtn = document.createElement("button");
+		submitBtn.id = "ls-submit";
+		submitBtn.textContent = mode === "login" ? "Login" : "Create Account";
+		panel.appendChild(submitBtn);
 
-    const divider1   = document.createElement('hr');
-    divider1.className = 'ls-divider';
-    panel.appendChild(divider1);
+		const divider1 = document.createElement("hr");
+		divider1.className = "ls-divider";
+		panel.appendChild(divider1);
 
-    const toggleEl      = document.createElement('p');
-    toggleEl.id         = 'ls-toggle';
-    toggleEl.textContent = mode === 'login'
-      ? "Don't have an account? Create one"
-      : 'Already have an account? Login';
-    panel.appendChild(toggleEl);
+		const toggleEl = document.createElement("p");
+		toggleEl.id = "ls-toggle";
+		toggleEl.textContent =
+			mode === "login"
+				? "Don't have an account? Create one"
+				: "Already have an account? Login";
+		panel.appendChild(toggleEl);
 
-    overlay.appendChild(panel);
+		overlay.appendChild(panel);
 
-    // ── Quick Game button ─────────────────────────────────────────────────────
-    const guestBtn      = document.createElement('button');
-    guestBtn.id         = 'ls-guest-btn';
-    guestBtn.textContent = '⚡  Quick Game  (no account needed)';
-    overlay.appendChild(guestBtn);
+		// ── Quick Game button ─────────────────────────────────────────────────────
+		const guestBtn = document.createElement("button");
+		guestBtn.id = "ls-guest-btn";
+		guestBtn.textContent = "⚡  Quick Game  (no account needed)";
+		overlay.appendChild(guestBtn);
 
-    // ── Dev link ──────────────────────────────────────────────────────────────
-    if (import.meta.env.VITE_DEV_LOGIN_ENABLED === 'true') {
-      const devLink      = document.createElement('p');
-      devLink.id         = 'ls-dev-link';
-      devLink.textContent = 'Dev Login (KameMaster)';
-      overlay.appendChild(devLink);
+		// ── Dev link ──────────────────────────────────────────────────────────────
+		if (import.meta.env.VITE_DEV_LOGIN_ENABLED === "true") {
+			const devLink = document.createElement("p");
+			devLink.id = "ls-dev-link";
+			devLink.textContent = "Dev Login (KameMaster)";
+			overlay.appendChild(devLink);
 
-      devLink.addEventListener('click', async () => {
-        if (this.transitioning) return;
-        this.setError(errorEl, null);
-        devLink.style.pointerEvents = 'none';
-        try {
-          await api.devLogin('KameMaster');
-          this.transitionToHub();
-        } catch (err) {
-          this.setError(errorEl, this.friendlyError(err, 'Dev login failed'));
-          devLink.style.pointerEvents = '';
-        }
-      });
-    }
+			devLink.addEventListener("click", async () => {
+				if (this.transitioning) return;
+				this.setError(errorEl, null);
+				devLink.style.pointerEvents = "none";
+				try {
+					await api.devLogin("KameMaster");
+					this.transitionToHub();
+				} catch (err) {
+					this.setError(
+						errorEl,
+						this.friendlyError(err, "Dev login failed"),
+					);
+					devLink.style.pointerEvents = "";
+				}
+			});
+		}
 
-    // ── Event wiring ──────────────────────────────────────────────────────────
+		// ── Event wiring ──────────────────────────────────────────────────────────
 
-    const setLoading = (loading: boolean): void => {
-      submitBtn.disabled = loading;
-      guestBtn.disabled  = loading;
-      submitBtn.textContent = loading
-        ? (mode === 'login' ? 'Logging in…' : 'Creating…')
-        : (mode === 'login' ? 'Login' : 'Create Account');
-    };
+		const setLoading = (loading: boolean): void => {
+			submitBtn.disabled = loading;
+			guestBtn.disabled = loading;
+			submitBtn.textContent = loading
+				? mode === "login"
+					? "Logging in…"
+					: "Creating…"
+				: mode === "login"
+					? "Login"
+					: "Create Account";
+		};
 
-    // Submit (login or register)
-    const handleSubmit = async (): Promise<void> => {
-      if (this.transitioning) return;
-      this.setError(errorEl, null);
+		// Submit (login or register)
+		const handleSubmit = async (): Promise<void> => {
+			if (this.transitioning) return;
+			this.setError(errorEl, null);
 
-      const username = usernameInput.value.trim();
-      const password = passwordInput.value;
+			const username = usernameInput.value.trim();
+			const password = passwordInput.value;
 
-      if (!username) { this.setError(errorEl, 'Username is required.'); return; }
-      if (!password) { this.setError(errorEl, 'Password is required.'); return; }
-      if (mode === 'register') {
-        if (password.length < 8) { this.setError(errorEl, 'Password must be at least 8 characters.'); return; }
-      }
+			if (!username) {
+				this.setError(errorEl, "Username is required.");
+				return;
+			}
+			if (!password) {
+				this.setError(errorEl, "Password is required.");
+				return;
+			}
+			if (mode === "register") {
+				if (password.length < 8) {
+					this.setError(
+						errorEl,
+						"Password must be at least 8 characters.",
+					);
+					return;
+				}
+			}
 
-      setLoading(true);
-      try {
-        // Always refresh CSRF before any state-changing POST.
-        await api.getCsrfToken();
-      } catch {
-        this.setError(errorEl, 'Cannot reach the server — is the backend running?');
-        setLoading(false);
-        return;
-      }
+			setLoading(true);
+			try {
+				// Always refresh CSRF before any state-changing POST.
+				await api.getCsrfToken();
+			} catch {
+				this.setError(
+					errorEl,
+					"Cannot reach the server — is the backend running?",
+				);
+				setLoading(false);
+				return;
+			}
 
-      try {
-        if (mode === 'login') {
-          await api.login(username, password);
-        } else {
-          await api.register(username, password);
-        }
-        this.transitionToHub();
-      } catch (err) {
-        setLoading(false);
-        this.setError(errorEl, this.friendlyError(err, mode === 'login'
-          ? 'Invalid username or password.'
-          : 'Registration failed — username may already be taken.',
-        ));
-      }
-    };
+			try {
+				if (mode === "login") {
+					await api.login(username, password);
+				} else {
+					await api.register(username, password);
+				}
+				this.transitionToHub();
+			} catch (err) {
+				setLoading(false);
+				this.setError(
+					errorEl,
+					this.friendlyError(
+						err,
+						mode === "login"
+							? "Invalid username or password."
+							: "Registration failed — username may already be taken.",
+					),
+				);
+			}
+		};
 
-    submitBtn.addEventListener('click', () => void handleSubmit());
+		submitBtn.addEventListener("click", () => void handleSubmit());
 
-    // Allow Enter key to submit from any input
-    [usernameInput, passwordInput].forEach((el) => {
-      el.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.key === 'Enter') void handleSubmit();
-      });
-    });
+		// Allow Enter key to submit from any input
+		[usernameInput, passwordInput].forEach((el) => {
+			el.addEventListener("keydown", (e: KeyboardEvent) => {
+				if (e.key === "Enter") void handleSubmit();
+			});
+		});
 
-    // Toggle between login / register
-    toggleEl.addEventListener('click', () => {
-      if (this.transitioning) return;
-      this.mountOverlay(mode === 'login' ? 'register' : 'login');
-    });
+		// Toggle between login / register
+		toggleEl.addEventListener("click", () => {
+			if (this.transitioning) return;
+			this.mountOverlay(mode === "login" ? "register" : "login");
+		});
 
-    // Quick Game — fetch fresh CSRF then guest-login
-    guestBtn.addEventListener('click', async () => {
-      if (this.transitioning) return;
-      this.setError(errorEl, null);
-      guestBtn.disabled  = true;
-      submitBtn.disabled = true;
-      guestBtn.textContent = 'Starting…';
+		// Quick Game — fetch fresh CSRF then guest-login
+		guestBtn.addEventListener("click", async () => {
+			if (this.transitioning) return;
+			this.setError(errorEl, null);
+			guestBtn.disabled = true;
+			submitBtn.disabled = true;
+			guestBtn.textContent = "Starting…";
 
-      try {
-        await api.getCsrfToken();
-      } catch {
-        this.setError(errorEl, 'Cannot reach the server — is the backend running?');
-        guestBtn.disabled   = false;
-        submitBtn.disabled  = false;
-        guestBtn.textContent = '⚡  Quick Game  (no account needed)';
-        return;
-      }
+			try {
+				await api.getCsrfToken();
+			} catch {
+				this.setError(
+					errorEl,
+					"Cannot reach the server — is the backend running?",
+				);
+				guestBtn.disabled = false;
+				submitBtn.disabled = false;
+				guestBtn.textContent = "⚡  Quick Game  (no account needed)";
+				return;
+			}
 
-      try {
-        await api.guestLogin();
-        this.transitionToHub();
-      } catch (err) {
-        guestBtn.disabled   = false;
-        submitBtn.disabled  = false;
-        guestBtn.textContent = '⚡  Quick Game  (no account needed)';
-        this.setError(errorEl, this.friendlyError(err, 'Could not start guest session.'));
-      }
-    });
+			try {
+				await api.guestLogin();
+				this.transitionToHub();
+			} catch (err) {
+				guestBtn.disabled = false;
+				submitBtn.disabled = false;
+				guestBtn.textContent = "⚡  Quick Game  (no account needed)";
+				this.setError(
+					errorEl,
+					this.friendlyError(err, "Could not start guest session."),
+				);
+			}
+		});
 
-    document.body.appendChild(overlay);
-    this.overlayEl = overlay;
+		document.body.appendChild(overlay);
+		this.overlayEl = overlay;
 
-    // Focus username field after mount
-    setTimeout(() => usernameInput.focus(), 50);
-  }
+		// Focus username field after mount
+		setTimeout(() => usernameInput.focus(), 50);
+	}
 
-  private removeOverlay(): void {
-    this.overlayEl?.remove();
-    document.getElementById('ls-overlay')?.remove();
-    this.overlayEl = null;
-  }
+	private removeOverlay(): void {
+		this.overlayEl?.remove();
+		document.getElementById("ls-overlay")?.remove();
+		this.overlayEl = null;
+	}
 
-  // ── Helpers ───────────────────────────────────────────────────────────────────
+	// ── Helpers ───────────────────────────────────────────────────────────────────
 
-  private setError(el: HTMLElement, msg: string | null): void {
-    el.textContent = msg ?? '';
-  }
+	private setError(el: HTMLElement, msg: string | null): void {
+		el.textContent = msg ?? "";
+	}
 
-  /** Produce a user-friendly error string from any thrown value. */
-  private friendlyError(err: unknown, fallback: string): string {
-    if (err instanceof AuthError) {
-      if (err.status === 429) return 'Too many attempts — please wait a moment.';
-      if (err.status === 409) return 'That username is already taken.';
-      if (err.status === 401) return 'Invalid username or password.';
-    }
-    if (err instanceof NetworkError) return 'Network error — please check your connection.';
-    return fallback;
-  }
+	/** Produce a user-friendly error string from any thrown value. */
+	private friendlyError(err: unknown, fallback: string): string {
+		if (err instanceof AuthError) {
+			if (err.status === 429)
+				return "Too many attempts — please wait a moment.";
+			if (err.status === 409) return "That username is already taken.";
+			if (err.status === 401) return "Invalid username or password.";
+		}
+		if (err instanceof NetworkError)
+			return "Network error — please check your connection.";
+		return fallback;
+	}
 
-  // ── Scene transition ─────────────────────────────────────────────────────────
+	// ── Scene transition ─────────────────────────────────────────────────────────
 
-  private transitionToHub(): void {
-    if (this.transitioning) return;
-    this.transitioning = true;
-    this.removeOverlay();
-    this.cameras.main.fadeOut(FADE_MS, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', () => {
-      this.scene.start('HubScene');
-    });
-  }
+	private transitionToHub(): void {
+		if (this.transitioning) return;
+		this.transitioning = true;
+		this.removeOverlay();
+		this.cameras.main.fadeOut(FADE_MS, 0, 0, 0);
+		this.cameras.main.once("camerafadeoutcomplete", () => {
+			this.scene.start("HubScene");
+		});
+	}
 }

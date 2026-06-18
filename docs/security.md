@@ -52,12 +52,12 @@ USER appuser
 
 Network isolation is the primary security control that prevents lateral movement between containers.
 
-| Attack scenario | Mitigation |
-|----------------|------------|
-| Compromised frontend | Frontend is on `frontend_network` only — cannot reach `database` or `redis` |
-| Compromised Nginx | Nginx has no credentials and no direct DB connection |
-| Brute-force on Redis | Redis is not on `frontend_network`; only backend can reach it |
-| Port scan from internet | Only ports 80 and 443 are exposed on the host |
+| Attack scenario         | Mitigation                                                                  |
+| ----------------------- | --------------------------------------------------------------------------- |
+| Compromised frontend    | Frontend is on `frontend_network` only — cannot reach `database` or `redis` |
+| Compromised Nginx       | Nginx has no credentials and no direct DB connection                        |
+| Brute-force on Redis    | Redis is not on `frontend_network`; only backend can reach it               |
+| Port scan from internet | Only ports 80 and 443 are exposed on the host                               |
 
 ---
 
@@ -74,14 +74,14 @@ Docker Swarm (or Kubernetes) provides a native secrets mechanism where values ar
 ```yaml
 # docker-compose.yml (Swarm mode)
 secrets:
-  db_password:
-    file: ./srcs/secrets/db_password.txt
+    db_password:
+        file: ./srcs/secrets/db_password.txt
 
 services:
-  database:
-    secrets: [db_password]
-    environment:
-      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    database:
+        secrets: [db_password]
+        environment:
+            POSTGRES_PASSWORD_FILE: /run/secrets/db_password
 ```
 
 Read the secret in your application:
@@ -102,14 +102,14 @@ with open(os.environ['POSTGRES_PASSWORD_FILE']) as f:
 
 The Nginx configuration sets the following security headers on all responses:
 
-| Header | Value | Purpose |
-|--------|-------|---------|
-| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | Force HTTPS for 2 years |
-| `X-Frame-Options` | `DENY` | Prevent clickjacking |
-| `X-Content-Type-Options` | `nosniff` | Prevent MIME sniffing |
-| `X-XSS-Protection` | `1; mode=block` | Legacy XSS filter |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` | Limit referrer leakage |
-| `Content-Security-Policy` | See nginx config | Restrict resource origins |
+| Header                      | Value                                 | Purpose                   |
+| --------------------------- | ------------------------------------- | ------------------------- |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | Force HTTPS for 2 years   |
+| `X-Frame-Options`           | `DENY`                                | Prevent clickjacking      |
+| `X-Content-Type-Options`    | `nosniff`                             | Prevent MIME sniffing     |
+| `X-XSS-Protection`          | `1; mode=block`                       | Legacy XSS filter         |
+| `Referrer-Policy`           | `strict-origin-when-cross-origin`     | Limit referrer leakage    |
+| `Content-Security-Policy`   | See nginx config                      | Restrict resource origins |
 
 ---
 
@@ -125,14 +125,14 @@ The Nginx configuration sets the following security headers on all responses:
 
 ## Least Privilege Principles
 
-| Principle | Implementation |
-|-----------|---------------|
-| Only expose necessary ports | Only Nginx exposes ports 80/443 to the host |
-| Internal services are unreachable | database and redis have no host port mapping |
-| Read-only file systems where possible | SSL volume is mounted `:ro` |
-| Separate network zones | frontend_network / backend_network isolation |
-| Non-root processes | All app containers run as unprivileged users |
-| Minimal OS packages | Alpine images; only install what is needed |
+| Principle                             | Implementation                               |
+| ------------------------------------- | -------------------------------------------- |
+| Only expose necessary ports           | Only Nginx exposes ports 80/443 to the host  |
+| Internal services are unreachable     | database and redis have no host port mapping |
+| Read-only file systems where possible | SSL volume is mounted `:ro`                  |
+| Separate network zones                | frontend_network / backend_network isolation |
+| Non-root processes                    | All app containers run as unprivileged users |
+| Minimal OS packages                   | Alpine images; only install what is needed   |
 
 ---
 

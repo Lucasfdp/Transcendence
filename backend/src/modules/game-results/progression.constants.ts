@@ -1,7 +1,7 @@
 // ── XP & coin rewards per game outcome ────────────────────────────────────────
-export const XP_PER_WIN    = 150;
-export const XP_PER_LOSS   = 40;
-export const COINS_PER_WIN  = 50;
+export const XP_PER_WIN = 150;
+export const XP_PER_LOSS = 40;
+export const COINS_PER_WIN = 50;
 export const COINS_PER_LOSS = 0;
 
 /**
@@ -17,5 +17,5 @@ export const COINS_PER_LOSS = 0;
  * Keep both in sync — if you change this formula, update ProfilePanel too.
  */
 export function xpForNextLevel(currentLevel: number): number {
-  return currentLevel * 1_000;
+	return currentLevel * 1_000;
 }

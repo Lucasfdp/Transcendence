@@ -4,5 +4,5 @@
  * dependency.  All existing imports of './presence.service' continue to work
  * without modification.
  */
-export { PresenceService } from '../presence/presence.service';
-export type { SocketUser } from '../presence/presence.service';
+export { PresenceService } from "../presence/presence.service";
+export type { SocketUser } from "../presence/presence.service";

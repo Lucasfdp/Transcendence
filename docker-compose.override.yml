@@ -22,58 +22,57 @@
 # ==============================================================================
 
 services:
+    # ── Frontend: Vite HMR ─────────────────────────────────────────────────────
+    # Uses the builder stage (has Vite + all devDependencies).
+    # The whole Vite project is bind-mounted, with node_modules kept in a
+    # container-owned volume so the host tree can stay clean.
+    frontend:
+        build:
+            target: builder
+        working_dir: /app/frontend
+        volumes:
+            - ./frontend:/app/frontend
+            - ./public:/app/public
+            - /app/frontend/node_modules
+        command: npm run dev -- --host 0.0.0.0
+        ports:
+            - "3000:3000" # Expose directly so the browser's HMR WebSocket works
+        environment:
+            - NODE_ENV=development
+            - VITE_API_URL=/api # Relative path — Vite proxies this to backend:8000
+        # The builder stage has no wget; use node for the health probe instead.
+        healthcheck:
+            test:
+                - "CMD"
+                - "node"
+                - "-e"
+                - "require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 20s
 
-  # ── Frontend: Vite HMR ─────────────────────────────────────────────────────
-  # Uses the builder stage (has Vite + all devDependencies).
-  # The whole Vite project is bind-mounted, with node_modules kept in a
-  # container-owned volume so the host tree can stay clean.
-  frontend:
-    build:
-      target: builder
-    working_dir: /app/frontend
-    volumes:
-      - ./frontend:/app/frontend
-      - ./public:/app/public
-      - /app/frontend/node_modules
-    command: npm run dev -- --host 0.0.0.0
-    ports:
-      - "3000:3000"       # Expose directly so the browser's HMR WebSocket works
-    environment:
-      - NODE_ENV=development
-      - VITE_API_URL=/api # Relative path — Vite proxies this to backend:8000
-    # The builder stage has no wget; use node for the health probe instead.
-    healthcheck:
-      test:
-        - "CMD"
-        - "node"
-        - "-e"
-        - "require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-
-  # ── Backend: NestJS watch mode ─────────────────────────────────────────────
-  # Uses the builder stage (has @nestjs/cli, ts-node, all devDependencies).
-  # Only src/ is bind-mounted so node_modules stays intact.
-  backend:
-    build:
-      target: builder
-    volumes:
-      - ./backend/src:/build/src  # TypeScript source
-    working_dir: /build
-    entrypoint: []                  # Clear the runtime entrypoint.sh
-    command: sh -c "npm run start:dev"
-    environment:
-      - NODE_ENV=development
-    # The builder stage has no wget; use node for the health probe instead.
-    healthcheck:
-      test:
-        - "CMD"
-        - "node"
-        - "-e"
-        - "require('http').get('http://localhost:8000/api/health', (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 40s
+    # ── Backend: NestJS watch mode ─────────────────────────────────────────────
+    # Uses the builder stage (has @nestjs/cli, ts-node, all devDependencies).
+    # Only src/ is bind-mounted so node_modules stays intact.
+    backend:
+        build:
+            target: builder
+        volumes:
+            - ./backend/src:/build/src # TypeScript source
+        working_dir: /build
+        entrypoint: [] # Clear the runtime entrypoint.sh
+        command: sh -c "npm run start:dev"
+        environment:
+            - NODE_ENV=development
+        # The builder stage has no wget; use node for the health probe instead.
+        healthcheck:
+            test:
+                - "CMD"
+                - "node"
+                - "-e"
+                - "require('http').get('http://localhost:8000/api/health', (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 40s

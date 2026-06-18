@@ -14,13 +14,13 @@ The current single-host Docker Compose setup is appropriate for a 42 project eva
 
 For a service to scale horizontally, it must be **stateless** — all state must be stored outside the container.
 
-| Service | Stateless? | Notes |
-|---------|-----------|-------|
-| `reverse_proxy` | ✅ | Config from volume; no per-request state |
-| `frontend` | ✅ | Serves static files; fully stateless |
-| `backend` | ⚠️ | **Must** store sessions in Redis, not in-memory |
-| `database` | ❌ | Stateful by design; scale via replication |
-| `redis` | ❌ | Stateful; scale via Redis Cluster or Sentinel |
+| Service         | Stateless? | Notes                                           |
+| --------------- | ---------- | ----------------------------------------------- |
+| `reverse_proxy` | ✅         | Config from volume; no per-request state        |
+| `frontend`      | ✅         | Serves static files; fully stateless            |
+| `backend`       | ⚠️         | **Must** store sessions in Redis, not in-memory |
+| `database`      | ❌         | Stateful by design; scale via replication       |
+| `redis`         | ❌         | Stateful; scale via Redis Cluster or Sentinel   |
 
 **Design rule:** The backend must never store session data in a local variable or in-process cache. All shared state (user sessions, game rooms, rate limit counters) must live in Redis or PostgreSQL.
 
@@ -35,6 +35,7 @@ docker compose -f srcs/docker-compose.yml up -d --scale backend=3
 ```
 
 This requires:
+
 1. Removing the `container_name` from the backend service (names must be unique).
 2. Removing the `expose` port from the backend (Nginx balances across replicas).
 3. Configuring Nginx `upstream` with load balancing:
@@ -60,12 +61,12 @@ Docker Compose's internal DNS resolver automatically returns all replica IPs for
 
 ## Load Balancing Strategies
 
-| Strategy | Nginx directive | Best for |
-|----------|----------------|---------|
-| Round-robin | (default) | Homogeneous requests |
-| Least connections | `least_conn` | Long-lived WebSocket connections |
-| IP hash | `ip_hash` | Sticky sessions (avoid if possible) |
-| Weighted | `weight=N` | Mixed-capacity nodes |
+| Strategy          | Nginx directive | Best for                            |
+| ----------------- | --------------- | ----------------------------------- |
+| Round-robin       | (default)       | Homogeneous requests                |
+| Least connections | `least_conn`    | Long-lived WebSocket connections    |
+| IP hash           | `ip_hash`       | Sticky sessions (avoid if possible) |
+| Weighted          | `weight=N`      | Mixed-capacity nodes                |
 
 **Prefer stateless + round-robin** over sticky sessions. Sticky sessions couple clients to specific instances, making rolling deploys harder.
 

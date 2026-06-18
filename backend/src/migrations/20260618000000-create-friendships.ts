@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
  * Creates the friendships table.
@@ -13,8 +13,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *   - CHECK requester_id <> addressee_id — no self-friending
  */
 export class CreateFriendships20260618000000 implements MigrationInterface {
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+	public async up(queryRunner: QueryRunner): Promise<void> {
+		await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS friendships (
         id            SERIAL PRIMARY KEY,
         requester_id  INTEGER      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -27,18 +27,18 @@ export class CreateFriendships20260618000000 implements MigrationInterface {
       )
     `);
 
-    await queryRunner.query(`
+		await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS idx_friendships_requester
       ON friendships (requester_id)
     `);
 
-    await queryRunner.query(`
+		await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS idx_friendships_addressee
       ON friendships (addressee_id)
     `);
-  }
+	}
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TABLE IF EXISTS friendships`);
-  }
+	public async down(queryRunner: QueryRunner): Promise<void> {
+		await queryRunner.query(`DROP TABLE IF EXISTS friendships`);
+	}
 }

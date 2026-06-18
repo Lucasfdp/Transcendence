@@ -1,10 +1,10 @@
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { PresenceModule } from '../presence/presence.module';
-import { User } from '../users/entities/user.entity';
-import { Friendship } from './entities/friendship.entity';
-import { FriendsController } from './friends.controller';
-import { FriendsService } from './friends.service';
+import { Module } from "@nestjs/common";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import { PresenceModule } from "../presence/presence.module";
+import { User } from "../users/entities/user.entity";
+import { Friendship } from "./entities/friendship.entity";
+import { FriendsController } from "./friends.controller";
+import { FriendsService } from "./friends.service";
 
 /**
  * FriendsModule — manages friend requests, friendships, and blocks.
@@ -14,12 +14,9 @@ import { FriendsService } from './friends.service';
  * scope filtering.
  */
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([Friendship, User]),
-    PresenceModule,
-  ],
-  providers:   [FriendsService],
-  controllers: [FriendsController],
-  exports:     [FriendsService],
+	imports: [TypeOrmModule.forFeature([Friendship, User]), PresenceModule],
+	providers: [FriendsService],
+	controllers: [FriendsController],
+	exports: [FriendsService],
 })
 export class FriendsModule {}

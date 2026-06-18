@@ -1,5 +1,5 @@
-import { Module } from '@nestjs/common';
-import { PresenceService } from './presence.service';
+import { Module } from "@nestjs/common";
+import { PresenceService } from "./presence.service";
 
 /**
  * PresenceModule — shared, globally-importable module that tracks which user
@@ -9,7 +9,7 @@ import { PresenceService } from './presence.service';
  * inject PresenceService without creating a circular dependency.
  */
 @Module({
-  providers: [PresenceService],
-  exports:   [PresenceService],
+	providers: [PresenceService],
+	exports: [PresenceService],
 })
 export class PresenceModule {}

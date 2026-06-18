@@ -22,7 +22,7 @@
 #     appendonly yes  (in redis.conf)
 # ==============================================================================
 
-FROM redis:7-alpine
+FROM redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
 
 LABEL maintainer="ft_transcendence"
 LABEL description="Redis in-memory data store"
