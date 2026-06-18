@@ -31,7 +31,7 @@ For a service to scale horizontally, it must be **stateless** — all state must
 Scale the backend to multiple replicas:
 
 ```bash
-docker compose -f srcs/docker-compose.yml up -d --scale backend=3
+docker compose -f docker-compose.yml up -d --scale backend=3
 ```
 
 This requires:

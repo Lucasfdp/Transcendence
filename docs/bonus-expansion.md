@@ -6,9 +6,9 @@ How to add bonus services to the ft_transcendence Docker infrastructure.
 
 ## How to Add a New Service
 
-1. Create `srcs/requirements/<service_name>/Dockerfile`
-2. Create `srcs/requirements/<service_name>/tools/entrypoint.sh`
-3. Uncomment the relevant service block in `srcs/docker-compose.yml`
+1. Create `infra/<service_name>/Dockerfile`
+2. Create `infra/<service_name>/tools/entrypoint.sh`
+3. Uncomment the relevant service block in `docker-compose.yml`
 4. Add required environment variables to `.env.example` and `.env`
 5. Add the named volume (if needed) to the `volumes:` section of compose
 6. Update `docs/service-map.md` and `docs/architecture.md`
@@ -129,7 +129,7 @@ elasticsearch:
 prometheus:
   image: prom/prometheus:v2.51.0
   volumes:
-    - ./requirements/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     - monitoring_data:/prometheus
   networks: [frontend_network, backend_network]
 
@@ -185,7 +185,7 @@ POST /ai/move
 
 ```yaml
 blockchain_service:
-  build: ./requirements/blockchain_service
+  build: ./infra/blockchain-service
   secrets: [blockchain_private_key]
   networks: [frontend_network, backend_network]
 ```
@@ -193,5 +193,5 @@ blockchain_service:
 ```yaml
 secrets:
   blockchain_private_key:
-    file: ./srcs/secrets/blockchain_key.txt
+    file: ./secrets/blockchain_key.txt
 ```

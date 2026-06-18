@@ -32,7 +32,7 @@ Internet
 │  :80  ──────────────► reverse_proxy             │
 │  :443 ──────────────► reverse_proxy             │
 │                              │                  │
-│          frontend_network (172.20.0.0/24)       │
+│          frontend_network (172.20.0.0/24)        │
 │          ┌───────────────────┘                  │
 │          │                                      │
 │          ├──► frontend   (:3000)                │

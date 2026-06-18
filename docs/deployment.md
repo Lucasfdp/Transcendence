@@ -94,22 +94,22 @@ Because all application state lives in named volumes (not in the container image
 docker images | grep transcendence
 
 # 2. Stop the affected service
-docker compose -f srcs/docker-compose.yml stop backend
+docker compose -f docker-compose.yml stop backend
 
 # 3. Check out the previous version
 git checkout <previous-commit>
 
 # 4. Rebuild only the affected service
-docker compose -f srcs/docker-compose.yml build backend
+docker compose -f docker-compose.yml build backend
 
 # 5. Start it again
-docker compose -f srcs/docker-compose.yml up -d backend
+docker compose -f docker-compose.yml up -d backend
 ```
 
 For database rollbacks, restore from a `pg_dump` backup:
 
 ```bash
-docker compose -f srcs/docker-compose.yml exec -T database \
+docker compose -f docker-compose.yml exec -T database \
     psql -U $POSTGRES_USER $POSTGRES_DB < backup.sql
 ```
 
