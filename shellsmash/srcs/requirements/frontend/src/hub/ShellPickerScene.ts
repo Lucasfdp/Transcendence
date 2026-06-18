@@ -287,7 +287,7 @@ export class ShellPickerScene extends ResponsiveScene {
     btnZone.on('pointerout',  () => this.paintConfirmBtn(false, btnX, btnY, btnW, btnH));
     btnZone.on('pointerup',   () => void this.onConfirm());
 
-    if ((this.gameId === 'shell-curl' || this.gameId === 'bamboo-bash' || this.gameId === 'kame-knock') && this.currentPlayer === 0) {
+    if ((this.gameId === 'shell-curl' || this.gameId === 'bamboo-bash' || this.gameId === 'kame-knock' || this.gameId === 'bell-clash') && this.currentPlayer === 0) {
       this.buildOnlineButton(btnY);
     }
 

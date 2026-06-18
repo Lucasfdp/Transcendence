@@ -9,6 +9,7 @@ import { Match } from './entities/match.entity';
 import { MatchPlayer } from './entities/match-player.entity';
 import { MatchSpectator } from './entities/match-spectator.entity';
 import { UserRating } from './entities/user-rating.entity';
+import { BellClashEngine } from './engines/bell-clash.engine';
 import { BambooBashEngine } from './engines/bamboo-bash.engine';
 import { GameEngineRegistry } from './engines/game-engine.registry';
 import { KameKnockEngine } from './engines/kame-knock.engine';
@@ -39,6 +40,7 @@ import { RoomService } from './room.service';
     ShellCurlEngine,
     BambooBashEngine,
     KameKnockEngine,
+    BellClashEngine,
     GameEngineRegistry,
     RoomService,
     GameSessionService,

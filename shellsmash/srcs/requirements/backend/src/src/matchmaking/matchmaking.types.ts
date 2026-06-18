@@ -16,7 +16,7 @@ export interface QueueJoinPayload {
 
 export interface GameInputPayload {
   matchId: string;
-  action: 'aim' | 'power' | 'release' | 'settled' | 'round:score' | 'bamboo:hit' | 'bamboo:sync' | 'target:hit';
+  action: 'aim' | 'power' | 'release' | 'settled' | 'round:score' | 'bamboo:hit' | 'bamboo:sync' | 'target:hit' | 'bell:hit';
   payload?: Record<string, unknown>;
 }
 
@@ -42,6 +42,16 @@ export interface KameKnockThrowEvent {
   matchId: string;
   roundNumber: number;
   turnNumber: number;
+  side: number;
+  vx: number;
+  vy: number;
+  power: string;
+}
+
+export interface BellClashThrowEvent {
+  matchId: string;
+  roundNumber: number;
+  shotNumber: number;
   side: number;
   vx: number;
   vy: number;
@@ -134,7 +144,25 @@ export interface KameKnockSnapshot {
   winnerSide: number | null;
 }
 
-export type GameSnapshot = CurlingSnapshot | BambooBashSnapshot | KameKnockSnapshot;
+export interface BellClashSnapshot {
+  matchId: string;
+  seq: number;
+  gameId: 'bell-clash';
+  mode: MatchMode;
+  phase: 'pending' | 'active' | 'finished' | 'abandoned';
+  roundNumber: number;
+  totalRounds: number;
+  shotsPerRound: number;
+  score: number[];
+  liveRoundScores: number[];
+  roundScores: Array<number | null>;
+  shotCounts: number[];
+  zones: Array<{ kind: 'red' | 'yellow' | 'green'; start: number; end: number }>;
+  players: SnapshotPlayer[];
+  winnerSide: number | null;
+}
+
+export type GameSnapshot = CurlingSnapshot | BambooBashSnapshot | KameKnockSnapshot | BellClashSnapshot;
 
 export interface RoomPlayer {
   socketId: string;
