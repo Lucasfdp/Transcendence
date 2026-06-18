@@ -39,7 +39,7 @@
  */
 
 import Phaser from 'phaser';
-import { Achievement, api, Cosmetic, MiniGameDefinition, User } from './api';
+import { Achievement, api, Cosmetic, LeaderboardEntry, MiniGameDefinition, User } from './api';
 import { THEME } from '../shared/theme';
 import { ProfilePanel } from './ProfilePanel';
 
@@ -144,6 +144,10 @@ export class HubScene extends Phaser.Scene {
   // Incremented on every renderLeaderboard() call; the async callback bails out
   // if its captured generation no longer matches the current one.
   private lbGeneration = 0;
+
+  // ── Leaderboard filter state ───────────────────────────────────────────────
+  private lbPeriod: 'all' | 'monthly' | 'weekly' = 'all';
+  private lbFriendsOnly = false;
 
   constructor() { super({ key: 'HubScene' }); }
 
@@ -1910,57 +1914,141 @@ export class HubScene extends Phaser.Scene {
 
   // ── Leaderboard ──────────────────────────────────────────────────────────────
 
+  /**
+   * Fetch and redraw the leaderboard panel using the current lbPeriod /
+   * lbFriendsOnly state.  Generation-guarded so stale async callbacks from
+   * superseded calls are discarded.
+   */
   private renderLeaderboard(): void {
     const PAD = 16;
 
-    // Increment generation; the async callback captures this value and bails
-    // out if a newer renderLeaderboard() call has superseded it.
     const gen = ++this.lbGeneration;
-
-    // Clear any previously drawn leaderboard before fetching fresh data
     this.clearLayer(this.lbLayer);
 
-    api.getAllUsers().then((users: any[]) => {
-      if (gen !== this.lbGeneration) return; // superseded by a newer resize
-      if (!users?.length) return;
+    const scope = this.lbFriendsOnly ? 'friends' : 'global';
 
-      // Re-read dimensions here — they may have changed since the call was made
+    api.getLeaderboard(this.lbPeriod, scope).then((entries: LeaderboardEntry[]) => {
+      if (gen !== this.lbGeneration) return;
+
       const { width: w, height: h } = this.scale;
 
-      const sorted  = [...users].sort((a, b) => b.xp - a.xp).slice(0, 5);
-      const rowH    = 22;
+      // Panel dimensions
+      const ROW_H   = 22;
+      const TAB_H   = 24;
+      const TOP_PAD = 10;
       // Clamp panel width so it doesn't overflow at narrow viewports (< 500 px)
-      const panelW  = Math.min(232, w * 0.45);
-      const panelH  = 32 + sorted.length * rowH + 10;
+      const panelW  = Math.min(250, w * 0.45);
+      const displayRows = entries.slice(0, 5);
+      const panelH  = TAB_H + TOP_PAD + 18 + displayRows.length * ROW_H + 10;
       const panelX  = w - PAD;
       const panelY  = h - PAD - panelH;
 
+      // ── Panel background ────────────────────────────────────────────────────
       const bg = this.add.graphics().setDepth(DEPTH_HUD);
       this.lbLayer.push(bg);
-      bg.fillStyle(THEME.background, 0.80);
+      bg.fillStyle(THEME.background, 0.85);
       bg.fillRoundedRect(panelX - panelW, panelY, panelW, panelH, 8);
       bg.lineStyle(1, THEME.gold, 0.30);
       bg.strokeRoundedRect(panelX - panelW, panelY, panelW, panelH, 8);
 
-      const header = this.add.text(panelX - panelW / 2, panelY + 10, 'DOJO RANKINGS', {
+      // ── Period tabs (All Time | Monthly | Weekly) ───────────────────────────
+      const tabs: Array<{ label: string; period: 'all' | 'monthly' | 'weekly' }> = [
+        { label: 'All Time', period: 'all'     },
+        { label: 'Monthly',  period: 'monthly' },
+        { label: 'Weekly',   period: 'weekly'  },
+      ];
+      const tabW   = Math.floor((panelW - 2) / tabs.length);
+      const tabY   = panelY + 1;
+
+      tabs.forEach((tab, ti) => {
+        const tx      = panelX - panelW + 1 + ti * tabW;
+        const active  = tab.period === this.lbPeriod;
+        const tabGfx  = this.add.graphics().setDepth(DEPTH_HUD);
+        tabGfx.fillStyle(active ? THEME.gold : 0x2a2218, active ? 0.85 : 0.60);
+        tabGfx.fillRoundedRect(tx, tabY, tabW - 1, TAB_H - 2, 4);
+        const tabTxt = this.add.text(tx + tabW / 2, tabY + (TAB_H - 2) / 2, tab.label, {
+          fontSize:   this.scaledFont(9),
+          color:      active ? '#1a1410' : THEME.textMutedHex,
+          fontFamily: THEME.font,
+          fontStyle:  active ? 'bold' : 'normal',
+        }).setOrigin(0.5).setDepth(DEPTH_HUD);
+
+        // Hit area for tab click
+        const tabHit = this.add.rectangle(tx + tabW / 2, tabY + (TAB_H - 2) / 2, tabW - 1, TAB_H - 2, 0, 0)
+          .setInteractive({ useHandCursor: true })
+          .setDepth(DEPTH_HUD);
+        tabHit.on('pointerup', () => {
+          if (this.lbPeriod === tab.period) return;
+          this.lbPeriod = tab.period;
+          this.renderLeaderboard();
+        });
+        this.lbLayer.push(tabGfx, tabTxt, tabHit);
+      });
+
+      // ── Friends toggle ──────────────────────────────────────────────────────
+      const toggleX   = panelX - panelW + 4;
+      const toggleY   = panelY + TAB_H + 4;
+      const toggleW   = panelW - 8;
+      const toggleH   = 16;
+      const friendsOn = this.lbFriendsOnly;
+      const togGfx    = this.add.graphics().setDepth(DEPTH_HUD);
+      togGfx.fillStyle(friendsOn ? THEME.green : 0x2a2218, 0.80);
+      togGfx.fillRoundedRect(toggleX, toggleY, toggleW, toggleH, 3);
+      togGfx.lineStyle(1, friendsOn ? THEME.green : THEME.gold, 0.40);
+      togGfx.strokeRoundedRect(toggleX, toggleY, toggleW, toggleH, 3);
+      const togTxt = this.add.text(
+        toggleX + toggleW / 2,
+        toggleY + toggleH / 2,
+        friendsOn ? '⬡  Friends Only' : '⬡  All Players',
+        { fontSize: this.scaledFont(8), color: friendsOn ? THEME.textGold : THEME.textMutedHex, fontFamily: THEME.font },
+      ).setOrigin(0.5).setDepth(DEPTH_HUD);
+      const togHit = this.add.rectangle(toggleX + toggleW / 2, toggleY + toggleH / 2, toggleW, toggleH, 0, 0)
+        .setInteractive({ useHandCursor: true })
+        .setDepth(DEPTH_HUD);
+      togHit.on('pointerup', () => {
+        this.lbFriendsOnly = !this.lbFriendsOnly;
+        this.renderLeaderboard();
+      });
+      this.lbLayer.push(togGfx, togTxt, togHit);
+
+      // ── Header ──────────────────────────────────────────────────────────────
+      const headerY = panelY + TAB_H + toggleH + TOP_PAD + 6;
+      const header  = this.add.text(panelX - panelW / 2, headerY, 'DOJO RANKINGS', {
         fontSize: this.scaledFont(10), color: THEME.textGold,
         fontFamily: THEME.font, fontStyle: 'bold',
       }).setOrigin(0.5, 0).setDepth(DEPTH_HUD);
       this.lbLayer.push(header);
 
-      sorted.forEach((u, i) => {
-        const nameStr = (u.turtleName || u.username).substring(0, 14);
-        const colour  = i === 0 ? THEME.textGold : THEME.text;
-        const rowY    = panelY + 30 + i * rowH;
+      // ── Rows ────────────────────────────────────────────────────────────────
+      if (!displayRows.length) {
+        const emptyTxt = this.add.text(panelX - panelW / 2, headerY + 20, 'No data yet', {
+          fontSize: this.scaledFont(10), color: THEME.textMutedHex, fontFamily: THEME.font,
+        }).setOrigin(0.5, 0).setDepth(DEPTH_HUD);
+        this.lbLayer.push(emptyTxt);
+        return;
+      }
 
-        const nameLabel = this.add.text(panelX - panelW + 12, rowY, `${i + 1}.  ${nameStr}`, {
+      displayRows.forEach((entry, i) => {
+        const nameStr  = (entry.turtleName ?? entry.username).substring(0, 13);
+        const colour   = i === 0 ? THEME.textGold : THEME.text;
+        const rowY     = headerY + 18 + i * ROW_H;
+
+        // Online status dot
+        const dotGfx = this.add.graphics().setDepth(DEPTH_HUD);
+        dotGfx.fillStyle(entry.isOnline ? 0x44cc44 : 0x555555, 1);
+        dotGfx.fillCircle(panelX - panelW + 10, rowY + ROW_H / 2, 4);
+        this.lbLayer.push(dotGfx);
+
+        const nameLabel = this.add.text(panelX - panelW + 18, rowY, `${entry.rank}.  ${nameStr}`, {
           fontSize: this.scaledFont(11), color: colour, fontFamily: THEME.font,
         }).setDepth(DEPTH_HUD);
-        const xpLabel = this.add.text(panelX - 12, rowY, `${u.xp} XP`, {
+
+        const winsLabel = this.add.text(panelX - 12, rowY, `${entry.wins}W`, {
           fontSize: this.scaledFont(11), color: colour, fontFamily: THEME.font,
         }).setOrigin(1, 0).setDepth(DEPTH_HUD);
-        this.lbLayer.push(nameLabel, xpLabel);
+
+        this.lbLayer.push(nameLabel, winsLabel);
       });
-    }).catch(() => { /* leaderboard is non-critical */ });
+    }).catch(() => { /* leaderboard is non-critical; silently ignore fetch errors */ });
   }
 }

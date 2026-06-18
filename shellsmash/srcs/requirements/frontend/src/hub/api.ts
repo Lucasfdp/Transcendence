@@ -164,6 +164,40 @@ export interface ShellSelectionResult {
   shellTypes: string[];
 }
 
+export interface FriendView {
+  userId:      number;
+  username:    string;
+  turtleName:  string | null;
+  shellSkin:   string;
+  avatar:      string | null;
+  level:       number;
+  isOnline:    boolean;
+  requesterId: number;
+}
+
+export interface PendingView {
+  userId:     number;
+  username:   string;
+  turtleName: string | null;
+  shellSkin:  string;
+  avatar:     string | null;
+  level:      number;
+  isOnline:   boolean;
+}
+
+export interface LeaderboardEntry {
+  rank:        number;
+  userId:      number;
+  username:    string;
+  turtleName:  string | null;
+  shellSkin:   string;
+  avatar:      string | null;
+  level:       number;
+  wins:        number;
+  gamesPlayed: number;
+  isOnline:    boolean;
+}
+
 // ── API surface ───────────────────────────────────────────────────────────────
 
 export const api = {
@@ -257,4 +291,54 @@ export const api = {
       method: 'POST',
       body:   JSON.stringify({ shellTypes }),
     }),
+
+  // ── Friends ────────────────────────────────────────────────────────────────
+
+  /** Return all accepted friends with live online status. */
+  getFriends: (): Promise<FriendView[]> =>
+    apiFetch<FriendView[]>('/friends'),
+
+  /** Return incoming pending friend requests. */
+  getPendingRequests: (): Promise<PendingView[]> =>
+    apiFetch<PendingView[]>('/friends/pending'),
+
+  /** Send a friend request by username. */
+  sendFriendRequest: (username: string): Promise<void> =>
+    apiFetch<void>('/friends/request', {
+      method: 'POST',
+      body:   JSON.stringify({ username }),
+    }),
+
+  /** Accept an incoming friend request by the requester's userId. */
+  acceptFriendRequest: (userId: number): Promise<void> =>
+    apiFetch<void>('/friends/accept', {
+      method: 'POST',
+      body:   JSON.stringify({ userId }),
+    }),
+
+  /** Remove a friend or decline/cancel a pending request. */
+  removeFriend: (userId: number): Promise<void> =>
+    apiFetch<void>(`/friends/${userId}`, { method: 'DELETE' }),
+
+  /** Block a user by userId. */
+  blockUser: (userId: number): Promise<void> =>
+    apiFetch<void>('/friends/block', {
+      method: 'POST',
+      body:   JSON.stringify({ userId }),
+    }),
+
+  // ── Leaderboard ────────────────────────────────────────────────────────────
+
+  /**
+   * Fetch the leaderboard.
+   * @param period  'all' (default) | 'monthly' | 'weekly'
+   * @param scope   'global' (default) | 'friends'
+   */
+  getLeaderboard: (
+    period: 'all' | 'monthly' | 'weekly' = 'all',
+    scope:  'global' | 'friends'         = 'global',
+  ): Promise<LeaderboardEntry[]> =>
+    apiFetch<LeaderboardEntry[]>(
+      `/users/leaderboard?period=${period}&scope=${scope}`,
+    ),
 };

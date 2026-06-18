@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
+import { FriendsModule } from './friends/friends.module';
 import { UsersModule } from './users/users.module';
 import { ProfilesModule } from './profiles/profiles.module';
 import { MiniGamesModule } from './minigames/minigames.module';
@@ -10,6 +11,7 @@ import { AchievementsModule } from './achievements/achievements.module';
 import { CustomizationModule } from './customization/customization.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { HealthModule } from './health/health.module';
+import { PresenceModule } from './presence/presence.module';
 import { ShellsModule } from './shells/shells.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { AppController } from './app.controller';
@@ -36,6 +38,7 @@ import { AppController } from './app.controller';
 
     // Feature modules
     AuthModule,
+    PresenceModule,
     UsersModule,
     ProfilesModule,
     MiniGamesModule,
@@ -43,6 +46,7 @@ import { AppController } from './app.controller';
     CustomizationModule,
     GameResultsModule,
     ShellsModule,
+    FriendsModule,
     MatchmakingModule,
 
     // Observability — must come after TypeOrmModule so DataSource is available

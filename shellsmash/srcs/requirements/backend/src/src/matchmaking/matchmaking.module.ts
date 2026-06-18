@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { GameResultsModule } from '../game-results/game-results.module';
+import { PresenceModule } from '../presence/presence.module';
 import { ShellsModule } from '../shells/shells.module';
 import { UsersModule } from '../users/users.module';
 import { Match } from './entities/match.entity';
@@ -18,7 +19,6 @@ import { GameSessionService } from './game-session.service';
 import { MatchesController } from './matches.controller';
 import { MatchmakingGateway } from './matchmaking.gateway';
 import { MatchmakingService } from './matchmaking.service';
-import { PresenceService } from './presence.service';
 import { RoomService } from './room.service';
 
 @Module({
@@ -29,13 +29,13 @@ import { RoomService } from './room.service';
       useFactory: (config: ConfigService) => ({ secret: config.get<string>('JWT_SECRET') }),
       inject: [ConfigService],
     }),
+    PresenceModule,
     UsersModule,
     ShellsModule,
     GameResultsModule,
   ],
   controllers: [MatchesController],
   providers: [
-    PresenceService,
     MatchmakingService,
     ShellCurlEngine,
     BambooBashEngine,

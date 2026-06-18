@@ -11,8 +11,12 @@ ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_GITHUB_AUTH_URL=${VITE_GITHUB_AUTH_URL}
 WORKDIR /app
 COPY src/package.json ./
-COPY src/package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+# Intentionally omit package-lock.json: npm ci uses the lockfile's resolved
+# optional-dependency URLs, which are arch-specific.  Copying a lockfile built
+# on macOS arm64 into a linux/arm64 musl container causes rollup's native
+# binding (@rollup/rollup-linux-arm64-musl) to go missing (npm/cli#4828).
+# npm install re-resolves optionalDependencies for the current platform.
+RUN npm install
 COPY src/ .
 RUN npm run build
 

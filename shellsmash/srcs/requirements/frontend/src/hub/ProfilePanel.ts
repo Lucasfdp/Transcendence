@@ -10,7 +10,7 @@
  *   this.profilePanel.toggle();   // open / close
  *   this.profilePanel.destroy();  // on scene shutdown
  *
- * Layout (panel is 320 × 540, anchored 16px from top-left below the HUD):
+ * Layout (panel is 320 × 728, anchored 16px from top-left below the HUD):
  *
  *   ┌──────────────────────────────────┐
  *   │  ╔══════════════╗  [level badge] │
@@ -26,6 +26,12 @@
  *   │  │ WINS │  │LOSSES│  │PLAYED│  │
  *   │  └──────┘  └──────┘  └──────┘  │
  *   │  WIN RATE  ██████░░  67%        │
+ *   │  ═══════════════════════════════│  ← friends section
+ *   │  FRIENDS (2 online) · 1 pending │
+ *   │  ● KameBro              online  │
+ *   │  ○ ShellMaster          offline │
+ *   │  [pending] TurtleFan    Accept ✕│
+ *   │  [+ add by username…          ] │
  *   │  [ ✕  Close Profile ]           │
  *   └──────────────────────────────────┘
  */
@@ -33,13 +39,17 @@
 import Phaser from 'phaser';
 import { THEME } from '../shared/theme';
 import { PowerType } from '../shared/mechanics/power-system';
+import { api, FriendView, PendingView } from './api';
 
-// Fixed panel geometry
-const PW       = 320;  // panel width
-const PH_BASE  = 568;  // panel height without inventory section
-const PAD      = 20;   // internal padding
+// ── Fixed panel geometry ───────────────────────────────────────────────────────
 
-// Inventory section geometry
+const PW            = 320;   // panel width
+const PH_BASE       = 568;   // panel height without extra sections
+const PAD           = 20;    // internal padding
+const PH_FRIENDS    = 160;   // friends section extension
+
+// ── Inventory section geometry ─────────────────────────────────────────────────
+
 const INV_ROW_H   = 22;  // height per chip row
 const INV_COLS    = 4;   // chips per row
 const INV_GAP     = 4;   // gap between chips
@@ -48,11 +58,19 @@ const INV_HDR_H   = 38;  // divider + title height
 // The 21 special shell types shown in the inventory (no NONE/normal)
 const INVENTORY_SHELL_TYPES = Object.values(PowerType).filter((p) => p !== PowerType.NONE);
 
-const INV_ROWS    = Math.ceil(INVENTORY_SHELL_TYPES.length / INV_COLS);
-const INV_BODY_H  = INV_ROWS * INV_ROW_H + (INV_ROWS - 1) * INV_GAP;
+const INV_ROWS      = Math.ceil(INVENTORY_SHELL_TYPES.length / INV_COLS);
+const INV_BODY_H    = INV_ROWS * INV_ROW_H + (INV_ROWS - 1) * INV_GAP;
 const INV_SECTION_H = INV_HDR_H + INV_BODY_H + 12;
 
-// Short display labels for each shell type (PowerSidePanel has full names)
+// ── Friends section geometry ───────────────────────────────────────────────────
+
+const FR_ROW_H      = 18;   // height per friend/pending row
+const FR_MAX_VIS    = 3;    // max friend rows shown
+const FR_PEND_MAX   = 2;    // max pending rows shown
+const FR_INPUT_H    = 22;   // add-friend input row height
+
+// ── Shell display data ─────────────────────────────────────────────────────────
+
 const SHELL_SHORT: Partial<Record<PowerType, string>> = {
   [PowerType.HEAVY]:    'Heavy',
   [PowerType.BOMB]:     'Bomb',
@@ -110,9 +128,33 @@ function getRank(level: number): { label: string; colour: number } {
   return              { label: 'Novice Shell', colour: 0x8b7355 };
 }
 
+// ── ProfilePanel ──────────────────────────────────────────────────────────────
+
 export class ProfilePanel {
   private readonly scene:     Phaser.Scene;
   private readonly container: Phaser.GameObjects.Container;
+
+  // ── Friends section state ──────────────────────────────────────────────────
+  private friendsBaseY = 0;  // Y offset in container where friends section starts
+  /** Dynamic objects cleared and rebuilt on each updateFriends() call. */
+  private friendsLayer: Phaser.GameObjects.GameObject[] = [];
+  /** Persistent feedback text; survives updateFriends() rebuilds. */
+  private friendsStatusText: Phaser.GameObjects.Text | null = null;
+  /** Persistent display text for the add-friend input field. */
+  private addFriendDisplay: Phaser.GameObjects.Text | null = null;
+  /** Persistent highlight graphics for add-friend input border. */
+  private addFriendBorderGfx: Phaser.GameObjects.Graphics | null = null;
+  // Stored so stopAddFriendCapture() can redraw without recalculating layout
+  private addFriendInputX = 0;
+  private addFriendInputY = 0;
+  private addFriendInputW = 0;
+
+  // ── Add-friend keyboard capture state ────────────────────────────────────
+  private addFriendValue     = '';
+  private addFriendCapturing = false;
+  private addFriendCursorVis = false;
+  private addFriendCursorTimer: Phaser.Time.TimerEvent | null = null;
+  private addFriendKeyFn: ((evt: KeyboardEvent) => void) | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -140,9 +182,12 @@ export class ProfilePanel {
       duration: 220,
       ease:     'Power2.easeOut',
     });
+    // Fire-and-forget: populate friends section after the tween starts
+    void this.refreshFriends();
   }
 
   hide() {
+    this.stopAddFriendCapture();
     const startX = this.container.x;
     this.scene.tweens.add({
       targets:    this.container,
@@ -170,12 +215,15 @@ export class ProfilePanel {
     this.container.setPosition(x, y);
   }
 
-  destroy() { this.container.destroy(); }
+  destroy() {
+    this.stopAddFriendCapture();
+    this.container.destroy();
+  }
 
   // ── Build ────────────────────────────────────────────────────────────────────
 
   private build(user: any, shellInventory?: Record<string, number>) {
-    const PH = shellInventory ? PH_BASE + INV_SECTION_H : PH_BASE;
+    const PH = (shellInventory ? PH_BASE + INV_SECTION_H : PH_BASE) + PH_FRIENDS;
     const children: Phaser.GameObjects.GameObject[] = [];
 
     // ── 1. Panel background ───────────────────────────────────────────────────
@@ -390,7 +438,6 @@ export class ProfilePanel {
       const barW     = PW - PAD * 2;
       const barH     = 8;
 
-      // Label + percentage right-aligned
       const winPct = Math.round(winFrac * 100);
       children.push(this.scene.add.text(PAD, winRateY, 'WIN RATE', {
         fontSize: '9px', color: THEME.textMutedHex,
@@ -491,7 +538,56 @@ export class ProfilePanel {
       });
     }
 
-    // ── 15. Close button ──────────────────────────────────────────────────────
+    // ── 15. Friends section ────────────────────────────────────────────────────
+    //
+    // friendsBaseY marks where the dynamic friends content starts (below the
+    // existing content).  Static skeleton (divider, header) are added here;
+    // the dynamic rows are built by updateFriends().
+
+    this.friendsBaseY = PH - PH_FRIENDS;
+
+    // Divider
+    const frDivGfx = this.scene.add.graphics();
+    frDivGfx.lineStyle(1, THEME.gold, 0.35);
+    frDivGfx.lineBetween(PAD, this.friendsBaseY + 4, PW - PAD, this.friendsBaseY + 4);
+    children.push(frDivGfx);
+
+    // Persistent status feedback text (shown briefly after add/accept/error)
+    this.friendsStatusText = this.scene.add.text(PW / 2, this.friendsBaseY + 6, '', {
+      fontSize: '9px', color: THEME.textGold,
+      fontFamily: THEME.font, align: 'center',
+    }).setOrigin(0.5, 0).setVisible(false);
+    children.push(this.friendsStatusText);
+
+    // ── 16. Add-friend input (static skeleton; text updated by capture logic) ──
+    // Position: just above the close button with a small gap
+    // PH - 38 (close btn height) - FR_INPUT_H - 6 (gap)
+    const inputX = PAD;
+    const inputW = PW - PAD * 2;
+    const inputY = PH - 38 - FR_INPUT_H - 6;
+    this.addFriendInputX = inputX;
+    this.addFriendInputY = inputY;
+    this.addFriendInputW = inputW;
+
+    this.addFriendBorderGfx = this.scene.add.graphics();
+    this.renderAddFriendBorder(inputX, inputY, inputW, FR_INPUT_H, false);
+
+    this.addFriendDisplay = this.scene.add.text(inputX + 8, inputY + FR_INPUT_H / 2, 'add by username…', {
+      fontSize: '10px', color: THEME.textMutedHex,
+      fontFamily: THEME.font,
+    }).setOrigin(0, 0.5);
+
+    // Hit area to start capturing
+    const inputHit = this.scene.add.rectangle(
+      inputX + inputW / 2, inputY + FR_INPUT_H / 2, inputW, FR_INPUT_H, 0x000000, 0,
+    ).setInteractive({ useHandCursor: true });
+    inputHit.on('pointerup', () => {
+      if (!this.addFriendCapturing) this.startAddFriendCapture();
+    });
+
+    children.push(this.addFriendBorderGfx, this.addFriendDisplay, inputHit);
+
+    // ── 17. Close button ──────────────────────────────────────────────────────
     const closeBtnY = PH - 38;
     const closeGfx  = this.scene.add.graphics();
     const paintClose = (hovered: boolean) => {
@@ -518,6 +614,313 @@ export class ProfilePanel {
 
     // ── Add all children to container ─────────────────────────────────────────
     this.container.add(children);
+
+    // Show loading state while friends fetch is in flight
+    this.showFriendsLoading();
+  }
+
+  // ── Friends section: refresh + render ────────────────────────────────────────
+
+  /**
+   * Fetches friends and pending requests from the API and updates the panel.
+   * Fire-and-forget from show().
+   */
+  private async refreshFriends(): Promise<void> {
+    try {
+      const [friends, pending] = await Promise.all([
+        api.getFriends(),
+        api.getPendingRequests(),
+      ]);
+      this.updateFriends(friends, pending);
+    } catch {
+      this.clearFriendsLayer();
+      const errTxt = this.scene.add.text(PW / 2, this.friendsBaseY + 20, 'Could not load friends', {
+        fontSize: '10px', color: THEME.textMutedHex, fontFamily: THEME.font, align: 'center',
+      }).setOrigin(0.5, 0);
+      this.friendsLayer.push(errTxt);
+      this.container.add(errTxt);
+    }
+  }
+
+  /** Clears the dynamic friends layer and rebuilds it from fetched data. */
+  private updateFriends(friends: FriendView[], pending: PendingView[]): void {
+    this.clearFriendsLayer();
+
+    const baseY   = this.friendsBaseY;
+    const objs: Phaser.GameObjects.GameObject[] = [];
+
+    // ── Header: "FRIENDS (N online) · M pending" ──────────────────────────────
+    const onlineCount  = friends.filter((f) => f.isOnline).length;
+    const pendingCount = pending.length;
+    let headerStr = `FRIENDS  ${onlineCount} online`;
+    if (pendingCount > 0) headerStr += `  ·  ${pendingCount} pending`;
+
+    const headerTxt = this.scene.add.text(PAD, baseY + 14, headerStr, {
+      fontSize: '10px', color: THEME.textMutedHex,
+      fontFamily: THEME.font, fontStyle: 'bold',
+    });
+    objs.push(headerTxt);
+
+    let curY = baseY + 30;
+
+    // ── Friend rows ───────────────────────────────────────────────────────────
+    if (friends.length === 0) {
+      const emptyTxt = this.scene.add.text(PAD + 10, curY, 'No friends yet.', {
+        fontSize: '10px', color: THEME.textMutedHex, fontFamily: THEME.font,
+      });
+      objs.push(emptyTxt);
+      curY += FR_ROW_H;
+    } else {
+      const visible = friends.slice(0, FR_MAX_VIS);
+      visible.forEach((friend) => {
+        // Online dot
+        const dotGfx = this.scene.add.graphics();
+        dotGfx.fillStyle(friend.isOnline ? 0x44cc44 : 0x555555, 1);
+        dotGfx.fillCircle(PAD + 6, curY + FR_ROW_H / 2, 4);
+        objs.push(dotGfx);
+
+        // Name
+        const nameStr = (friend.turtleName ?? friend.username).substring(0, 16);
+        const nameTxt = this.scene.add.text(PAD + 16, curY + 2, nameStr, {
+          fontSize: '10px', color: THEME.text, fontFamily: THEME.font,
+        });
+        objs.push(nameTxt);
+
+        // Status label + remove button
+        const statusStr = friend.isOnline ? 'online' : 'offline';
+        const statusTxt = this.scene.add.text(PW - PAD - 32, curY + 2, statusStr, {
+          fontSize: '9px',
+          color: friend.isOnline ? '#44cc44' : THEME.textMutedHex,
+          fontFamily: THEME.font,
+        }).setOrigin(1, 0);
+        objs.push(statusTxt);
+
+        // Remove / unfriend button
+        const removeTxt = this.scene.add.text(PW - PAD - 2, curY + 2, '✕', {
+          fontSize: '11px', color: THEME.textMutedHex, fontFamily: THEME.font,
+        }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+        removeTxt.on('pointerover', () => removeTxt.setColor('#cc4444'));
+        removeTxt.on('pointerout',  () => removeTxt.setColor(THEME.textMutedHex));
+        removeTxt.on('pointerup',   () => {
+          void api.removeFriend(friend.userId).then(() => void this.refreshFriends());
+        });
+        objs.push(removeTxt);
+
+        curY += FR_ROW_H;
+      });
+
+      if (friends.length > FR_MAX_VIS) {
+        const moreTxt = this.scene.add.text(PAD + 10, curY + 2, `+ ${friends.length - FR_MAX_VIS} more`, {
+          fontSize: '9px', color: THEME.textMutedHex, fontFamily: THEME.font,
+        });
+        objs.push(moreTxt);
+        curY += FR_ROW_H;
+      }
+    }
+
+    curY += 4;
+
+    // ── Pending request rows ──────────────────────────────────────────────────
+    if (pending.length > 0) {
+      const pendDivGfx = this.scene.add.graphics();
+      pendDivGfx.lineStyle(1, THEME.gold, 0.15);
+      pendDivGfx.lineBetween(PAD, curY, PW - PAD, curY);
+      objs.push(pendDivGfx);
+      curY += 6;
+
+      const pendHeader = this.scene.add.text(PAD, curY, 'PENDING', {
+        fontSize: '9px', color: THEME.textMutedHex, fontFamily: THEME.font, fontStyle: 'bold',
+      });
+      objs.push(pendHeader);
+      curY += 14;
+
+      const visiblePending = pending.slice(0, FR_PEND_MAX);
+      visiblePending.forEach((req) => {
+        // Online dot
+        const dotGfx = this.scene.add.graphics();
+        dotGfx.fillStyle(req.isOnline ? 0x44cc44 : 0x555555, 1);
+        dotGfx.fillCircle(PAD + 6, curY + FR_ROW_H / 2, 3);
+        objs.push(dotGfx);
+
+        // Name
+        const nameStr = (req.turtleName ?? req.username).substring(0, 13);
+        const nameTxt = this.scene.add.text(PAD + 16, curY + 2, nameStr, {
+          fontSize: '10px', color: THEME.text, fontFamily: THEME.font,
+        });
+        objs.push(nameTxt);
+
+        // Accept button
+        const acceptTxt = this.scene.add.text(PW - PAD - 22, curY + 2, '✓', {
+          fontSize: '12px', color: '#44cc44', fontFamily: THEME.font, fontStyle: 'bold',
+        }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+        acceptTxt.on('pointerover', () => acceptTxt.setAlpha(0.7));
+        acceptTxt.on('pointerout',  () => acceptTxt.setAlpha(1));
+        acceptTxt.on('pointerup',   () => {
+          void api.acceptFriendRequest(req.userId).then(() => void this.refreshFriends());
+        });
+
+        // Decline button
+        const declineTxt = this.scene.add.text(PW - PAD - 2, curY + 2, '✕', {
+          fontSize: '11px', color: THEME.textMutedHex, fontFamily: THEME.font,
+        }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+        declineTxt.on('pointerover', () => declineTxt.setColor('#cc4444'));
+        declineTxt.on('pointerout',  () => declineTxt.setColor(THEME.textMutedHex));
+        declineTxt.on('pointerup',   () => {
+          void api.removeFriend(req.userId).then(() => void this.refreshFriends());
+        });
+
+        objs.push(acceptTxt, declineTxt);
+        curY += FR_ROW_H;
+      });
+
+      if (pending.length > FR_PEND_MAX) {
+        const morePendTxt = this.scene.add.text(PAD + 10, curY + 2, `+ ${pending.length - FR_PEND_MAX} more pending`, {
+          fontSize: '9px', color: THEME.textMutedHex, fontFamily: THEME.font,
+        });
+        objs.push(morePendTxt);
+      }
+    }
+
+    this.friendsLayer.push(...objs);
+    this.container.add(objs);
+  }
+
+  /** Renders the "loading…" state while the API request is in flight. */
+  private showFriendsLoading(): void {
+    this.clearFriendsLayer();
+    const loadTxt = this.scene.add.text(PW / 2, this.friendsBaseY + 20, 'Loading friends…', {
+      fontSize: '10px', color: THEME.textMutedHex, fontFamily: THEME.font, align: 'center',
+    }).setOrigin(0.5, 0);
+    this.friendsLayer.push(loadTxt);
+    this.container.add(loadTxt);
+  }
+
+  /** Destroys all objects in the dynamic friends layer. */
+  private clearFriendsLayer(): void {
+    for (const obj of this.friendsLayer) {
+      (obj as Phaser.GameObjects.GameObject).destroy();
+    }
+    this.friendsLayer = [];
+  }
+
+  // ── Add-friend keyboard capture ───────────────────────────────────────────────
+
+  /** Activates keyboard capture for the add-friend input field. */
+  private startAddFriendCapture(): void {
+    if (this.addFriendCapturing) return;
+    this.addFriendCapturing = true;
+
+    // Highlight the input border using stored coordinates
+    this.renderAddFriendBorder(this.addFriendInputX, this.addFriendInputY, this.addFriendInputW, FR_INPUT_H, true);
+    this.updateAddFriendDisplay();
+
+    // Blinking cursor timer
+    this.addFriendCursorTimer = this.scene.time.addEvent({
+      delay: 530,
+      loop:  true,
+      callback: () => {
+        this.addFriendCursorVis = !this.addFriendCursorVis;
+        this.updateAddFriendDisplay();
+      },
+    });
+
+    // Keyboard handler — use window to intercept before Phaser processes it
+    this.addFriendKeyFn = (evt: KeyboardEvent) => {
+      // Only process while this panel is open and capture is active
+      if (!this.addFriendCapturing || !this.container.visible) return;
+      evt.stopPropagation();
+
+      switch (evt.key) {
+        case 'Escape':
+          this.stopAddFriendCapture();
+          break;
+        case 'Enter':
+          void this.submitAddFriend();
+          break;
+        case 'Backspace':
+          this.addFriendValue = this.addFriendValue.slice(0, -1);
+          this.updateAddFriendDisplay();
+          break;
+        default:
+          // Accept printable characters up to max username length
+          if (evt.key.length === 1 && this.addFriendValue.length < 20) {
+            this.addFriendValue += evt.key;
+            this.updateAddFriendDisplay();
+          }
+      }
+    };
+    window.addEventListener('keydown', this.addFriendKeyFn);
+  }
+
+  /** Stops keyboard capture and resets the input field. */
+  private stopAddFriendCapture(): void {
+    if (!this.addFriendCapturing) return;
+    this.addFriendCapturing = false;
+
+    this.addFriendCursorTimer?.remove();
+    this.addFriendCursorTimer = null;
+    this.addFriendCursorVis   = false;
+
+    if (this.addFriendKeyFn) {
+      window.removeEventListener('keydown', this.addFriendKeyFn);
+      this.addFriendKeyFn = null;
+    }
+
+    this.updateAddFriendDisplay();
+    this.renderAddFriendBorder(this.addFriendInputX, this.addFriendInputY, this.addFriendInputW, FR_INPUT_H, false);
+  }
+
+  /** Sends the friend request and refreshes the section. */
+  private async submitAddFriend(): Promise<void> {
+    const username = this.addFriendValue.trim();
+    this.stopAddFriendCapture();
+    this.addFriendValue = '';
+    this.updateAddFriendDisplay();
+
+    if (!username) return;
+
+    try {
+      await api.sendFriendRequest(username);
+      this.showFriendsStatus(`Request sent to ${username}!`);
+      await this.refreshFriends();
+    } catch {
+      this.showFriendsStatus('User not found or already friends.', true);
+    }
+  }
+
+  /** Updates the add-friend text display based on current state. */
+  private updateAddFriendDisplay(): void {
+    if (!this.addFriendDisplay) return;
+    const cursor  = this.addFriendCapturing && this.addFriendCursorVis ? '|' : '';
+    const isEmpty = this.addFriendValue === '';
+    const text    = isEmpty
+      ? (this.addFriendCapturing ? cursor : 'add by username…')
+      : this.addFriendValue + cursor;
+    this.addFriendDisplay.setText(text).setColor(
+      isEmpty && !this.addFriendCapturing ? THEME.textMutedHex : THEME.text,
+    );
+  }
+
+  /** Draws (or redraws) the add-friend input border box. */
+  private renderAddFriendBorder(x: number, y: number, w: number, h: number, active: boolean): void {
+    if (!this.addFriendBorderGfx) return;
+    this.addFriendBorderGfx.clear();
+    this.addFriendBorderGfx.fillStyle(0x2a2218, 0.80);
+    this.addFriendBorderGfx.fillRoundedRect(x, y, w, h, 4);
+    this.addFriendBorderGfx.lineStyle(1, active ? THEME.gold : 0x4a3d2a, active ? 0.80 : 0.40);
+    this.addFriendBorderGfx.strokeRoundedRect(x, y, w, h, 4);
+  }
+
+  /** Briefly displays a status message in the friends section. */
+  private showFriendsStatus(msg: string, isError = false): void {
+    if (!this.friendsStatusText) return;
+    this.friendsStatusText
+      .setText(msg)
+      .setColor(isError ? '#cc4444' : THEME.textGold)
+      .setVisible(true);
+    this.scene.time.delayedCall(2_500, () => {
+      this.friendsStatusText?.setVisible(false);
+    });
   }
 
   // ── Turtle placeholder art ───────────────────────────────────────────────────
