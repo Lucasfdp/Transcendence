@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
+import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { TempleBackdrop } from "../components/layout/TempleBackdrop";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
 import { api, type User } from "../features/hub/api";
@@ -10,6 +11,7 @@ function HomeMenu(): JSX.Element {
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
 	const [player, setPlayer] = useState<User | null>(null);
 	const [isLoadingPlayer, setIsLoadingPlayer] = useState(true);
+	const [isTournamentModalOpen, setIsTournamentModalOpen] = useState(false);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -111,6 +113,7 @@ function HomeMenu(): JSX.Element {
 						<button
 							className="menu-page__mode-card menu-page__mode-card--tournament"
 							type="button"
+							onClick={() => setIsTournamentModalOpen(true)}
 						>
 							<span
 								className="menu-page__mode-corners"
@@ -134,6 +137,12 @@ function HomeMenu(): JSX.Element {
 					</div>
 				</section>
 			</div>
+
+			<WorkInProgressModal
+				isOpen={isTournamentModalOpen}
+				onClose={() => setIsTournamentModalOpen(false)}
+				closeLabel="Return to Menu"
+			/>
 		</main>
 	);
 }
