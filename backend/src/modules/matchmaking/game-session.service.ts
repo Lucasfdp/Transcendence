@@ -99,21 +99,42 @@ export class GameSessionService {
 				{ matchId: room.matchId, userId: player.user.id },
 				{ outcome },
 			);
-
-			const user = await this.usersService.findById(player.user.id);
-			if (user && !user.isGuest && outcome !== "draw") {
-				await this.gameResultsService.submitResult(user, {
-					gameId:
-						room.gameId === "shell-curl"
-							? "temple-curling"
-							: room.gameId,
-					outcome: outcome === "win" ? "win" : "loss",
-				});
-			}
 		}
+
+		await this.grantMatchRewards(room, abandoned);
 
 		if (room.mode === "ranked" && winnerSide !== null)
 			await this.updateRatings(room, winnerSide);
+	}
+
+	private async grantMatchRewards(
+		room: MatchRoom,
+		abandoned: boolean,
+	): Promise<void> {
+		if (room.rewardsGranted) return;
+		if (abandoned) {
+			room.rewardsGranted = true;
+			return;
+		}
+		const winnerSide = room.state.winnerSide;
+
+		for (const player of room.players) {
+			if (!player.connected) continue;
+			const user = await this.usersService.findById(player.user.id);
+			if (!user || user.isGuest) continue;
+
+			await this.gameResultsService.submitResult(user, {
+				gameId: room.gameId,
+				outcome:
+					winnerSide === null
+						? "draw"
+						: player.side === winnerSide
+							? "win"
+							: "loss",
+			});
+		}
+
+		room.rewardsGranted = true;
 	}
 
 	private async updateRatings(

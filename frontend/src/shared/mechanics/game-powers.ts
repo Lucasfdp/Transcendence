@@ -10,7 +10,11 @@
 
 import { PowerType } from "./power-system";
 
-export type GameId = "shell-curl" | "bamboo-bash" | "bell-clash" | "kame-knock";
+export type GameId =
+	| "temple-curling"
+	| "bamboo-bash"
+	| "bell-clash"
+	| "kame-knock";
 
 /** All 21 special shell powers (excludes NONE, which is always free). */
 export const ALL_SPECIAL_POWERS: PowerType[] = [
@@ -43,7 +47,7 @@ export const ALL_SPECIAL_POWERS: PowerType[] = [
  * type-checks) continue to compile without changes.
  */
 export const GAME_POWERS: Record<GameId, PowerType[]> = {
-	"shell-curl": ALL_SPECIAL_POWERS,
+	"temple-curling": ALL_SPECIAL_POWERS,
 	"bamboo-bash": ALL_SPECIAL_POWERS,
 	"bell-clash": ALL_SPECIAL_POWERS,
 	"kame-knock": ALL_SPECIAL_POWERS,

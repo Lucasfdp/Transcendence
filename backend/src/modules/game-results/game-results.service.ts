@@ -8,8 +8,12 @@ import { AchievementsService } from "../achievements/achievements.service";
 import { SubmitResultDto } from "./dto/submit-result.dto";
 import { UserGameStats } from "./entities/user-game-stats.entity";
 import {
+	COINS_PER_COMPLETED,
+	COINS_PER_DRAW,
 	COINS_PER_LOSS,
 	COINS_PER_WIN,
+	XP_PER_COMPLETED,
+	XP_PER_DRAW,
 	XP_PER_LOSS,
 	XP_PER_WIN,
 	xpForNextLevel,
@@ -40,8 +44,8 @@ export class GameResultsService {
 	): Promise<ProgressionResult> {
 		try {
 			const isWin = dto.outcome === "win";
-			const xpGained = isWin ? XP_PER_WIN : XP_PER_LOSS;
-			const coinsGained = isWin ? COINS_PER_WIN : COINS_PER_LOSS;
+			const isLoss = dto.outcome === "loss";
+			const { xpGained, coinsGained } = this.rewardFor(dto.outcome);
 
 			// ── XP + level-up (loop handles multiple thresholds in a single call) ──
 			let xp = user.xp + xpGained;
@@ -61,7 +65,7 @@ export class GameResultsService {
 			const profile = user.profile;
 			if (isWin) {
 				profile.totalWins += 1;
-			} else {
+			} else if (isLoss) {
 				profile.totalLosses += 1;
 			}
 			profile.gamesPlayed += 1;
@@ -78,7 +82,7 @@ export class GameResultsService {
 
 			await this.usersService.save(user);
 
-			await this.updateGameStats(user, dto.gameId, isWin);
+			await this.updateGameStats(user, dto.gameId, dto.outcome);
 
 			const unlockedAchievements =
 				await this.achievementsService.evaluateForUser(user);
@@ -100,10 +104,26 @@ export class GameResultsService {
 		}
 	}
 
+	private rewardFor(outcome: SubmitResultDto["outcome"]): {
+		xpGained: number;
+		coinsGained: number;
+	} {
+		if (outcome === "win")
+			return { xpGained: XP_PER_WIN, coinsGained: COINS_PER_WIN };
+		if (outcome === "loss")
+			return { xpGained: XP_PER_LOSS, coinsGained: COINS_PER_LOSS };
+		if (outcome === "draw")
+			return { xpGained: XP_PER_DRAW, coinsGained: COINS_PER_DRAW };
+		return {
+			xpGained: XP_PER_COMPLETED,
+			coinsGained: COINS_PER_COMPLETED,
+		};
+	}
+
 	private async updateGameStats(
 		user: User,
 		gameId: string,
-		isWin: boolean,
+		outcome: SubmitResultDto["outcome"],
 	): Promise<void> {
 		const stats =
 			(await this.userGameStatsRepo.findOne({
@@ -119,8 +139,8 @@ export class GameResultsService {
 			});
 
 		stats.gamesPlayed += 1;
-		if (isWin) stats.totalWins += 1;
-		else stats.totalLosses += 1;
+		if (outcome === "win") stats.totalWins += 1;
+		else if (outcome === "loss") stats.totalLosses += 1;
 
 		await this.userGameStatsRepo.save(stats);
 	}

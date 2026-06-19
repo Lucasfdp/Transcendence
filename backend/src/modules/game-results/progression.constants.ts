@@ -1,8 +1,12 @@
 // ── XP & coin rewards per game outcome ────────────────────────────────────────
 export const XP_PER_WIN = 150;
-export const XP_PER_LOSS = 40;
+export const XP_PER_LOSS = 50;
+export const XP_PER_DRAW = 80;
+export const XP_PER_COMPLETED = 30;
 export const COINS_PER_WIN = 50;
-export const COINS_PER_LOSS = 0;
+export const COINS_PER_LOSS = 30;
+export const COINS_PER_DRAW = 30;
+export const COINS_PER_COMPLETED = 20;
 
 /**
  * XP required to advance from `currentLevel` to `currentLevel + 1`.

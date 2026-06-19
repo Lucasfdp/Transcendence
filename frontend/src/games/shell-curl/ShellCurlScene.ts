@@ -1085,10 +1085,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		const [s0, s1] = this.turnManager.state.score;
 		const winner = s0 > s1 ? "TEAM BLUE" : s1 > s0 ? "TEAM RED" : "DRAW";
 		const message = `${winner} WINS!\nBlue: ${s0}  Red: ${s1}`;
-		// Team 0 (BLUE) is the local player in hot-seat mode.
-		// A draw is recorded as a win — the local player completed the game.
-		const localPlayerWon = s0 >= s1;
-		this.submitResult(localPlayerWon);
+		this.submitResult();
 		this.scoreHud.update(this.turnManager.state);
 
 		// Show a RETURN button rather than auto-dismissing with null/null.
@@ -1102,14 +1099,14 @@ export class ShellCurlScene extends ResponsiveScene {
 	 * Submit the game result for progression.
 	 * Non-fatal: errors are logged but never block the overlay from showing.
 	 */
-	private submitResult(localPlayerWon: boolean): void {
+	private submitResult(): void {
 		if (this.onlineMatch) return;
 		const user = this.registry.get("user") as
 			| { isGuest?: boolean }
 			| undefined;
 		if (user?.isGuest) return;
 
-		api.submitGameResult("temple-curling", localPlayerWon ? "win" : "loss")
+		api.submitGameResult("temple-curling", "completed")
 			.then((result) => {
 				console.info("[ShellCurl] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
@@ -1128,7 +1125,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		socket.on("game:state", this.handleOnlineState);
 		socket.on("game:end", this.handleOnlineState);
 		socket.on("game:throw", this.handleOnlineThrow);
-		if (this.onlineMatch.snapshot?.gameId === "shell-curl")
+		if (this.onlineMatch.snapshot?.gameId === "temple-curling")
 			this.applyOnlineSnapshot(this.onlineMatch.snapshot);
 		this.updateOnlineStatus("Connected to online match.");
 	}
@@ -1653,7 +1650,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		const { sheetX, sheetY, sheetW, sheetH, scale } = this.arena;
 		const onlineMap = this.onlineMatch?.snapshot?.map;
 		const onlineBumpers =
-			onlineMap?.gameId === "shell-curl" && "bumpers" in onlineMap
+			onlineMap?.gameId === "temple-curling" && "bumpers" in onlineMap
 				? onlineMap.bumpers
 				: null;
 

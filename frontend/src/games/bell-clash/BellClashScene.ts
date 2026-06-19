@@ -625,7 +625,7 @@ export class BellClashScene extends ResponsiveScene {
 			| undefined;
 		if (user?.isGuest) return;
 
-		api.submitGameResult("bell-clash", "win")
+		api.submitGameResult("bell-clash", "completed")
 			.then((result) => {
 				console.info("[BellClash] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);

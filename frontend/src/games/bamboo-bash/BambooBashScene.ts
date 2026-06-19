@@ -885,7 +885,7 @@ export class BambooBashScene extends ResponsiveScene {
 			| undefined;
 		if (user?.isGuest) return;
 
-		api.submitGameResult("bamboo-bash", "win")
+		api.submitGameResult("bamboo-bash", "completed")
 			.then((result) => {
 				console.info("[BambooBash] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);

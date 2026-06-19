@@ -232,7 +232,7 @@ export class MatchmakingGateway
 
 		if (
 			payload.action === "release" &&
-			room.gameId === "shell-curl" &&
+			room.gameId === "temple-curling" &&
 			"objects" in room.state
 		) {
 			const object = room.state.objects[room.state.objects.length - 1];

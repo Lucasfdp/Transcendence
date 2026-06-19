@@ -3,7 +3,7 @@ import { io, Socket } from "socket.io-client";
 export type MatchMode = "casual" | "ranked";
 
 export type GameMap =
-	| { gameId: "shell-curl"; bumpers: Array<{ fx: number; fy: number }> }
+	| { gameId: "temple-curling"; bumpers: Array<{ fx: number; fy: number }> }
 	| { gameId: string };
 
 export interface CurlingSnapshot {

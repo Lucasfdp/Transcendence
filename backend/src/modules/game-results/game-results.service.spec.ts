@@ -8,8 +8,12 @@ import { Profile } from "../profiles/entities/profile.entity";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { UserGameStats } from "./entities/user-game-stats.entity";
 import {
-	COINS_PER_WIN,
+	COINS_PER_COMPLETED,
+	COINS_PER_DRAW,
 	COINS_PER_LOSS,
+	COINS_PER_WIN,
+	XP_PER_COMPLETED,
+	XP_PER_DRAW,
 	XP_PER_WIN,
 	XP_PER_LOSS,
 	xpForNextLevel,
@@ -116,7 +120,7 @@ describe("GameResultsService", () => {
 		expect(result.unlockedAchievements).toEqual([]);
 	});
 
-	it("should award reduced XP on loss, no coins, increment totalLosses and gamesPlayed", async () => {
+	it("should award loss rewards and increment totalLosses and gamesPlayed", async () => {
 		const user = makeUser({ xp: 0, coins: 0 });
 		usersService.save.mockResolvedValueOnce(user);
 
@@ -128,11 +132,63 @@ describe("GameResultsService", () => {
 		expect(result.xpGained).toBe(XP_PER_LOSS);
 		expect(result.coinsGained).toBe(COINS_PER_LOSS);
 		expect(result.newXp).toBe(XP_PER_LOSS);
-		expect(result.newCoins).toBe(0);
+		expect(result.newCoins).toBe(COINS_PER_LOSS);
 		expect(user.profile.totalWins).toBe(0);
 		expect(user.profile.totalLosses).toBe(1);
 		expect(user.profile.gamesPlayed).toBe(1);
 		expect(user.profile.totalCoinsEarned).toBe(COINS_PER_LOSS);
+	});
+
+	it("should award completed rewards without incrementing wins or losses", async () => {
+		const user = makeUser({ xp: 0, coins: 0 });
+		usersService.save.mockResolvedValueOnce(user);
+
+		const result = await service.submitResult(user, {
+			gameId: "test-game",
+			outcome: "completed",
+		});
+
+		expect(result.xpGained).toBe(XP_PER_COMPLETED);
+		expect(result.coinsGained).toBe(COINS_PER_COMPLETED);
+		expect(result.newXp).toBe(XP_PER_COMPLETED);
+		expect(result.newCoins).toBe(COINS_PER_COMPLETED);
+		expect(user.profile.totalWins).toBe(0);
+		expect(user.profile.totalLosses).toBe(0);
+		expect(user.profile.gamesPlayed).toBe(1);
+		expect(user.profile.totalCoinsEarned).toBe(COINS_PER_COMPLETED);
+		expect(gameStatsRepo.save).toHaveBeenCalledWith(
+			expect.objectContaining({
+				gamesPlayed: 1,
+				totalWins: 0,
+				totalLosses: 0,
+			}),
+		);
+	});
+
+	it("should award draw rewards without incrementing wins or losses", async () => {
+		const user = makeUser({ xp: 0, coins: 0 });
+		usersService.save.mockResolvedValueOnce(user);
+
+		const result = await service.submitResult(user, {
+			gameId: "test-game",
+			outcome: "draw",
+		});
+
+		expect(result.xpGained).toBe(XP_PER_DRAW);
+		expect(result.coinsGained).toBe(COINS_PER_DRAW);
+		expect(result.newXp).toBe(XP_PER_DRAW);
+		expect(result.newCoins).toBe(COINS_PER_DRAW);
+		expect(user.profile.totalWins).toBe(0);
+		expect(user.profile.totalLosses).toBe(0);
+		expect(user.profile.gamesPlayed).toBe(1);
+		expect(user.profile.totalCoinsEarned).toBe(COINS_PER_DRAW);
+		expect(gameStatsRepo.save).toHaveBeenCalledWith(
+			expect.objectContaining({
+				gamesPlayed: 1,
+				totalWins: 0,
+				totalLosses: 0,
+			}),
+		);
 	});
 
 	it("should create per-game stats when none exist", async () => {
@@ -167,7 +223,7 @@ describe("GameResultsService", () => {
 		const user = makeUser();
 		const stats = Object.assign(new UserGameStats(), {
 			user,
-			gameId: "shell-curl",
+			gameId: "temple-curling",
 			gamesPlayed: 4,
 			totalWins: 2,
 			totalLosses: 2,
@@ -176,13 +232,13 @@ describe("GameResultsService", () => {
 		usersService.save.mockResolvedValueOnce(user);
 
 		await service.submitResult(user, {
-			gameId: "shell-curl",
+			gameId: "temple-curling",
 			outcome: "loss",
 		});
 
 		expect(gameStatsRepo.save).toHaveBeenCalledWith(
 			expect.objectContaining({
-				gameId: "shell-curl",
+				gameId: "temple-curling",
 				gamesPlayed: 5,
 				totalWins: 2,
 				totalLosses: 3,
@@ -351,9 +407,10 @@ describe("GameResultsService", () => {
 
 		await service.submitResult(user, { gameId: "g", outcome: "win" });
 		await service.submitResult(user, { gameId: "g", outcome: "loss" });
+		await service.submitResult(user, { gameId: "g", outcome: "draw" });
 		await service.submitResult(user, { gameId: "g", outcome: "win" });
 
-		expect(user.profile.gamesPlayed).toBe(3);
+		expect(user.profile.gamesPlayed).toBe(4);
 		expect(user.profile.totalWins).toBe(2);
 		expect(user.profile.totalLosses).toBe(1);
 	});

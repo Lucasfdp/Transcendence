@@ -30,7 +30,7 @@ interface SettledObject {
 
 @Injectable()
 export class ShellCurlEngine implements GameEngine {
-	readonly gameId = "shell-curl";
+	readonly gameId = "temple-curling";
 
 	createInitialState(
 		context: GameEngineCreateContext,

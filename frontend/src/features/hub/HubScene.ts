@@ -1216,7 +1216,7 @@ export class HubScene extends Phaser.Scene {
 				}
 				if (hs.id === "temple-curling") {
 					this.scene.start("ShellPickerScene", {
-						gameId: "shell-curl",
+						gameId: "temple-curling",
 						targetScene: "ShellCurlScene",
 						playerCount: 2,
 					});

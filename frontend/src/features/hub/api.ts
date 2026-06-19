@@ -274,7 +274,7 @@ export const api = {
 	 */
 	submitGameResult: (
 		gameId: string,
-		outcome: "win" | "loss",
+		outcome: "win" | "loss" | "draw" | "completed",
 	): Promise<ProgressionResult> =>
 		apiFetch<ProgressionResult>("/game-results", {
 			method: "POST",

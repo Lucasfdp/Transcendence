@@ -40,7 +40,7 @@ const DEPTH_HUD = 20;
 const MAX_PICKS = 3;
 
 const ONLINE_SCENES: Record<string, string> = {
-	"shell-curl": "ShellCurlScene",
+	"temple-curling": "ShellCurlScene",
 	"bamboo-bash": "BambooBashScene",
 	"kame-knock": "KameKnockScene",
 	"bell-clash": "BellClashScene",
@@ -138,7 +138,7 @@ export class ShellPickerScene extends ResponsiveScene {
 	// ── init ────────────────────────────────────────────────────────────────────
 
 	init(data: ShellPickerData): void {
-		this.gameId = data.gameId ?? "shell-curl";
+		this.gameId = data.gameId ?? "temple-curling";
 		this.targetScene = data.targetScene ?? "ShellCurlScene";
 		this.playerCount = data.playerCount ?? 1;
 		this.currentPlayer = 0;
@@ -440,7 +440,7 @@ export class ShellPickerScene extends ResponsiveScene {
 		btnZone.on("pointerup", () => void this.onConfirm());
 
 		if (
-			(this.gameId === "shell-curl" ||
+			(this.gameId === "temple-curling" ||
 				this.gameId === "bamboo-bash" ||
 				this.gameId === "kame-knock" ||
 				this.gameId === "bell-clash") &&

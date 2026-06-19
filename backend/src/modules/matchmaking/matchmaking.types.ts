@@ -218,4 +218,5 @@ export interface MatchRoom {
 	spectators: Map<string, SocketUser>;
 	seq: number;
 	state: GameSnapshot;
+	rewardsGranted?: boolean;
 }

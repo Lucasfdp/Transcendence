@@ -1,5 +1,5 @@
 export interface ShellCurlMap {
-	gameId: "shell-curl";
+	gameId: "temple-curling";
 	bumpers: Array<{ fx: number; fy: number }>;
 }
 
@@ -29,7 +29,7 @@ function generateShellCurlBumpers(): ShellCurlMap["bumpers"] {
 }
 
 export function createGameMap(gameId: string): GameMap {
-	if (gameId === "shell-curl")
+	if (gameId === "temple-curling")
 		return { gameId, bumpers: generateShellCurlBumpers() };
 	return { gameId };
 }

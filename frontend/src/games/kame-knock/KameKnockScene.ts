@@ -990,7 +990,7 @@ export class KameKnockScene extends ResponsiveScene {
 			| undefined;
 		if (user?.isGuest) return;
 
-		api.submitGameResult("kame-knock", "win")
+		api.submitGameResult("kame-knock", "completed")
 			.then((result) => {
 				console.info("[KameKnock] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);

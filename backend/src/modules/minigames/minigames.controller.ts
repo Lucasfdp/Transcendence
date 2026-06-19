@@ -9,8 +9,7 @@ export interface MiniGameDefinition {
 }
 
 // The Shell Smash hub map. Each entry is a "shrine" the player can
-// visit. Kame Knock is the first playable shrine — everything else
-// is shown as "Coming Soon" in the hub.
+// visit.
 const MINIGAMES: MiniGameDefinition[] = [
 	{
 		id: "kame-knock",
@@ -24,6 +23,13 @@ const MINIGAMES: MiniGameDefinition[] = [
 		name: "Bell Clash",
 		status: "available",
 		description: "Ring the great temple bell from the perfect angle.",
+	},
+	{
+		id: "temple-curling",
+		name: "Temple Curling",
+		status: "available",
+		description:
+			"Hot-seat curling with shells, bumpers, powers, and scoring stones.",
 	},
 	{
 		id: "river-rush",
