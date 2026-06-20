@@ -54,6 +54,10 @@ import {
 	BALL_FRICTION_BASE,
 } from "../../shared/mechanics/ball-powers";
 import {
+	drawIngamePlayerTexture,
+	preloadIngamePlayerTexture,
+} from "../../shared/mechanics/player-renderer";
+import {
 	BOMB_RADIUS_SRC,
 	REPEL_RADIUS_SRC,
 } from "../../shared/mechanics/power-system";
@@ -166,6 +170,10 @@ export class BambooBashScene extends ResponsiveScene {
 
 	constructor() {
 		super({ key: "BambooBashScene" });
+	}
+
+	preload(): void {
+		preloadIngamePlayerTexture(this);
 	}
 
 	create(): void {
@@ -1205,7 +1213,15 @@ export class BambooBashScene extends ResponsiveScene {
 			)) {
 				const colour =
 					side === this.onlineMatch?.side ? THEME.gold : THEME.red;
-				drawShellBall(this.ballGfx, ball, false);
+				if (
+					!drawIngamePlayerTexture(
+						this,
+						`bamboo-bash-player-${side}`,
+						ball,
+						DEPTH_HUD - 17,
+					)
+				)
+					drawShellBall(this.ballGfx, ball, false);
 				this.ballGfx.lineStyle(
 					Math.max(2, ball.r * 0.14),
 					colour,
@@ -1217,13 +1233,29 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 
 		if (this.localParticipants.length <= 0) {
-			drawShellBall(this.ballGfx, this.ball, false);
+			if (
+				!drawIngamePlayerTexture(
+					this,
+					"bamboo-bash-player-local",
+					this.ball,
+					DEPTH_HUD - 17,
+				)
+			)
+				drawShellBall(this.ballGfx, this.ball, false);
 			return;
 		}
 
 		this.localParticipants.forEach((participant, index) => {
 			const colour = index === 0 ? THEME.gold : THEME.red;
-			drawShellBall(this.ballGfx, participant.ball, false);
+			if (
+				!drawIngamePlayerTexture(
+					this,
+					`bamboo-bash-player-local-${index}`,
+					participant.ball,
+					DEPTH_HUD - 17,
+				)
+			)
+				drawShellBall(this.ballGfx, participant.ball, false);
 			this.ballGfx.lineStyle(
 				Math.max(2, participant.ball.r * 0.14),
 				colour,

@@ -26,8 +26,8 @@ export function WorkInProgressNotice({
 						className="wip-notice__image"
 						src={imageSrc}
 						alt={imageAlt}
-						width={960}
-						height={960}
+						width={2389}
+						height={1344}
 						decoding="async"
 						loading="eager"
 						fetchPriority="high"

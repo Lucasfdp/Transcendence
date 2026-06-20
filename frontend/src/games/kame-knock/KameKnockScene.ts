@@ -51,6 +51,10 @@ import {
 	BALL_FRICTION_BASE,
 } from "../../shared/mechanics/ball-powers";
 import {
+	drawIngamePlayerTexture,
+	preloadIngamePlayerTexture,
+} from "../../shared/mechanics/player-renderer";
+import {
 	BOMB_RADIUS_SRC,
 	REPEL_RADIUS_SRC,
 } from "../../shared/mechanics/power-system";
@@ -201,6 +205,10 @@ export class KameKnockScene extends ResponsiveScene {
 
 	constructor() {
 		super({ key: "KameKnockScene" });
+	}
+
+	preload(): void {
+		preloadIngamePlayerTexture(this);
 	}
 
 	protected onShutdown(): void {
@@ -1321,7 +1329,15 @@ export class KameKnockScene extends ResponsiveScene {
 			!this.onlineMatch?.snapshot ||
 			this.onlineMatch.snapshot.gameId !== "kame-knock"
 		) {
-			drawShellBall(this.ballGfx, this.ball);
+			if (
+				!drawIngamePlayerTexture(
+					this,
+					"kame-knock-player-local",
+					this.ball,
+					DEPTH_BALL,
+				)
+			)
+				drawShellBall(this.ballGfx, this.ball, false);
 			return;
 		}
 
@@ -1329,7 +1345,15 @@ export class KameKnockScene extends ResponsiveScene {
 			? (this.onlineReplayThrower ?? this.visibleBallSide)
 			: this.onlineMatch.snapshot.currentTurn;
 		const ball = this.ballForOnlineSide(side);
-		drawShellBall(this.ballGfx, ball);
+		if (
+			!drawIngamePlayerTexture(
+				this,
+				`kame-knock-player-${side}`,
+				ball,
+				DEPTH_BALL,
+			)
+		)
+			drawShellBall(this.ballGfx, ball, false);
 		const colour =
 			PLAYER_COLOURS[side % PLAYER_COLOURS.length] ?? THEME.gold;
 		this.ballGfx.lineStyle(Math.max(2, ball.r * 0.14), colour, 0.95);

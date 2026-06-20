@@ -52,6 +52,9 @@ import { ProfilePanel } from "./ProfilePanel";
 import { getGameSocket } from "../../services/network/gameSocket";
 
 const HUB_BG = "/assets/hub-background.png";
+const SUNSET_BG = "/assets/backgrounds/sunset_bg.png";
+const SUNSET_BG_W = 2528;
+const SUNSET_BG_H = 1696;
 
 // ── Source image reference dimensions ─────────────────────────────────────────
 const SRC_W = 1080;
@@ -153,6 +156,7 @@ export class HubScene extends Phaser.Scene {
 
 	// Set true when the background image loads — skip the procedural bg if so
 	private bgImageLoaded = false;
+	private sunsetBgImageLoaded = false;
 
 	// Stable background image — repositioned (not recreated) on resize
 	private bgImage: Phaser.GameObjects.Image | null = null;
@@ -244,6 +248,10 @@ export class HubScene extends Phaser.Scene {
 		this.load.image("hub-bg", HUB_BG);
 		this.load.on("filecomplete-image-hub-bg", () => {
 			this.bgImageLoaded = true;
+		});
+		this.load.image("hub-sunset-bg", SUNSET_BG);
+		this.load.on("filecomplete-image-hub-sunset-bg", () => {
+			this.sunsetBgImageLoaded = true;
 		});
 
 		// Generate a petal texture programmatically — no asset file required
@@ -488,10 +496,33 @@ export class HubScene extends Phaser.Scene {
 	}
 
 	private syncBackgroundImageOverlay(): void {
-		if (
-			!this.bgImageLoaded ||
-			this.currentHubBackground() !== "default_dojo"
-		) {
+		const preset = this.currentHubBackground();
+
+		if (preset === "sunset_dojo") {
+			if (!this.sunsetBgImageLoaded) {
+				this.bgImage?.destroy();
+				this.bgImage = null;
+				return;
+			}
+
+			const { width, height } = this.scale;
+			const scale = Math.max(width / SUNSET_BG_W, height / SUNSET_BG_H);
+			if (this.bgImage?.active) {
+				this.bgImage
+					.setTexture("hub-sunset-bg")
+					.setPosition(width / 2, height / 2)
+					.setScale(scale);
+				return;
+			}
+
+			this.bgImage = this.add
+				.image(width / 2, height / 2, "hub-sunset-bg")
+				.setScale(scale)
+				.setDepth(DEPTH_IMAGE);
+			return;
+		}
+
+		if (!this.bgImageLoaded || preset !== "default_dojo") {
 			this.bgImage?.destroy();
 			this.bgImage = null;
 			return;
@@ -500,7 +531,10 @@ export class HubScene extends Phaser.Scene {
 		const bgCX = this.bgOffX + (SRC_W * this.bgScale) / 2;
 		const bgCY = this.bgOffY + (SRC_H * this.bgScale) / 2;
 		if (this.bgImage?.active) {
-			this.bgImage.setPosition(bgCX, bgCY).setScale(this.bgScale);
+			this.bgImage
+				.setTexture("hub-bg")
+				.setPosition(bgCX, bgCY)
+				.setScale(this.bgScale);
 			return;
 		}
 		this.bgImage = this.add

@@ -43,6 +43,11 @@ import { buildReturnButton } from "../../shared/mechanics/hud";
 import { PowerSidePanel } from "../../shared/ui/panels/PowerSidePanel";
 import { PanelRect } from "../../shared/ui/panels/side-panel";
 import {
+	destroyIngamePlayerTexture,
+	drawIngamePlayerTexture,
+	preloadIngamePlayerTexture,
+} from "../../shared/mechanics/player-renderer";
+import {
 	getGameSocket,
 	type CurlingSnapshot,
 	type CurlingThrowEvent,
@@ -216,6 +221,10 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	constructor() {
 		super({ key: "ShellCurlScene" });
+	}
+
+	preload(): void {
+		preloadIngamePlayerTexture(this);
 	}
 
 	private readonly handleOnlineState = (snapshot: CurlingSnapshot): void => {
@@ -673,7 +682,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.stoneGfx.set(stone.id, gfx);
 		this.allStones.push(stone);
 		this.stoneTrails.set(stone.id, [{ x: stone.x, y: stone.y }]);
-		drawStone(gfx, stone, true);
+		this.drawPlayerStone(gfx, stone, true);
 		return stone;
 	}
 
@@ -709,6 +718,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private removeStone(stone: StoneState): void {
 		const gfx = this.stoneGfx.get(stone.id);
 		gfx?.destroy();
+		destroyIngamePlayerTexture(this, `shell-curl-player-${stone.id}`);
 		this.stoneGfx.delete(stone.id);
 		this.stoneTrails.delete(stone.id);
 		this.allStones = this.allStones.filter((s) => s.id !== stone.id);
@@ -716,6 +726,8 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private clearAllStoneGfx(): void {
+		for (const stone of this.allStones)
+			destroyIngamePlayerTexture(this, `shell-curl-player-${stone.id}`);
 		for (const gfx of this.stoneGfx.values()) gfx.destroy();
 		this.stoneGfx.clear();
 		this.allStones = [];
@@ -979,7 +991,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private redrawAllStones(): void {
 		for (const s of this.allStones) {
 			const gfx = this.stoneGfx.get(s.id);
-			if (gfx) drawStone(gfx, s, false);
+			if (gfx) this.drawPlayerStone(gfx, s, false);
 		}
 		// Redraw active ring position
 		if (this.activeStone && this.activeRingGfx) {
@@ -1164,6 +1176,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		const gfx = this.stoneGfx.get(previousId);
 		this.stoneGfx.delete(previousId);
 		this.stoneTrails.delete(previousId);
+		destroyIngamePlayerTexture(this, `shell-curl-player-${previousId}`);
 		stone.id = event.id;
 		if (gfx) this.stoneGfx.set(stone.id, gfx);
 
@@ -1461,7 +1474,7 @@ export class ShellCurlScene extends ResponsiveScene {
 					y: this.arena.sheetY + point.y * this.arena.sheetH,
 				}));
 			if (trail?.length) this.stoneTrails.set(stone.id, trail);
-			drawStone(gfx, stone, false);
+			this.drawPlayerStone(gfx, stone, false);
 		}
 		this.drawStoneTrails();
 	}
@@ -1605,6 +1618,42 @@ export class ShellCurlScene extends ResponsiveScene {
 			ball.vx = 0;
 			ball.vy = 0;
 			ball.r = stone.r;
+		}
+	}
+
+	private drawPlayerStone(
+		gfx: Phaser.GameObjects.Graphics,
+		stone: StoneState,
+		isActive: boolean,
+	): void {
+		if (
+			!drawIngamePlayerTexture(
+				this,
+				`shell-curl-player-${stone.id}`,
+				stone,
+				DEPTH_STONES,
+			)
+		) {
+			drawStone(gfx, stone, isActive);
+			return;
+		}
+
+		gfx.clear();
+		if (isActive) {
+			gfx.lineStyle(3, 0xd4a843, 0.6);
+			gfx.strokeCircle(stone.x, stone.y, stone.r * 1.45);
+		}
+		if (stone.frozen) {
+			gfx.fillStyle(0x88ccff, 0.3);
+			gfx.fillCircle(stone.x, stone.y, stone.r * 1.15);
+		}
+		if (stone.power !== PowerType.NONE) {
+			gfx.fillStyle(0xffffff, 0.9);
+			gfx.fillCircle(
+				stone.x + stone.r * 0.62,
+				stone.y - stone.r * 0.62,
+				Math.max(4, stone.r * 0.22),
+			);
 		}
 	}
 

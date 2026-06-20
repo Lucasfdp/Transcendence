@@ -42,6 +42,10 @@ import {
 	BALL_FRICTION_BASE,
 } from "../../shared/mechanics/ball-powers";
 import {
+	drawIngamePlayerTexture,
+	preloadIngamePlayerTexture,
+} from "../../shared/mechanics/player-renderer";
+import {
 	getGameSocket,
 	type BellClashSnapshot,
 	type BellClashThrowEvent,
@@ -167,6 +171,10 @@ export class BellClashScene extends ResponsiveScene {
 
 	constructor() {
 		super({ key: "BellClashScene" });
+	}
+
+	preload(): void {
+		preloadIngamePlayerTexture(this);
 	}
 
 	protected onShutdown(): void {
@@ -1320,7 +1328,15 @@ export class BellClashScene extends ResponsiveScene {
 	private drawBalls(): void {
 		this.ballGfx.clear();
 		if (!this.onlineMatch || this.onlineBalls.size <= 0) {
-			drawShellBall(this.ballGfx, this.ball);
+			if (
+				!drawIngamePlayerTexture(
+					this,
+					"bell-clash-player-local",
+					this.ball,
+					DEPTH_BALL,
+				)
+			)
+				drawShellBall(this.ballGfx, this.ball, false);
 			return;
 		}
 
@@ -1329,7 +1345,15 @@ export class BellClashScene extends ResponsiveScene {
 		)) {
 			const colour =
 				PLAYER_COLOURS[side % PLAYER_COLOURS.length] ?? THEME.gold;
-			drawShellBall(this.ballGfx, ball, false);
+			if (
+				!drawIngamePlayerTexture(
+					this,
+					`bell-clash-player-${side}`,
+					ball,
+					DEPTH_BALL,
+				)
+			)
+				drawShellBall(this.ballGfx, ball, false);
 			this.ballGfx.lineStyle(Math.max(2, ball.r * 0.14), colour, 0.95);
 			this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.1);
 			this.ballGfx.fillStyle(colour, 0.95);

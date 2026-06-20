@@ -37,6 +37,15 @@ input {
 	font: inherit;
 }
 
+.nine-slice-button {
+	border-style: solid;
+	border-width: var(--nine-slice-width, 40px);
+	border-image-source: var(--nine-slice-source);
+	border-image-slice: var(--nine-slice-slice, 40) fill;
+	border-image-width: var(--nine-slice-width, 40px);
+	border-image-repeat: stretch;
+}
+
 .auth-page,
 .menu-page {
 	position: relative;
@@ -837,7 +846,7 @@ input {
 
 .menu-page__logout-button {
 	min-width: 9rem;
-	padding: 0.9rem 1.4rem;
+	padding: 0.45rem 0.95rem;
 	border: 1px solid rgba(241, 211, 145, 0.86);
 	border-radius: 999px;
 	background: rgba(8, 12, 18, 0.34);
@@ -854,6 +863,17 @@ input {
 		background 160ms ease,
 		transform 160ms ease,
 		opacity 160ms ease;
+}
+
+.menu-page__logout-button.nine-slice-button {
+	border-width: 20px;
+	border-image-source: var(--nine-slice-source);
+	border-image-slice: var(--nine-slice-slice, 40) fill;
+	border-image-width: 20px;
+	border-image-repeat: stretch;
+	border-radius: 0;
+	background: rgba(8, 12, 18, 0.34);
+	box-shadow: 0 0 28px rgba(232, 138, 61, 0.07);
 }
 
 .menu-page__logout-button:hover:not(:disabled) {
@@ -1104,7 +1124,7 @@ input {
 	.menu-page__logout-button {
 		width: auto;
 		min-width: 8.5rem;
-		padding: 0.75rem 1rem;
+		padding: 0.32rem 0.75rem;
 		font-size: 0.82rem;
 	}
 

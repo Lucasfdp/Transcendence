@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
+import { NineSliceButton } from "../components/common/NineSliceButton";
 import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { TempleBackdrop } from "../components/layout/TempleBackdrop";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
@@ -68,14 +69,14 @@ function HomeMenu(): JSX.Element {
 							{playerName}
 						</strong>
 					</div>
-					<button
+					<NineSliceButton
 						className="menu-page__logout-button"
 						type="button"
 						onClick={handleLogout}
 						disabled={isLoggingOut}
 					>
 						{isLoggingOut ? "Closing session..." : "Logout"}
-					</button>
+					</NineSliceButton>
 				</header>
 
 				<section className="menu-page__hero">
