@@ -5,6 +5,8 @@ interface PlayerVisualState {
 	x: number;
 	y: number;
 	r: number;
+	vx?: number;
+	vy?: number;
 }
 
 interface PlayerRollState {
@@ -15,10 +17,19 @@ interface PlayerRollState {
 const rollStates = new WeakMap<Phaser.GameObjects.Image, PlayerRollState>();
 const TELEPORT_DISTANCE_MIN = 180;
 const TELEPORT_DISTANCE_RADIUS_FACTOR = 8;
+const RETRACT_SPEED_MIN = 2;
 
 export function preloadIngamePlayerTexture(scene: Phaser.Scene): void {
-	if (!scene.textures.exists(INGAME_PLAYER_ASSET.key))
-		scene.load.image(INGAME_PLAYER_ASSET.key, INGAME_PLAYER_ASSET.source);
+	if (!scene.textures.exists(INGAME_PLAYER_ASSET.bodyKey))
+		scene.load.image(
+			INGAME_PLAYER_ASSET.bodyKey,
+			INGAME_PLAYER_ASSET.bodySource,
+		);
+	if (!scene.textures.exists(INGAME_PLAYER_ASSET.shellKey))
+		scene.load.image(
+			INGAME_PLAYER_ASSET.shellKey,
+			INGAME_PLAYER_ASSET.shellSource,
+		);
 }
 
 export function drawIngamePlayerTexture(
@@ -27,24 +38,59 @@ export function drawIngamePlayerTexture(
 	state: PlayerVisualState,
 	depth: number,
 ): boolean {
-	if (!scene.textures.exists(INGAME_PLAYER_ASSET.key)) {
+	if (
+		!scene.textures.exists(INGAME_PLAYER_ASSET.bodyKey) ||
+		!scene.textures.exists(INGAME_PLAYER_ASSET.shellKey)
+	) {
 		hideIngamePlayerTexture(scene, name);
 		return false;
 	}
 
-	const existing = scene.children.getByName(name);
-	const image =
-		existing instanceof Phaser.GameObjects.Image
-			? existing
-			: scene.add.image(state.x, state.y, INGAME_PLAYER_ASSET.key).setName(name);
-	updateIngamePlayerRoll(image, state);
+	const body = getOrCreatePlayerImage(
+		scene,
+		`${name}-body`,
+		INGAME_PLAYER_ASSET.bodyKey,
+		state,
+	);
+	const shell = getOrCreatePlayerImage(
+		scene,
+		`${name}-shell`,
+		INGAME_PLAYER_ASSET.shellKey,
+		state,
+	);
+	updateIngamePlayerRoll(shell, state);
 
-	image
-		.setVisible(true)
+	const isRetracted = isPlayerMoving(state);
+	body
+		.setVisible(!isRetracted)
 		.setPosition(state.x, state.y)
 		.setDepth(depth)
+		.setRotation(0)
+		.setDisplaySize(state.r * 2, state.r * 2);
+
+	shell
+		.setVisible(true)
+		.setPosition(state.x, state.y)
+		.setDepth(depth + 0.01)
+		.setRotation(isRetracted ? shell.rotation : 0)
 		.setDisplaySize(state.r * 2, state.r * 2);
 	return true;
+}
+
+function getOrCreatePlayerImage(
+	scene: Phaser.Scene,
+	name: string,
+	textureKey: string,
+	state: PlayerVisualState,
+): Phaser.GameObjects.Image {
+	const existing = scene.children.getByName(name);
+	return existing instanceof Phaser.GameObjects.Image
+		? existing
+		: scene.add.image(state.x, state.y, textureKey).setName(name);
+}
+
+function isPlayerMoving(state: PlayerVisualState): boolean {
+	return Math.hypot(state.vx ?? 0, state.vy ?? 0) > RETRACT_SPEED_MIN;
 }
 
 function updateIngamePlayerRoll(
@@ -75,14 +121,18 @@ export function hideIngamePlayerTexture(
 	scene: Phaser.Scene,
 	name: string,
 ): void {
-	const existing = scene.children.getByName(name);
-	if (existing instanceof Phaser.GameObjects.Image) existing.setVisible(false);
+	for (const childName of [`${name}-body`, `${name}-shell`, name]) {
+		const existing = scene.children.getByName(childName);
+		if (existing instanceof Phaser.GameObjects.Image) existing.setVisible(false);
+	}
 }
 
 export function destroyIngamePlayerTexture(
 	scene: Phaser.Scene,
 	name: string,
 ): void {
-	const existing = scene.children.getByName(name);
-	if (existing instanceof Phaser.GameObjects.Image) existing.destroy();
+	for (const childName of [`${name}-body`, `${name}-shell`, name]) {
+		const existing = scene.children.getByName(childName);
+		if (existing instanceof Phaser.GameObjects.Image) existing.destroy();
+	}
 }

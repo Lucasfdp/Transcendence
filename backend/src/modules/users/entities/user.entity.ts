@@ -57,8 +57,8 @@ export class User {
 	@Column({ default: "kanagawa" })
 	shellSkin: string;
 
-	// Cosmetic Hub background preset — e.g. "default_dojo", "sunset_dojo"
-	@Column({ default: "default_dojo" })
+	// Cosmetic Hub background preset — e.g. "night_bg", "sunset_bg"
+	@Column({ default: "night_bg" })
 	hubBackground: string;
 
 	/** True for ephemeral guest accounts created via POST /auth/guest. */

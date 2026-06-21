@@ -14,13 +14,14 @@ export function AppRoutes(): JSX.Element {
 				<Route path="/auth" element={<AuthPage />} />
 				<Route path="/" element={<HomePage />} />
 				<Route
-					path="/game"
+					path="/play/:gameId"
 					element={
 						<ProtectedRoute>
 							<GamePage />
 						</ProtectedRoute>
 					}
 				/>
+				<Route path="/game" element={<Navigate to="/" replace />} />
 				<Route path="*" element={<Navigate to="/" replace />} />
 			</Routes>
 		</Suspense>

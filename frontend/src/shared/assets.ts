@@ -4,7 +4,9 @@ export const UI_9SLICE_BUTTON_PANEL = {
 } as const;
 
 export const INGAME_PLAYER_ASSET = {
-	key: "ingame-base-char",
-	source: "/assets/character/ingame_base_char.png",
-	size: 256,
+	bodyKey: "ingame-base-char",
+	bodySource: "/assets/character/ingame_base_char.png",
+	shellKey: "ingame-shell-base",
+	shellSource: "/assets/character/shells/base.png",
+	size: 384,
 } as const;

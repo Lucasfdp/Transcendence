@@ -97,6 +97,18 @@ const SIDE_PANEL_TOP = 74;
 const SCORE_LOG_LIMIT = 8;
 const FREEZE_DURATION_MS = 5_000;
 
+const TARGET_TEXTURES: Record<TimedTargetKind, string> = {
+	daruma: "kame-knock-daruma",
+	crate: "kame-knock-box",
+	drum: "kame-knock-tambor",
+};
+
+const TARGET_ASSETS: Record<TimedTargetKind, string> = {
+	daruma: "/assets/kame-knock/daruma.png",
+	crate: "/assets/kame-knock/box.png",
+	drum: "/assets/kame-knock/tambor.png",
+};
+
 const DEPTH_BG = 0;
 const DEPTH_TARGETS = 1;
 const DEPTH_AIM = 2;
@@ -150,6 +162,7 @@ const FALLBACK_POWERS: PowerType[] = [
 export class KameKnockScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
 	private targetGfx!: Phaser.GameObjects.Graphics;
+	private targetMarkerGfx!: Phaser.GameObjects.Graphics;
 	private ballGfx!: Phaser.GameObjects.Graphics;
 
 	private arena!: ArenaPixels;
@@ -158,6 +171,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 
 	private targets: TimedTarget[] = [];
+	private targetSprites = new Map<number, Phaser.GameObjects.Image>();
 	private nextTargetId = 0;
 	private currentBallIndex = 0;
 	private launchedThisBall = false;
@@ -209,6 +223,8 @@ export class KameKnockScene extends ResponsiveScene {
 
 	preload(): void {
 		preloadIngamePlayerTexture(this);
+		for (const kind of TARGET_TYPES)
+			this.load.image(TARGET_TEXTURES[kind], TARGET_ASSETS[kind]);
 	}
 
 	protected onShutdown(): void {
@@ -281,6 +297,9 @@ export class KameKnockScene extends ResponsiveScene {
 
 		this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
 		this.targetGfx = this.add.graphics().setDepth(DEPTH_TARGETS);
+		this.targetMarkerGfx = this.add
+			.graphics()
+			.setDepth(DEPTH_TARGETS + 0.2);
 		this.ballGfx = this.add.graphics().setDepth(DEPTH_BALL);
 
 		this.slingshot = new Slingshot(
@@ -324,6 +343,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private cleanupSceneResources(): void {
 		this.slingshot?.destroy();
 		this.slingshot = null;
+		this.destroyTargetSprites();
 		this.clearOverlayHitZones();
 		this.overlay?.destroy(true);
 		this.overlay = undefined;
@@ -1378,7 +1398,18 @@ export class KameKnockScene extends ResponsiveScene {
 
 	private drawTargets(): void {
 		this.targetGfx.clear();
-		for (const target of this.targets) this.drawTarget(target);
+		this.targetMarkerGfx.clear();
+		const liveIds = new Set<number>();
+		for (const target of this.targets) {
+			liveIds.add(target.id);
+			this.drawTarget(target);
+		}
+
+		for (const [id, sprite] of this.targetSprites) {
+			if (liveIds.has(id)) continue;
+			sprite.destroy();
+			this.targetSprites.delete(id);
+		}
 	}
 
 	private drawTarget(target: TimedTarget): void {
@@ -1386,80 +1417,55 @@ export class KameKnockScene extends ResponsiveScene {
 		const radius = timedTargetRadius(target, this.arena);
 		const pulse = 0.88 + Math.sin(target.ageMs * 0.006) * 0.12;
 		const alpha = target.breakable ? 1 : 0.92;
-		this.drawTargetBody(
-			this.targetGfx,
-			pos.x,
-			pos.y,
-			radius,
-			target.kind,
-			target.breakable,
-			pulse,
-			alpha,
-		);
-	}
-
-	private drawTargetBody(
-		g: Phaser.GameObjects.Graphics,
-		x: number,
-		y: number,
-		radius: number,
-		kind: TimedTargetKind,
-		breakable: boolean,
-		pulse: number,
-		alpha: number,
-	): void {
-		const def = TARGET_COLOURS[kind];
-		g.fillStyle(0x000000, 0.2 * alpha);
-		g.fillEllipse(
-			x + radius * 0.25,
-			y + radius * 0.45,
+		this.targetGfx.fillStyle(0x000000, 0.2 * alpha);
+		this.targetGfx.fillEllipse(
+			pos.x + radius * 0.25,
+			pos.y + radius * 0.45,
 			radius * 2.1,
 			radius * 0.8,
 		);
-		g.fillStyle(breakable ? def.body : 0x4d5566, alpha);
-		g.fillCircle(x, y, radius * pulse);
-		g.lineStyle(
-			Math.max(2, radius * 0.12),
-			breakable ? def.trim : 0x9aa4b8,
-			alpha,
+
+		let sprite = this.targetSprites.get(target.id);
+		if (!sprite) {
+			sprite = this.add
+				.image(pos.x, pos.y, TARGET_TEXTURES[target.kind])
+				.setDepth(DEPTH_TARGETS + 0.1);
+			this.targetSprites.set(target.id, sprite);
+		}
+
+		const size = radius * 2.25 * pulse;
+		sprite
+			.setTexture(TARGET_TEXTURES[target.kind])
+			.setPosition(pos.x, pos.y)
+			.setDisplaySize(size, size)
+			.setAlpha(alpha)
+			.setTint(target.breakable ? 0xffffff : 0x8d96aa);
+
+		if (target.breakable) return;
+
+		this.targetMarkerGfx.lineStyle(
+			Math.max(2, radius * 0.09),
+			0xffffff,
+			0.75,
 		);
-		g.strokeCircle(x, y, radius * 0.78);
+		this.targetMarkerGfx.strokeCircle(pos.x, pos.y, radius * 1.08);
+		this.targetMarkerGfx.lineBetween(
+			pos.x - radius * 0.45,
+			pos.y,
+			pos.x + radius * 0.45,
+			pos.y,
+		);
+		this.targetMarkerGfx.lineBetween(
+			pos.x,
+			pos.y - radius * 0.45,
+			pos.x,
+			pos.y + radius * 0.45,
+		);
+	}
 
-		if (!breakable) {
-			g.lineStyle(Math.max(2, radius * 0.09), 0xffffff, 0.75);
-			g.strokeCircle(x, y, radius * 1.08);
-			g.lineBetween(x - radius * 0.45, y, x + radius * 0.45, y);
-			g.lineBetween(x, y - radius * 0.45, x, y + radius * 0.45);
-			return;
-		}
-
-		if (kind === "daruma") {
-			g.fillStyle(0xffffff, alpha);
-			g.fillCircle(x - radius * 0.28, y - radius * 0.18, radius * 0.14);
-			g.fillCircle(x + radius * 0.28, y - radius * 0.18, radius * 0.14);
-		} else if (kind === "crate") {
-			g.lineStyle(Math.max(1, radius * 0.08), def.trim, alpha);
-			g.lineBetween(
-				x - radius * 0.55,
-				y - radius * 0.55,
-				x + radius * 0.55,
-				y + radius * 0.55,
-			);
-			g.lineBetween(
-				x + radius * 0.55,
-				y - radius * 0.55,
-				x - radius * 0.55,
-				y + radius * 0.55,
-			);
-		} else {
-			g.fillStyle(def.trim, alpha * 0.9);
-			g.fillRect(
-				x - radius * 0.62,
-				y - radius * 0.12,
-				radius * 1.24,
-				radius * 0.24,
-			);
-		}
+	private destroyTargetSprites(): void {
+		for (const sprite of this.targetSprites.values()) sprite.destroy();
+		this.targetSprites.clear();
 	}
 
 	private popBounce(x: number, y: number): void {

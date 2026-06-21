@@ -18,7 +18,7 @@ const MIN_SPEED_SRC = 6; // source px/s — ball snaps to rest below this
 // (scaled by arena.scale so it's fair at any size)
 
 /** Ball radius in arena source px — scaled by ArenaPixels.scale at render time. */
-export const BALL_SRC_R = 26;
+export const BALL_SRC_R = 52;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 

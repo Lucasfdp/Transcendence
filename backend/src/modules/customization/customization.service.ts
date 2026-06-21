@@ -15,6 +15,7 @@ import {
 	CosmeticDefinition,
 	CosmeticView,
 	findCosmetic,
+	normalizeCosmeticId,
 } from "./customization.constants";
 import { UserCosmetic } from "./entities/user-cosmetic.entity";
 
@@ -185,7 +186,7 @@ export class CustomizationService {
 		if (cosmetic.type === "shell_skin")
 			return (user.shellSkin ?? "kanagawa") === cosmetic.id;
 		if (cosmetic.type === "hub_background")
-			return (user.hubBackground ?? "default_dojo") === cosmetic.id;
+			return normalizeCosmeticId(user.hubBackground ?? "night_bg") === cosmetic.id;
 		return false;
 	}
 

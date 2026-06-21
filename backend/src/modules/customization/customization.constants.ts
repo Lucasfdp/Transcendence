@@ -19,6 +19,11 @@ export interface CosmeticView extends CosmeticDefinition {
 	lockedReason?: "achievement-locked" | "not enough coins" | "purchasable";
 }
 
+const LEGACY_COSMETIC_IDS: Record<string, string> = {
+	default_dojo: "night_bg",
+	sunset_dojo: "sunset_bg",
+};
+
 export const COSMETICS: CosmeticDefinition[] = [
 	{
 		id: "kanagawa",
@@ -48,19 +53,19 @@ export const COSMETICS: CosmeticDefinition[] = [
 		accentColor: 0x2d5a1b,
 	},
 	{
-		id: "default_dojo",
+		id: "night_bg",
 		type: "hub_background",
-		name: "Default Dojo",
-		description: "The classic moonlit Shell Smash dojo hub.",
+		name: "Night Background",
+		description: "The moonlit Shell Smash dojo hub.",
 		price: 0,
 		defaultUnlocked: true,
 		accentColor: 0x14083a,
 		previewColor: 0xfff5d6,
 	},
 	{
-		id: "sunset_dojo",
+		id: "sunset_bg",
 		type: "hub_background",
-		name: "Sunset Dojo",
+		name: "Sunset Background",
 		description: "A warm orange and violet dojo at dusk.",
 		price: 0,
 		defaultUnlocked: true,
@@ -72,5 +77,10 @@ export const COSMETICS: CosmeticDefinition[] = [
 export function findCosmetic(
 	cosmeticId: string,
 ): CosmeticDefinition | undefined {
-	return COSMETICS.find((cosmetic) => cosmetic.id === cosmeticId);
+	const normalizedId = normalizeCosmeticId(cosmeticId);
+	return COSMETICS.find((cosmetic) => cosmetic.id === normalizedId);
+}
+
+export function normalizeCosmeticId(cosmeticId: string): string {
+	return LEGACY_COSMETIC_IDS[cosmeticId] ?? cosmeticId;
 }
