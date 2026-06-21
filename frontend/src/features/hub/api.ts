@@ -68,21 +68,48 @@ async function apiFetch<T>(
 		);
 	}
 
-	// Statuses that the frontend needs to act on by inspecting the code:
-	//   401 / 403 — auth failures handled by AuthError (CSRF, session, forbidden)
-	//   409 — conflict (duplicate username); friendlyError maps this
-	//   422 — unprocessable entity (validation errors from backend)
-	//   429 — rate limit; friendlyError maps this
-	// Everything else that is not 2xx becomes NetworkError.
-	const API_ERROR_STATUSES = new Set([401, 403, 409, 422, 429]);
-	if (API_ERROR_STATUSES.has(res.status)) {
-		throw new AuthError(res.status, `${res.status} on ${path}`);
-	}
 	if (!res.ok) {
-		throw new NetworkError(`API error ${res.status} on ${path}`);
+		throw new AuthError(
+			res.status,
+			await readErrorMessage(res, `${res.status} on ${path}`),
+		);
 	}
 	if (res.status === 204) return {} as T;
 	return res.json() as Promise<T>;
+}
+
+async function readErrorMessage(
+	res: Response,
+	fallback: string,
+): Promise<string> {
+	const contentType = res.headers.get("content-type") ?? "";
+
+	if (contentType.includes("application/json")) {
+		try {
+			const body = (await res.json()) as {
+				message?: string | string[];
+				error?: string;
+			};
+			if (Array.isArray(body.message) && body.message.length > 0) {
+				return body.message.join(", ");
+			}
+			if (typeof body.message === "string" && body.message.trim()) {
+				return body.message;
+			}
+			if (typeof body.error === "string" && body.error.trim()) {
+				return body.error;
+			}
+		} catch {
+			return fallback;
+		}
+	}
+
+	try {
+		const text = await res.text();
+		return text.trim() || fallback;
+	} catch {
+		return fallback;
+	}
 }
 
 // ── Public types ──────────────────────────────────────────────────────────────

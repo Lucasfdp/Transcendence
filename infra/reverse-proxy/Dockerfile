@@ -1,60 +1,59 @@
-# ==============================================================================
-# ft_transcendence — Reverse Proxy (Nginx)
-# ==============================================================================
-# Base image: Alpine Linux for minimal attack surface.
-# Nginx is compiled from source packages available in the Alpine repo.
-#
-# This Dockerfile:
-#   1. Installs Nginx + OpenSSL
-#   2. Copies the Nginx configuration template
-#   3. Installs an entrypoint that generates a local TLS certificate on startup
-#   4. Creates a non-root user to run Nginx worker processes
-#
-# Production note:
-#   Replace the self-signed certificate generation with a Let's Encrypt
-#   Certbot sidecar or a pre-issued certificate mounted via Docker Secrets.
-# ==============================================================================
-
-FROM alpine:3.19@sha256:6baf43584bcb78f2e5847d1de515f23499913ac9f12bdf834811a3145eb11ca1
+FROM debian:bookworm-slim
 
 LABEL maintainer="ft_transcendence"
-LABEL description="Nginx reverse proxy with TLS termination"
+LABEL description="Nginx reverse proxy with TLS termination and ModSecurity WAF"
 
-# Install Nginx and OpenSSL
-RUN apk update && apk add --no-cache \
-    nginx \
-    openssl \
-    curl \
-    && rm -rf /var/cache/apk/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        nginx \
+        libnginx-mod-http-modsecurity \
+        modsecurity-crs \
+        openssl \
+        curl \
+        ca-certificates \
+        gettext-base \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create directories for SSL certificates and Nginx config
-RUN mkdir -p /etc/nginx/ssl \
-             /etc/nginx/http.d \
-             /var/log/nginx \
-             /var/www/html
+RUN mkdir -p \
+        /etc/nginx/templates \
+        /etc/nginx/modsec/crs/rules \
+        /etc/nginx/ssl \
+        /var/log/nginx \
+        /var/cache/nginx/client_temp \
+        /var/cache/nginx/proxy_temp \
+        /var/cache/nginx/fastcgi_temp \
+        /var/cache/nginx/uwsgi_temp \
+        /var/cache/nginx/scgi_temp \
+        /tmp/modsecurity/tmp \
+        /tmp/modsecurity/data
 
-# Remove Alpine's default server config and install ours
-# Alpine's nginx.conf includes /etc/nginx/http.d/*.conf inside the http block
-RUN rm -f /etc/nginx/http.d/default.conf
-COPY conf/default.conf /etc/nginx/http.d/default.conf
+RUN set -eux; \
+    unicode_path=""; \
+    for candidate in \
+        /etc/nginx/unicode.mapping \
+        /etc/modsecurity/unicode.mapping \
+        /usr/share/modsecurity-crs/unicode.mapping \
+        /usr/share/modsecurity/unicode.mapping; do \
+        if [ -f "$candidate" ]; then unicode_path="$candidate"; break; fi; \
+    done; \
+    cp "$unicode_path" /etc/nginx/modsec/unicode.mapping; \
+    rules_path=""; \
+    for candidate in /usr/share/modsecurity-crs/rules /etc/modsecurity/crs/rules; do \
+        if [ -d "$candidate" ]; then rules_path="$candidate"; break; fi; \
+    done; \
+    cp -R "$rules_path"/. /etc/nginx/modsec/crs/rules/
 
+RUN rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/default.conf
+
+COPY conf/nginx.conf /etc/nginx/nginx.conf
+COPY conf/default.conf.template /etc/nginx/templates/default.conf.template
+COPY conf/modsecurity.conf /etc/nginx/modsec/modsecurity.conf
+COPY conf/crs-setup.conf /etc/nginx/modsec/crs-setup.conf
+COPY conf/local-exclusions.conf /etc/nginx/modsec/local-exclusions.conf
 COPY tools/entrypoint.sh /usr/local/bin/reverse-proxy-entrypoint.sh
-RUN chmod +x /usr/local/bin/reverse-proxy-entrypoint.sh
 
-# ------------------------------------------------------------------------------
-# Non-root user setup
-# ------------------------------------------------------------------------------
-# Nginx master process must start as root (to bind port 443) but worker
-# processes are dropped to the 'nginx' user automatically.
-# The 'nginx' user is created by the Alpine nginx package.
-# ------------------------------------------------------------------------------
-RUN chown -R nginx:nginx /var/log/nginx \
-    && chown -R nginx:nginx /var/www/html \
-    && chown -R nginx:nginx /etc/nginx/http.d
-
-# Forward logs to Docker logging driver
-RUN ln -sf /dev/stdout /var/log/nginx/access.log \
-    && ln -sf /dev/stderr /var/log/nginx/error.log
+RUN chmod +x /usr/local/bin/reverse-proxy-entrypoint.sh \
+    && chown -R www-data:www-data /var/log/nginx /var/cache/nginx /tmp/modsecurity
 
 EXPOSE 80 443
 

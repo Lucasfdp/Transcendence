@@ -1,0 +1,42 @@
+TERMS AND CONDITIONS
+Shell Smash
+
+Effective date: 21/06/2026
+
+1. Scope
+These terms govern access to and use of the Shell Smash application.
+
+2. Acceptance
+By registering, logging in, or continuing to use the application, you accept these terms and the related privacy policy.
+
+3. Usage requirements
+The user agrees to:
+- provide reasonably valid information when creating an account
+- keep their credentials confidential
+- not attempt to manipulate, break, or degrade the service
+- not use the platform for unlawful, abusive, or fraudulent activities
+
+4. Account and access
+The application may offer local, guest, or third-party provider access. The user is responsible for activity carried out through their account or session, unless unauthorized access is proven.
+
+5. Availability
+The service may be modified, suspended, or temporarily interrupted due to maintenance, technical changes, security measures, or causes outside the operator's control.
+
+6. Intellectual property
+The visual, technical, and functional content of Shell Smash belongs to its respective rights holders. Use of the application does not grant the user any exploitation rights over that content.
+
+7. Prohibited conduct
+It is prohibited to:
+- attempt to access other users' data without authorization
+- interfere with authentication, the backend, or the network
+- automate abusive actions
+- use cheats, scripts, or techniques that harm the normal operation of the game
+
+8. Limitation of liability
+The application is provided subject to availability. To the extent permitted by applicable law, uninterrupted operation and total absence of errors are not guaranteed.
+
+9. Suspension or termination
+We may suspend or limit access in the event of misuse, suspicious activity, breach of these terms, or technical or security necessity.
+
+10. Changes
+These terms may be updated. The version published in the application will apply from the time of publication.

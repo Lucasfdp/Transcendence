@@ -9,6 +9,7 @@ import { api, AuthError, NetworkError } from "../features/hub/api";
 export function AuthPage(): JSX.Element {
 	const navigate = useNavigate();
 	const { status } = useSessionGate();
+	const [loginBackdropVersion] = useState(() => Date.now().toString());
 	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
@@ -64,12 +65,12 @@ export function AuthPage(): JSX.Element {
 					setError(
 						"Invalid credentials or missing session permissions.",
 					);
+				} else if (err.status === 400 || err.status === 422) {
+					setError(err.message);
 				} else if (err.status === 429) {
 					setError("Too many attempts. Wait a moment and try again.");
 				} else {
-					setError(
-						"Login failed. Check your credentials and try again.",
-					);
+					setError("Login failed. Check your credentials and try again.");
 				}
 			} else if (err instanceof NetworkError) {
 				setError("Could not reach the server.");
@@ -105,6 +106,8 @@ export function AuthPage(): JSX.Element {
 					);
 				} else if (err.status === 401 || err.status === 403) {
 					setError("Guest access is temporarily unavailable.");
+				} else if (err.status === 400 || err.status === 422) {
+					setError(err.message);
 				} else {
 					setError("Could not create a guest session.");
 				}
@@ -140,12 +143,16 @@ export function AuthPage(): JSX.Element {
 			if (err instanceof AuthError) {
 				if (err.status === 409) {
 					setError("That username is already taken.");
+				} else if (err.status === 400 || err.status === 422) {
+					setError(err.message);
 				} else if (err.status === 429) {
 					setError(
 						"Too many registration attempts. Wait a moment and try again.",
 					);
 				} else if (err.status === 401 || err.status === 403) {
 					setError("Registration is temporarily unavailable.");
+				} else if (err.status >= 500) {
+					setError("The server could not complete the registration.");
 				} else {
 					setError("Could not create the account.");
 				}
@@ -172,7 +179,14 @@ export function AuthPage(): JSX.Element {
 			<TempleBackdrop pageClassName="auth-page" />
 
 			<section className="auth-page__shell">
-				<div className="auth-page__intro">
+				<div
+					className="auth-page__intro"
+					style={
+						{
+							"--auth-login-bg": `url("/assets/backgrounds/login_bg.png?v=${loginBackdropVersion}")`,
+						} as React.CSSProperties
+					}
+				>
 					<p className="auth-page__eyebrow">Dojo Gate</p>
 					<h1 className="auth-page__title">Shell Smash</h1>
 					<p className="auth-page__description">

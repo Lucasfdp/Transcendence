@@ -62,9 +62,23 @@ services:
             - ./backend/src:/build/src # TypeScript source
         working_dir: /build
         entrypoint: [] # Clear the runtime entrypoint.sh
-        command: sh -c "npm run start:dev"
+        command:
+            - sh
+            - -lc
+            - |
+                i=0
+                until [ -f /vault/secrets/backend.env ] || [ "$$i" -ge "${SECRETS_WAIT_TIMEOUT:-120}" ]; do
+                  i=$$(($$i + 1))
+                  sleep 1
+                done
+                [ -f /vault/secrets/backend.env ] || { echo "[backend] Missing /vault/secrets/backend.env" >&2; exit 1; }
+                set -a
+                . /vault/secrets/backend.env
+                set +a
+                npm run start:dev
         environment:
             - NODE_ENV=development
+            - APP_ENV=development
         # The builder stage has no wget; use node for the health probe instead.
         healthcheck:
             test:

@@ -1,11 +1,25 @@
 #!/bin/sh
-# ==============================================================================
-# Shell Smash — Monitoring Entrypoint
-# Sets up runtime config from env vars, then hands off to supervisord.
-# ==============================================================================
-set -e
+set -eu
+
+VAULT_ENV_FILE="${VAULT_ENV_FILE:-/vault/secrets/monitoring.env}"
+SECRETS_WAIT_TIMEOUT="${SECRETS_WAIT_TIMEOUT:-120}"
 
 echo "[monitoring] Starting Shell Smash monitoring stack..."
+
+i=0
+until [ -f "${VAULT_ENV_FILE}" ] || [ "${i}" -ge "${SECRETS_WAIT_TIMEOUT}" ]; do
+  i=$((i + 1))
+  sleep 1
+done
+
+if [ ! -f "${VAULT_ENV_FILE}" ]; then
+  echo "[monitoring] ERROR: Missing Vault secrets file: ${VAULT_ENV_FILE}" >&2
+  exit 1
+fi
+
+set -a
+. "${VAULT_ENV_FILE}"
+set +a
 
 # ------------------------------------------------------------------------------
 # Create volume subdirectories on first boot (the named volume starts empty)

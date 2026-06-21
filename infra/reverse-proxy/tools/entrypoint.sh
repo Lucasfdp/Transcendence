@@ -5,16 +5,24 @@ SSL_DIR="/etc/nginx/ssl"
 CERT_PATH="${SSL_DIR}/cert.pem"
 KEY_PATH="${SSL_DIR}/key.pem"
 DOMAIN_NAME="${DOMAIN_NAME:-localhost}"
+TEMPLATE_PATH="/etc/nginx/templates/default.conf.template"
+TARGET_PATH="/etc/nginx/conf.d/default.conf"
 
 mkdir -p "${SSL_DIR}"
+envsubst '${DOMAIN_NAME}' < "${TEMPLATE_PATH}" > "${TARGET_PATH}"
+
+cat > /etc/nginx/modsec/main.conf <<'EOF'
+Include /etc/nginx/modsec/modsecurity.conf
+Include /etc/nginx/modsec/crs-setup.conf
+Include /etc/nginx/modsec/crs/rules/*.conf
+Include /etc/nginx/modsec/local-exclusions.conf
+EOF
 
 if [ -s "${CERT_PATH}" ] && [ -s "${KEY_PATH}" ]; then
   echo "[reverse_proxy] Using pre-generated TLS certificate from ${SSL_DIR}."
   exec "$@"
 fi
 
-# Recreate the local development certificate on each startup so the container
-# always has a cert with the expected SAN entries for localhost testing.
 cat > /tmp/openssl-local.cnf <<EOF
 [req]
 default_bits = 2048

@@ -562,6 +562,8 @@ export class LandingScene extends ResponsiveScene {
 				return "Too many attempts — please wait a moment.";
 			if (err.status === 409) return "That username is already taken.";
 			if (err.status === 401) return "Invalid username or password.";
+			if (err.status === 400 || err.status === 422) return err.message;
+			if (err.status >= 500) return fallback;
 		}
 		if (err instanceof NetworkError)
 			return "Network error — please check your connection.";

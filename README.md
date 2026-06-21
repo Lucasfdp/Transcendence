@@ -29,13 +29,18 @@ Players have:
 ## Running locally
 
 ```bash
+cp .env.example .env
+make vault-init
+make vault-unseal
+make vault-seed-dev
 make up
 ```
 
 Then visit `https://localhost`.
 
-See `docs/` for architecture notes and `.env.example` for required
-environment variables (including 42 OAuth credentials).
+Runtime secrets now live in local Vault bootstrap files under `secrets/vault/`
+(gitignored). Put OAuth client credentials in `secrets/vault/dev-seed.env`
+before rerunning `make vault-seed-dev`.
 
 ## Repository layout
 

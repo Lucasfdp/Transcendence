@@ -12,6 +12,32 @@ DEV_COMPOSE	:= -f $(COMPOSE_FILE) -f $(OVERRIDE_FILE)
 ENV_FILE		:= .env
 PROJECT_NAME	:= transcendence
 CERT_DIR		:= secrets/nginx_ssl
+VAULT_INIT_FILE	:= secrets/vault/init.txt
+VAULT_SEED_FILE	:= secrets/vault/dev-seed.env
+BASE_SERVICES	:= \
+	backend_vault_agent \
+	database_vault_agent \
+	redis_vault_agent \
+	monitoring_vault_agent \
+	database \
+	redis \
+	backend \
+	frontend \
+	monitoring \
+	reverse_proxy
+VAULT_AGENT_SERVICES := \
+	backend_vault_agent \
+	database_vault_agent \
+	redis_vault_agent \
+	monitoring_vault_agent
+CORE_SERVICES := \
+	database \
+	redis \
+	frontend
+EDGE_SERVICES := \
+	backend \
+	monitoring \
+	reverse_proxy
 
 # --- COLOR DEFINITON ---
 ifeq ($(shell tput colors 2>/dev/null),)
@@ -43,22 +69,59 @@ endif
 # ==============================================================================
 
 ## up: Build images (if needed) and start all services in detached mode
-up: check-env certs
+up: check-env certs vault-bootstrap
 	@echo "$(GREEN)Starting all services...$(RESET)"
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build
+	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(VAULT_AGENT_SERVICES)
+	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(CORE_SERVICES)
+	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(EDGE_SERVICES)
 	@echo "$(GREEN)All services are up. Run 'make ps' to verify.$(RESET)"
 
 ## dev: Start with hot-reload override (Vite HMR + NestJS watch). Access frontend at http://localhost:3000
-dev: check-env certs
+dev: check-env certs vault-bootstrap
 	@echo "$(GREEN)Starting in DEV mode (hot-reload)...$(RESET)"
-	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --remove-orphans
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --remove-orphans --no-deps $(VAULT_AGENT_SERVICES)
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --remove-orphans --no-deps $(CORE_SERVICES)
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --remove-orphans --no-deps $(EDGE_SERVICES)
 	@echo "$(GREEN)Dev server running. Frontend: http://localhost:3000$(RESET)"
 
 ## prod: Start WITHOUT the dev override — production-like mode (uses serve + compiled dist)
-prod: check-env certs
+prod: check-env certs vault-bootstrap
 	@echo "$(GREEN)Starting in PROD mode (no override)...$(RESET)"
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build
+	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(VAULT_AGENT_SERVICES)
+	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(CORE_SERVICES)
+	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(EDGE_SERVICES)
 	@echo "$(GREEN)Production-mode services up. Frontend: https://localhost$(RESET)"
+
+## vault-bootstrap: Ensure the local Vault is initialised, unsealed and seeded before starting dependants
+vault-bootstrap: check-env
+	@echo "$(CYAN)Bootstrapping Vault for local dev...$(RESET)"
+	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build vault
+	@$(MAKE) vault-init
+	@$(MAKE) vault-unseal
+	@$(MAKE) vault-seed-dev
+
+## vault-init: Start Vault and initialise it with a single unseal key for local dev
+vault-init: check-env
+	@echo "$(CYAN)Initialising Vault...$(RESET)"
+	@chmod +x scripts/vault-init.sh
+	@./scripts/vault-init.sh
+
+## vault-unseal: Unseal the local Vault instance using the saved bootstrap key
+vault-unseal: check-env
+	@echo "$(CYAN)Unsealing Vault...$(RESET)"
+	@chmod +x scripts/vault-unseal.sh
+	@./scripts/vault-unseal.sh
+
+## vault-seed-dev: Seed development secrets into Vault and write AppRole bootstrap files
+vault-seed-dev: check-env
+	@echo "$(CYAN)Seeding development secrets into Vault...$(RESET)"
+	@chmod +x scripts/vault-seed-dev.sh
+	@./scripts/vault-seed-dev.sh
+
+## vault-status: Show the current Vault seal/health status
+vault-status: check-env
+	@chmod +x scripts/vault-status.sh
+	@./scripts/vault-status.sh
 
 ## down: Stop and remove containers, networks (volumes are preserved by default)
 down:

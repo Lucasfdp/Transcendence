@@ -58,5 +58,5 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
     CMD pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" || exit 1
 
 # Use the official PostgreSQL entrypoint (handles init scripts automatically)
-ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["custom-entrypoint.sh"]
 CMD ["postgres", "-c", "log_connections=on", "-c", "log_disconnections=on"]

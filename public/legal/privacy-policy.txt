@@ -1,0 +1,48 @@
+PRIVACY POLICY
+Shell Smash
+
+Effective date: 21/06/2026
+
+1. Controller
+Shell Smash is responsible for the processing of personal data used within this application.
+
+2. Data we process
+We may process the following data:
+- username
+- login credentials
+- technical session identifiers
+- minimum data required to authenticate you through external providers
+- basic usage information related to your session state and service security
+
+3. Purpose
+We process data to:
+- allow registration, login, and session maintenance
+- protect the application against unauthorized access
+- manage the basic operation of the game and the account
+- comply with technical and security obligations
+
+4. Legal basis
+The legal basis is the performance of the service requested by the user and the legitimate interest in ensuring the security and stability of the platform.
+
+5. Cookies and local storage
+The application uses technical or essential cookies to:
+- maintain authentication
+- validate requests through security measures such as CSRF
+- store the basic cookie notice preference through browser local storage
+
+You should not use the application if you do not accept the use of these essential cookies for login and account protection.
+
+6. Retention
+Data will be kept for the time necessary to maintain the account, the active session, or to meet security and operational obligations.
+
+7. Data sharing
+Data will not be shared with third parties except when necessary to provide the service, use external authentication chosen by the user, or comply with a legal obligation.
+
+8. Security
+We apply reasonable technical measures to protect credentials, sessions, and application access.
+
+9. User rights
+You may request access, rectification, deletion, or objection regarding your data, as well as any other action that may apply under the relevant regulations.
+
+10. Changes
+This policy may be updated to reflect technical, legal, or functional changes. The version published in the application will be the current one.
