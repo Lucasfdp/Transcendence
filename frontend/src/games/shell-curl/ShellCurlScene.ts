@@ -768,13 +768,13 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.bgGfx.clear();
 
 		// ── Base fill: dark dojo night ───────────────────────────────────────────
-		this.bgGfx.fillStyle(0x0c0a07, 1);
+		this.bgGfx.fillStyle(0x0c0a07, 0.58);
 		this.bgGfx.fillRect(0, 0, width, height);
 
 		// ── Side column base (slightly warmer dark) ───────────────────────────────
 		const rightX = a.sheetX + a.sheetW;
 		const rightW = width - rightX;
-		this.bgGfx.fillStyle(0x130e08, 0.7);
+		this.bgGfx.fillStyle(0x130e08, 0.42);
 		this.bgGfx.fillRect(0, 0, a.sheetX, height);
 		this.bgGfx.fillRect(rightX, 0, rightW, height);
 

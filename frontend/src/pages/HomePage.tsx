@@ -5,6 +5,7 @@ import { RouteLoading } from "../components/common/RouteLoading";
 import { NineSliceButton } from "../components/common/NineSliceButton";
 import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
+import { hubBackgroundClass } from "../shared/backgrounds";
 import {
 	Achievement,
 	api,
@@ -181,10 +182,7 @@ function HomeMenu(): JSX.Element {
 	if (isLoading) return <RouteLoading />;
 
 	const playerName = player?.turtleName ?? player?.username ?? "Player";
-	const backgroundClass =
-		player?.hubBackground === "sunset_bg"
-			? "hub-page--sunset"
-			: "hub-page--night";
+	const backgroundClass = hubBackgroundClass("hub-page", player?.hubBackground);
 
 	return (
 		<main className={`menu-page hub-page ${backgroundClass}`}>
@@ -220,7 +218,7 @@ function HomeMenu(): JSX.Element {
 				<section className="hub-page__content">
 					<aside className="hub-panel hub-page__extras">
 						<h2>Dojo Extras</h2>
-						<button
+						<NineSliceButton
 							type="button"
 							className="hub-panel__button"
 							onClick={() =>
@@ -232,21 +230,21 @@ function HomeMenu(): JSX.Element {
 							}
 						>
 							Shell Cards
-						</button>
-						<button
+						</NineSliceButton>
+						<NineSliceButton
 							type="button"
 							className="hub-panel__button"
 							onClick={openAchievements}
 						>
 							Achievements
-						</button>
-						<button
+						</NineSliceButton>
+						<NineSliceButton
 							type="button"
 							className="hub-panel__button"
 							onClick={openCustomization}
 						>
 							Customization
-						</button>
+						</NineSliceButton>
 					</aside>
 
 					<section className="hub-page__stage">

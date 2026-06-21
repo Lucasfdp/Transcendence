@@ -1534,7 +1534,7 @@ export class BambooBashScene extends ResponsiveScene {
 		const { width, height } = this.scale;
 		this.bgGfx.clear();
 
-		this.bgGfx.fillStyle(0x0a1208, 1);
+		this.bgGfx.fillStyle(0x0a1208, 0.58);
 		this.bgGfx.fillRect(0, 0, width, height);
 
 		const step = Math.round(Math.min(width, height) * 0.065);

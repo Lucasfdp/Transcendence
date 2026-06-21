@@ -1170,7 +1170,7 @@ export class BellClashScene extends ResponsiveScene {
 	private drawBackground(): void {
 		const { width, height } = this.scale;
 		this.bgGfx.clear();
-		this.bgGfx.fillStyle(0x120c08, 1);
+		this.bgGfx.fillStyle(0x120c08, 0.58);
 		this.bgGfx.fillRect(0, 0, width, height);
 
 		const ringStep = Math.max(38, Math.round(90 * this.arena.scale));

@@ -17,7 +17,8 @@ export function createShellSmashGame(
 		type: Phaser.AUTO,
 		width: window.innerWidth,
 		height: window.innerHeight,
-		backgroundColor: "#0d1117",
+		backgroundColor: "rgba(0,0,0,0)",
+		transparent: true,
 		parent,
 		scene: [
 			PhaserBootScene,

@@ -944,9 +944,6 @@ input {
 	width: 100%;
 	gap: 0.35rem;
 	padding: 0.85rem 0.9rem;
-	border: 1px solid rgba(241, 211, 145, 0.42);
-	border-radius: 0.7rem;
-	background: rgba(26, 16, 5, 0.86);
 	color: #fff3c6;
 	font: inherit;
 	text-align: left;
@@ -958,11 +955,39 @@ input {
 		background 160ms ease;
 }
 
+.hub-panel__button {
+	border: 1px solid rgba(241, 211, 145, 0.86);
+	border-radius: 999px;
+	background: rgba(8, 12, 18, 0.34);
+}
+
+.hub-game-card {
+	border: 1px solid rgba(241, 211, 145, 0.42);
+	border-radius: 0.7rem;
+	background: rgba(26, 16, 5, 0.86);
+}
+
 .hub-panel__button + .hub-panel__button {
 	margin-top: 0.65rem;
 }
 
-.hub-panel__button:hover,
+.hub-panel__button.nine-slice-button {
+	border-width: 18px;
+	border-image-source: var(--nine-slice-source);
+	border-image-slice: var(--nine-slice-slice, 40) fill;
+	border-image-width: 18px;
+	border-image-repeat: stretch;
+	border-radius: 0;
+	background: rgba(8, 12, 18, 0.34);
+	box-shadow: 0 0 24px rgba(232, 138, 61, 0.06);
+}
+
+.hub-panel__button:hover {
+	transform: translateY(-2px);
+	border-color: rgba(241, 211, 145, 0.52);
+	background: rgba(12, 16, 22, 0.8);
+}
+
 .hub-game-card:hover {
 	transform: translateY(-2px);
 	border-color: rgba(255, 232, 169, 0.92);
@@ -1367,10 +1392,26 @@ input {
 }
 
 .game-host {
+	--game-bg-image: url("/assets/backgrounds/night_bg.png");
 	width: 100%;
 	height: 100%;
 	min-height: 100vh;
 	overflow: hidden;
+	background:
+		radial-gradient(circle at 50% 42%, rgba(241, 211, 145, 0.08), transparent 32%),
+		linear-gradient(180deg, rgba(5, 7, 12, 0.1), rgba(3, 4, 7, 0.72)),
+		var(--game-bg-image),
+		#0d1117;
+	background-position: center;
+	background-size: cover;
+}
+
+.game-host--night {
+	--game-bg-image: url("/assets/backgrounds/night_bg.png");
+}
+
+.game-host--sunset {
+	--game-bg-image: url("/assets/backgrounds/sunset_bg.png");
 }
 
 .game-host-fullscreen {

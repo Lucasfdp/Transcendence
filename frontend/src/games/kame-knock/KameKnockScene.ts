@@ -1383,7 +1383,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private drawBackground(): void {
 		const { width, height } = this.scale;
 		this.bgGfx.clear();
-		this.bgGfx.fillStyle(THEME.background, 1);
+		this.bgGfx.fillStyle(THEME.background, 0.62);
 		this.bgGfx.fillRect(0, 0, width, height);
 
 		const gridStep = Math.max(28, Math.round(70 * this.arena.scale));
