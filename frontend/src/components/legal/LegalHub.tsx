@@ -100,6 +100,7 @@ export function LegalHub(): JSX.Element {
 	}, [activeDocumentId, documents]);
 
 	const isGameRoute = location.pathname === "/game";
+	const isAuthRoute = location.pathname === "/auth";
 	const activeDocument = activeDocumentId ? DOCUMENTS[activeDocumentId] : null;
 	const hasReadEverything = readState.privacy && readState.terms;
 
@@ -137,7 +138,7 @@ export function LegalHub(): JSX.Element {
 
 	return (
 		<>
-			{!isGameRoute ? (
+			{isAuthRoute ? (
 				<div className="legal-dock" aria-label="Legal links">
 					<button
 						className="legal-dock__link"
@@ -156,7 +157,7 @@ export function LegalHub(): JSX.Element {
 				</div>
 			) : null}
 
-			{!consent && !isGameRoute ? (
+			{!consent && isAuthRoute && !isGameRoute ? (
 					<section className="cookie-banner" aria-label="Cookie notice">
 						<div className="cookie-banner__copy">
 							<p className="cookie-banner__eyebrow">Cookies</p>
