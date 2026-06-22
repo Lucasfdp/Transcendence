@@ -200,6 +200,11 @@ function HomeMenu(): JSX.Element {
 		}
 	};
 
+	const handleReturnToModeSelector = () => {
+		setView("choose");
+		navigate("/", { replace: true });
+	};
+
 	const openAchievements = async () => {
 		setActiveModal("achievements");
 		setModalError("");
@@ -350,34 +355,44 @@ function HomeMenu(): JSX.Element {
 								</button>
 							</div>
 						) : (
-							<div className="hub-page__game-grid">
-								{gameCards.map((game) =>
-									game.available ? (
-										<Link
-											key={game.id}
-											className="hub-game-card"
-											to={`/play/${game.id}`}
-										>
-											<span>{game.name}</span>
-											<small>{game.description}</small>
-										</Link>
-									) : (
-										<button
-											key={game.id}
-											className="hub-game-card hub-game-card--locked"
-											type="button"
-											onClick={() =>
-												setInfoModal({
-													title: game.name,
-													description: `${game.description}\n\nArena is being built. Check back soon!`,
-												})
-											}
-										>
-											<span>{game.name}</span>
-											<small>Coming soon</small>
-										</button>
-									),
-								)}
+							<div className="hub-page__normal-view">
+								<div className="hub-page__game-grid">
+									{gameCards.map((game) =>
+										game.available ? (
+											<Link
+												key={game.id}
+												className="hub-game-card"
+												to={`/play/${game.id}`}
+											>
+												<span>{game.name}</span>
+												<small>{game.description}</small>
+											</Link>
+										) : (
+											<button
+												key={game.id}
+												className="hub-game-card hub-game-card--locked"
+												type="button"
+												onClick={() =>
+													setInfoModal({
+														title: game.name,
+														description: `${game.description}\n\nArena is being built. Check back soon!`,
+													})
+												}
+											>
+												<span>{game.name}</span>
+												<small>Coming soon</small>
+											</button>
+										),
+									)}
+								</div>
+
+								<button
+									className="hub-page__mode-back-button"
+									type="button"
+									onClick={handleReturnToModeSelector}
+								>
+									Back to mode selector
+								</button>
 							</div>
 						)}
 					</section>

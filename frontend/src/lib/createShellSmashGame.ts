@@ -7,11 +7,19 @@ import { BambooBashScene } from "../games/bamboo-bash/BambooBashScene";
 import { ShellCurlScene } from "../games/shell-curl/ShellCurlScene";
 import { KameKnockScene } from "../games/kame-knock/KameKnockScene";
 import { BellClashScene } from "../games/bell-clash/BellClashScene";
-import type { ShellPickerData } from "../features/hub/ShellPickerScene";
+import type { GameId } from "../shared/mechanics/game-powers";
+import type { OnlineMatchContext } from "../services/network/gameSocket";
+
+export interface ShellSmashStartData {
+	gameId: GameId;
+	targetScene: string;
+	shellSelection: { player0: string[]; player1: string[] };
+	onlineMatch?: OnlineMatchContext;
+}
 
 export function createShellSmashGame(
 	parent: string | HTMLElement,
-	initialScene?: ShellPickerData,
+	initialScene?: ShellSmashStartData,
 ): Phaser.Game {
 	const config: Phaser.Types.Core.GameConfig = {
 		type: Phaser.AUTO,
@@ -38,7 +46,13 @@ export function createShellSmashGame(
 	const game = new Phaser.Game(config);
 	installHiDPI(game);
 	if (initialScene) {
-		game.scene.start("ShellPickerScene", initialScene);
+		game.registry.set("shellSelection", initialScene.shellSelection);
+		if (initialScene.onlineMatch) {
+			game.registry.set("onlineMatch", initialScene.onlineMatch);
+		} else {
+			game.registry.remove("onlineMatch");
+		}
+		game.scene.start(initialScene.targetScene);
 	}
 	return game;
 }
