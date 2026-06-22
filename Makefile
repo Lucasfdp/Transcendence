@@ -69,7 +69,7 @@ endif
 # ==============================================================================
 
 ## up: Build images (if needed) and start all services in detached mode
-up: check-env certs vault-bootstrap
+up: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting all services...$(RESET)"
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(VAULT_AGENT_SERVICES)
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(CORE_SERVICES)
@@ -77,7 +77,7 @@ up: check-env certs vault-bootstrap
 	@echo "$(GREEN)All services are up. Run 'make ps' to verify.$(RESET)"
 
 ## dev: Start with hot-reload override (Vite HMR + NestJS watch). Access frontend at http://localhost:3000
-dev: check-env certs vault-bootstrap
+dev: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting in DEV mode (hot-reload)...$(RESET)"
 	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --remove-orphans --no-deps $(VAULT_AGENT_SERVICES)
 	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --remove-orphans --no-deps $(CORE_SERVICES)
@@ -85,7 +85,7 @@ dev: check-env certs vault-bootstrap
 	@echo "$(GREEN)Dev server running. Frontend: http://localhost:3000$(RESET)"
 
 ## prod: Start WITHOUT the dev override — production-like mode (uses serve + compiled dist)
-prod: check-env certs vault-bootstrap
+prod: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting in PROD mode (no override)...$(RESET)"
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(VAULT_AGENT_SERVICES)
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(CORE_SERVICES)
@@ -262,6 +262,16 @@ certs:
 		else \
 			echo "$(YELLOW)mkcert not found; reverse proxy will fall back to a self-signed cert.$(RESET)"; \
 		fi; \
+	fi
+
+## prepare-local-secrets: Ensure local bootstrap directories exist and are writable
+prepare-local-secrets:
+	@mkdir -p secrets/nginx_ssl secrets/vault/approle/backend secrets/vault/approle/database secrets/vault/approle/redis secrets/vault/approle/monitoring
+	@if [ ! -w secrets ] || [ ! -w secrets/vault ]; then \
+		echo "$(RED)Local secrets directory is not writable by user '$$(id -un)'.$(RESET)"; \
+		echo "$(YELLOW)Fix ownership/permissions on ./secrets before running make again.$(RESET)"; \
+		echo "$(YELLOW)Example: sudo chown -R $$(id -un):$$(id -gn) secrets$(RESET)"; \
+		exit 1; \
 	fi
 
 ## check-env: Verify .env file exists (copy from .env.example if missing)

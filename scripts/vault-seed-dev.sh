@@ -9,6 +9,24 @@ generate_secret() {
     dd if=/dev/urandom bs=32 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n'
 }
 
+ensure_writable_dir() {
+    dir="$1"
+
+    mkdir -p "$dir" 2>/dev/null || true
+
+    if [ ! -d "$dir" ]; then
+        echo "[vault-seed] Could not create ${dir}." >&2
+        echo "[vault-seed] Ensure $(pwd)/${dir} is writable by user $(id -un)." >&2
+        exit 1
+    fi
+
+    if [ ! -w "$dir" ]; then
+        echo "[vault-seed] ${dir} is not writable by user $(id -un)." >&2
+        echo "[vault-seed] Fix it with: sudo chown -R $(id -un):$(id -gn) secrets" >&2
+        exit 1
+    fi
+}
+
 if [ ! -f "${INIT_FILE}" ]; then
     echo "[vault-seed] Missing ${INIT_FILE}. Run make vault-init and make vault-unseal first." >&2
     exit 1
@@ -33,11 +51,12 @@ if [ -z "${ROOT_TOKEN}" ]; then
     exit 1
 fi
 
-mkdir -p \
-    secrets/vault/approle/backend \
-    secrets/vault/approle/database \
-    secrets/vault/approle/redis \
-    secrets/vault/approle/monitoring
+ensure_writable_dir "secrets"
+ensure_writable_dir "secrets/vault"
+ensure_writable_dir "secrets/vault/approle/backend"
+ensure_writable_dir "secrets/vault/approle/database"
+ensure_writable_dir "secrets/vault/approle/redis"
+ensure_writable_dir "secrets/vault/approle/monitoring"
 
 if [ ! -f "${SEED_FILE}" ]; then
     cat > "${SEED_FILE}" <<EOF

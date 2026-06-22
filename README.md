@@ -42,6 +42,14 @@ Runtime secrets now live in local Vault bootstrap files under `secrets/vault/`
 (gitignored). Put OAuth client credentials in `secrets/vault/dev-seed.env`
 before rerunning `make vault-seed-dev`.
 
+If local bootstrap fails with `Permission denied` while creating `secrets/...`,
+the repository or `secrets/` directory is not writable by your user. Fix the
+ownership first, for example:
+
+```bash
+sudo chown -R "$(id -un):$(id -gn)" secrets
+```
+
 ## Repository layout
 
 - `frontend/` — React + Phaser app

@@ -4,7 +4,26 @@ set -eu
 COMPOSE="docker compose -f docker-compose.yml --env-file .env"
 INIT_FILE="secrets/vault/init.txt"
 
-mkdir -p secrets/vault
+ensure_writable_dir() {
+    dir="$1"
+
+    mkdir -p "$dir" 2>/dev/null || true
+
+    if [ ! -d "$dir" ]; then
+        echo "[vault-init] Could not create ${dir}." >&2
+        echo "[vault-init] Ensure $(pwd)/${dir} is writable by user $(id -un)." >&2
+        exit 1
+    fi
+
+    if [ ! -w "$dir" ]; then
+        echo "[vault-init] ${dir} is not writable by user $(id -un)." >&2
+        echo "[vault-init] Fix it with: sudo chown -R $(id -un):$(id -gn) secrets" >&2
+        exit 1
+    fi
+}
+
+ensure_writable_dir "secrets"
+ensure_writable_dir "secrets/vault"
 
 ${COMPOSE} up -d vault
 
