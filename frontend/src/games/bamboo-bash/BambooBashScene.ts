@@ -38,7 +38,6 @@ import {
 	randomSpot,
 	bambooPos,
 	hitsBamboo,
-	drawBamboo,
 } from "./bamboo";
 import {
 	PanelRect,
@@ -83,6 +82,17 @@ const FREEZE_DURATION_MS = 5_000; // how long FREEZE pauses spawn accumulation
 
 const DEPTH_OVERLAY = 30;
 const DEPTH_HUD = 20;
+const BAMBOO_DISPLAY_SRC_SIZE = 96;
+const BAMBOO_TEXTURES: Record<number, string> = {
+	1: "bamboo-bash-bamboo1",
+	2: "bamboo-bash-bamboo2",
+	3: "bamboo-bash-bamboo3",
+};
+const BAMBOO_ASSETS: Record<number, string> = {
+	1: "/assets/bamboo-bash/bamboo1.png",
+	2: "/assets/bamboo-bash/bamboo2.png",
+	3: "/assets/bamboo-bash/bamboo3.png",
+};
 
 // Side-panel layout
 const SIDE_PANEL_MIN_CANVAS_W = 1_180;
@@ -105,8 +115,11 @@ interface LocalParticipant {
 
 export class BambooBashScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
-	private bambooGfx!: Phaser.GameObjects.Graphics;
 	private ballGfx!: Phaser.GameObjects.Graphics;
+	private bambooSprites = new Map<
+		Bamboo | number,
+		Phaser.GameObjects.Image
+	>();
 
 	private arena!: ArenaPixels;
 	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
@@ -174,6 +187,8 @@ export class BambooBashScene extends ResponsiveScene {
 
 	preload(): void {
 		preloadIngamePlayerTexture(this);
+		for (const stage of [1, 2, 3])
+			this.load.image(BAMBOO_TEXTURES[stage], BAMBOO_ASSETS[stage]);
 	}
 
 	create(): void {
@@ -205,6 +220,7 @@ export class BambooBashScene extends ResponsiveScene {
 			participant.slingshot.destroy(),
 		);
 		this.localParticipants = [];
+		this.clearBambooSprites();
 		this.bamboos = [];
 		this.spawnAccMs = 0;
 		this.spawnFreezeMs = 0;
@@ -248,7 +264,6 @@ export class BambooBashScene extends ResponsiveScene {
 		this.playerPowers = buildPool(sel?.player0);
 
 		this.bgGfx = this.add.graphics().setDepth(0);
-		this.bambooGfx = this.add.graphics().setDepth(1);
 		this.ballGfx = this.add.graphics().setDepth(3);
 
 		this.slingshot = new Slingshot(
@@ -398,6 +413,7 @@ export class BambooBashScene extends ResponsiveScene {
 			participant.slingshot.destroy(),
 		);
 		this.localParticipants = [];
+		this.clearBambooSprites();
 		this.overlay?.destroy(true);
 		this.powerSidePanel?.destroy();
 		this.powerSidePanel = null;
@@ -1201,8 +1217,50 @@ export class BambooBashScene extends ResponsiveScene {
 	// ── Rendering helpers ───────────────────────────────────────────────────────
 
 	private drawBamboos(): void {
-		this.bambooGfx.clear();
-		for (const b of this.bamboos) drawBamboo(this.bambooGfx, b, this.arena);
+		const liveBamboos = new Set(
+			this.bamboos.map((bamboo) => this.bambooSpriteKey(bamboo)),
+		);
+		for (const [key, sprite] of this.bambooSprites) {
+			if (!liveBamboos.has(key)) {
+				sprite.destroy();
+				this.bambooSprites.delete(key);
+			}
+		}
+
+		for (const b of this.bamboos) {
+			const key = this.bambooSpriteKey(b);
+			const pos = bambooPos(b, this.arena);
+			const stage = Phaser.Math.Clamp(Math.round(b.stage), 1, 3);
+			const texture = BAMBOO_TEXTURES[stage];
+			let sprite = this.bambooSprites.get(key);
+			if (!sprite) {
+				sprite = this.add
+					.image(pos.x, pos.y, texture)
+					.setOrigin(0.5, 0.65)
+					.setDepth(1);
+				this.bambooSprites.set(key, sprite);
+			} else if (sprite.texture.key !== texture) {
+				sprite.setTexture(texture);
+			}
+			sprite
+				.setPosition(pos.x, pos.y)
+				.setDisplaySize(
+					BAMBOO_DISPLAY_SRC_SIZE * this.arena.scale,
+					BAMBOO_DISPLAY_SRC_SIZE * this.arena.scale,
+				)
+				.setDepth(1 + pos.y / 100_000);
+		}
+	}
+
+	private clearBambooSprites(): void {
+		for (const sprite of this.bambooSprites.values()) sprite.destroy();
+		this.bambooSprites.clear();
+	}
+
+	private bambooSpriteKey(bamboo: Bamboo): Bamboo | number {
+		return "id" in bamboo && typeof bamboo.id === "number"
+			? bamboo.id
+			: bamboo;
 	}
 
 	private drawBalls(): void {
