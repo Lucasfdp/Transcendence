@@ -53,10 +53,13 @@ import { getGameSocket } from "../../services/network/gameSocket";
 
 const NIGHT_BG = "/assets/backgrounds/night_bg.png";
 const SUNSET_BG = "/assets/backgrounds/sunset_bg.png";
+const SUNRISE_BG = "/assets/backgrounds/sunrise_bg.png";
 const NIGHT_BG_W = 2440;
 const NIGHT_BG_H = 1372;
 const SUNSET_BG_W = 2528;
 const SUNSET_BG_H = 1696;
+const SUNRISE_BG_W = 2048;
+const SUNRISE_BG_H = 1152;
 
 // ── Source image reference dimensions ─────────────────────────────────────────
 const SRC_W = 1080;
@@ -146,7 +149,7 @@ const HOTSPOTS: HotspotDef[] = [
 const PETAL_COLOURS = [
 	0xffb7c5, 0xffc8d3, 0xffd9e2, 0xff8fad, 0xffe4ec, 0xffffff,
 ];
-type HubBackgroundPreset = "night_bg" | "sunset_bg";
+type HubBackgroundPreset = "night_bg" | "sunset_bg" | "sunrise_bg";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -159,6 +162,7 @@ export class HubScene extends Phaser.Scene {
 	// Set true when the background image loads — skip the procedural bg if so
 	private bgImageLoaded = false;
 	private sunsetBgImageLoaded = false;
+	private sunriseBgImageLoaded = false;
 
 	// Stable background image — repositioned (not recreated) on resize
 	private bgImage: Phaser.GameObjects.Image | null = null;
@@ -254,6 +258,10 @@ export class HubScene extends Phaser.Scene {
 		this.load.image("hub-sunset-bg", SUNSET_BG);
 		this.load.on("filecomplete-image-hub-sunset-bg", () => {
 			this.sunsetBgImageLoaded = true;
+		});
+		this.load.image("hub-sunrise-bg", SUNRISE_BG);
+		this.load.on("filecomplete-image-hub-sunrise-bg", () => {
+			this.sunriseBgImageLoaded = true;
 		});
 
 		// Generate a petal texture programmatically — no asset file required
@@ -470,6 +478,9 @@ export class HubScene extends Phaser.Scene {
 
 	private drawBackground(): void {
 		switch (this.currentHubBackground()) {
+			case "sunrise_bg":
+				this.drawSunsetDojoBackground();
+				return;
 			case "sunset_bg":
 				this.drawSunsetDojoBackground();
 				return;
@@ -481,6 +492,7 @@ export class HubScene extends Phaser.Scene {
 
 	private currentHubBackground(): HubBackgroundPreset {
 		const preset = this.user?.hubBackground;
+		if (preset === "sunrise_bg") return "sunrise_bg";
 		if (preset === "sunset_bg" || preset === "sunset_dojo") return "sunset_bg";
 		return "night_bg";
 	}
@@ -513,6 +525,30 @@ export class HubScene extends Phaser.Scene {
 
 			this.bgImage = this.add
 				.image(width / 2, height / 2, "hub-sunset-bg")
+				.setScale(scale)
+				.setDepth(DEPTH_IMAGE);
+			return;
+		}
+
+		if (preset === "sunrise_bg") {
+			if (!this.sunriseBgImageLoaded) {
+				this.bgImage?.destroy();
+				this.bgImage = null;
+				return;
+			}
+
+			const { width, height } = this.scale;
+			const scale = Math.max(width / SUNRISE_BG_W, height / SUNRISE_BG_H);
+			if (this.bgImage?.active) {
+				this.bgImage
+					.setTexture("hub-sunrise-bg")
+					.setPosition(width / 2, height / 2)
+					.setScale(scale);
+				return;
+			}
+
+			this.bgImage = this.add
+				.image(width / 2, height / 2, "hub-sunrise-bg")
 				.setScale(scale)
 				.setDepth(DEPTH_IMAGE);
 			return;

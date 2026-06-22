@@ -61,6 +61,12 @@ input {
 	);
 }
 
+.auth-page {
+	background:
+		linear-gradient(180deg, rgba(12, 16, 21, 0.14), rgba(5, 7, 10, 0.72)),
+		var(--auth-login-bg) center / cover no-repeat;
+}
+
 .auth-page__backdrop,
 .menu-page__backdrop {
 	position: absolute;
@@ -122,26 +128,6 @@ input {
 	display: grid;
 	place-items: center;
 	text-align: center;
-}
-
-.auth-page__intro {
-	position: relative;
-	isolation: isolate;
-}
-
-.auth-page__intro::before {
-	content: "";
-	position: absolute;
-	left: 50%;
-	top: 50%;
-	width: min(58rem, 92vw);
-	aspect-ratio: 1;
-	transform: translate(-50%, -50%);
-	background: var(--auth-login-bg) no-repeat center / contain;
-	opacity: 0.3;
-	filter: blur(0.5px) saturate(0.92);
-	z-index: -1;
-	pointer-events: none;
 }
 
 .auth-page__eyebrow,
@@ -1178,6 +1164,10 @@ input {
 	--hub-bg-image: url("/assets/backgrounds/sunset_bg.png");
 }
 
+.hub-page--sunrise {
+	--hub-bg-image: url("/assets/backgrounds/sunrise_bg.png");
+}
+
 .hub-page__shell {
 	position: relative;
 	z-index: 1;
@@ -1426,6 +1416,25 @@ input {
 	cursor: default;
 }
 
+.hub-modal__cosmetics {
+	display: grid;
+	gap: 1.1rem;
+}
+
+.hub-modal__cosmetic-category {
+	display: grid;
+	gap: 0.65rem;
+}
+
+.hub-modal__cosmetic-category h3 {
+	margin: 0;
+	color: #ffe7ad;
+	font-family: var(--display-font);
+	font-size: 0.94rem;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+}
+
 .hub-modal__body {
 	overflow: auto;
 	padding: 1rem 1.1rem 1.2rem;
@@ -1452,6 +1461,63 @@ input {
 	background: rgba(255, 255, 255, 0.035);
 }
 
+.hub-modal__cosmetic-grid article {
+	display: grid;
+	grid-template-rows: auto auto 1fr auto;
+	gap: 0.45rem;
+}
+
+.hub-modal__cosmetic-preview {
+	position: relative;
+	min-height: 8rem;
+	overflow: hidden;
+	border: 1px solid rgba(241, 211, 145, 0.18);
+	border-radius: 0.7rem;
+	background:
+		radial-gradient(circle at 50% 34%, var(--cosmetic-preview), transparent 32%),
+		linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 46%),
+		var(--cosmetic-accent);
+	box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.28);
+}
+
+.hub-modal__cosmetic-preview.has-image {
+	background:
+		linear-gradient(180deg, rgba(5, 7, 12, 0.08), rgba(3, 4, 7, 0.18)),
+		var(--cosmetic-image),
+		var(--cosmetic-accent);
+	background-position: center;
+	background-size: cover;
+}
+
+.hub-modal__cosmetic-preview--shell_skin {
+	display: grid;
+	place-items: center;
+	background:
+		radial-gradient(circle at 50% 48%, rgba(255, 247, 230, 0.16), transparent 34%),
+		linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 46%),
+		var(--cosmetic-accent);
+}
+
+.hub-modal__cosmetic-preview--shell_skin.has-image {
+	background:
+		radial-gradient(circle at 50% 52%, rgba(255, 247, 230, 0.16), transparent 36%),
+		linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 46%),
+		var(--cosmetic-accent);
+}
+
+.hub-modal__cosmetic-preview--shell_skin.has-image::after {
+	content: "";
+	width: min(62%, 7.2rem);
+	aspect-ratio: 1;
+	background: var(--cosmetic-image) center / contain no-repeat;
+	filter: drop-shadow(0 14px 18px rgba(0, 0, 0, 0.42));
+}
+
+.hub-modal__cosmetic-preview--hub_background {
+	aspect-ratio: 16 / 9;
+	min-height: 0;
+}
+
 .hub-modal__list article.is-unlocked {
 	border-color: rgba(241, 211, 145, 0.48);
 }
@@ -1469,6 +1535,38 @@ input {
 
 .hub-modal__list small {
 	color: var(--accent);
+}
+
+.hub-modal__achievement-status {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	margin-top: 0.7rem;
+}
+
+.hub-modal__achievement-progress {
+	height: 0.38rem;
+	margin-top: 0.38rem;
+	overflow: hidden;
+	border: 1px solid rgba(241, 211, 145, 0.22);
+	border-radius: 999px;
+	background: rgba(5, 4, 3, 0.72);
+}
+
+.hub-modal__achievement-progress span {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background: linear-gradient(90deg, rgba(125, 103, 72, 0.88), #f1d391);
+}
+
+.hub-modal__list article.is-unlocked .hub-modal__achievement-progress {
+	border-color: rgba(241, 211, 145, 0.46);
+}
+
+.hub-modal__list article.is-unlocked .hub-modal__achievement-progress span {
+	background: linear-gradient(90deg, #e88a3d, #f1d391);
 }
 
 .menu-page__logout-button {
@@ -1727,6 +1825,10 @@ input {
 
 .game-host--sunset {
 	--game-bg-image: url("/assets/backgrounds/sunset_bg.png");
+}
+
+.game-host--sunrise {
+	--game-bg-image: url("/assets/backgrounds/sunrise_bg.png");
 }
 
 .game-host-fullscreen {

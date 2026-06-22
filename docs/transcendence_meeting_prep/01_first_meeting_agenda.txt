@@ -1,0 +1,67 @@
+TRANSCENDENCE - FIRST MEETING AGENDA
+
+1. Introductions and Expectations
+- What grade are we aiming for?
+- How much time can each person realistically commit per week?
+- What are everyone's strengths?
+
+2. Team Preference Questions (Everyone Answers)
+- What type of project excites you most?
+- What technologies do you want to learn?
+- What technologies do you NOT want to work with?
+- Which role interests you most?
+    * Frontend
+    * Backend
+    * Database
+    * DevOps
+    * Architecture
+    * UI/UX
+    * Project Management
+- Which role interests you least?
+- Do you prefer building games, social platforms, tools, AI products, or something else?
+- Have you worked with Docker before?
+- Have you worked with React/Vue/Svelte before?
+- Have you worked with backend frameworks before?
+- Are you comfortable presenting during evaluations?
+- Would you rather own one large feature or several smaller features?
+- What is one thing you absolutely want to learn from this project?
+- What is one thing you absolutely want to avoid?
+- What part of the evaluation worries you most?
+- What part of the project are you most excited about?
+
+3. Decide Product Category
+- Gaming *
+- Social
+- Collaboration
+- Productivity
+- Education
+- Content Platform
+- Marketplace
+- Analytics
+- AI
+- Hybrid
+
+4. Discuss Module Strategy
+- Minimum 14 points
+- Target 16-18 points for safety
+- Identify easy, medium and hard modules
+
+5. Team Roles
+- Product Owner
+- Project Manager / Scrum Master
+- Technical Lead
+- Developers
+
+6. Risks
+- Authentication
+- WebSockets
+- Real-time synchronization
+- Deployment
+- Database design
+- AI integration
+- Multiplayer networking
+
+7. Action Items
+- Category chosen
+- Research assignments
+- Next meeting date

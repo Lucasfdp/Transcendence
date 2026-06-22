@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
 import { NineSliceButton } from "../components/common/NineSliceButton";
@@ -17,6 +17,64 @@ import {
 
 type HubView = "choose" | "normal";
 type InfoModal = { title: string; description: string } | null;
+
+const COSMETIC_CATEGORIES: { type: Cosmetic["type"]; title: string }[] = [
+	{ type: "shell_skin", title: "Shells" },
+	{ type: "hub_background", title: "Backgrounds" },
+];
+
+const COSMETIC_PREVIEWS: Partial<Record<Cosmetic["id"], string>> = {
+	kanagawa: "/assets/character/shells/base.png",
+	night_bg: "/assets/backgrounds/night_bg.png",
+	sunset_bg: "/assets/backgrounds/sunset_bg.png",
+	sunrise_bg: "/assets/backgrounds/sunrise_bg.png",
+};
+
+function cosmeticColor(color: number): string {
+	return `#${color.toString(16).padStart(6, "0")}`;
+}
+
+function getCosmeticPreviewStyle(cosmetic: Cosmetic): CSSProperties {
+	const previewSource = COSMETIC_PREVIEWS[cosmetic.id];
+	const accentColor = cosmeticColor(cosmetic.accentColor);
+	const previewColor = cosmeticColor(cosmetic.previewColor ?? cosmetic.accentColor);
+
+	return {
+		"--cosmetic-accent": accentColor,
+		"--cosmetic-preview": previewColor,
+		...(previewSource ? { "--cosmetic-image": `url("${previewSource}")` } : {}),
+	} as CSSProperties;
+}
+
+function getAchievementProgress(achievement: Achievement): {
+	ratio: number;
+	label: string;
+	current: number;
+	target: number;
+} {
+	const target = Math.max(achievement.progressTarget, 1);
+
+	if (achievement.unlocked) {
+		return {
+			ratio: 1,
+			label: "Complete",
+			current: target,
+			target,
+		};
+	}
+
+	const current = Math.max(
+		0,
+		Math.min(achievement.progressCurrent, target),
+	);
+
+	return {
+		ratio: current / target,
+		label: `${current}/${target}`,
+		current,
+		target,
+	};
+}
 
 const GAME_ROUTES: Record<
 	string,
@@ -118,6 +176,15 @@ function HomeMenu(): JSX.Element {
 
 		return [...knownGames, ...extraGames];
 	}, [minigames]);
+
+	const cosmeticGroups = useMemo(() => {
+		const groups = new Map<Cosmetic["type"], Cosmetic[]>();
+		for (const category of COSMETIC_CATEGORIES) groups.set(category.type, []);
+		for (const cosmetic of cosmetics ?? []) {
+			groups.set(cosmetic.type, [...(groups.get(cosmetic.type) ?? []), cosmetic]);
+		}
+		return groups;
+	}, [cosmetics]);
 
 	const handleLogout = async () => {
 		if (isLoggingOut) return;
@@ -351,18 +418,33 @@ function HomeMenu(): JSX.Element {
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					{achievements ? (
 						<div className="hub-modal__list">
-							{achievements.map((achievement) => (
-								<article
-									key={achievement.id}
-									className={achievement.unlocked ? "is-unlocked" : ""}
-								>
-									<strong>{achievement.title}</strong>
-									<p>{achievement.description}</p>
-									<small>
-										{achievement.progressCurrent}/{achievement.progressTarget} · {achievement.unlocked ? "Unlocked" : "Locked"}
-									</small>
-								</article>
-							))}
+							{achievements.map((achievement) => {
+								const progress = getAchievementProgress(achievement);
+
+								return (
+									<article
+										key={achievement.id}
+										className={achievement.unlocked ? "is-unlocked" : ""}
+									>
+										<strong>{achievement.title}</strong>
+										<p>{achievement.description}</p>
+										<div className="hub-modal__achievement-status">
+											<small>{achievement.unlocked ? "Unlocked" : "Locked"}</small>
+											<small>{progress.label}</small>
+										</div>
+										<div
+											className="hub-modal__achievement-progress"
+											role="progressbar"
+											aria-label={`${achievement.title} progress`}
+											aria-valuemin={0}
+											aria-valuemax={progress.target}
+											aria-valuenow={progress.current}
+										>
+											<span style={{ width: `${progress.ratio * 100}%` }} />
+										</div>
+									</article>
+								);
+							})}
 						</div>
 					) : (
 						<p>Loading achievements...</p>
@@ -374,24 +456,51 @@ function HomeMenu(): JSX.Element {
 				<HubModal title="Customization" onClose={() => setActiveModal(null)}>
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					{cosmetics ? (
-						<div className="hub-modal__list hub-modal__cosmetics">
-							{cosmetics.map((cosmetic) => (
-								<article key={cosmetic.id}>
-									<strong>{cosmetic.name}</strong>
-									<p>{cosmetic.description}</p>
-									<button
-										type="button"
-										disabled={cosmetic.equipped || cosmetic.lockedReason === "achievement-locked"}
-										onClick={() => void handleCosmeticAction(cosmetic)}
-									>
-										{cosmetic.equipped
-											? "Equipped"
-											: cosmetic.owned
-												? "Equip"
-												: `Buy · ${cosmetic.price} coins`}
-									</button>
-								</article>
-							))}
+						<div className="hub-modal__cosmetics">
+							{COSMETIC_CATEGORIES.map((category) => {
+								const categoryCosmetics = cosmeticGroups.get(category.type) ?? [];
+
+								return (
+									<section className="hub-modal__cosmetic-category" key={category.type}>
+										<h3>{category.title}</h3>
+										<div className="hub-modal__list hub-modal__cosmetic-grid">
+											{categoryCosmetics.map((cosmetic) => {
+												const hasImage = COSMETIC_PREVIEWS[cosmetic.id] !== undefined;
+												const previewClassName = [
+													"hub-modal__cosmetic-preview",
+													`hub-modal__cosmetic-preview--${cosmetic.type}`,
+													hasImage ? "has-image" : "",
+												]
+													.filter(Boolean)
+													.join(" ");
+
+												return (
+													<article key={cosmetic.id}>
+														<div
+															className={previewClassName}
+															style={getCosmeticPreviewStyle(cosmetic)}
+															aria-hidden="true"
+														/>
+														<strong>{cosmetic.name}</strong>
+														<p>{cosmetic.description}</p>
+														<button
+															type="button"
+															disabled={cosmetic.equipped || cosmetic.lockedReason === "achievement-locked"}
+															onClick={() => void handleCosmeticAction(cosmetic)}
+														>
+															{cosmetic.equipped
+																? "Equipped"
+																: cosmetic.owned
+																	? "Equip"
+																	: `Buy · ${cosmetic.price} coins`}
+														</button>
+													</article>
+												);
+											})}
+										</div>
+									</section>
+								);
+							})}
 						</div>
 					) : (
 						<p>Loading customization...</p>

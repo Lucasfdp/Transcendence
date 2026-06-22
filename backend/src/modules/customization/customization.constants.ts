@@ -72,6 +72,15 @@ export const COSMETICS: CosmeticDefinition[] = [
 		accentColor: 0xd97832,
 		previewColor: 0xffd18a,
 	},
+	{
+		id: "sunrise_bg",
+		type: "hub_background",
+		name: "Sunrise Background",
+		description: "A bright morning dojo as the sun rises.",
+		price: 150,
+		accentColor: 0xf0a24b,
+		previewColor: 0xffe3a6,
+	},
 ];
 
 export function findCosmetic(

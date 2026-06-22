@@ -175,18 +175,18 @@ export function AuthPage(): JSX.Element {
 	}
 
 	return (
-		<main className="auth-page">
+		<main
+			className="auth-page"
+			style={
+				{
+					"--auth-login-bg": `url("/assets/backgrounds/login_bg.png?v=${loginBackdropVersion}")`,
+				} as React.CSSProperties
+			}
+		>
 			<TempleBackdrop pageClassName="auth-page" />
 
 			<section className="auth-page__shell">
-				<div
-					className="auth-page__intro"
-					style={
-						{
-							"--auth-login-bg": `url("/assets/backgrounds/login_bg.png?v=${loginBackdropVersion}")`,
-						} as React.CSSProperties
-					}
-				>
+				<div className="auth-page__intro">
 					<p className="auth-page__eyebrow">Dojo Gate</p>
 					<h1 className="auth-page__title">Shell Smash</h1>
 					<p className="auth-page__description">
