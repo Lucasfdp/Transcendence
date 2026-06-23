@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
@@ -17,6 +17,11 @@ import {
 
 type HubView = "choose" | "normal";
 type InfoModal = { title: string; description: string } | null;
+
+const CYCLE_BASE_DURATION_SECONDS = 120;
+const CYCLE_SPEED_STEP = 0.25;
+const CYCLE_MIN_SPEED = 0.25;
+const CYCLE_MAX_SPEED = 8;
 
 const COSMETIC_CATEGORIES: { type: Cosmetic["type"]; title: string }[] = [
 	{ type: "shell_skin", title: "Shells" },
@@ -102,6 +107,183 @@ const GAME_ROUTES: Record<
 		available: true,
 	},
 };
+
+type RgbColor = { r: number; g: number; b: number };
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.min(max, Math.max(min, value));
+}
+
+function lerp(start: number, end: number, amount: number): number {
+	return start + (end - start) * amount;
+}
+
+function blendColor(a: RgbColor, b: RgbColor, amount: number): RgbColor {
+	return {
+		r: Math.round(lerp(a.r, b.r, amount)),
+		g: Math.round(lerp(a.g, b.g, amount)),
+		b: Math.round(lerp(a.b, b.b, amount)),
+	};
+}
+
+function rgbToCss({ r, g, b }: RgbColor): string {
+	return `rgb(${r}, ${g}, ${b})`;
+}
+
+function getCurrentDayProgress(): number {
+	const now = new Date();
+	const seconds =
+		now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+	return seconds / 86400;
+}
+
+function getNightPhase(progress: number): number {
+	return progress >= 0.75 ? (progress - 0.75) / 0.5 : (progress + 0.25) / 0.5;
+}
+
+function interpolatePalette(
+	progress: number,
+	stops: Array<{ at: number; color: RgbColor }>,
+): string {
+	for (let index = 0; index < stops.length - 1; index += 1) {
+		const current = stops[index];
+		const next = stops[index + 1];
+		if (progress <= next.at) {
+			const range = next.at - current.at || 1;
+			const amount = clamp((progress - current.at) / range, 0, 1);
+			return rgbToCss(blendColor(current.color, next.color, amount));
+		}
+	}
+	return rgbToCss(stops[stops.length - 1].color);
+}
+
+function applyCycleVisuals(node: HTMLDivElement, progress: number): void {
+	const normalized = ((progress % 1) + 1) % 1;
+	const isDay = normalized >= 0.25 && normalized < 0.75;
+	const dayPhase = clamp((normalized - 0.25) / 0.5, 0, 1);
+	const nightPhase = clamp(getNightPhase(normalized), 0, 1);
+	const dayArc = Math.sin(dayPhase * Math.PI);
+	const nightArc = Math.sin(nightPhase * Math.PI);
+	const sunX = -12 + dayPhase * 124;
+	const sunY = 72 - dayArc * 62;
+	const moonX = -12 + nightPhase * 124;
+	const moonY = 74 - nightArc * 58;
+	const dawnBlend = clamp(1 - Math.abs(normalized - 0.25) / 0.08, 0, 1);
+	const duskBlend = clamp(1 - Math.abs(normalized - 0.75) / 0.08, 0, 1);
+	const twilight = Math.max(dawnBlend, duskBlend);
+	const nightStrength = isDay ? 0 : 0.55 + nightArc * 0.45;
+	const starsOpacity = clamp(nightStrength - twilight * 0.6, 0, 1);
+
+	const topColor = interpolatePalette(normalized, [
+		{ at: 0, color: { r: 7, g: 13, b: 28 } },
+		{ at: 0.2, color: { r: 24, g: 49, b: 88 } },
+		{ at: 0.28, color: { r: 123, g: 154, b: 212 } },
+		{ at: 0.5, color: { r: 103, g: 196, b: 255 } },
+		{ at: 0.72, color: { r: 241, g: 150, b: 92 } },
+		{ at: 0.82, color: { r: 35, g: 45, b: 87 } },
+		{ at: 1, color: { r: 7, g: 13, b: 28 } },
+	]);
+	const horizonColor = interpolatePalette(normalized, [
+		{ at: 0, color: { r: 18, g: 25, b: 51 } },
+		{ at: 0.2, color: { r: 93, g: 73, b: 111 } },
+		{ at: 0.28, color: { r: 255, g: 202, b: 150 } },
+		{ at: 0.5, color: { r: 178, g: 225, b: 255 } },
+		{ at: 0.72, color: { r: 255, g: 177, b: 122 } },
+		{ at: 0.82, color: { r: 64, g: 47, b: 80 } },
+		{ at: 1, color: { r: 18, g: 25, b: 51 } },
+	]);
+
+	node.style.setProperty("--cycle-top", topColor);
+	node.style.setProperty("--cycle-horizon", horizonColor);
+	node.style.setProperty("--cycle-sun-x", `${sunX}%`);
+	node.style.setProperty("--cycle-sun-y", `${sunY}%`);
+	node.style.setProperty("--cycle-moon-x", `${moonX}%`);
+	node.style.setProperty("--cycle-moon-y", `${moonY}%`);
+	node.style.setProperty("--cycle-sun-opacity", isDay ? "1" : "0");
+	node.style.setProperty("--cycle-moon-opacity", isDay ? "0" : "1");
+	node.style.setProperty("--cycle-stars-opacity", starsOpacity.toFixed(3));
+	node.style.setProperty("--cycle-twilight-opacity", twilight.toFixed(3));
+}
+
+function CycleBackdrop(): JSX.Element {
+	const backdropRef = useRef<HTMLDivElement | null>(null);
+	const speedRef = useRef(1);
+	const progressRef = useRef(getCurrentDayProgress());
+	const lastFrameRef = useRef<number | null>(null);
+
+	useEffect(() => {
+		let frameId = 0;
+
+		const logSpeed = () => {
+			const duration = CYCLE_BASE_DURATION_SECONDS / speedRef.current;
+			console.info(
+				`[cycle] speed ${speedRef.current.toFixed(2)}x (${duration.toFixed(1)}s por ciclo completo)`,
+			);
+		};
+
+		const updateFrame = () => {
+			const node = backdropRef.current;
+			if (!node) return;
+			const now = performance.now();
+			const lastFrame = lastFrameRef.current ?? now;
+			const deltaSeconds = (now - lastFrame) / 1000;
+			lastFrameRef.current = now;
+			progressRef.current +=
+				(deltaSeconds * speedRef.current) / CYCLE_BASE_DURATION_SECONDS;
+			applyCycleVisuals(node, progressRef.current);
+			frameId = window.requestAnimationFrame(updateFrame);
+		};
+
+		const handleKeyDown = (event: KeyboardEvent) => {
+			const target = event.target;
+			if (
+				target instanceof HTMLElement &&
+				(target.tagName === "INPUT" ||
+					target.tagName === "TEXTAREA" ||
+					target.isContentEditable)
+			) {
+				return;
+			}
+
+			if (event.code === "NumpadAdd") {
+				speedRef.current = clamp(
+					Number((speedRef.current + CYCLE_SPEED_STEP).toFixed(2)),
+					CYCLE_MIN_SPEED,
+					CYCLE_MAX_SPEED,
+				);
+				logSpeed();
+			} else if (event.code === "NumpadSubtract") {
+				speedRef.current = clamp(
+					Number((speedRef.current - CYCLE_SPEED_STEP).toFixed(2)),
+					CYCLE_MIN_SPEED,
+					CYCLE_MAX_SPEED,
+				);
+				logSpeed();
+			}
+		};
+
+		logSpeed();
+		updateFrame();
+		window.addEventListener("keydown", handleKeyDown);
+
+		return () => {
+			window.cancelAnimationFrame(frameId);
+			window.removeEventListener("keydown", handleKeyDown);
+		};
+	}, []);
+
+		return (
+		<div className="hub-cycle" ref={backdropRef} aria-hidden="true">
+			<div className="hub-cycle__sky" />
+			<div className="hub-cycle__stars" />
+			<div className="hub-cycle__sun" />
+			<div className="hub-cycle__moon" />
+			<div className="hub-cycle__glow" />
+			<div className="hub-cycle__clouds" />
+			<div className="hub-cycle__foreground" />
+		</div>
+	);
+}
 
 function HomeMenu(): JSX.Element {
 	const navigate = useNavigate();
@@ -257,9 +439,11 @@ function HomeMenu(): JSX.Element {
 
 	const playerName = player?.turtleName ?? player?.username ?? "Player";
 	const backgroundClass = hubBackgroundClass("hub-page", player?.hubBackground);
+	const showCycleBackdrop = player?.hubBackground === "cycle_bg";
 
 	return (
 		<main className={`menu-page hub-page ${backgroundClass}`}>
+			{showCycleBackdrop ? <CycleBackdrop /> : null}
 			<div className="menu-page__shell hub-page__shell">
 				<header className="menu-page__topbar hub-page__topbar">
 					<button

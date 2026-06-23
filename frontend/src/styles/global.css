@@ -1172,27 +1172,119 @@ input {
 }
 
 .hub-page--cycle {
-	--hub-bg-image: url("/assets/backgrounds/cycle-part1.png");
 	background:
-		linear-gradient(180deg, rgba(3, 8, 18, 0.18), rgba(3, 4, 7, 0.82)),
-		var(--hub-bg-image),
+		linear-gradient(180deg, rgba(3, 8, 18, 0.03), rgba(3, 4, 7, 0.22)),
 		linear-gradient(180deg, #101a28, #05070a);
 	background-position: center bottom;
 	background-size: cover;
 }
 
 .hub-page--cycle::before {
-	content: "";
+	content: none;
+}
+
+.hub-cycle {
+	--cycle-top: rgb(7, 13, 28);
+	--cycle-horizon: rgb(18, 25, 51);
+	--cycle-sun-x: 50%;
+	--cycle-sun-y: 22%;
+	--cycle-moon-x: 50%;
+	--cycle-moon-y: 22%;
+	--cycle-sun-opacity: 1;
+	--cycle-moon-opacity: 0;
+	--cycle-stars-opacity: 0;
+	--cycle-twilight-opacity: 0;
 	position: absolute;
 	inset: 0;
 	z-index: 0;
 	pointer-events: none;
+	overflow: hidden;
+}
+
+.hub-cycle__sky,
+.hub-cycle__clouds,
+.hub-cycle__foreground,
+.hub-cycle__sun,
+.hub-cycle__moon,
+.hub-cycle__stars,
+.hub-cycle__glow {
+	position: absolute;
+	inset: 0;
+}
+
+.hub-cycle__sky {
+	z-index: 0;
 	background:
-		radial-gradient(circle at 50% 22%, rgba(255, 236, 174, 0.16), transparent 22%),
+		linear-gradient(180deg, color-mix(in srgb, var(--cycle-top) 88%, #020305) 0%, transparent 68%),
+		linear-gradient(180deg, var(--cycle-top) 0%, var(--cycle-horizon) 62%, rgba(255, 194, 128, 0.12) 100%);
+}
+
+.hub-cycle__sun,
+.hub-cycle__moon {
+	inset: auto;
+	z-index: 2;
+	width: clamp(4.5rem, 8vw, 7rem);
+	aspect-ratio: 1;
+	transform: translate(-50%, -50%);
+}
+
+.hub-cycle__sun {
+	left: var(--cycle-sun-x);
+	top: var(--cycle-sun-y);
+	opacity: var(--cycle-sun-opacity);
+	border-radius: 50%;
+	background:
+		radial-gradient(circle at 35% 35%, #fff7cc 0%, #ffe06f 30%, #f7be2d 66%, rgba(247, 190, 45, 0.18) 100%);
+	box-shadow:
+		0 0 35px rgba(255, 217, 102, 0.44),
+		0 0 90px rgba(255, 176, 63, 0.24);
+}
+
+.hub-cycle__moon {
+	left: var(--cycle-moon-x);
+	top: var(--cycle-moon-y);
+	opacity: var(--cycle-moon-opacity);
+	background:
+		url("/assets/backgrounds/cycle-part3.png") center / contain no-repeat;
+	filter:
+		drop-shadow(0 0 18px rgba(212, 219, 243, 0.22))
+		drop-shadow(0 0 36px rgba(133, 147, 186, 0.12));
+}
+
+.hub-cycle__stars {
+	z-index: 1;
+	opacity: var(--cycle-stars-opacity);
+	background-image:
+		radial-gradient(circle at 12% 20%, rgba(255, 255, 255, 0.96) 0 1px, transparent 1.8px),
+		radial-gradient(circle at 24% 36%, rgba(214, 232, 255, 0.8) 0 1.2px, transparent 2px),
+		radial-gradient(circle at 42% 18%, rgba(255, 255, 255, 0.9) 0 1px, transparent 1.8px),
+		radial-gradient(circle at 57% 29%, rgba(255, 255, 255, 0.86) 0 1px, transparent 1.8px),
+		radial-gradient(circle at 73% 17%, rgba(203, 226, 255, 0.78) 0 1.2px, transparent 2px),
+		radial-gradient(circle at 84% 31%, rgba(255, 255, 255, 0.92) 0 1px, transparent 1.8px),
+		radial-gradient(circle at 92% 12%, rgba(255, 255, 255, 0.88) 0 1px, transparent 1.8px);
+}
+
+.hub-cycle__glow {
+	z-index: 3;
+	background:
+		radial-gradient(circle at 50% 72%, rgba(255, 180, 116, calc(var(--cycle-twilight-opacity) * 0.24)), transparent 34%),
+		radial-gradient(circle at 50% 18%, rgba(255, 232, 171, calc(var(--cycle-twilight-opacity) * 0.18)), transparent 26%);
+}
+
+.hub-cycle__clouds {
+	z-index: 4;
+	background:
+		linear-gradient(180deg, rgba(255, 245, 208, calc(var(--cycle-twilight-opacity) * 0.12)), transparent 32%),
 		url("/assets/backgrounds/cycle-part2.png") repeat-x center top / auto 100%;
+	opacity: 0.92;
 	animation: cycle-sky-parallax 42s linear infinite;
-	opacity: 0.96;
 	will-change: background-position;
+}
+
+.hub-cycle__foreground {
+	z-index: 5;
+	background:
+		url("/assets/backgrounds/cycle-part1.png") center bottom / cover no-repeat;
 }
 
 .hub-page__shell {
