@@ -1171,8 +1171,9 @@ input {
 .hub-page__shell {
 	position: relative;
 	z-index: 1;
-	min-height: 100vh;
-	height: auto;
+	min-height: 100dvh;
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
 	padding: clamp(1rem, 2.4vw, 2rem);
 	overflow: visible;
 	background: radial-gradient(circle at 50% 24%, rgba(241, 211, 145, 0.12), transparent 34%);
@@ -1206,8 +1207,8 @@ input {
 	grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr) minmax(13rem, 16rem);
 	gap: clamp(1rem, 2vw, 1.6rem);
 	align-items: end;
-	min-height: calc(100vh - 6.5rem);
-	padding-top: clamp(1rem, 2vw, 1.6rem);
+	min-height: 0;
+	padding-top: clamp(0.8rem, 1.6vw, 1.25rem);
 }
 
 .hub-page__stage {
@@ -1215,7 +1216,7 @@ input {
 	align-content: center;
 	justify-items: center;
 	gap: clamp(1.5rem, 3vw, 2.4rem);
-	min-height: calc(100vh - 9rem);
+	min-height: 0;
 }
 
 .hub-page__mode-grid {
@@ -2121,7 +2122,7 @@ input {
 	}
 
 	.menu-page__shell {
-		min-height: 100vh;
+		min-height: 100dvh;
 		height: auto;
 		padding: 1rem;
 		overflow: visible;
