@@ -14,6 +14,7 @@
 
 * {
 	box-sizing: border-box;
+	user-select: none;
 }
 
 html,
@@ -1146,6 +1147,8 @@ input {
 }
 
 .hub-page {
+	position: relative;
+	isolation: isolate;
 	min-height: 100vh;
 	background:
 		linear-gradient(180deg, rgba(5, 7, 12, 0.16), rgba(3, 4, 7, 0.84)),
@@ -1168,9 +1171,33 @@ input {
 	--hub-bg-image: url("/assets/backgrounds/sunrise_bg.png");
 }
 
+.hub-page--cycle {
+	--hub-bg-image: url("/assets/backgrounds/cycle-part1.png");
+	background:
+		linear-gradient(180deg, rgba(3, 8, 18, 0.18), rgba(3, 4, 7, 0.82)),
+		var(--hub-bg-image),
+		linear-gradient(180deg, #101a28, #05070a);
+	background-position: center bottom;
+	background-size: cover;
+}
+
+.hub-page--cycle::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	pointer-events: none;
+	background:
+		radial-gradient(circle at 50% 22%, rgba(255, 236, 174, 0.16), transparent 22%),
+		url("/assets/backgrounds/cycle-part2.png") repeat-x center top / auto 100%;
+	animation: cycle-sky-parallax 42s linear infinite;
+	opacity: 0.96;
+	will-change: background-position;
+}
+
 .hub-page__shell {
 	position: relative;
-	z-index: 1;
+	z-index: 2;
 	min-height: 100dvh;
 	display: grid;
 	grid-template-rows: auto minmax(0, 1fr);
@@ -1839,6 +1866,8 @@ input {
 
 .game-host {
 	--game-bg-image: url("/assets/backgrounds/night_bg.png");
+	position: relative;
+	isolation: isolate;
 	width: 100%;
 	height: 100%;
 	min-height: 100vh;
@@ -1864,6 +1893,31 @@ input {
 	--game-bg-image: url("/assets/backgrounds/sunrise_bg.png");
 }
 
+.game-host--cycle {
+	--game-bg-image: url("/assets/backgrounds/cycle-part1.png");
+	background:
+		radial-gradient(circle at 50% 42%, rgba(241, 211, 145, 0.08), transparent 32%),
+		linear-gradient(180deg, rgba(5, 7, 12, 0.1), rgba(3, 4, 7, 0.72)),
+		var(--game-bg-image),
+		#0d1117;
+	background-position: center bottom;
+	background-size: cover;
+}
+
+.game-host--cycle::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	pointer-events: none;
+	background:
+		radial-gradient(circle at 50% 20%, rgba(255, 236, 174, 0.14), transparent 20%),
+		url("/assets/backgrounds/cycle-part2.png") repeat-x center top / auto 100%;
+	animation: cycle-sky-parallax 42s linear infinite;
+	opacity: 0.96;
+	will-change: background-position;
+}
+
 .game-host-fullscreen {
 	position: fixed;
 	inset: 0;
@@ -1871,8 +1925,23 @@ input {
 
 .game-host canvas {
 	display: block;
+	position: relative;
 	width: 100% !important;
 	height: 100% !important;
+	z-index: 1;
+}
+
+@keyframes cycle-sky-parallax {
+	from {
+		background-position:
+			center center,
+			0 top;
+	}
+	to {
+		background-position:
+			center center,
+			-240px top;
+	}
 }
 
 .power-picker-page {

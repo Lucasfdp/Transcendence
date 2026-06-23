@@ -28,6 +28,7 @@ const COSMETIC_PREVIEWS: Partial<Record<Cosmetic["id"], string>> = {
 	night_bg: "/assets/backgrounds/night_bg.png",
 	sunset_bg: "/assets/backgrounds/sunset_bg.png",
 	sunrise_bg: "/assets/backgrounds/sunrise_bg.png",
+	cycle_bg: "/assets/backgrounds/cycle-part2.png",
 };
 
 function cosmeticColor(color: number): string {
@@ -114,6 +115,7 @@ function HomeMenu(): JSX.Element {
 	const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isTournamentModalOpen, setIsTournamentModalOpen] = useState(false);
+	const [isRiverRushWipOpen, setIsRiverRushWipOpen] = useState(false);
 	const [infoModal, setInfoModal] = useState<InfoModal>(null);
 	const [achievements, setAchievements] = useState<Achievement[] | null>(null);
 	const [cosmetics, setCosmetics] = useState<Cosmetic[] | null>(null);
@@ -373,10 +375,12 @@ function HomeMenu(): JSX.Element {
 												className="hub-game-card hub-game-card--locked"
 												type="button"
 												onClick={() =>
-													setInfoModal({
-														title: game.name,
-														description: `${game.description}\n\nArena is being built. Check back soon!`,
-													})
+													game.id === "river-rush"
+														? setIsRiverRushWipOpen(true)
+														: setInfoModal({
+																title: game.name,
+																description: `${game.description}\n\nArena is being built. Check back soon!`,
+															})
 												}
 											>
 												<span>{game.name}</span>
@@ -419,6 +423,15 @@ function HomeMenu(): JSX.Element {
 			<WorkInProgressModal
 				isOpen={isTournamentModalOpen}
 				onClose={() => setIsTournamentModalOpen(false)}
+				closeLabel="Return to Hub"
+			/>
+
+			<WorkInProgressModal
+				isOpen={isRiverRushWipOpen}
+				onClose={() => setIsRiverRushWipOpen(false)}
+				featureName="River Rush"
+				title="Work In Progress"
+				description="River Rush is not designed yet. This shrine will open when the mode is ready."
 				closeLabel="Return to Hub"
 			/>
 

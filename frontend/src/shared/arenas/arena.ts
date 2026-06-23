@@ -4,8 +4,8 @@
  * An arena is defined in *source pixel space* (the resolution its texture was
  * authored at). At render time it is letterbox-fitted into the canvas with a
  * single uniform scale factor — `min(w/srcW, h/srcH)` — so the ellipse keeps
- * its aspect ratio at every window size, exactly like HubScene letterboxes
- * its background image.
+ * its aspect ratio at every window size, using the same kind of uniform
+ * letterboxing used elsewhere in the Phaser renderer.
  *
  * Boundary check (is a point inside the ring?):
  *   ((px - cx) / rx)² + ((py - cy) / ry)² ≤ 1

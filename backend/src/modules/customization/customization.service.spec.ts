@@ -125,6 +125,9 @@ describe("CustomizationService", () => {
 		expect(
 			cosmetics.find((cosmetic) => cosmetic.id === "night_bg"),
 		).toEqual(expect.objectContaining({ owned: true, equipped: true }));
+		expect(
+			cosmetics.find((cosmetic) => cosmetic.id === "cycle_bg"),
+		).toEqual(expect.objectContaining({ owned: true }));
 	});
 
 	it("treats legacy hub background ids as equipped", async () => {

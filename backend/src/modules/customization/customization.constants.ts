@@ -81,6 +81,16 @@ export const COSMETICS: CosmeticDefinition[] = [
 		accentColor: 0xf0a24b,
 		previewColor: 0xffe3a6,
 	},
+	{
+		id: "cycle_bg",
+		type: "hub_background",
+		name: "Cycle Background",
+		description: "Layered parallax sky with a moving day-cycle horizon.",
+		price: 0,
+		defaultUnlocked: true,
+		accentColor: 0x526f9f,
+		previewColor: 0xbcd8ff,
+	},
 ];
 
 export function findCosmetic(

@@ -1,9 +1,9 @@
 /**
  * shared/drawBackground.ts — procedural Japanese night-sky background.
  *
- * Extracted from HubScene so LandingScene and any future scene can reuse it
- * without duplicating code. Returns the array of created GameObjects so the
- * caller can clear them in a layer array on resize.
+ * Shared across Phaser scenes to avoid duplicating the same procedural backdrop
+ * logic. Returns the array of created GameObjects so the caller can clear them
+ * in a layer array on resize.
  */
 
 import Phaser from "phaser";

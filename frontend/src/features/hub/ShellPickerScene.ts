@@ -2,9 +2,9 @@
  * hub/ShellPickerScene.ts — pre-game shell selection screen.
  *
  * Flow:
- *   HubScene → scene.start('ShellPickerScene', { gameId, targetScene, playerCount })
- *             → Player 1 picks ≤3 shells → [Player 2 picks if playerCount=2]
- *             → stores selection in registry → scene.start(targetScene)
+ *   game route → scene.start('ShellPickerScene', { gameId, targetScene, playerCount })
+ *              → Player 1 picks ≤3 shells → [Player 2 picks if playerCount=2]
+ *              → stores selection in registry → scene.start(targetScene)
  *
  * Guest players skip backend validation and see the full shell pool.
  * The registry key 'shellSelection' is a { player0: string[], player1: string[] }
