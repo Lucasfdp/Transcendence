@@ -18,11 +18,6 @@ import {
 type HubView = "choose" | "normal";
 type InfoModal = { title: string; description: string } | null;
 
-const CYCLE_BASE_DURATION_SECONDS = 120;
-const CYCLE_SPEED_STEP = 0.25;
-const CYCLE_MIN_SPEED = 0.25;
-const CYCLE_MAX_SPEED = 8;
-
 const COSMETIC_CATEGORIES: { type: Cosmetic["type"]; title: string }[] = [
 	{ type: "shell_skin", title: "Shells" },
 	{ type: "hub_background", title: "Backgrounds" },
@@ -109,6 +104,67 @@ const GAME_ROUTES: Record<
 };
 
 type RgbColor = { r: number; g: number; b: number };
+type CycleStar = {
+	left: string;
+	top: string;
+	size: string;
+	color: string;
+	opacity: number;
+	blur: string;
+	twinkleDuration: string;
+	twinkleDelay: string;
+};
+
+const CYCLE_STAR_COLORS = [
+	"rgba(255, 255, 255, 0.98)",
+	"rgba(241, 247, 255, 0.96)",
+	"rgba(226, 239, 255, 0.94)",
+	"rgba(210, 232, 255, 0.92)",
+	"rgba(194, 223, 255, 0.9)",
+];
+const CYCLE_STAR_COUNT = 420;
+
+function createCycleStars(count: number): CycleStar[] {
+	return Array.from({ length: count }, (_, index) => {
+		const left = `${(Math.random() * 100).toFixed(2)}%`;
+		const top = `${(Math.random() * 64 + 2).toFixed(2)}%`;
+		const tier = Math.random();
+		const size =
+			tier < 0.76
+				? `${(Math.random() * 1.4 + 0.9).toFixed(2)}px`
+				: tier < 0.96
+					? `${(Math.random() * 1.1 + 1.15).toFixed(2)}px`
+					: `${(Math.random() * 1.6 + 2.2).toFixed(2)}px`;
+		const opacity = Number(
+			(
+				tier < 0.76
+					? Math.random() * 0.28 + 0.28
+					: tier < 0.96
+						? Math.random() * 0.26 + 0.52
+						: Math.random() * 0.18 + 0.74
+			).toFixed(2),
+		);
+		const blur =
+			tier < 0.76
+				? `${(Math.random() * 5 + 2).toFixed(2)}px`
+				: tier < 0.96
+					? `${(Math.random() * 8 + 6).toFixed(2)}px`
+					: `${(Math.random() * 12 + 11).toFixed(2)}px`;
+		const twinkleDuration = `${(Math.random() * 4.5 + 3.5).toFixed(2)}s`;
+		const twinkleDelay = `${(-Math.random() * 6).toFixed(2)}s`;
+
+		return {
+			left,
+			top,
+			size,
+			color: CYCLE_STAR_COLORS[index % CYCLE_STAR_COLORS.length],
+			opacity,
+			blur,
+			twinkleDuration,
+			twinkleDelay,
+		};
+	});
+}
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
@@ -130,11 +186,32 @@ function rgbToCss({ r, g, b }: RgbColor): string {
 	return `rgb(${r}, ${g}, ${b})`;
 }
 
-function getCurrentDayProgress(): number {
-	const now = new Date();
+function getDayProgress(now: Date): number {
 	const seconds =
-		now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+		now.getHours() * 3600 +
+		now.getMinutes() * 60 +
+		now.getSeconds() +
+		now.getMilliseconds() / 1000;
 	return seconds / 86400;
+}
+
+function formatClockTime(now: Date): string {
+	return now.toLocaleTimeString([], {
+		hour: "numeric",
+		minute: "2-digit",
+		second: "2-digit",
+		hour12: true,
+	});
+}
+
+function createManualTime(base: Date, totalMinutes: number): Date {
+	const next = new Date(base);
+	next.setHours(Math.floor(totalMinutes / 60), totalMinutes % 60, 0, 0);
+	return next;
+}
+
+function getTotalMinutes(now: Date): number {
+	return now.getHours() * 60 + now.getMinutes();
 }
 
 function getNightPhase(progress: number): number {
@@ -205,77 +282,39 @@ function applyCycleVisuals(node: HTMLDivElement, progress: number): void {
 	node.style.setProperty("--cycle-twilight-opacity", twilight.toFixed(3));
 }
 
-function CycleBackdrop(): JSX.Element {
+function CycleBackdrop({ now }: { now: Date }): JSX.Element {
 	const backdropRef = useRef<HTMLDivElement | null>(null);
-	const speedRef = useRef(1);
-	const progressRef = useRef(getCurrentDayProgress());
-	const lastFrameRef = useRef<number | null>(null);
+	const stars = useMemo(() => createCycleStars(CYCLE_STAR_COUNT), []);
 
 	useEffect(() => {
-		let frameId = 0;
+		const node = backdropRef.current;
+		if (!node) return;
+		applyCycleVisuals(node, getDayProgress(now));
+	}, [now]);
 
-		const logSpeed = () => {
-			const duration = CYCLE_BASE_DURATION_SECONDS / speedRef.current;
-			console.info(
-				`[cycle] speed ${speedRef.current.toFixed(2)}x (${duration.toFixed(1)}s por ciclo completo)`,
-			);
-		};
-
-		const updateFrame = () => {
-			const node = backdropRef.current;
-			if (!node) return;
-			const now = performance.now();
-			const lastFrame = lastFrameRef.current ?? now;
-			const deltaSeconds = (now - lastFrame) / 1000;
-			lastFrameRef.current = now;
-			progressRef.current +=
-				(deltaSeconds * speedRef.current) / CYCLE_BASE_DURATION_SECONDS;
-			applyCycleVisuals(node, progressRef.current);
-			frameId = window.requestAnimationFrame(updateFrame);
-		};
-
-		const handleKeyDown = (event: KeyboardEvent) => {
-			const target = event.target;
-			if (
-				target instanceof HTMLElement &&
-				(target.tagName === "INPUT" ||
-					target.tagName === "TEXTAREA" ||
-					target.isContentEditable)
-			) {
-				return;
-			}
-
-			if (event.code === "NumpadAdd") {
-				speedRef.current = clamp(
-					Number((speedRef.current + CYCLE_SPEED_STEP).toFixed(2)),
-					CYCLE_MIN_SPEED,
-					CYCLE_MAX_SPEED,
-				);
-				logSpeed();
-			} else if (event.code === "NumpadSubtract") {
-				speedRef.current = clamp(
-					Number((speedRef.current - CYCLE_SPEED_STEP).toFixed(2)),
-					CYCLE_MIN_SPEED,
-					CYCLE_MAX_SPEED,
-				);
-				logSpeed();
-			}
-		};
-
-		logSpeed();
-		updateFrame();
-		window.addEventListener("keydown", handleKeyDown);
-
-		return () => {
-			window.cancelAnimationFrame(frameId);
-			window.removeEventListener("keydown", handleKeyDown);
-		};
-	}, []);
-
-		return (
+	return (
 		<div className="hub-cycle" ref={backdropRef} aria-hidden="true">
 			<div className="hub-cycle__sky" />
-			<div className="hub-cycle__stars" />
+			<div className="hub-cycle__stars">
+				{stars.map((star, index) => (
+					<span
+						key={index}
+						className="hub-cycle__star"
+						style={
+							{
+								"--star-left": star.left,
+								"--star-top": star.top,
+								"--star-size": star.size,
+								"--star-color": star.color,
+								"--star-opacity": star.opacity.toString(),
+								"--star-blur": star.blur,
+								"--star-twinkle-duration": star.twinkleDuration,
+								"--star-twinkle-delay": star.twinkleDelay,
+							} as CSSProperties
+						}
+					/>
+				))}
+			</div>
 			<div className="hub-cycle__sun" />
 			<div className="hub-cycle__moon" />
 			<div className="hub-cycle__glow" />
@@ -288,6 +327,9 @@ function CycleBackdrop(): JSX.Element {
 function HomeMenu(): JSX.Element {
 	const navigate = useNavigate();
 	const [searchParams] = useSearchParams();
+	const [now, setNow] = useState(() => new Date());
+	const [isClockDebugOpen, setIsClockDebugOpen] = useState(false);
+	const [manualMinutes, setManualMinutes] = useState<number | null>(null);
 	const [view, setView] = useState<HubView>(() =>
 		searchParams.get("view") === "normal" ? "normal" : "choose",
 	);
@@ -305,6 +347,8 @@ function HomeMenu(): JSX.Element {
 	const [activeModal, setActiveModal] = useState<
 		"achievements" | "customization" | null
 	>(null);
+	const backgroundClass = hubBackgroundClass("hub-page", player?.hubBackground);
+	const showCycleBackdrop = player?.hubBackground === "cycle_bg";
 
 	useEffect(() => {
 		let cancelled = false;
@@ -335,6 +379,26 @@ function HomeMenu(): JSX.Element {
 			cancelled = true;
 		};
 	}, []);
+
+	useEffect(() => {
+		let timerId = 0;
+
+		const scheduleTick = () => {
+			const current = new Date();
+			setNow(current);
+			timerId = window.setTimeout(scheduleTick, 1000 - current.getMilliseconds());
+		};
+
+		scheduleTick();
+		return () => window.clearTimeout(timerId);
+	}, []);
+
+	useEffect(() => {
+		if (!showCycleBackdrop) {
+			setIsClockDebugOpen(false);
+			setManualMinutes(null);
+		}
+	}, [showCycleBackdrop]);
 
 	const gameCards = useMemo(() => {
 		const apiGames = new Map(minigames.map((game) => [game.id, game]));
@@ -438,12 +502,14 @@ function HomeMenu(): JSX.Element {
 	if (isLoading) return <RouteLoading />;
 
 	const playerName = player?.turtleName ?? player?.username ?? "Player";
-	const backgroundClass = hubBackgroundClass("hub-page", player?.hubBackground);
-	const showCycleBackdrop = player?.hubBackground === "cycle_bg";
+	const displayedNow =
+		manualMinutes === null ? now : createManualTime(now, manualMinutes);
+	const currentTimeLabel = formatClockTime(displayedNow);
+	const manualTimeLabel = formatClockTime(createManualTime(now, manualMinutes ?? getTotalMinutes(now)));
 
 	return (
 		<main className={`menu-page hub-page ${backgroundClass}`}>
-			{showCycleBackdrop ? <CycleBackdrop /> : null}
+			{showCycleBackdrop ? <CycleBackdrop now={displayedNow} /> : null}
 			<div className="menu-page__shell hub-page__shell">
 				<header className="menu-page__topbar hub-page__topbar">
 					<button
@@ -462,6 +528,47 @@ function HomeMenu(): JSX.Element {
 							Lvl {player?.level ?? 1} · Shell {player?.shellSkin ?? "kanagawa"} · ⬡ {player?.coins ?? 0}
 						</span>
 					</button>
+
+					<div className="hub-page__clock-wrap">
+						<button
+							className={`hub-page__clock${isClockDebugOpen ? " hub-page__clock--active" : ""}`}
+							type="button"
+							aria-label={`Current time ${currentTimeLabel}`}
+							aria-expanded={isClockDebugOpen}
+							onClick={() => setIsClockDebugOpen((open) => !open)}
+						>
+							{currentTimeLabel}
+						</button>
+						{showCycleBackdrop && isClockDebugOpen ? (
+							<div className="hub-page__clock-debug">
+								<label className="hub-page__clock-debug-label" htmlFor="hub-clock-debug-slider">
+									Debug time
+								</label>
+								<input
+									id="hub-clock-debug-slider"
+									className="hub-page__clock-debug-slider"
+									type="range"
+									min="0"
+									max="1439"
+									step="1"
+									value={manualMinutes ?? getTotalMinutes(now)}
+									onChange={(event) => {
+										setManualMinutes(Number(event.target.value));
+									}}
+								/>
+								<div className="hub-page__clock-debug-meta">
+									<span>{manualTimeLabel}</span>
+									<button
+										className="hub-page__clock-debug-reset"
+										type="button"
+										onClick={() => setManualMinutes(null)}
+									>
+										Real time
+									</button>
+								</div>
+							</div>
+						) : null}
+					</div>
 
 					<NineSliceButton
 						className="menu-page__logout-button"
