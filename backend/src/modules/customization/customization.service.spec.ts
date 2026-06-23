@@ -21,6 +21,7 @@ function makeUser(overrides: Partial<User> = {}): User {
 	user.coins = overrides.coins ?? 0;
 	user.shellSkin = overrides.shellSkin ?? "kanagawa";
 	user.hubBackground = overrides.hubBackground ?? "night_bg";
+	user.hubBackgroundAlter = overrides.hubBackgroundAlter ?? null;
 	user.profile = overrides.profile ?? new Profile();
 	return user;
 }
@@ -126,7 +127,7 @@ describe("CustomizationService", () => {
 			cosmetics.find((cosmetic) => cosmetic.id === "night_bg"),
 		).toEqual(expect.objectContaining({ owned: true, equipped: true }));
 		expect(
-			cosmetics.find((cosmetic) => cosmetic.id === "cycle_bg"),
+			cosmetics.find((cosmetic) => cosmetic.id === "night_cycle_bg"),
 		).toEqual(expect.objectContaining({ owned: true }));
 	});
 
@@ -181,6 +182,29 @@ describe("CustomizationService", () => {
 		).toBe(true);
 		expect(
 			cosmetics.find((cosmetic) => cosmetic.id === "kanagawa")?.equipped,
+		).toBe(true);
+	});
+
+	it("can equip owned background alter", async () => {
+		const user = makeUser();
+		cosmeticsRepo.find = jest
+			.fn()
+			.mockResolvedValue([makeCosmetic(user, "night_cycle_bg")]);
+
+		const cosmetics = await service.equip(user, "night_cycle_bg");
+
+		expect(usersRepo.save).toHaveBeenCalledWith(
+			expect.objectContaining({
+				hubBackground: "night_bg",
+				hubBackgroundAlter: "night_cycle_bg",
+			}),
+		);
+		expect(
+			cosmetics.find((cosmetic) => cosmetic.id === "night_bg")?.equipped,
+		).toBe(true);
+		expect(
+			cosmetics.find((cosmetic) => cosmetic.id === "night_cycle_bg")
+				?.equipped,
 		).toBe(true);
 	});
 

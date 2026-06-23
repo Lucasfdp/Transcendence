@@ -42,6 +42,7 @@ export default function GamePage(): JSX.Element {
 	const navigate = useNavigate();
 	const { gameId } = useParams();
 	const [hubBackground, setHubBackground] = useState<string | null>(null);
+	const [hubBackgroundAlter, setHubBackgroundAlter] = useState<string | null>(null);
 	const [launchData, setLaunchData] = useState<ShellSmashStartData | null>(null);
 
 	const sceneData = useMemo(() => {
@@ -61,7 +62,10 @@ export default function GamePage(): JSX.Element {
 		void api
 			.getMe()
 			.then((user) => {
-				if (!cancelled) setHubBackground(user.hubBackground);
+				if (!cancelled) {
+					setHubBackground(user.hubBackground);
+					setHubBackgroundAlter(user.hubBackgroundAlter);
+				}
 			})
 			.catch((err: unknown) => {
 				if (!cancelled) console.warn("[GamePage] Failed to load user:", err);
@@ -95,6 +99,7 @@ export default function GamePage(): JSX.Element {
 			<PowerupMatchmakingPanel
 				sceneData={sceneData}
 				hubBackground={hubBackground}
+				hubBackgroundAlter={hubBackgroundAlter}
 				onBack={() => navigate("/?view=normal", { replace: true })}
 				onLaunch={setLaunchData}
 			/>
@@ -107,6 +112,7 @@ export default function GamePage(): JSX.Element {
 			className={`game-host game-host-fullscreen ${hubBackgroundClass(
 				"game-host",
 				hubBackground,
+				hubBackgroundAlter,
 			)}`}
 			aria-label="Shell Smash game canvas"
 		/>
@@ -116,11 +122,13 @@ export default function GamePage(): JSX.Element {
 function PowerupMatchmakingPanel({
 	sceneData,
 	hubBackground,
+	hubBackgroundAlter,
 	onBack,
 	onLaunch,
 }: {
 	sceneData: { gameId: string; targetScene: string; playerCount: number };
 	hubBackground: string | null;
+	hubBackgroundAlter: string | null;
 	onBack: () => void;
 	onLaunch: (data: ShellSmashStartData) => void;
 }): JSX.Element {
@@ -195,7 +203,11 @@ function PowerupMatchmakingPanel({
 	}, []);
 
 	const selected = selections[currentPlayer];
-	const backgroundClass = hubBackgroundClass("game-host", hubBackground);
+	const backgroundClass = hubBackgroundClass(
+		"game-host",
+		hubBackground,
+		hubBackgroundAlter,
+	);
 	const isOnlineGame = Boolean(GAME_SCENES[gameId]);
 	const playerLabel = sceneData.playerCount === 2 ? `Player ${currentPlayer + 1}` : "Your";
 	const activeReconnectSeconds = activeMatchStatus?.reconnectExpiresAt

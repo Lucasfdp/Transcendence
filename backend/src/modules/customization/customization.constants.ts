@@ -1,4 +1,7 @@
-export type CosmeticType = "shell_skin" | "hub_background";
+export type CosmeticType =
+	| "shell_skin"
+	| "hub_background"
+	| "hub_background_alter";
 
 export interface CosmeticDefinition {
 	id: string;
@@ -10,6 +13,7 @@ export interface CosmeticDefinition {
 	defaultUnlocked?: boolean;
 	accentColor: number;
 	previewColor?: number;
+	parentCosmeticId?: string;
 }
 
 export interface CosmeticView extends CosmeticDefinition {
@@ -22,6 +26,7 @@ export interface CosmeticView extends CosmeticDefinition {
 const LEGACY_COSMETIC_IDS: Record<string, string> = {
 	default_dojo: "night_bg",
 	sunset_dojo: "sunset_bg",
+	cycle_bg: "night_cycle_bg",
 };
 
 export const COSMETICS: CosmeticDefinition[] = [
@@ -82,14 +87,35 @@ export const COSMETICS: CosmeticDefinition[] = [
 		previewColor: 0xffe3a6,
 	},
 	{
-		id: "cycle_bg",
-		type: "hub_background",
-		name: "Cycle Background",
-		description: "Layered parallax sky with a moving day-cycle horizon.",
+		id: "night_cycle_bg",
+		type: "hub_background_alter",
+		parentCosmeticId: "night_bg",
+		name: "Night Cycle Alter",
+		description: "Animated alter art for the moonlit dojo background.",
 		price: 0,
 		defaultUnlocked: true,
 		accentColor: 0x526f9f,
 		previewColor: 0xbcd8ff,
+	},
+	{
+		id: "sunset_cycle_bg",
+		type: "hub_background_alter",
+		parentCosmeticId: "sunset_bg",
+		name: "Sunset Cycle Alter",
+		description: "Alter slot for the dusk dojo background.",
+		price: 999,
+		accentColor: 0xde7a5a,
+		previewColor: 0xffc29f,
+	},
+	{
+		id: "sunrise_cycle_bg",
+		type: "hub_background_alter",
+		parentCosmeticId: "sunrise_bg",
+		name: "Sunrise Cycle Alter",
+		description: "Alter slot for the morning dojo background.",
+		price: 999,
+		accentColor: 0xf0a24b,
+		previewColor: 0xffdfa4,
 	},
 ];
 

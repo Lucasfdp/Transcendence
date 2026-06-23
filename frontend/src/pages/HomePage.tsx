@@ -5,7 +5,10 @@ import { RouteLoading } from "../components/common/RouteLoading";
 import { NineSliceButton } from "../components/common/NineSliceButton";
 import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
-import { hubBackgroundClass } from "../shared/backgrounds";
+import {
+	hubBackgroundClass,
+	resolveHubBackgroundId,
+} from "../shared/backgrounds";
 import {
 	Achievement,
 	api,
@@ -18,7 +21,12 @@ import {
 type HubView = "choose" | "normal";
 type InfoModal = { title: string; description: string } | null;
 
-const COSMETIC_CATEGORIES: { type: Cosmetic["type"]; title: string }[] = [
+type CosmeticCategoryType = Extract<
+	Cosmetic["type"],
+	"shell_skin" | "hub_background"
+>;
+
+const COSMETIC_CATEGORIES: { type: CosmeticCategoryType; title: string }[] = [
 	{ type: "shell_skin", title: "Shells" },
 	{ type: "hub_background", title: "Backgrounds" },
 ];
@@ -28,7 +36,9 @@ const COSMETIC_PREVIEWS: Partial<Record<Cosmetic["id"], string>> = {
 	night_bg: "/assets/backgrounds/night_bg.png",
 	sunset_bg: "/assets/backgrounds/sunset_bg.png",
 	sunrise_bg: "/assets/backgrounds/sunrise_bg.png",
-	cycle_bg: "/assets/backgrounds/cycle-part2.png",
+	night_cycle_bg: "/assets/backgrounds/night_cycle_part2.png",
+	sunset_cycle_bg: "/assets/backgrounds/sunset_bg.png",
+	sunrise_cycle_bg: "/assets/backgrounds/sunrise_bg.png",
 };
 
 function cosmeticColor(color: number): string {
@@ -347,8 +357,16 @@ function HomeMenu(): JSX.Element {
 	const [activeModal, setActiveModal] = useState<
 		"achievements" | "customization" | null
 	>(null);
-	const backgroundClass = hubBackgroundClass("hub-page", player?.hubBackground);
-	const showCycleBackdrop = player?.hubBackground === "cycle_bg";
+	const appliedBackgroundId = resolveHubBackgroundId(
+		player?.hubBackground,
+		player?.hubBackgroundAlter,
+	);
+	const backgroundClass = hubBackgroundClass(
+		"hub-page",
+		player?.hubBackground,
+		player?.hubBackgroundAlter,
+	);
+	const showCycleBackdrop = appliedBackgroundId === "night_cycle_bg";
 
 	useEffect(() => {
 		let cancelled = false;
@@ -426,12 +444,29 @@ function HomeMenu(): JSX.Element {
 	}, [minigames]);
 
 	const cosmeticGroups = useMemo(() => {
-		const groups = new Map<Cosmetic["type"], Cosmetic[]>();
+		const groups = new Map<CosmeticCategoryType, Cosmetic[]>();
 		for (const category of COSMETIC_CATEGORIES) groups.set(category.type, []);
 		for (const cosmetic of cosmetics ?? []) {
+			if (cosmetic.type === "hub_background_alter") continue;
 			groups.set(cosmetic.type, [...(groups.get(cosmetic.type) ?? []), cosmetic]);
 		}
 		return groups;
+	}, [cosmetics]);
+
+	const backgroundAlters = useMemo(() => {
+		const alters = new Map<string, Cosmetic[]>();
+		for (const cosmetic of cosmetics ?? []) {
+			if (
+				cosmetic.type !== "hub_background_alter" ||
+				!cosmetic.parentCosmeticId
+			)
+				continue;
+			alters.set(cosmetic.parentCosmeticId, [
+				...(alters.get(cosmetic.parentCosmeticId) ?? []),
+				cosmetic,
+			]);
+		}
+		return alters;
 	}, [cosmetics]);
 
 	const handleLogout = async () => {
@@ -483,20 +518,37 @@ function HomeMenu(): JSX.Element {
 				? await api.equipCosmetic(cosmetic.id)
 				: await api.buyCosmetic(cosmetic.id);
 			setCosmetics(nextCosmetics);
-			const equipped = nextCosmetics.find(
-				(item) => item.equipped && item.type === cosmetic.type,
+			const equippedBackground = nextCosmetics.find(
+				(item) => item.equipped && item.type === "hub_background",
 			);
-			if (equipped && player) {
+			const equippedBackgroundAlter = nextCosmetics.find(
+				(item) => item.equipped && item.type === "hub_background_alter",
+			);
+			const equippedShell = nextCosmetics.find(
+				(item) => item.equipped && item.type === "shell_skin",
+			);
+			if (player) {
 				setPlayer({
 					...player,
-					...(equipped.type === "hub_background"
-						? { hubBackground: equipped.id }
-						: { shellSkin: equipped.id }),
+					hubBackground: equippedBackground?.id ?? player.hubBackground,
+					hubBackgroundAlter: equippedBackgroundAlter?.id ?? null,
+					shellSkin: equippedShell?.id ?? player.shellSkin,
 				});
 			}
 		} catch {
 			setModalError("Could not update customization.");
 		}
+	};
+
+	const handleBackgroundAlterAction = async (
+		background: Cosmetic,
+		alter: Cosmetic,
+	) => {
+		if (alter.equipped) {
+			await handleCosmeticAction(background);
+			return;
+		}
+		await handleCosmeticAction(alter);
 	};
 
 	if (isLoading) return <RouteLoading />;
@@ -785,6 +837,10 @@ function HomeMenu(): JSX.Element {
 										<div className="hub-modal__list hub-modal__cosmetic-grid">
 											{categoryCosmetics.map((cosmetic) => {
 												const hasImage = COSMETIC_PREVIEWS[cosmetic.id] !== undefined;
+												const alters =
+													cosmetic.type === "hub_background"
+														? backgroundAlters.get(cosmetic.id) ?? []
+														: [];
 												const previewClassName = [
 													"hub-modal__cosmetic-preview",
 													`hub-modal__cosmetic-preview--${cosmetic.type}`,
@@ -802,6 +858,69 @@ function HomeMenu(): JSX.Element {
 														/>
 														<strong>{cosmetic.name}</strong>
 														<p>{cosmetic.description}</p>
+														{alters.length > 0 ? (
+															<div className="hub-modal__cosmetic-alters">
+																<span className="hub-modal__cosmetic-alters-label">
+																	Alter art
+																</span>
+																{alters.map((alter) => (
+																	<div
+																		key={alter.id}
+																		className={`hub-modal__cosmetic-alter${
+																			alter.equipped
+																				? " hub-modal__cosmetic-alter--active"
+																				: ""
+																		}${
+																			!alter.owned
+																				? " hub-modal__cosmetic-alter--locked"
+																				: ""
+																		}`}
+																	>
+																		<div className="hub-modal__cosmetic-alter-main">
+																			<span className="hub-modal__cosmetic-alter-copy">
+																				<strong>{alter.name}</strong>
+																			</span>
+																			<button
+																				type="button"
+																				role="switch"
+																				aria-checked={alter.equipped}
+																				aria-label={`Toggle ${alter.name}`}
+																				className={`hub-modal__cosmetic-toggle${
+																					alter.equipped
+																						? " hub-modal__cosmetic-toggle--on"
+																						: ""
+																				}`}
+																				disabled={!alter.owned}
+																				onClick={() =>
+																					void handleBackgroundAlterAction(
+																						cosmetic,
+																						alter,
+																					)
+																				}
+																			>
+																				<span className="hub-modal__cosmetic-toggle-thumb" />
+																			</button>
+																		</div>
+																		<button
+																			type="button"
+																			className="hub-modal__cosmetic-alter-buy"
+																			disabled={
+																				alter.owned ||
+																				alter.lockedReason ===
+																					"achievement-locked"
+																			}
+																			onClick={() =>
+																				void handleCosmeticAction(alter)
+																			}
+																		>
+																			{alter.owned
+																				? "PURCHASED"
+																				: `Buy alter · ${alter.price} coins`}
+																		</button>
+																	</div>
+																))}
+															</div>
+														) : null}
 														<button
 															type="button"
 															disabled={cosmetic.equipped || cosmetic.lockedReason === "achievement-locked"}

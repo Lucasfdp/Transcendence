@@ -120,6 +120,7 @@ export interface User {
 	turtleName: string | null;
 	shellSkin: string;
 	hubBackground: string;
+	hubBackgroundAlter: string | null;
 	level: number;
 	xp: number;
 	coins: number;
@@ -164,12 +165,13 @@ export interface Achievement {
 
 export interface Cosmetic {
 	id: string;
-	type: "shell_skin" | "hub_background";
+	type: "shell_skin" | "hub_background" | "hub_background_alter";
 	name: string;
 	description: string;
 	price: number;
 	accentColor: number;
 	previewColor?: number;
+	parentCosmeticId?: string;
 	owned: boolean;
 	equipped: boolean;
 	unlockAchievementId?: string;

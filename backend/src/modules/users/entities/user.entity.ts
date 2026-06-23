@@ -61,6 +61,10 @@ export class User {
 	@Column({ default: "night_bg" })
 	hubBackground: string;
 
+	// Optional alter art applied on top of the equipped hub background.
+	@Column({ nullable: true, default: null })
+	hubBackgroundAlter: string | null;
+
 	/** True for ephemeral guest accounts created via POST /auth/guest. */
 	@Column({ default: false })
 	isGuest: boolean;

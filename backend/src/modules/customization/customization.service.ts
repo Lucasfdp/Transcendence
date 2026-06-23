@@ -47,9 +47,18 @@ export class CustomizationService {
 			throw new ForbiddenException("Cosmetic is not owned");
 
 		if (cosmetic.type === "shell_skin") user.shellSkin = cosmetic.id;
-		else if (cosmetic.type === "hub_background")
+		else if (cosmetic.type === "hub_background") {
 			user.hubBackground = cosmetic.id;
-		else throw new BadRequestException("Cosmetic is not equippable");
+			user.hubBackgroundAlter = null;
+		} else if (cosmetic.type === "hub_background_alter") {
+			if (!cosmetic.parentCosmeticId)
+				throw new BadRequestException("Background alter is misconfigured");
+			const parentCosmetic = this.requireCosmetic(cosmetic.parentCosmeticId);
+			if (!this.isOwned(parentCosmetic, ownedIds))
+				throw new ForbiddenException("Parent background is not owned");
+			user.hubBackground = parentCosmetic.id;
+			user.hubBackgroundAlter = cosmetic.id;
+		} else throw new BadRequestException("Cosmetic is not equippable");
 
 		await this.usersRepo.save(user);
 		const achievementIds = await this.findAchievementIds(user.id);
@@ -186,7 +195,13 @@ export class CustomizationService {
 		if (cosmetic.type === "shell_skin")
 			return (user.shellSkin ?? "kanagawa") === cosmetic.id;
 		if (cosmetic.type === "hub_background")
-			return normalizeCosmeticId(user.hubBackground ?? "night_bg") === cosmetic.id;
+			return (
+				normalizeCosmeticId(user.hubBackground ?? "night_bg") === cosmetic.id
+			);
+		if (cosmetic.type === "hub_background_alter")
+			return (
+				normalizeCosmeticId(user.hubBackgroundAlter ?? "") === cosmetic.id
+			);
 		return false;
 	}
 
