@@ -6,7 +6,13 @@ import {
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Response } from "express";
-import { randomBytes, scrypt, timingSafeEqual, ScryptOptions } from "crypto";
+import {
+	randomBytes,
+	randomUUID,
+	scrypt,
+	timingSafeEqual,
+	ScryptOptions,
+} from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { UsersService } from "../users/users.service";
 import { User } from "../users/entities/user.entity";
@@ -69,6 +75,7 @@ export class AuthService {
 				username: user.username,
 				isGuest: isGuest || user.isGuest,
 				isDevAccount: user.isDevAccount,
+				jti: randomUUID(),
 			};
 			const token = this.jwtService.sign(payload, {
 				expiresIn: isGuest ? "2h" : "24h",
@@ -158,12 +165,24 @@ export class AuthService {
 	private async makeUniqueOAuthUsername(
 		baseUsername: string,
 	): Promise<string> {
+		const MAX_SUFFIX_ITERATIONS = 100;
+
 		const normalizedBase = baseUsername.trim() || "player42";
 		const clippedBase = normalizedBase.slice(0, 20);
 		let candidate = clippedBase;
 		let suffix = 2;
 
 		while (await this.usersService.findByUsername(candidate)) {
+			if (suffix > MAX_SUFFIX_ITERATIONS) {
+				// Numeric suffix space exhausted — use 4 random hex chars as a fallback.
+				const fallback = `${clippedBase.slice(0, 15)}_${randomBytes(2).toString("hex")}`;
+				if (await this.usersService.findByUsername(fallback)) {
+					throw new InternalServerErrorException(
+						"Unable to generate a unique OAuth username",
+					);
+				}
+				return fallback;
+			}
 			const suffixText = String(suffix);
 			candidate = `${clippedBase.slice(0, Math.max(1, 20 - suffixText.length))}${suffixText}`;
 			suffix += 1;

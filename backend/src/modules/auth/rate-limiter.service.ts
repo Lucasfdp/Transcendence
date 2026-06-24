@@ -10,6 +10,12 @@ interface RateLimitRecord {
  * Simple in-memory per-IP rate limiter.
  * Replaces @nestjs/throttler which cannot be installed in this environment.
  *
+ * **Single-process only.** This service stores state in a plain Map and does
+ * not synchronise across replicas.  In a multi-replica deployment each pod
+ * maintains an independent window, so the effective limit is `max × replicas`.
+ * Replace with a Redis-backed solution (e.g. sliding-window Lua script) before
+ * scaling horizontally.
+ *
  * Usage:
  *   if (!this.rateLimiter.allow(req, 'guest', 10, 60_000)) throw new TooManyRequestsException();
  */
@@ -33,6 +39,10 @@ export class RateLimiterService {
 		const ip = this.getIp(req);
 		const key = `${bucket}:${ip}`;
 		const now = Date.now();
+
+		// Purge on every call so the Map cannot grow unboundedly between
+		// the hourly GuestCleanupService sweep.
+		this.purgeExpired();
 
 		let record = this.store.get(key);
 		if (!record || now > record.windowEnd) {

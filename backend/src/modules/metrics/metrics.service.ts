@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
@@ -14,6 +14,7 @@ const GUEST_POLL_INTERVAL_MS = 60_000;
 
 @Injectable()
 export class MetricsService implements OnModuleInit, OnModuleDestroy {
+	private readonly logger = new Logger(MetricsService.name);
 	private readonly registry: Registry;
 
 	/** Exported so MetricsInterceptor can record per-request data. */
@@ -79,7 +80,7 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
 			this.guestSessionsGauge.set(Number(result[0]?.count ?? 0));
 		} catch (err) {
 			// Non-fatal: DB may still be initialising on first poll
-			console.warn("[MetricsService] Guest session poll failed:", err);
+			this.logger.warn(`Guest session poll failed: ${String(err)}`);
 		}
 	}
 

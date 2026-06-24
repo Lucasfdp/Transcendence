@@ -27,6 +27,7 @@ services:
             start_period: 10s
         environment:
             - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+            - MONITORING_PORT=${MONITORING_PORT:-3001}
         logging:
             driver: "${LOG_DRIVER:-json-file}"
             options:
@@ -218,8 +219,7 @@ services:
         container_name: ${COMPOSE_PROJECT_NAME}_monitoring
         image: ${COMPOSE_PROJECT_NAME}/monitoring:local
         restart: unless-stopped
-        ports:
-            - "${MONITORING_PORT:-3001}:${MONITORING_PORT:-3001}"
+        # Grafana is proxied through Nginx — do not expose directly on host
         expose:
             - "${MONITORING_PORT:-3001}"
         volumes:

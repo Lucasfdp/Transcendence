@@ -1,5 +1,5 @@
 import { NestFactory } from "@nestjs/core";
-import { ValidationPipe } from "@nestjs/common";
+import { Logger, ValidationPipe } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import { MetricsInterceptor } from "./modules/metrics/metrics.interceptor";
@@ -40,8 +40,9 @@ async function bootstrap() {
 		SwaggerModule.setup("api/docs", app, document);
 	}
 
+	const logger = new Logger("Bootstrap");
 	const port = process.env.BACKEND_PORT ?? 8000;
 	await app.listen(port);
-	console.log(`[backend] Running on port ${port}`);
+	logger.log(`Running on port ${port}`);
 }
 bootstrap();

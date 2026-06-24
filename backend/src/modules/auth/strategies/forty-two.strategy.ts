@@ -7,6 +7,14 @@ import { AuthService } from "../auth.service";
 // TODO(#1): This strategy is registered but the module only activates it when
 //           FORTYTWO_CLIENT_ID / FORTYTWO_CLIENT_SECRET are set in the environment.
 
+/** Minimal shape of the profile object returned by passport-42. */
+interface FortyTwoProfile {
+	id: string | number;
+	username: string;
+	emails?: Array<{ value: string }>;
+	photos?: Array<{ value: string }>;
+}
+
 @Injectable()
 export class FortyTwoStrategy extends PassportStrategy(Strategy, "42") {
 	constructor(
@@ -24,7 +32,11 @@ export class FortyTwoStrategy extends PassportStrategy(Strategy, "42") {
 		});
 	}
 
-	async validate(_accessToken: string, _refreshToken: string, profile: any) {
+	async validate(
+		_accessToken: string,
+		_refreshToken: string,
+		profile: FortyTwoProfile,
+	) {
 		return this.authService.findOrCreateUser({
 			fortyTwoId: String(profile.id),
 			username: profile.username,

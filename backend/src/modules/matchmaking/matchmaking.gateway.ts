@@ -42,7 +42,13 @@ function parseCookie(
 	return null;
 }
 
-@WebSocketGateway({ path: "/ws/", cors: { origin: true, credentials: true } })
+@WebSocketGateway({
+	path: "/ws/",
+	cors: {
+		origin: process.env.ALLOWED_ORIGINS?.split(",") ?? ["https://localhost"],
+		credentials: true,
+	},
+})
 export class MatchmakingGateway
 	implements OnGatewayConnection, OnGatewayDisconnect
 {
@@ -71,6 +77,7 @@ export class MatchmakingGateway
 				sub: number;
 				username: string;
 				isGuest: boolean;
+				exp?: number;
 			}>(token);
 			const user = await this.usersService.findById(payload.sub);
 			if (!user) throw new Error("User not found");
@@ -82,6 +89,17 @@ export class MatchmakingGateway
 			};
 			this.presence.connect(socket.id, socketUser);
 			socket.data.user = socketUser;
+
+			if (socketUser.isGuest && payload.exp !== undefined) {
+				const remainingMs = payload.exp * 1000 - Date.now();
+				if (remainingMs <= 0) {
+					socket.disconnect(true);
+					return;
+				}
+				socket.data.guestTimer = setTimeout(() => {
+					socket.disconnect(true);
+				}, remainingMs);
+			}
 
 			const room = this.rooms.reconnect(socket.id, socketUser);
 			if (room) {
@@ -103,6 +121,10 @@ export class MatchmakingGateway
 	}
 
 	async handleDisconnect(socket: Socket): Promise<void> {
+		if (socket.data.guestTimer !== undefined) {
+			clearTimeout(socket.data.guestTimer as ReturnType<typeof setTimeout>);
+			socket.data.guestTimer = undefined;
+		}
 		this.matchmaking.removeSocket(socket.id);
 		this.rooms.removeSpectator(socket.id);
 		const room = this.rooms.markDisconnected(

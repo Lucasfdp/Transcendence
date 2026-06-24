@@ -25,12 +25,25 @@ import { randomBytes } from "crypto";
 import { AuthService } from "./auth.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RateLimiterService } from "./rate-limiter.service";
+import { TokenDenyListService } from "./token-deny-list.service";
 import { User } from "../users/entities/user.entity";
 import { FortyTwoAuthGuard } from "./guards/ft-auth.guard";
 import { GithubAuthGuard } from "./guards/github-auth.guard";
 
 // ── CSRF cookie name (NOT httpOnly — must be readable by JS) ─────────────────
 const CSRF_COOKIE = "csrf_token";
+
+// ── Authenticated request user shape (set by JwtStrategy.validate) ───────────
+interface AuthenticatedUser {
+	id: number;
+	username: string;
+	isGuest: boolean;
+	isDevAccount: boolean;
+	/** JWT ID — undefined on tokens issued before the revocation fix. */
+	jti?: string;
+	/** Expiry unix timestamp. */
+	exp: number;
+}
 
 // ── Username validation: 1–20 alphanumeric + underscore ──────────────────────
 const USERNAME_RE = /^[a-zA-Z0-9_]{1,20}$/;
@@ -59,6 +72,7 @@ export class AuthController {
 		private readonly authService: AuthService,
 		private readonly rateLimiter: RateLimiterService,
 		private readonly usersService: UsersService,
+		private readonly tokenDenyListService: TokenDenyListService,
 	) {}
 
 	// ── GET /api/auth/me ─────────────────────────────────────────────────────────
@@ -191,11 +205,22 @@ export class AuthController {
 	}
 
 	// ── DELETE /api/auth/session ──────────────────────────────────────────────────
-	// Clears the auth cookie (logout).
+	// Revokes the JWT in Redis, then clears the auth cookie.
 
 	@Delete("session")
 	@UseGuards(JwtAuthGuard)
-	logout(@Res({ passthrough: true }) res: Response): { ok: boolean } {
+	async logout(
+		@Req() req: Request & { user: AuthenticatedUser },
+		@Res({ passthrough: true }) res: Response,
+	): Promise<{ ok: boolean }> {
+		const { jti, exp } = req.user;
+		if (jti != null) {
+			const now = Math.floor(Date.now() / 1000);
+			const remainingTtl = Math.max(0, exp - now);
+			if (remainingTtl > 0) {
+				await this.tokenDenyListService.revoke(jti, remainingTtl);
+			}
+		}
 		this.authService.clearAuthCookie(res);
 		return { ok: true };
 	}

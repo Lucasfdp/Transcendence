@@ -30,6 +30,13 @@ import { AppController } from "./app.controller";
 				password: config.get("POSTGRES_PASSWORD"),
 				database: config.get("POSTGRES_DB"),
 				entities: [__dirname + "/**/*.entity{.ts,.js}"],
+				migrations: [__dirname + "/migrations/**/*{.ts,.js}"],
+				// synchronize creates the base schema on fresh installs (dev/staging only).
+				// All 5 existing migrations are additive on top of this base schema —
+				// there is no initial migration covering it. Production deployments must
+				// run `npm run migration:run` manually after the base schema exists.
+				// TODO(#initial-migration): generate an initial migration from current
+				// entities so synchronize can be set to false everywhere.
 				synchronize: config.get("NODE_ENV") !== "production",
 				logging: config.get("NODE_ENV") === "development",
 			}),

@@ -4,12 +4,14 @@ import {
 	Inject,
 	Injectable,
 	InternalServerErrorException,
+	NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { LessThan, Repository } from "typeorm";
 import { User } from "./entities/user.entity";
 import { Profile } from "../profiles/entities/profile.entity";
 import { ShellsService } from "../shells/shells.service";
+import { UpdateProfileDto } from "./dto/update-profile.dto";
 
 @Injectable()
 export class UsersService {
@@ -181,6 +183,132 @@ export class UsersService {
 			throw new InternalServerErrorException(
 				"Failed to delete old guest users",
 			);
+		}
+	}
+
+	/**
+	 * All-time leaderboard via a single SQL query against the pre-aggregated
+	 * profiles table — no in-memory sort or full table scan on users.
+	 * Mirrors the shape returned by queryPeriod so the controller mapping is
+	 * identical for all period values.
+	 *
+	 * @param limit     Maximum number of rows to return (default LEADERBOARD_LIMIT).
+	 * @param allowedIds When non-null, restricts results to this set of user IDs
+	 *                   (used for scope=friends leaderboards).
+	 */
+	async getLeaderboardAllTime(
+		limit: number,
+		allowedIds: number[] | null,
+	): Promise<Record<string, unknown>[]> {
+		try {
+			const params: unknown[] = [limit];
+			let idFilter = "";
+			if (allowedIds !== null) {
+				params.push(allowedIds);
+				idFilter = `AND u.id = ANY($${params.length})`;
+			}
+
+			// NOTE: TypeORM's default naming strategy keeps camelCase column names —
+			// profile FK column in the profiles table is "userId" (not user_id).
+			return await this.getDataSource().query<Record<string, unknown>[]>(
+				`
+        SELECT
+          u.id                              AS "userId",
+          u.username,
+          u."turtleName",
+          u."shellSkin",
+          u.avatar,
+          u.level,
+          COALESCE(p."totalWins", 0)::int   AS wins,
+          COALESCE(p."gamesPlayed", 0)::int AS "gamesPlayed"
+        FROM users u
+        LEFT JOIN profiles p ON p."userId" = u.id
+        WHERE u."isGuest" = false
+          ${idFilter}
+        ORDER BY wins DESC, u.level DESC, u.username ASC
+        LIMIT $1
+        `,
+				params,
+			);
+		} catch {
+			throw new InternalServerErrorException(
+				"Failed to load all-time leaderboard",
+			);
+		}
+	}
+
+	/**
+	 * Update mutable profile fields for the given user.
+	 * Only fields present in the DTO are written — undefined keys are skipped.
+	 * `turtleName` lives on the User row; `bio` lives on the linked Profile row.
+	 * Returns the updated user (passwordHash excluded via select:false on the column).
+	 */
+	async updateProfile(userId: number, dto: UpdateProfileDto): Promise<User> {
+		try {
+			const user = await this.findById(userId);
+			if (!user) {
+				throw new NotFoundException(`User ${userId} not found`);
+			}
+
+			if (dto.turtleName !== undefined) {
+				user.turtleName = dto.turtleName;
+			}
+			if (dto.bio !== undefined && user.profile) {
+				user.profile.bio = dto.bio;
+			}
+
+			await this.usersRepo.save(user);
+
+			// Re-fetch so the returned entity reflects DB state and excludes
+			// passwordHash (select:false guarantees it stays out of findOne results).
+			const updated = await this.findById(userId);
+			if (!updated) {
+				throw new InternalServerErrorException(
+					"User disappeared after profile update",
+				);
+			}
+			return updated;
+		} catch (err) {
+			if (
+				err instanceof NotFoundException ||
+				err instanceof InternalServerErrorException
+			) {
+				throw err;
+			}
+			throw new InternalServerErrorException("Failed to update profile");
+		}
+	}
+
+	/**
+	 * Persist a newly-uploaded avatar filename and return the public URL.
+	 * The filename is the UUID-prefixed name written to disk by multer's diskStorage.
+	 *
+	 * Nginx serves /uploads/ as a static directory —
+	 * see infra/reverse-proxy/conf/default.conf.template
+	 */
+	async updateAvatar(
+		userId: number,
+		filename: string,
+	): Promise<{ avatarUrl: string }> {
+		try {
+			const user = await this.findById(userId);
+			if (!user) {
+				throw new NotFoundException(`User ${userId} not found`);
+			}
+
+			const avatarUrl = `/uploads/avatars/${filename}`;
+			user.avatar = avatarUrl;
+			await this.usersRepo.save(user);
+
+			return { avatarUrl };
+		} catch (err) {
+			if (
+				err instanceof NotFoundException ||
+				err instanceof InternalServerErrorException
+			) {
+				throw err;
+			}
+			throw new InternalServerErrorException("Failed to update avatar");
 		}
 	}
 }

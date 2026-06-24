@@ -6,6 +6,7 @@ import {
 	MatchRoom,
 	RoomPlayer,
 } from "../matchmaking.types";
+import { BaseEngine } from "./base.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
 const TOTAL_ENDS = 3;
@@ -29,7 +30,7 @@ interface SettledObject {
 }
 
 @Injectable()
-export class ShellCurlEngine implements GameEngine {
+export class ShellCurlEngine extends BaseEngine implements GameEngine {
 	readonly gameId = "temple-curling";
 
 	createInitialState(
@@ -239,23 +240,4 @@ export class ShellCurlEngine implements GameEngine {
 		return winners.length === 1 ? winners[0].side : null;
 	}
 
-	private refreshSnapshotPlayers(room: MatchRoom): void {
-		const state = room.state as CurlingSnapshot;
-		state.players = room.players.map((player) =>
-			this.toSnapshotPlayer(player),
-		);
-		state.seq = room.seq;
-	}
-
-	private toSnapshotPlayer(
-		player: RoomPlayer,
-	): CurlingSnapshot["players"][number] {
-		return {
-			side: player.side,
-			userId: player.user.id,
-			username: player.user.username,
-			connected: player.connected,
-			ready: player.ready,
-		};
-	}
 }

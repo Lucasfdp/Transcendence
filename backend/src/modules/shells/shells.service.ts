@@ -2,6 +2,7 @@ import {
 	BadRequestException,
 	Injectable,
 	InternalServerErrorException,
+	Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
@@ -11,6 +12,8 @@ import { VALID_SHELL_TYPES, SEEDED_SHELL_TYPES } from "./shell-types";
 
 @Injectable()
 export class ShellsService {
+	private readonly logger = new Logger(ShellsService.name);
+
 	constructor(
 		@InjectRepository(ShellInventoryItem)
 		private readonly inventoryRepo: Repository<ShellInventoryItem>,
@@ -28,10 +31,8 @@ export class ShellsService {
 			);
 			await this.inventoryRepo.save(items);
 		} catch (err) {
-			console.error(
-				"[ShellsService] Failed to seed inventory for user",
-				user.id,
-				err,
+			this.logger.error(
+				`Failed to seed inventory for user ${user.id}: ${String(err)}`,
 			);
 		}
 	}

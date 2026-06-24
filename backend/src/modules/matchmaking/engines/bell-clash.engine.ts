@@ -4,8 +4,8 @@ import {
 	GameInputPayload,
 	MatchRoom,
 	RoomPlayer,
-	SnapshotPlayer,
 } from "../matchmaking.types";
+import { BaseEngine } from "./base.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
 type BellZoneKind = "red" | "yellow" | "green";
@@ -16,7 +16,7 @@ const ZONE_SPAN = Math.PI * 2 * 0.15;
 const TWO_PI = Math.PI * 2;
 
 @Injectable()
-export class BellClashEngine implements GameEngine {
+export class BellClashEngine extends BaseEngine implements GameEngine {
 	readonly gameId = "bell-clash";
 
 	createInitialState(
@@ -256,25 +256,6 @@ export class BellClashEngine implements GameEngine {
 			[values[i], values[j]] = [values[j], values[i]];
 		}
 		return values;
-	}
-
-	private refreshSnapshotPlayers(room: MatchRoom): void {
-		const state = room.state as BellClashSnapshot;
-		state.players = room.players.map((player) =>
-			this.toSnapshotPlayer(player),
-		);
-		state.seq = room.seq;
-	}
-
-	private toSnapshotPlayer(player: RoomPlayer): SnapshotPlayer {
-		return {
-			side: player.side,
-			userId: player.user.id,
-			username: player.user.username,
-			connected: player.connected,
-			ready: player.ready,
-			reconnectExpiresAt: player.reconnectExpiresAt ?? null,
-		};
 	}
 
 	private getWinnerSide(score: number[]): number | null {

@@ -1,24 +1,49 @@
 import {
+	BadRequestException,
+	Body,
 	Controller,
 	Get,
 	InternalServerErrorException,
 	Logger,
 	Param,
+	Patch,
+	Post,
 	Query,
 	Request,
 	UnauthorizedException,
+	UploadedFile,
 	UseGuards,
+	UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiQuery, ApiTags } from "@nestjs/swagger";
+import { diskStorage } from "multer";
+import { extname } from "path";
+import { randomUUID } from "crypto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { FriendsService } from "../friends/friends.service";
 import { PresenceService } from "../presence/presence.service";
 import { User } from "./entities/user.entity";
+import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { UsersService } from "./users.service";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+// TODO(#leaderboard-refactor): frontend/src/features/hub/api.ts line 281
+// calls GET /api/users (getAllUsers) — migrate that call to
+// GET /api/users/leaderboard?period=all and remove the getAllUsers wrapper.
 const LEADERBOARD_LIMIT = 50;
 const WEEKLY_DAYS = 7;
+
+/** Accepted MIME types for avatar uploads. */
+const ALLOWED_IMAGE_MIMES = [
+	"image/jpeg",
+	"image/png",
+	"image/webp",
+	"image/gif",
+] as const;
+
+/** Max avatar file size: 2 MB. */
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
 export type LbPeriod = "all" | "monthly" | "weekly";
 export type LbScope = "global" | "friends";
@@ -34,6 +59,22 @@ export interface LeaderboardEntry {
 	wins: number;
 	gamesPlayed: number;
 	isOnline: boolean;
+}
+
+/**
+ * Minimal type for the file object injected by multer's diskStorage.
+ * Defined locally to avoid a hard dependency on @types/multer at the module
+ * boundary — @nestjs/platform-express already pulls in multer at runtime.
+ */
+interface MulterFile {
+	fieldname: string;
+	originalname: string;
+	encoding: string;
+	mimetype: string;
+	size: number;
+	destination: string;
+	filename: string;
+	path: string;
 }
 
 @ApiTags("users")
@@ -64,17 +105,67 @@ export class UsersController {
 		return safe as Omit<User, "passwordHash">;
 	}
 
+	// ── PATCH /api/users/me ──────────────────────────────────────────────────────
+
+	@Patch("me")
+	updateMe(
+		@Request() req: { user: { id: number } },
+		@Body() dto: UpdateProfileDto,
+	): Promise<User> {
+		return this.usersService.updateProfile(req.user.id, dto);
+	}
+
+	// ── POST /api/users/me/avatar ────────────────────────────────────────────────
+	//
+	// Accepts a single multipart file under the field name "avatar".
+	// Writes to ./uploads/avatars/ (mounted as a Docker volume).
+	// Nginx serves /uploads/ as a static directory —
+	// see infra/reverse-proxy/conf/default.conf.template
+
+	@Post("me/avatar")
+	@UseInterceptors(
+		FileInterceptor("avatar", {
+			storage: diskStorage({
+				destination: "./uploads/avatars",
+				filename: (_req, file, cb) => {
+					const ext = extname(file.originalname);
+					cb(null, `${randomUUID()}${ext}`);
+				},
+			}),
+			limits: { fileSize: AVATAR_MAX_BYTES },
+			fileFilter: (_req, file, cb) => {
+				cb(
+					null,
+					(ALLOWED_IMAGE_MIMES as readonly string[]).includes(
+						file.mimetype,
+					),
+				);
+			},
+		}),
+	)
+	uploadAvatar(
+		@Request() req: { user: { id: number } },
+		@UploadedFile() file: MulterFile,
+	): Promise<{ avatarUrl: string }> {
+		if (!file) {
+			throw new BadRequestException(
+				"No valid image file provided. Accepted types: JPEG, PNG, WebP, GIF. Max size: 2 MB.",
+			);
+		}
+		return this.usersService.updateAvatar(req.user.id, file.filename);
+	}
+
 	// ── GET /api/users/leaderboard ───────────────────────────────────────────────
 	//
 	// Query params:
 	//   period — 'all' (default) | 'monthly' | 'weekly'
 	//   scope  — 'global' (default) | 'friends'
 	//
-	// 'all'     → fast path using profile.total_wins (no match join)
+	// 'all'     → fast SQL path against profiles.totalWins (no match join needed)
 	// 'monthly' → counts wins in match_players for the current calendar month
 	// 'weekly'  → counts wins in match_players for the last 7 days
 	//
-	// Declared BEFORE :username to prevent NestJS routing the literal string
+	// Declared BEFORE :username so NestJS does not route the literal string
 	// 'leaderboard' into the :username param handler.
 
 	@Get("leaderboard")
@@ -110,7 +201,10 @@ export class UsersController {
 
 			const rows =
 				safePeriod === "all"
-					? await this.queryAllTime(allowedIds)
+					? await this.usersService.getLeaderboardAllTime(
+							LEADERBOARD_LIMIT,
+							allowedIds,
+						)
 					: await this.queryPeriod(safePeriod, allowedIds);
 
 			return rows.map((row, idx) => ({
@@ -154,52 +248,7 @@ export class UsersController {
 		};
 	}
 
-	// ── GET /api/users — all users (internal use) ────────────────────────────────
-
-	@Get()
-	getAllUsers(): Promise<User[]> {
-		return this.usersService.findAll();
-	}
-
 	// ── Private query helpers ────────────────────────────────────────────────────
-
-	/**
-	 * Fast-path leaderboard using the pre-aggregated profile.total_wins column.
-	 * Loads all users via UsersService (which eager-loads profiles) and sorts in
-	 * JS — avoids raw SQL and any ORM column-naming ambiguity.
-	 * Excludes guests. Sorted by total_wins DESC → level DESC → username ASC.
-	 */
-	private async queryAllTime(
-		allowedIds: number[] | null,
-	): Promise<Record<string, unknown>[]> {
-		const users = await this.usersService.findAll();
-		return users
-			.filter(
-				(u) =>
-					!u.isGuest &&
-					(allowedIds === null || allowedIds.includes(u.id)),
-			)
-			.map((u) => ({
-				userId: u.id,
-				username: u.username,
-				turtleName: u.turtleName ?? null,
-				shellSkin: u.shellSkin,
-				avatar: u.avatar ?? null,
-				level: u.level,
-				wins: u.profile?.totalWins ?? 0,
-				gamesPlayed: u.profile?.gamesPlayed ?? 0,
-			}))
-			.sort((a, b) => {
-				const wDiff = (b.wins as number) - (a.wins as number);
-				if (wDiff !== 0) return wDiff;
-				const lDiff = (b.level as number) - (a.level as number);
-				if (lDiff !== 0) return lDiff;
-				return (a.username as string).localeCompare(
-					b.username as string,
-				);
-			})
-			.slice(0, LEADERBOARD_LIMIT);
-	}
 
 	/**
 	 * Period-filtered leaderboard using match history.

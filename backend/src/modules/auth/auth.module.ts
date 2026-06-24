@@ -11,11 +11,13 @@ import { UsersModule } from "../users/users.module";
 import { RateLimiterService } from "./rate-limiter.service";
 import { GuestCleanupService } from "./guest-cleanup.service";
 import { GuestGuard } from "./guards/guest.guard";
+import { TokenDenyListService } from "./token-deny-list.service";
 
 @Module({
 	imports: [
 		UsersModule,
 		PassportModule,
+		ConfigModule,
 		JwtModule.registerAsync({
 			imports: [ConfigModule],
 			useFactory: (config: ConfigService) => ({
@@ -36,6 +38,7 @@ import { GuestGuard } from "./guards/guest.guard";
 		RateLimiterService,
 		GuestCleanupService,
 		GuestGuard,
+		TokenDenyListService,
 	],
 	controllers: [AuthController],
 	exports: [AuthService, GuestGuard, RateLimiterService],
