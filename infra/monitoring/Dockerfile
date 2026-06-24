@@ -1,27 +1,11 @@
 # ==============================================================================
 # Shell Smash — Monitoring Service (Grafana + Prometheus via supervisord)
 # ==============================================================================
-# Stage 1: Download and verify the Prometheus binary.
-# We fetch the official release tarball plus the signed sha256sums file and
-# verify integrity before unpacking.  Alpine's apk prometheus lags behind.
+# Stage 1: Source Prometheus binaries from the official image.
+# This avoids fragile GitHub release downloads during `docker build` while
+# still keeping the version pinned.
 # ==============================================================================
-FROM alpine:3.19@sha256:6baf43584bcb78f2e5847d1de515f23499913ac9f12bdf834811a3145eb11ca1 AS prometheus-downloader
-
-ARG PROMETHEUS_VERSION=2.53.4
-
-RUN apk add --no-cache wget ca-certificates
-
-RUN set -ex \
-    && cd /tmp \
-    && wget -q \
-       "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
-    && wget -q \
-       "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/sha256sums.txt" \
-    && grep "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" sha256sums.txt | sha256sum -c - \
-    && tar xzf "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
-    && mv "prometheus-${PROMETHEUS_VERSION}.linux-amd64/prometheus" /usr/local/bin/prometheus \
-    && mv "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool"   /usr/local/bin/promtool \
-    && chmod +x /usr/local/bin/prometheus /usr/local/bin/promtool
+FROM prom/prometheus:v2.53.4 AS prometheus-downloader
 
 # ==============================================================================
 # Stage 2: Final image — Grafana 10.4.3 + Prometheus + supervisord
@@ -46,8 +30,8 @@ RUN apk add --no-cache supervisor ca-certificates \
     && rm -rf /var/cache/apk/*
 
 # Copy Prometheus binaries from the downloader stage
-COPY --from=prometheus-downloader /usr/local/bin/prometheus /usr/local/bin/prometheus
-COPY --from=prometheus-downloader /usr/local/bin/promtool   /usr/local/bin/promtool
+COPY --from=prometheus-downloader /bin/prometheus /usr/local/bin/prometheus
+COPY --from=prometheus-downloader /bin/promtool   /usr/local/bin/promtool
 
 # Create a dedicated non-root user for Prometheus (Alpine adduser syntax)
 RUN addgroup -S -g 9090 prometheus \

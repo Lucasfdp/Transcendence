@@ -29,6 +29,7 @@ services:
     frontend:
         build:
             target: builder
+        image: ${COMPOSE_PROJECT_NAME}/frontend-dev:local
         working_dir: /app/frontend
         volumes:
             - ./frontend:/app/frontend
@@ -58,6 +59,7 @@ services:
     backend:
         build:
             target: builder
+        image: ${COMPOSE_PROJECT_NAME}/backend-dev:local
         volumes:
             - ./backend/src:/build/src # TypeScript source
         working_dir: /build

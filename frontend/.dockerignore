@@ -1,4 +1,6 @@
-src/node_modules
-src/dist
-src/.env*
-**/*.log
+node_modules
+dist
+.env
+.env.*
+*.log
+npm-debug.log*

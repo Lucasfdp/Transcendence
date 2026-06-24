@@ -232,12 +232,6 @@ services:
         depends_on:
             monitoring_vault_agent:
                 condition: service_healthy
-            backend:
-                condition: service_healthy
-            database:
-                condition: service_healthy
-            redis:
-                condition: service_healthy
         environment:
             - GF_ADMIN_USER=${GF_ADMIN_USER:-admin}
             - PROMETHEUS_SCRAPE_INTERVAL=${PROMETHEUS_SCRAPE_INTERVAL:-15s}
@@ -265,11 +259,8 @@ services:
                 max-file: "${LOG_MAX_FILE:-3}"
 
     vault:
-        build:
-            context: ./infra/vault
-            dockerfile: Dockerfile
+        image: hashicorp/vault:1.18.5
         container_name: ${COMPOSE_PROJECT_NAME}_vault
-        image: ${COMPOSE_PROJECT_NAME}/vault:local
         restart: unless-stopped
         expose:
             - "8200"
@@ -279,6 +270,7 @@ services:
         environment:
             - VAULT_ADDR=http://127.0.0.1:8200
         volumes:
+            - ./infra/vault/config:/vault/config:ro
             - vault_data:/vault/file
             - ./infra/vault/policies:/vault/policies:ro
         networks:
@@ -300,11 +292,8 @@ services:
                 max-file: "${LOG_MAX_FILE:-3}"
 
     backend_vault_agent:
-        build:
-            context: ./infra/vault-agent
-            dockerfile: Dockerfile
+        image: hashicorp/vault:1.18.5
         container_name: ${COMPOSE_PROJECT_NAME}_backend_vault_agent
-        image: ${COMPOSE_PROJECT_NAME}/vault-agent:local
         restart: unless-stopped
         entrypoint: ["vault"]
         command: ["agent", "-config=/vault/config/backend.hcl"]
@@ -326,11 +315,8 @@ services:
             start_period: 5s
 
     database_vault_agent:
-        build:
-            context: ./infra/vault-agent
-            dockerfile: Dockerfile
+        image: hashicorp/vault:1.18.5
         container_name: ${COMPOSE_PROJECT_NAME}_database_vault_agent
-        image: ${COMPOSE_PROJECT_NAME}/vault-agent:local
         restart: unless-stopped
         entrypoint: ["vault"]
         command: ["agent", "-config=/vault/config/database.hcl"]
@@ -352,11 +338,8 @@ services:
             start_period: 5s
 
     redis_vault_agent:
-        build:
-            context: ./infra/vault-agent
-            dockerfile: Dockerfile
+        image: hashicorp/vault:1.18.5
         container_name: ${COMPOSE_PROJECT_NAME}_redis_vault_agent
-        image: ${COMPOSE_PROJECT_NAME}/vault-agent:local
         restart: unless-stopped
         entrypoint: ["vault"]
         command: ["agent", "-config=/vault/config/redis.hcl"]
@@ -378,11 +361,8 @@ services:
             start_period: 5s
 
     monitoring_vault_agent:
-        build:
-            context: ./infra/vault-agent
-            dockerfile: Dockerfile
+        image: hashicorp/vault:1.18.5
         container_name: ${COMPOSE_PROJECT_NAME}_monitoring_vault_agent
-        image: ${COMPOSE_PROJECT_NAME}/vault-agent:local
         restart: unless-stopped
         entrypoint: ["vault"]
         command: ["agent", "-config=/vault/config/monitoring.hcl"]

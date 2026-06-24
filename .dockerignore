@@ -3,3 +3,8 @@
 !frontend/**
 !public/
 !public/**
+frontend/node_modules
+frontend/dist
+frontend/.env
+frontend/.env.*
+public/**/*.log

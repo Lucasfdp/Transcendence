@@ -71,7 +71,6 @@ endif
 ## up: Build images (if needed) and start all services in detached mode
 up: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting all services...$(RESET)"
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) build backend_vault_agent
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --no-deps $(VAULT_AGENT_SERVICES)
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(CORE_SERVICES)
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(EDGE_SERVICES)
@@ -80,16 +79,14 @@ up: check-env prepare-local-secrets certs vault-bootstrap
 ## dev: Start with hot-reload override (Vite HMR + NestJS watch). Access frontend at http://localhost:3000
 dev: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting in DEV mode (hot-reload)...$(RESET)"
-	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) build backend_vault_agent
-	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --force-recreate --remove-orphans --no-deps $(VAULT_AGENT_SERVICES)
-	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --remove-orphans --no-deps $(CORE_SERVICES)
-	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --remove-orphans --no-deps $(EDGE_SERVICES)
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --no-deps $(VAULT_AGENT_SERVICES)
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --no-deps $(CORE_SERVICES)
+	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --no-deps $(EDGE_SERVICES)
 	@echo "$(GREEN)Dev server running. Frontend: http://localhost:3000$(RESET)"
 
-## prod: Start WITHOUT the dev override — production-like mode (uses serve + compiled dist)
+## prod: Start WITHOUT the dev override — production-like mode (compiled frontend + runtime images)
 prod: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting in PROD mode (no override)...$(RESET)"
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) build backend_vault_agent
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --no-deps $(VAULT_AGENT_SERVICES)
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(CORE_SERVICES)
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(EDGE_SERVICES)
@@ -98,7 +95,7 @@ prod: check-env prepare-local-secrets certs vault-bootstrap
 ## vault-bootstrap: Ensure the local Vault is initialised, unsealed and seeded before starting dependants
 vault-bootstrap: check-env
 	@echo "$(CYAN)Bootstrapping Vault for local dev...$(RESET)"
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build vault
+	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d vault
 	@$(MAKE) vault-init
 	@$(MAKE) vault-unseal
 	@$(MAKE) vault-seed-dev

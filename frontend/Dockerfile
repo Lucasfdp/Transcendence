@@ -11,31 +11,24 @@ ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_GITHUB_AUTH_URL=${VITE_GITHUB_AUTH_URL}
 WORKDIR /app/frontend
 COPY frontend/package.json ./
-# Intentionally omit package-lock.json: npm ci uses the lockfile's resolved
-# optional-dependency URLs, which are arch-specific.  Copying a lockfile built
-# on macOS arm64 into a linux/arm64 musl container causes rollup's native
-# binding (@rollup/rollup-linux-arm64-musl) to go missing (npm/cli#4828).
-# npm install re-resolves optionalDependencies for the current platform.
-RUN npm install
+COPY frontend/package-lock.json* ./
+# Keep `npm install` here instead of `npm ci`: Vite/Rollup's optional native
+# packages can differ by platform, and `npm install` re-resolves them inside the
+# target container environment.
+RUN --mount=type=cache,target=/root/.npm npm install
 COPY frontend/ ./
 COPY public /app/public
 RUN npm run build
 
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+FROM nginx:1.27-alpine
 LABEL maintainer="Shell Smash"
 LABEL description="Phaser.js + Vite frontend for the Shell Smash gaming hub"
 ARG FRONTEND_ENV=production
 ENV NODE_ENV=${FRONTEND_ENV}
-RUN apk update && apk add --no-cache wget curl && rm -rf /var/cache/apk/* \
-    && npm install -g serve \
-    && addgroup -S appgroup && adduser -S appuser -G appgroup
-WORKDIR /app
-COPY --from=builder /app/frontend/dist ./dist
-RUN chown -R appuser:appgroup /app
-COPY frontend/tools/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-USER appuser
+RUN apk add --no-cache wget
+COPY frontend/conf/default.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/frontend/dist /usr/share/nginx/html
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["nginx", "-g", "daemon off;"]
