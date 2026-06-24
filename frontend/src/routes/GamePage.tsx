@@ -2,20 +2,26 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { api } from "../features/hub/api";
-import type { ShellInventory, User } from "../features/hub/api";
 import { RETURN_TO_HUB_EVENT } from "../features/hub/ReturnToHubScene";
 import type { ShellSmashStartData } from "../lib/createShellSmashGame";
 import { createShellSmashGame } from "../lib/createShellSmashGame";
 import { hubBackgroundClass } from "../shared/backgrounds";
 import { GAME_POWERS, type GameId } from "../shared/mechanics/game-powers";
-import { ALL_POWERS, PowerType } from "../shared/mechanics/power-system";
+import { ALL_POWERS } from "../shared/mechanics/power-system";
 import {
 	getGameSocket,
 	type GameSnapshot,
 	type OnlineMatchContext,
 } from "../services/network/gameSocket";
 
-const MAX_PICKS = 3;
+const DISPLAYED_POWERUP_COUNT = 8;
+
+const GAME_TITLES: Record<GameId, string> = {
+	"temple-curling": "Temple Curling",
+	"bamboo-bash": "Bamboo Bash",
+	"bell-clash": "Bell Clash",
+	"kame-knock": "Kame Knock",
+};
 
 interface MatchStatusPayload {
 	inMatch: boolean;
@@ -133,50 +139,12 @@ function PowerupMatchmakingPanel({
 	onLaunch: (data: ShellSmashStartData) => void;
 }): JSX.Element {
 	const gameId = sceneData.gameId as GameId;
-	const [player, setPlayer] = useState<User | null>(null);
-	const [inventory, setInventory] = useState<ShellInventory>({ none: Infinity });
-	const [isLoading, setIsLoading] = useState(true);
-	const [currentPlayer, setCurrentPlayer] = useState(0);
-	const [selections, setSelections] = useState<[string[], string[]]>([[], []]);
-	const [message, setMessage] = useState("Pick up to 3 special shells, or go with no power.");
+	const [message, setMessage] = useState("Random power-ups will appear during the match.");
 	const [messageTone, setMessageTone] = useState<"muted" | "gold" | "error">("muted");
 	const [onlinePlayerCount, setOnlinePlayerCount] = useState(2);
 	const [isSearchingOnline, setIsSearchingOnline] = useState(false);
 	const [activeMatchStatus, setActiveMatchStatus] = useState<MatchStatusPayload | null>(null);
 	const isSearchingOnlineRef = useRef(false);
-
-	useEffect(() => {
-		let cancelled = false;
-
-		async function loadPicker(): Promise<void> {
-			try {
-				const nextPlayer = await api.getMe();
-				let nextInventory: ShellInventory;
-				if (nextPlayer.isGuest) nextInventory = buildFullInventory();
-				else {
-					try {
-						nextInventory = await api.getShellInventory();
-					} catch {
-						nextInventory = buildFullInventory();
-					}
-				}
-				if (!cancelled) {
-					setPlayer(nextPlayer);
-					setInventory(nextInventory);
-				}
-			} catch (err: unknown) {
-				console.warn("[GamePage] Failed to load shell picker:", err);
-				if (!cancelled) setInventory(buildFullInventory());
-			} finally {
-				if (!cancelled) setIsLoading(false);
-			}
-		}
-
-		void loadPicker();
-		return () => {
-			cancelled = true;
-		};
-	}, []);
 
 	useEffect(() => {
 		isSearchingOnlineRef.current = isSearchingOnline;
@@ -202,46 +170,26 @@ function PowerupMatchmakingPanel({
 		};
 	}, []);
 
-	const selected = selections[currentPlayer];
 	const backgroundClass = hubBackgroundClass(
 		"game-host",
 		hubBackground,
 		hubBackgroundAlter,
 	);
 	const isOnlineGame = Boolean(GAME_SCENES[gameId]);
-	const playerLabel = sceneData.playerCount === 2 ? `Player ${currentPlayer + 1}` : "Your";
+	const gameTitle = GAME_TITLES[gameId];
+	const displayedPowerups = GAME_POWERS[gameId].slice(
+		0,
+		DISPLAYED_POWERUP_COUNT,
+	);
 	const activeReconnectSeconds = activeMatchStatus?.reconnectExpiresAt
 		? Math.max(0, Math.ceil((activeMatchStatus.reconnectExpiresAt - Date.now()) / 1000))
 		: 45;
 
-	const launchLocalGame = async () => {
-		if (!(await validateSelection(player, selections[currentPlayer], setMessage, setMessageTone))) return;
-
-		if (sceneData.playerCount === 2 && currentPlayer === 0) {
-			setCurrentPlayer(1);
-			setMessage("Player 2, pick up to 3 special shells, or go with no power.");
-			setMessageTone("muted");
-			return;
-		}
-
+	const launchLocalGame = () => {
 		onLaunch({
 			gameId,
 			targetScene: sceneData.targetScene,
-			shellSelection: { player0: selections[0], player1: selections[1] },
-		});
-	};
-
-	const toggleSelection = (type: PowerType) => {
-		setSelections((prev) => {
-			const next: [string[], string[]] = [[...prev[0]], [...prev[1]]];
-			const picks = next[currentPlayer];
-			const index = picks.indexOf(type);
-			if (index >= 0) picks.splice(index, 1);
-			else {
-				if (picks.length >= MAX_PICKS) picks.shift();
-				picks.push(type);
-			}
-			return next;
+			shellSelection: { player0: [], player1: [] },
 		});
 	};
 
@@ -260,7 +208,7 @@ function PowerupMatchmakingPanel({
 		onLaunch({
 			gameId: activeMatchStatus.gameId as GameId,
 			targetScene,
-			shellSelection: { player0: selections[0], player1: selections[1] },
+			shellSelection: { player0: [], player1: [] },
 			onlineMatch: {
 				matchId: activeMatchStatus.matchId,
 				side: activeMatchStatus.side,
@@ -286,7 +234,6 @@ function PowerupMatchmakingPanel({
 			cancelOnlineSearch();
 			return;
 		}
-		if (!(await validateSelection(player, selections[0], setMessage, setMessageTone))) return;
 
 		const socket = getGameSocket();
 		let matchId: string | null = null;
@@ -311,7 +258,7 @@ function PowerupMatchmakingPanel({
 			onLaunch({
 				gameId,
 				targetScene: sceneData.targetScene,
-				shellSelection: { player0: selections[0], player1: [] },
+				shellSelection: { player0: [], player1: [] },
 				onlineMatch: { matchId: snapshot.matchId, side, snapshot } satisfies OnlineMatchContext,
 			});
 		};
@@ -326,100 +273,95 @@ function PowerupMatchmakingPanel({
 			gameId,
 			mode: "casual",
 			playerCount: onlinePlayerCount,
-			shellSelection: selections[0],
+			shellSelection: [],
 		});
 	};
-
-	if (isLoading) {
-		return <main className={`power-picker-page game-host ${backgroundClass}`}>Loading shells...</main>;
-	}
 
 	return (
 		<main className={`power-picker-page game-host ${backgroundClass}`}>
 			<section className="power-picker-page__panel">
 				<header className="power-picker-page__header">
 					<button type="button" className="power-picker-page__back" onClick={onBack}>Back</button>
-					<div>
-						<p className="power-picker-page__eyebrow">Powerups and Matchmaking</p>
-						<h1>{sceneData.playerCount === 2 ? `${playerLabel} Shells` : "Choose Your Shells"}</h1>
+					<div className="power-picker-page__title-card">
+						<h1>{gameTitle}</h1>
 					</div>
 				</header>
 
-				<p className={`power-picker-page__message power-picker-page__message--${messageTone}`}>{message}</p>
-				<p className="power-picker-page__count">{selected.length} / {MAX_PICKS} special shells selected</p>
+				<section className="power-picker-page__powerups" aria-label="Power-ups available in this match">
+					<h2>Power-Ups in This Match</h2>
+					<div className="power-picker-page__grid">
+						{displayedPowerups.map((type) => {
+							const def = ALL_POWERS[type];
 
-				<div className="power-picker-page__grid">
-					{GAME_POWERS[gameId].map((type) => {
-						const def = ALL_POWERS[type];
-						const quantity = inventory[type] ?? 0;
-						const locked = quantity === 0;
-						const isSelected = selected.includes(type);
-
-						return (
-							<button
-								key={type}
-								type="button"
-								className={`power-card${isSelected ? " is-selected" : ""}${locked ? " is-locked" : ""}`}
-								style={{ "--power-accent": toHex(def.accentColour) } as CSSProperties}
-								disabled={locked}
-								onClick={() => toggleSelection(type)}
-								title={def.description}
-							>
-								<span className="power-card__orb" />
-								<strong>{def.label}</strong>
-								<small>{def.description}</small>
-								<span className="power-card__qty">{quantity === Infinity ? "∞" : `x${quantity}`}</span>
-							</button>
-						);
-					})}
-				</div>
+							return (
+								<article
+									key={type}
+									className="power-card"
+									style={{ "--power-accent": toHex(def.accentColour) } as CSSProperties}
+									title={def.description}
+								>
+									<span className="power-card__orb" />
+									<strong>{def.label}</strong>
+								</article>
+							);
+						})}
+					</div>
+					<p className={`power-picker-page__message power-picker-page__message--${messageTone}`}>{message}</p>
+				</section>
 
 				<footer className="power-picker-page__actions">
-					<button type="button" className="power-picker-page__primary" onClick={() => void launchLocalGame()}>
-						{sceneData.playerCount === 2 && currentPlayer === 0 ? "Next: Player 2" : "Start Game"}
-					</button>
-					{isOnlineGame && currentPlayer === 0 ? (
-						<div className="power-picker-page__online">
-							<div className="power-picker-page__stepper">
-								<button type="button" disabled={Boolean(activeMatchStatus)} onClick={() => setOnlinePlayerCount((count) => Math.max(2, count - 1))}>-</button>
-								<span>{activeMatchStatus ? `Reconnect window: ${activeReconnectSeconds}s` : `Online players: ${onlinePlayerCount}`}</span>
-								<button type="button" disabled={Boolean(activeMatchStatus)} onClick={() => setOnlinePlayerCount((count) => Math.min(5, count + 1))}>+</button>
-							</div>
+					<section className="power-picker-page__mode-card">
+						<h2>Local Game</h2>
+						<button type="button" className="power-picker-page__primary" onClick={launchLocalGame}>
+							Start Game
+						</button>
+					</section>
+
+					{isOnlineGame ? (
+						<section className="power-picker-page__mode-card power-picker-page__mode-card--online">
+							<h2>Multiplayer Online</h2>
 							<button type="button" className="power-picker-page__online-button" onClick={() => void findOnlineMatch()}>
 								{activeMatchStatus ? "Rejoin Match" : isSearchingOnline ? "Cancel Search" : "Find Online Match"}
 							</button>
+							<div className="power-picker-page__player-picker" aria-label="Online player count">
+								{[2, 3].map((count) => (
+									<button
+										key={count}
+										type="button"
+										className={onlinePlayerCount === count ? "is-selected" : ""}
+										disabled={Boolean(activeMatchStatus)}
+										onClick={() => setOnlinePlayerCount(count)}
+									>
+										{count}
+									</button>
+								))}
+								<span className="power-picker-page__shell-icon" aria-hidden="true" />
+								{[4, 5].map((count) => (
+									<button
+										key={count}
+										type="button"
+										className={onlinePlayerCount === count ? "is-selected" : ""}
+										disabled={Boolean(activeMatchStatus)}
+										onClick={() => setOnlinePlayerCount(count)}
+									>
+										{count}
+									</button>
+								))}
+							</div>
+							<p className="power-picker-page__online-status">
+								{activeMatchStatus
+									? `Reconnect window: ${activeReconnectSeconds}s`
+									: isSearchingOnline
+										? "Searching for opponents..."
+										: `Players selected: ${onlinePlayerCount}`}
+							</p>
 							{activeMatchStatus ? <button type="button" className="power-picker-page__danger" onClick={abandonActiveMatch}>Abandon Match</button> : null}
-						</div>
+						</section>
 					) : null}
 				</footer>
 			</section>
 		</main>
 	);
-}
-
-async function validateSelection(
-	player: User | null,
-	picks: string[],
-	setMessage: (message: string) => void,
-	setMessageTone: (tone: "muted" | "gold" | "error") => void,
-): Promise<boolean> {
-	if (player?.isGuest || picks.length === 0) return true;
-	try {
-		await api.validateShellSelection(picks);
-		return true;
-	} catch {
-		setMessage("Selection invalid. Try again.");
-		setMessageTone("error");
-		return false;
-	}
-}
-
-function buildFullInventory(): ShellInventory {
-	const inventory: ShellInventory = { none: Infinity };
-	for (const type of Object.values(PowerType)) {
-		if (type !== PowerType.NONE) inventory[type] = Infinity;
-	}
-	return inventory;
 }
 
 function toHex(color: number): string {
