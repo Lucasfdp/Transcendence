@@ -78,6 +78,35 @@ async function apiFetch<T>(
 	return res.json() as Promise<T>;
 }
 
+async function apiUploadFile<T>(
+	path: string,
+	formData: FormData,
+): Promise<T> {
+	const headers: Record<string, string> = {};
+	const token = cachedCsrfToken ?? readCsrfCookie();
+	if (token) headers["X-CSRF-Token"] = token;
+	let res: Response;
+	try {
+		res = await fetch(`${API_BASE}${path}`, {
+			method: "POST",
+			headers,
+			credentials: "include",
+			body: formData,
+		});
+	} catch (err) {
+		throw new NetworkError(
+			`Network request failed for ${path}: ${String(err)}`,
+		);
+	}
+	if (!res.ok) {
+		throw new AuthError(
+			res.status,
+			await readErrorMessage(res, `${res.status} on ${path}`),
+		);
+	}
+	return res.json() as Promise<T>;
+}
+
 async function readErrorMessage(
 	res: Response,
 	fallback: string,
@@ -235,6 +264,20 @@ export interface LeaderboardEntry {
 // ── API surface ───────────────────────────────────────────────────────────────
 
 export const api = {
+	/** Update the current user's turtle name and/or bio. */
+	updateProfile: (data: { turtleName?: string; bio?: string }): Promise<User> =>
+		apiFetch<User>("/users/me", {
+			method: "PATCH",
+			body: JSON.stringify(data),
+		}),
+
+	/** Upload a new avatar image for the current user. */
+	uploadAvatar: (file: File): Promise<{ avatarUrl: string }> => {
+		const form = new FormData();
+		form.append("avatar", file);
+		return apiUploadFile<{ avatarUrl: string }>("/users/me/avatar", form);
+	},
+
 	/** Fetch and cache the CSRF token. Call once before any POST/DELETE. */
 	getCsrfToken: async (): Promise<string> => {
 		const data = await apiFetch<{ csrfToken: string }>("/auth/csrf-token");

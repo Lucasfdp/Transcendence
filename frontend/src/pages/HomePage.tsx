@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
 import { NineSliceButton } from "../components/common/NineSliceButton";
 import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
+import { WorkInProgressNotice } from "../components/common/WorkInProgressNotice";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
 import {
 	hubBackgroundClass,
@@ -13,8 +14,10 @@ import {
 	Achievement,
 	api,
 	Cosmetic,
+	FriendView,
 	LeaderboardEntry,
 	MiniGameDefinition,
+	PendingView,
 	type User,
 } from "../features/hub/api";
 
@@ -355,8 +358,17 @@ function HomeMenu(): JSX.Element {
 	const [cosmetics, setCosmetics] = useState<Cosmetic[] | null>(null);
 	const [modalError, setModalError] = useState("");
 	const [activeModal, setActiveModal] = useState<
-		"achievements" | "customization" | null
+		"achievements" | "customization" | "profile" | "social" | null
 	>(null);
+	const [profileSaving, setProfileSaving] = useState(false);
+	const [profileSuccess, setProfileSuccess] = useState("");
+	const [profileTurtleName, setProfileTurtleName] = useState("");
+	const [profileBio, setProfileBio] = useState("");
+	const [friends, setFriends] = useState<FriendView[] | null>(null);
+	const [pendingRequests, setPendingRequests] = useState<PendingView[] | null>(null);
+	const [socialLoading, setSocialLoading] = useState(false);
+	const [friendUsername, setFriendUsername] = useState("");
+	const [friendActionLoading, setFriendActionLoading] = useState(false);
 	const appliedBackgroundId = resolveHubBackgroundId(
 		player?.hubBackground,
 		player?.hubBackgroundAlter,
@@ -540,6 +552,27 @@ function HomeMenu(): JSX.Element {
 		}
 	};
 
+	const handleProfileSave = async () => {
+		if (profileSaving) return;
+		setProfileSaving(true);
+		setModalError("");
+		setProfileSuccess("");
+		try {
+			await api.getCsrfToken();
+			const updates: { turtleName?: string; bio?: string } = {};
+			if (profileTurtleName.trim()) updates.turtleName = profileTurtleName.trim();
+			updates.bio = profileBio.trim();
+			const updated = await api.updateProfile(updates);
+			setPlayer(updated);
+			setProfileSuccess("Profile updated.");
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : "Update failed.";
+			setModalError(message);
+		} finally {
+			setProfileSaving(false);
+		}
+	};
+
 	const handleBackgroundAlterAction = async (
 		background: Cosmetic,
 		alter: Cosmetic,
@@ -549,6 +582,70 @@ function HomeMenu(): JSX.Element {
 			return;
 		}
 		await handleCosmeticAction(alter);
+	};
+
+	const openSocial = async () => {
+		setActiveModal("social");
+		setModalError("");
+		setFriends(null);
+		setPendingRequests(null);
+		setSocialLoading(true);
+		try {
+			const [nextFriends, nextPending] = await Promise.all([
+				api.getFriends(),
+				api.getPendingRequests(),
+			]);
+			setFriends(nextFriends);
+			setPendingRequests(nextPending);
+		} catch {
+			setModalError("Could not load social data. Try again later.");
+		} finally {
+			setSocialLoading(false);
+		}
+	};
+
+	const handleSendFriendRequest = async () => {
+		const trimmed = friendUsername.trim();
+		if (!trimmed || friendActionLoading) return;
+		setFriendActionLoading(true);
+		setModalError("");
+		try {
+			await api.getCsrfToken();
+			await api.sendFriendRequest(trimmed);
+			setFriendUsername("");
+		} catch (err: unknown) {
+			setModalError(err instanceof Error ? err.message : "Could not send request.");
+		} finally {
+			setFriendActionLoading(false);
+		}
+	};
+
+	const handleAcceptRequest = async (userId: number) => {
+		setModalError("");
+		try {
+			await api.getCsrfToken();
+			await api.acceptFriendRequest(userId);
+			const [nextFriends, nextPending] = await Promise.all([
+				api.getFriends(),
+				api.getPendingRequests(),
+			]);
+			setFriends(nextFriends);
+			setPendingRequests(nextPending);
+		} catch (err: unknown) {
+			setModalError(err instanceof Error ? err.message : "Could not accept request.");
+		}
+	};
+
+	const handleRemoveFriend = async (userId: number) => {
+		setModalError("");
+		try {
+			await api.getCsrfToken();
+			await api.removeFriend(userId);
+			setFriends((prev) => prev?.filter((f) => f.userId !== userId) ?? null);
+			setPendingRequests((prev) => prev?.filter((p) => p.userId !== userId) ?? null);
+		} catch (err: unknown) {
+			setModalError(err instanceof Error ? err.message : "Could not remove.");
+		}
 	};
 
 	if (isLoading) return <RouteLoading />;
@@ -567,12 +664,13 @@ function HomeMenu(): JSX.Element {
 					<button
 						className="hub-page__player-card"
 						type="button"
-						onClick={() =>
-							setInfoModal({
-								title: playerName,
-								description: `Level ${player?.level ?? 1} turtle with ${player?.coins ?? 0} coins and ${player?.xp ?? 0} XP.`,
-							})
-						}
+						onClick={() => {
+							setProfileTurtleName(player?.turtleName ?? "");
+							setProfileBio(player?.profile?.bio ?? "");
+							setProfileSuccess("");
+							setModalError("");
+							setActiveModal("profile");
+						}}
 					>
 						<span className="menu-page__player-label">Player</span>
 						<strong className="menu-page__player-name">{playerName}</strong>
@@ -661,6 +759,9 @@ function HomeMenu(): JSX.Element {
 							onClick={openCustomization}
 						>
 							Customization
+						</NineSliceButton>
+						<NineSliceButton type="button" className="hub-panel__button" onClick={() => void openSocial()}>
+							Social
 						</NineSliceButton>
 					</aside>
 
@@ -819,6 +920,127 @@ function HomeMenu(): JSX.Element {
 						</div>
 					) : (
 						<p>Loading achievements...</p>
+					)}
+				</HubModal>
+			) : null}
+
+			{activeModal === "profile" ? (
+				<HubModal
+					title="Edit Profile"
+					onClose={() => {
+						setActiveModal(null);
+					}}
+				>
+					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
+					{profileSuccess ? <p className="hub-modal__success">{profileSuccess}</p> : null}
+					<div className="hub-modal__profile">
+						<WorkInProgressNotice
+							featureName="Avatar"
+							title="Customisable turtle coming soon"
+							description="Your teammate is building turtle avatar customisation. Check back once it's ready."
+						/>
+						<label className="hub-modal__field-label" htmlFor="turtle-name-input">
+							Turtle name
+						</label>
+						<input
+							id="turtle-name-input"
+							className="hub-modal__field-input"
+							type="text"
+							maxLength={32}
+							value={profileTurtleName}
+							placeholder={player?.username ?? ""}
+							onChange={(e) => setProfileTurtleName(e.target.value)}
+						/>
+						<label className="hub-modal__field-label" htmlFor="bio-input">
+							Bio
+						</label>
+						<textarea
+							id="bio-input"
+							className="hub-modal__field-input hub-modal__field-input--textarea"
+							maxLength={200}
+							rows={3}
+							value={profileBio}
+							placeholder="Tell the dojo about yourself…"
+							onChange={(e) => setProfileBio(e.target.value)}
+						/>
+						<button
+							className="hub-modal__save-button"
+							type="button"
+							disabled={profileSaving}
+							onClick={() => void handleProfileSave()}
+						>
+							{profileSaving ? "Saving…" : "Save changes"}
+						</button>
+					</div>
+				</HubModal>
+			) : null}
+
+			{activeModal === "social" ? (
+				<HubModal title="Social" onClose={() => { setActiveModal(null); setFriendUsername(""); }}>
+					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
+
+					<div className="hub-modal__social-add">
+						<input
+							className="hub-modal__field-input"
+							type="text"
+							placeholder="Username"
+							maxLength={32}
+							value={friendUsername}
+							onChange={(e) => setFriendUsername(e.target.value)}
+							onKeyDown={(e) => { if (e.key === "Enter") void handleSendFriendRequest(); }}
+						/>
+						<button
+							className="hub-modal__save-button"
+							type="button"
+							disabled={friendActionLoading || !friendUsername.trim()}
+							onClick={() => void handleSendFriendRequest()}
+						>
+							{friendActionLoading ? "Sending…" : "Add friend"}
+						</button>
+					</div>
+
+					{socialLoading ? <p>Loading…</p> : (
+						<>
+							{pendingRequests && pendingRequests.length > 0 ? (
+								<section className="hub-modal__social-section">
+									<h3>Pending requests</h3>
+									<ul className="hub-modal__social-list">
+										{pendingRequests.map((req) => (
+											<li key={req.userId} className="hub-modal__social-row">
+												<span className="hub-modal__social-name">
+													{req.turtleName ?? req.username}
+													<small> @{req.username}</small>
+												</span>
+												<div className="hub-modal__social-actions">
+													<button type="button" onClick={() => void handleAcceptRequest(req.userId)}>Accept</button>
+													<button type="button" onClick={() => void handleRemoveFriend(req.userId)}>Decline</button>
+												</div>
+											</li>
+										))}
+									</ul>
+								</section>
+							) : null}
+
+							<section className="hub-modal__social-section">
+								<h3>Friends</h3>
+								{friends && friends.length > 0 ? (
+									<ul className="hub-modal__social-list">
+										{friends.map((friend) => (
+											<li key={friend.userId} className="hub-modal__social-row">
+												<span className="hub-modal__social-name">
+													{friend.turtleName ?? friend.username}
+													<small> @{friend.username}</small>
+													{friend.isOnline ? <span className="hub-modal__social-online" aria-label="Online" /> : null}
+												</span>
+												<button type="button" onClick={() => void handleRemoveFriend(friend.userId)}>Remove</button>
+											</li>
+										))}
+									</ul>
+								) : (
+									<p className="hub-panel__muted">No friends yet. Add someone above.</p>
+								)}
+							</section>
+						</>
 					)}
 				</HubModal>
 			) : null}
