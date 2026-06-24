@@ -14,7 +14,7 @@ The local username/password flow depends on the backend auth endpoints already p
 Before testing the frontend flow, verify:
 
 1. The backend container is running.
-2. The reverse proxy serves the app over `https://localhost`.
+2. The reverse proxy serves the app over `https://localhost:42424`.
 3. Cookies are preserved through Nginx.
 4. The backend can issue and read the auth cookie correctly.
 
@@ -28,7 +28,7 @@ Before testing the frontend flow, verify:
 4. Set the redirect URI to:
 
 ```text
-https://localhost/api/auth/42/callback
+https://localhost:42424/api/auth/42/callback
 ```
 
 ### Save the credentials
@@ -45,7 +45,7 @@ Add these variables to your local `.env`:
 ```env
 FORTYTWO_CLIENT_ID=your_42_client_id
 FORTYTWO_CLIENT_SECRET=your_42_client_secret
-FORTYTWO_CALLBACK_URL=https://localhost/api/auth/42/callback
+FORTYTWO_CALLBACK_URL=https://localhost:42424/api/auth/42/callback
 ```
 
 Also add the same keys to `.env.example` with placeholder values.
@@ -70,8 +70,8 @@ You should still verify the full callback flow locally after setting the credent
 3. Click `New OAuth App`.
 4. Fill the fields:
     - `Application name`: choose your app name
-    - `Homepage URL`: `https://localhost`
-    - `Authorization callback URL`: `https://localhost/api/auth/github/callback`
+    - `Homepage URL`: `https://localhost:42424`
+    - `Authorization callback URL`: `https://localhost:42424/api/auth/github/callback`
 5. Create the app.
 
 ### Save the credentials
@@ -88,7 +88,7 @@ Add them to `.env`:
 ```env
 GITHUB_CLIENT_ID=your_github_client_id
 GITHUB_CLIENT_SECRET=your_github_client_secret
-GITHUB_CALLBACK_URL=https://localhost/api/auth/github/callback
+GITHUB_CALLBACK_URL=https://localhost:42424/api/auth/github/callback
 VITE_GITHUB_AUTH_URL=/api/auth/github
 ```
 
@@ -112,7 +112,7 @@ GitHub OAuth is not implemented yet in NestJS. To make the button work you still
 OAuth providers are strict about callback URLs. Before testing, confirm:
 
 1. The callback URL in the provider dashboard exactly matches the backend callback URL.
-2. You are really serving the app via `https://localhost`.
+2. You are really serving the app via `https://localhost:42424`.
 3. The browser trusts your local certificate or accepts it.
 4. Nginx forwards `/api/auth/...` correctly to the backend.
 5. The backend cookie settings are compatible with your local HTTPS setup.

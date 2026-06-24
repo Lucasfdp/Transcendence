@@ -249,6 +249,11 @@ health:
 		--format "table {{.Names}}\t{{.Status}}" | \
 		awk 'NR==1{print "$(BOLD)"$$0"$(RESET)"} NR>1{print}'
 
+## open: Open the app in the default browser at https://localhost:42424
+open:
+	@echo "$(CYAN)Opening https://localhost:42424 ...$(RESET)"
+	@xdg-open https://localhost:42424 >/dev/null 2>&1 &
+
 # ==============================================================================
 # HELPERS
 # ==============================================================================
@@ -329,4 +334,4 @@ help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /'
 	@echo ""
 
-.PHONY: up dev prod down restart restart-front restart-back rebuild-front rebuild-back refresh-app build logs ps clean fclean re shell status inspect volumes networks db test health certs check-env push help
+.PHONY: up dev prod down restart restart-front restart-back rebuild-front rebuild-back refresh-app build logs ps clean fclean re shell status inspect volumes networks db test health open certs check-env push help

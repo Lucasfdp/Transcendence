@@ -53,7 +53,7 @@ make ps
 11. Starts `reverse_proxy` (depends on frontend + backend being healthy).
 12. Starts `monitoring` and `portainer`.
 
-The application is accessible at `https://localhost` (or your configured `DOMAIN_NAME`) once `reverse_proxy` is healthy.
+The application is accessible at `https://localhost:42424` (or your configured `DOMAIN_NAME` and `HTTPS_PORT`) once `reverse_proxy` is healthy.
 
 ---
 
@@ -133,7 +133,7 @@ docker compose -f docker-compose.yml exec -T database \
 - [ ] `make up` starts all required services cleanly
 - [ ] `make down` stops all services without errors
 - [ ] `make re` does a full rebuild and restart
-- [ ] `https://localhost` is accessible in a browser
+- [ ] `https://localhost:42424` is accessible in a browser
 - [ ] The game is fully playable through the browser
 - [ ] All required bonus features are accessible
 - [ ] Portainer is disabled or documented as dev-only
