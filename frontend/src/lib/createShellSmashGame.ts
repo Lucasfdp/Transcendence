@@ -14,6 +14,8 @@ export interface ShellSmashStartData {
 	gameId: GameId;
 	targetScene: string;
 	shellSelection: { player0: string[]; player1: string[] };
+	localMode?: "solo" | "versus";
+	localPowerupsEnabled?: boolean;
 	onlineMatch?: OnlineMatchContext;
 }
 
@@ -47,6 +49,11 @@ export function createShellSmashGame(
 	installHiDPI(game);
 	if (initialScene) {
 		game.registry.set("shellSelection", initialScene.shellSelection);
+		game.registry.set("localMode", initialScene.localMode ?? "solo");
+		game.registry.set(
+			"localPowerupsEnabled",
+			initialScene.localPowerupsEnabled ?? true,
+		);
 		if (initialScene.onlineMatch) {
 			game.registry.set("onlineMatch", initialScene.onlineMatch);
 		} else {

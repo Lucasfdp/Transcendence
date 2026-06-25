@@ -2419,6 +2419,7 @@ input {
 .power-picker-page__primary,
 .power-picker-page__online-button,
 .power-picker-page__danger,
+.power-picker-page__toggle,
 .power-picker-page__player-picker button {
 	border: 1px solid rgba(241, 211, 145, 0.42);
 	border-radius: 999px;
@@ -2430,6 +2431,15 @@ input {
 		border-color 160ms ease,
 		box-shadow 160ms ease,
 		background 160ms ease;
+}
+
+.power-picker-page__primary:disabled,
+.power-picker-page__online-button:disabled,
+.power-picker-page__toggle:disabled,
+.power-picker-page__player-picker button:disabled {
+	cursor: not-allowed;
+	filter: grayscale(0.45);
+	opacity: 0.45;
 }
 
 .power-picker-page__back {
@@ -2580,7 +2590,8 @@ input {
 
 .power-picker-page__primary,
 .power-picker-page__online-button,
-.power-picker-page__danger {
+.power-picker-page__danger,
+.power-picker-page__toggle {
 	width: min(22rem, 100%);
 	padding: 0.88rem 1rem;
 	font-weight: 700;
@@ -2594,6 +2605,35 @@ input {
 	background: linear-gradient(135deg, #f1d391 0%, #e88a3d 100%);
 	color: #17100b;
 	box-shadow: 0 8px 24px rgba(232, 138, 61, 0.22);
+}
+
+.power-picker-page__local-buttons {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.75rem;
+	width: min(26rem, 100%);
+}
+
+.power-picker-page__local-buttons .power-picker-page__primary {
+	width: 100%;
+}
+
+.power-picker-page__toggle {
+	border-color: rgba(241, 211, 145, 0.4);
+	background: rgba(15, 13, 8, 0.92);
+	color: #ffe7ad;
+}
+
+.power-picker-page__toggle.is-selected {
+	border-color: rgba(105, 59, 17, 0.68);
+	background: linear-gradient(135deg, #f1d391 0%, #e88a3d 100%);
+	color: #17100b;
+	box-shadow: 0 8px 24px rgba(232, 138, 61, 0.22);
+}
+
+.power-picker-page__mode-note {
+	font-size: 0.92rem;
+	opacity: 0.72;
 }
 
 .power-picker-page__mode-card {

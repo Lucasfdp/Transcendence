@@ -15,6 +15,14 @@ import {
 } from "../services/network/gameSocket";
 
 const DISPLAYED_POWERUP_COUNT = 8;
+type LocalGameMode = "solo" | "versus";
+
+interface GameSceneConfig {
+	targetScene: string;
+	playerCount: number;
+	localModes: Record<LocalGameMode, boolean>;
+	defaultLocalMode: LocalGameMode;
+}
 
 const GAME_TITLES: Record<GameId, string> = {
 	"temple-curling": "Temple Curling",
@@ -33,14 +41,31 @@ interface MatchStatusPayload {
 	snapshot?: GameSnapshot;
 }
 
-const GAME_SCENES: Record<
-	string,
-	{ targetScene: string; playerCount: number }
-> = {
-	"kame-knock": { targetScene: "KameKnockScene", playerCount: 1 },
-	"bamboo-bash": { targetScene: "BambooBashScene", playerCount: 2 },
-	"temple-curling": { targetScene: "ShellCurlScene", playerCount: 2 },
-	"bell-clash": { targetScene: "BellClashScene", playerCount: 1 },
+const GAME_SCENES: Record<string, GameSceneConfig> = {
+	"kame-knock": {
+		targetScene: "KameKnockScene",
+		playerCount: 1,
+		localModes: { solo: true, versus: false },
+		defaultLocalMode: "solo",
+	},
+	"bamboo-bash": {
+		targetScene: "BambooBashScene",
+		playerCount: 2,
+		localModes: { solo: false, versus: true },
+		defaultLocalMode: "versus",
+	},
+	"temple-curling": {
+		targetScene: "ShellCurlScene",
+		playerCount: 2,
+		localModes: { solo: false, versus: true },
+		defaultLocalMode: "versus",
+	},
+	"bell-clash": {
+		targetScene: "BellClashScene",
+		playerCount: 1,
+		localModes: { solo: true, versus: false },
+		defaultLocalMode: "solo",
+	},
 };
 
 export default function GamePage(): JSX.Element {
@@ -59,6 +84,8 @@ export default function GamePage(): JSX.Element {
 			gameId,
 			targetScene: game.targetScene,
 			playerCount: game.playerCount,
+			localModes: game.localModes,
+			defaultLocalMode: game.defaultLocalMode,
 		};
 	}, [gameId]);
 
@@ -132,7 +159,13 @@ function PowerupMatchmakingPanel({
 	onBack,
 	onLaunch,
 }: {
-	sceneData: { gameId: string; targetScene: string; playerCount: number };
+	sceneData: {
+		gameId: string;
+		targetScene: string;
+		playerCount: number;
+		localModes: Record<LocalGameMode, boolean>;
+		defaultLocalMode: LocalGameMode;
+	};
 	hubBackground: string | null;
 	hubBackgroundAlter: string | null;
 	onBack: () => void;
@@ -142,6 +175,7 @@ function PowerupMatchmakingPanel({
 	const [message, setMessage] = useState("Random power-ups will appear during the match.");
 	const [messageTone, setMessageTone] = useState<"muted" | "gold" | "error">("muted");
 	const [onlinePlayerCount, setOnlinePlayerCount] = useState(2);
+	const [localPowerupsEnabled, setLocalPowerupsEnabled] = useState(true);
 	const [isSearchingOnline, setIsSearchingOnline] = useState(false);
 	const [activeMatchStatus, setActiveMatchStatus] = useState<MatchStatusPayload | null>(null);
 	const isSearchingOnlineRef = useRef(false);
@@ -185,11 +219,22 @@ function PowerupMatchmakingPanel({
 		? Math.max(0, Math.ceil((activeMatchStatus.reconnectExpiresAt - Date.now()) / 1000))
 		: 45;
 
-	const launchLocalGame = () => {
+	const launchLocalGame = (localMode: LocalGameMode) => {
+		if (!sceneData.localModes[localMode]) {
+			setMessage(
+				localMode === "solo"
+					? `Solo mode is not ready for ${gameTitle}.`
+					: `Local VS is not ready for ${gameTitle}.`,
+			);
+			setMessageTone("muted");
+			return;
+		}
 		onLaunch({
 			gameId,
 			targetScene: sceneData.targetScene,
 			shellSelection: { player0: [], player1: [] },
+			localMode,
+			localPowerupsEnabled,
 		});
 	};
 
@@ -312,9 +357,38 @@ function PowerupMatchmakingPanel({
 				<footer className="power-picker-page__actions">
 					<section className="power-picker-page__mode-card">
 						<h2>Local Game</h2>
-						<button type="button" className="power-picker-page__primary" onClick={launchLocalGame}>
-							Start Game
+						<p>Choose solo training or couch versus.</p>
+						<div className="power-picker-page__local-buttons" aria-label="Local game mode">
+							<button
+								type="button"
+								className="power-picker-page__primary"
+								disabled={!sceneData.localModes.solo}
+								onClick={() => launchLocalGame("solo")}
+							>
+								Solo
+							</button>
+							<button
+								type="button"
+								className="power-picker-page__primary"
+								disabled={!sceneData.localModes.versus}
+								onClick={() => launchLocalGame("versus")}
+							>
+								Local VS
+							</button>
+						</div>
+						<button
+							type="button"
+							className={`power-picker-page__toggle ${localPowerupsEnabled ? "is-selected" : ""}`}
+							aria-pressed={localPowerupsEnabled}
+							onClick={() => setLocalPowerupsEnabled((enabled) => !enabled)}
+						>
+							Power-ups {localPowerupsEnabled ? "On" : "Off"}
 						</button>
+						<p className="power-picker-page__mode-note">
+							{sceneData.defaultLocalMode === "solo"
+								? "Local VS will be enabled when this game mode is ready."
+								: "Solo will be enabled when this game mode is ready."}
+						</p>
 					</section>
 
 					{isOnlineGame ? (

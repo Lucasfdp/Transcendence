@@ -259,8 +259,12 @@ export class ShellCurlScene extends ResponsiveScene {
 		const sel = this.registry.get("shellSelection") as
 			| Record<string, string[] | undefined>
 			| undefined;
+		const localPowerupsEnabled = this.onlineMatch
+			? true
+			: this.registry.get("localPowerupsEnabled") !== false;
 
 		const buildPool = (picks: string[] | undefined): PowerType[] => {
+			if (!localPowerupsEnabled) return [PowerType.NONE];
 			const specials = (picks ?? [])
 				.map((s) => s as PowerType)
 				.filter(

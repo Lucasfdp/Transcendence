@@ -248,7 +248,15 @@ export class BambooBashScene extends ResponsiveScene {
 		const sel = this.registry.get("shellSelection") as
 			| { player0?: string[]; player1?: string[] }
 			| undefined;
+		const localMode = this.registry.get("localMode") as
+			| "solo"
+			| "versus"
+			| undefined;
+		const localPowerupsEnabled = this.onlineMatch
+			? true
+			: this.registry.get("localPowerupsEnabled") !== false;
 		const buildPool = (picks: string[] | undefined): PowerType[] => {
+			if (!localPowerupsEnabled) return [PowerType.NONE];
 			const specials = (picks ?? [])
 				.map((s) => s as PowerType)
 				.filter(
@@ -280,7 +288,10 @@ export class BambooBashScene extends ResponsiveScene {
 		// launch early (attached in beginPlay()).
 
 		if (!this.onlineMatch) {
-			const pools = [buildPool(sel?.player0), buildPool(sel?.player1)];
+			const localPlayerCount = localMode === "solo" ? 1 : 2;
+			const pools = Array.from({ length: localPlayerCount }, (_, index) =>
+				buildPool(sel?.[`player${index}` as "player0" | "player1"]),
+			);
 			this.localParticipants = pools.map((powers, index) => {
 				const ball: BallState = {
 					x: 0,

@@ -4,8 +4,8 @@
  * The shared slingshot and arena-wall ball physics are reused, while the central
  * bell collision and per-shot angular score zones stay local to this minigame.
  *
- * Two-player: registry's shellSelection.player0 and player1 pools alternate
- * every shot (shot 0 → player 0, shot 1 → player 1, shot 2 → player 0).
+ * Offline is a solo three-shot score challenge. Online uses matchmaking state
+ * for multiplayer rounds.
  */
 
 import Phaser from "phaser";
@@ -224,12 +224,15 @@ export class BellClashScene extends ResponsiveScene {
 		);
 
 		// Read shell selection from registry.
-		// BellClash is 2-player: alternate pools each shot.
 		const sel = this.registry.get("shellSelection") as
 			| { player0?: string[]; player1?: string[] }
 			| undefined;
+		const localPowerupsEnabled = this.onlineMatch
+			? true
+			: this.registry.get("localPowerupsEnabled") !== false;
 
 		const buildPool = (picks: string[] | undefined): PowerType[] => {
+			if (!localPowerupsEnabled) return [PowerType.NONE];
 			const specials = (picks ?? [])
 				.map((s) => s as PowerType)
 				.filter(
@@ -432,10 +435,10 @@ export class BellClashScene extends ResponsiveScene {
 
 	// ── Shot helpers ──────────────────────────────────────────────────────────────
 
-	/** Index of the player whose turn it currently is. */
+	/** Index of the player whose turn it currently is. Offline Bell Clash is solo. */
 	private currentPlayerIndex(): number {
 		if (this.onlineMatch) return this.onlineMatch.side;
-		return (this.currentShot % 2) as 0 | 1;
+		return 0;
 	}
 
 	private setupShot(): void {
@@ -1012,8 +1015,7 @@ export class BellClashScene extends ResponsiveScene {
 	private formatShotText(): string {
 		if (this.onlineMatch)
 			return `ROUND ${this.onlineRoundNumber}/${this.onlineTotalRounds}  SHOT ${Math.min(this.onlineLocalShotNumber + 1, this.onlineShotsPerRound)}/${this.onlineShotsPerRound}  P${this.onlineMatch.side + 1}`;
-		const p = this.currentPlayerIndex();
-		return `SHOT ${this.currentShot + 1}/${SHOTS_TOTAL}  P${p + 1}`;
+		return `SHOT ${this.currentShot + 1}/${SHOTS_TOTAL}`;
 	}
 
 	private formatScoreText(): string {
