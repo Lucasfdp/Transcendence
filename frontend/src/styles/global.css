@@ -344,6 +344,14 @@ input {
 	gap: 0.8rem;
 }
 
+.auth-card__oauth-grid {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	justify-items: center;
+	gap: 0.8rem;
+	margin-top: 0.8rem;
+}
+
 .oauth-button {
 	display: inline-flex;
 	align-items: center;
@@ -389,6 +397,108 @@ input {
 	);
 }
 
+.oauth-button--square {
+	aspect-ratio: 1;
+	width: 82%;
+	padding: 0.38rem;
+	border-radius: 0.9rem;
+}
+
+.oauth-button--reddit {
+	background: linear-gradient(
+		135deg,
+		rgba(255, 106, 0, 0.94),
+		rgba(255, 69, 0, 0.82)
+	);
+}
+
+.oauth-button--xbox {
+	background: linear-gradient(
+		135deg,
+		rgba(18, 82, 35, 0.94),
+		rgba(16, 124, 16, 0.82)
+	);
+}
+
+.oauth-button--playstation {
+	background: linear-gradient(
+		135deg,
+		rgba(10, 47, 108, 0.96),
+		rgba(0, 112, 209, 0.82)
+	);
+}
+
+.oauth-button--chatgpt {
+	background: linear-gradient(
+		135deg,
+		rgba(14, 63, 58, 0.96),
+		rgba(16, 163, 127, 0.82)
+	);
+}
+
+.oauth-button--steam {
+	background: linear-gradient(
+		135deg,
+		rgba(18, 34, 60, 0.96),
+		rgba(23, 26, 33, 0.88)
+	);
+}
+
+.oauth-button--nintendo {
+	background: linear-gradient(
+		135deg,
+		rgba(182, 21, 34, 0.96),
+		rgba(230, 0, 18, 0.84)
+	);
+}
+
+.oauth-button--google {
+	background: linear-gradient(
+		135deg,
+		rgba(255, 255, 255, 0.96),
+		rgba(230, 236, 244, 0.9)
+	);
+	color: #202124;
+}
+
+.oauth-button--claude {
+	background: linear-gradient(
+		135deg,
+		rgba(199, 120, 61, 0.96),
+		rgba(161, 84, 38, 0.86)
+	);
+}
+
+.oauth-button--deepseek {
+	background: linear-gradient(
+		135deg,
+		rgba(23, 84, 214, 0.96),
+		rgba(49, 130, 246, 0.84)
+	);
+}
+
+.oauth-button--perplexity {
+	background: linear-gradient(
+		135deg,
+		rgba(12, 80, 74, 0.96),
+		rgba(31, 184, 166, 0.84)
+	);
+}
+
+.oauth-button--empty {
+	background: rgba(7, 10, 15, 0.38);
+	border-style: dashed;
+	border-color: rgba(241, 211, 145, 0.18);
+}
+
+.oauth-button__empty-mark {
+	display: inline-block;
+	width: 1.5rem;
+	height: 1.5rem;
+	border-radius: 999px;
+	border: 2px dashed rgba(241, 211, 145, 0.22);
+}
+
 .legal-dock {
 	position: fixed;
 	right: clamp(1rem, 2vw, 1.5rem);
@@ -399,6 +509,13 @@ input {
 	justify-content: flex-end;
 	gap: 0.65rem;
 	max-width: min(92vw, 34rem);
+}
+
+.legal-dock--auth {
+	right: clamp(1.2rem, 3vw, 2.8rem);
+	width: min(calc(100vw - (clamp(1.2rem, 3vw, 2.8rem) * 2)), 28rem);
+	max-width: none;
+	justify-content: flex-end;
 }
 
 .legal-dock__link {
@@ -686,6 +803,11 @@ input {
 	width: 1.2rem;
 	height: 1.2rem;
 	flex: 0 0 auto;
+}
+
+.oauth-button--square .oauth-button__logo {
+	width: 3rem;
+	height: 3rem;
 }
 
 .oauth-button__logo--42 {

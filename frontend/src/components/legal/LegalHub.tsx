@@ -139,7 +139,7 @@ export function LegalHub(): JSX.Element {
 	return (
 		<>
 			{isAuthRoute ? (
-				<div className="legal-dock" aria-label="Legal links">
+				<div className="legal-dock legal-dock--auth" aria-label="Legal links">
 					<button
 						className="legal-dock__link"
 						type="button"

@@ -1,6 +1,19 @@
 import { api } from "../../features/hub/api";
+import { OAuthProviderButton } from "./OAuthProviderButton";
 
 const GITHUB_AUTH_URL = import.meta.env.VITE_GITHUB_AUTH_URL ?? "";
+
+function ImageLogo({
+	src,
+	alt,
+	className = "oauth-button__logo oauth-button__logo--image",
+}: {
+	src: string;
+	alt: string;
+	className?: string;
+}): JSX.Element {
+	return <img aria-hidden="true" className={className} src={src} alt={alt} />;
+}
 
 function FortyTwoLogo(): JSX.Element {
 	return (
@@ -26,16 +39,67 @@ function FortyTwoLogo(): JSX.Element {
 
 function GitHubLogo(): JSX.Element {
 	return (
-		<svg
-			aria-hidden="true"
-			className="oauth-button__logo"
-			viewBox="0 0 24 24"
-		>
-			<path
-				fill="currentColor"
-				d="M12 .5a12 12 0 0 0-3.79 23.39c.6.12.82-.26.82-.58v-2.05c-3.34.72-4.04-1.42-4.04-1.42-.54-1.4-1.34-1.76-1.34-1.76-1.1-.75.08-.73.08-.73 1.22.08 1.86 1.25 1.86 1.25 1.08 1.85 2.84 1.31 3.53 1 .1-.79.42-1.31.76-1.61-2.66-.3-5.46-1.34-5.46-5.93 0-1.31.47-2.37 1.24-3.21-.12-.31-.54-1.56.12-3.25 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.67 1.69.25 2.94.12 3.25.78.84 1.24 1.9 1.24 3.21 0 4.61-2.8 5.62-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.22.71.83.58A12 12 0 0 0 12 .5Z"
-			/>
-		</svg>
+		<ImageLogo src="/assets/oauth/github.svg" alt="GitHub" />
+	);
+}
+
+function RedditLogo(): JSX.Element {
+	return (
+		<ImageLogo src="/assets/oauth/reddit.svg" alt="Reddit" />
+	);
+}
+
+function XboxLogo(): JSX.Element {
+	return (
+		<ImageLogo src="/assets/oauth/xbox.svg" alt="Xbox" />
+	);
+}
+
+function PlayStationLogo(): JSX.Element {
+	return (
+		<ImageLogo src="/assets/oauth/playstation.svg" alt="PlayStation" />
+	);
+}
+
+function ChatGPTLogo(): JSX.Element {
+	return (
+		<ImageLogo src="/assets/oauth/chatgpt.svg" alt="ChatGPT" />
+	);
+}
+
+function SteamLogo(): JSX.Element {
+	return (
+		<ImageLogo src="/assets/oauth/steam.svg" alt="Steam" />
+	);
+}
+
+function NintendoLogo(): JSX.Element {
+	return (
+		<ImageLogo src="/assets/oauth/nintendo.svg" alt="Nintendo" />
+	);
+}
+
+function GoogleLogo(): JSX.Element {
+	return (
+		<ImageLogo src="/assets/oauth/google.svg" alt="Google" />
+	);
+}
+
+function ClaudeLogo(): JSX.Element {
+	return (
+		<ImageLogo src="/assets/oauth/claude.svg" alt="Claude" />
+	);
+}
+
+function DeepSeekLogo(): JSX.Element {
+	return (
+		<ImageLogo src="/assets/oauth/deepseek.svg" alt="DeepSeek" />
+	);
+}
+
+function PerplexityLogo(): JSX.Element {
+	return (
+		<ImageLogo src="/assets/oauth/perplexity.svg" alt="Perplexity" />
 	);
 }
 
@@ -54,20 +118,20 @@ export function OAuthButtons({
 				<span>OAuth access</span>
 			</div>
 
-			<div className="auth-card__oauth-list">
-				<button
-					className="oauth-button oauth-button--42"
-					type="button"
+			<div className="auth-card__oauth-grid">
+				<OAuthProviderButton
+					label="Continue with 42"
+					logo={<FortyTwoLogo />}
+					variant="square"
+					tone="42"
 					disabled={isSubmitting}
 					onClick={() => onOAuthLogin(api.loginUrl())}
-				>
-					<FortyTwoLogo />
-					<span>Continue with 42</span>
-				</button>
-
-				<button
-					className="oauth-button oauth-button--github"
-					type="button"
+				/>
+				<OAuthProviderButton
+					label="Continue with GitHub"
+					logo={<GitHubLogo />}
+					variant="square"
+					tone="github"
 					disabled={isSubmitting || !GITHUB_AUTH_URL}
 					onClick={() => onOAuthLogin(GITHUB_AUTH_URL)}
 					title={
@@ -75,10 +139,87 @@ export function OAuthButtons({
 							? "Continue with GitHub"
 							: "GitHub OAuth is not configured yet"
 					}
-				>
-					<GitHubLogo />
-					<span>Continue with GitHub</span>
-				</button>
+				/>
+				<OAuthProviderButton
+					label="Continue with Google"
+					logo={<GoogleLogo />}
+					variant="square"
+					tone="google"
+					disabled
+					title="Google OAuth is not configured yet"
+				/>
+				<OAuthProviderButton
+					label="Continue with Reddit"
+					logo={<RedditLogo />}
+					variant="square"
+					tone="reddit"
+					disabled
+					title="Reddit OAuth is not configured yet"
+				/>
+				<OAuthProviderButton
+					label="Continue with Steam"
+					logo={<SteamLogo />}
+					variant="square"
+					tone="steam"
+					disabled
+					title="Steam OAuth is not configured yet"
+				/>
+				<OAuthProviderButton
+					label="Continue with Xbox"
+					logo={<XboxLogo />}
+					variant="square"
+					tone="xbox"
+					disabled
+					title="Xbox OAuth is not configured yet"
+				/>
+				<OAuthProviderButton
+					label="Continue with Nintendo"
+					logo={<NintendoLogo />}
+					variant="square"
+					tone="nintendo"
+					disabled
+					title="Nintendo OAuth is not configured yet"
+				/>
+				<OAuthProviderButton
+					label="Continue with PlayStation"
+					logo={<PlayStationLogo />}
+					variant="square"
+					tone="playstation"
+					disabled
+					title="PlayStation OAuth is not configured yet"
+				/>
+				<OAuthProviderButton
+					label="Continue with ChatGPT"
+					logo={<ChatGPTLogo />}
+					variant="square"
+					tone="chatgpt"
+					disabled
+					title="ChatGPT OAuth is not configured yet"
+				/>
+				<OAuthProviderButton
+					label="Continue with Claude"
+					logo={<ClaudeLogo />}
+					variant="square"
+					tone="claude"
+					disabled
+					title="Claude OAuth is not configured yet"
+				/>
+				<OAuthProviderButton
+					label="Continue with DeepSeek"
+					logo={<DeepSeekLogo />}
+					variant="square"
+					tone="deepseek"
+					disabled
+					title="DeepSeek OAuth is not configured yet"
+				/>
+				<OAuthProviderButton
+					label="Continue with Perplexity"
+					logo={<PerplexityLogo />}
+					variant="square"
+					tone="perplexity"
+					disabled
+					title="Perplexity OAuth is not configured yet"
+				/>
 			</div>
 		</div>
 	);
