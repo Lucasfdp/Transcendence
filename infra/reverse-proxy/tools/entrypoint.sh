@@ -5,11 +5,12 @@ SSL_DIR="/etc/nginx/ssl"
 CERT_PATH="${SSL_DIR}/cert.pem"
 KEY_PATH="${SSL_DIR}/key.pem"
 DOMAIN_NAME="${DOMAIN_NAME:-localhost}"
+HTTPS_PORT="${HTTPS_PORT:-42424}"
 TEMPLATE_PATH="/etc/nginx/templates/default.conf.template"
 TARGET_PATH="/etc/nginx/conf.d/default.conf"
 
 mkdir -p "${SSL_DIR}"
-envsubst '${DOMAIN_NAME}' < "${TEMPLATE_PATH}" > "${TARGET_PATH}"
+envsubst '${DOMAIN_NAME} ${HTTPS_PORT}' < "${TEMPLATE_PATH}" > "${TARGET_PATH}"
 
 cat > /etc/nginx/modsec/main.conf <<'EOF'
 Include /etc/nginx/modsec/modsecurity.conf

@@ -55,7 +55,7 @@ COPY tools/entrypoint.sh /usr/local/bin/reverse-proxy-entrypoint.sh
 RUN chmod +x /usr/local/bin/reverse-proxy-entrypoint.sh \
     && chown -R www-data:www-data /var/log/nginx /var/cache/nginx /tmp/modsecurity
 
-EXPOSE 80 443
+EXPOSE 42424
 
 ENTRYPOINT ["/usr/local/bin/reverse-proxy-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

@@ -90,7 +90,7 @@ prod: check-env prepare-local-secrets certs vault-bootstrap
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --no-deps $(VAULT_AGENT_SERVICES)
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(CORE_SERVICES)
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(EDGE_SERVICES)
-	@echo "$(GREEN)Production-mode services up. Frontend: https://localhost$(RESET)"
+	@echo "$(GREEN)Production-mode services up. Frontend: https://localhost:42424$(RESET)"
 
 ## vault-bootstrap: Ensure the local Vault is initialised, unsealed and seeded before starting dependants
 vault-bootstrap: check-env

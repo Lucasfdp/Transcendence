@@ -7,7 +7,7 @@ services:
         image: ${COMPOSE_PROJECT_NAME}/reverse_proxy:local
         restart: unless-stopped
         ports:
-            - "${HTTPS_PORT:-42424}:443"
+            - "${HTTPS_PORT:-42424}:${HTTPS_PORT:-42424}"
         volumes:
             - ./secrets/nginx_ssl:/etc/nginx/ssl
             - logs:/var/log/nginx
@@ -26,6 +26,7 @@ services:
             start_period: 10s
         environment:
             - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+            - HTTPS_PORT=${HTTPS_PORT:-42424}
             - MONITORING_PORT=${MONITORING_PORT:-3001}
         logging:
             driver: "${LOG_DRIVER:-json-file}"
@@ -102,7 +103,7 @@ services:
         environment:
             - NODE_ENV=${BACKEND_ENV:-development}
             - APP_ENV=${BACKEND_ENV:-development}
-            - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://localhost}
+            - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://localhost:42424}
             - POSTGRES_HOST=database
             - POSTGRES_PORT=${POSTGRES_PORT:-5432}
             - POSTGRES_DB=${POSTGRES_DB}
