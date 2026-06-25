@@ -22,6 +22,7 @@ import {
 	BALL_SRC_R,
 	drawShellBall,
 	isBallMoving,
+	resolveBallCollision,
 	stepBall,
 } from "../../shared/mechanics/ball";
 import { Slingshot } from "../../shared/mechanics/slingshot";
@@ -801,7 +802,6 @@ export class BellClashScene extends ResponsiveScene {
 		this.hitCooldownMs = Math.max(0, this.hitCooldownMs - delta);
 		this.bellPulseMs = Math.max(0, this.bellPulseMs - delta);
 
-		let localMoving = false;
 		for (const [side, ball] of this.onlineBalls.entries()) {
 			const moving = stepBall(ball, delta, this.arena);
 			const ext = ball as BallExtState;
@@ -820,8 +820,10 @@ export class BellClashScene extends ResponsiveScene {
 					ext,
 					side === this.onlineMatch.side,
 				);
-			if (side === this.onlineMatch.side) localMoving = moving;
 		}
+
+		this.resolveOnlineBallCollisions();
+		const localMoving = isBallMoving(this.ball);
 
 		if (!localMoving && this.onlineBallWasMoving) this.finishOnlineShot();
 		this.onlineBallWasMoving = localMoving;
@@ -850,6 +852,15 @@ export class BellClashScene extends ResponsiveScene {
 		);
 		this.syncOnlineSlingshot();
 		this.showPowerPanel();
+	}
+
+	private resolveOnlineBallCollisions(): void {
+		const balls = [...new Set(this.onlineBalls.values())];
+		for (let i = 0; i < balls.length; i++) {
+			for (let j = i + 1; j < balls.length; j++) {
+				resolveBallCollision(balls[i], balls[j]);
+			}
+		}
 	}
 
 	private clearStoppedPowerFlags(ext: BallExtState, local: boolean): void {

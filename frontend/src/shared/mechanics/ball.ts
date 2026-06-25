@@ -95,6 +95,48 @@ export function stepBall(
 	return true;
 }
 
+/**
+ * Elastic circle-circle collision between two turtle balls.
+ * Ghost-powered balls skip and consume their first ball collision.
+ */
+export function resolveBallCollision(a: BallState, b: BallState): void {
+	if (!isBallMoving(a) && !isBallMoving(b)) return;
+
+	const dx = b.x - a.x;
+	const dy = b.y - a.y;
+	const dist = Math.max(0.001, Math.hypot(dx, dy));
+	const minDist = a.r + b.r;
+	if (dist >= minDist) return;
+
+	const extA = a as BallState & { ghostUsed?: boolean };
+	const extB = b as BallState & { ghostUsed?: boolean };
+	if (extA.ghostUsed === false) {
+		extA.ghostUsed = true;
+		return;
+	}
+	if (extB.ghostUsed === false) {
+		extB.ghostUsed = true;
+		return;
+	}
+
+	const nx = dx / dist;
+	const ny = dy / dist;
+	const overlap = (minDist - dist) / 2;
+	a.x -= nx * overlap;
+	a.y -= ny * overlap;
+	b.x += nx * overlap;
+	b.y += ny * overlap;
+
+	const rvx = b.vx - a.vx;
+	const rvy = b.vy - a.vy;
+	const speed = rvx * nx + rvy * ny;
+	if (speed > 0) return;
+	a.vx += speed * nx;
+	a.vy += speed * ny;
+	b.vx -= speed * nx;
+	b.vy -= speed * ny;
+}
+
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 /** Draw the turtle-shell ball at its current position. Clears `g` first by default. */

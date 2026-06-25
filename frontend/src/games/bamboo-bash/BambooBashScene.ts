@@ -24,6 +24,7 @@ import {
 	BALL_SRC_R,
 	stepBall,
 	isBallMoving,
+	resolveBallCollision,
 	drawShellBall,
 } from "../../shared/mechanics/ball";
 import { Slingshot } from "../../shared/mechanics/slingshot";
@@ -473,7 +474,7 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 
 		// Ball physics
-		const moving = stepBall(this.ball, delta, this.arena);
+		let moving = stepBall(this.ball, delta, this.arena);
 		const ext = this.ball as BallExtState;
 
 		// Apply frictionOverride correction (SLICK / BOUNCER / SPINNING)
@@ -484,6 +485,12 @@ export class BambooBashScene extends ResponsiveScene {
 			);
 			this.ball.vx *= factor;
 			this.ball.vy *= factor;
+		}
+
+		if (this.onlineMatch) {
+			this.updateOnlineRemoteBalls(delta);
+			this.resolveOnlineBallCollisions();
+			moving = isBallMoving(this.ball);
 		}
 
 		if (moving) {
@@ -515,7 +522,6 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 		this.ballWasMoving = moving;
 
-		if (this.onlineMatch) this.updateOnlineRemoteBalls(delta);
 		if (this.onlineMatch) this.syncOnlineBamboos(delta);
 
 		this.drawBamboos();
@@ -1415,7 +1421,7 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private updateLocalParticipants(delta: number): void {
-		const moving = this.localParticipants.map((participant) => {
+		let moving = this.localParticipants.map((participant) => {
 			const isMoving = stepBall(participant.ball, delta, this.arena);
 			const ext = participant.ball as BallExtState;
 			if (isMoving && ext.frictionOverride !== undefined) {
@@ -1430,6 +1436,9 @@ export class BambooBashScene extends ResponsiveScene {
 		});
 
 		this.resolveLocalBallCollisions();
+		moving = this.localParticipants.map((participant) =>
+			isBallMoving(participant.ball),
+		);
 
 		const anyWasMoving = this.localParticipants.some(
 			(participant) => participant.ballWasMoving,
@@ -1492,6 +1501,15 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 	}
 
+	private resolveOnlineBallCollisions(): void {
+		const balls = [...new Set(this.onlineBalls.values())];
+		for (let i = 0; i < balls.length; i++) {
+			for (let j = i + 1; j < balls.length; j++) {
+				resolveBallCollision(balls[i], balls[j]);
+			}
+		}
+	}
+
 	private syncOnlineBamboos(delta: number): void {
 		if (!this.onlineMatch || this.onlineRoundSubmitted) return;
 		this.onlineBambooSyncAccMs += delta;
@@ -1520,30 +1538,10 @@ export class BambooBashScene extends ResponsiveScene {
 	private resolveLocalBallCollisions(): void {
 		for (let i = 0; i < this.localParticipants.length; i++) {
 			for (let j = i + 1; j < this.localParticipants.length; j++) {
-				const a = this.localParticipants[i].ball;
-				const b = this.localParticipants[j].ball;
-				const dx = b.x - a.x;
-				const dy = b.y - a.y;
-				const dist = Math.max(0.001, Math.hypot(dx, dy));
-				const minDist = a.r + b.r;
-				if (dist >= minDist) continue;
-
-				const nx = dx / dist;
-				const ny = dy / dist;
-				const overlap = (minDist - dist) / 2;
-				a.x -= nx * overlap;
-				a.y -= ny * overlap;
-				b.x += nx * overlap;
-				b.y += ny * overlap;
-
-				const rvx = b.vx - a.vx;
-				const rvy = b.vy - a.vy;
-				const speed = rvx * nx + rvy * ny;
-				if (speed > 0) continue;
-				a.vx += speed * nx;
-				a.vy += speed * ny;
-				b.vx -= speed * nx;
-				b.vy -= speed * ny;
+				resolveBallCollision(
+					this.localParticipants[i].ball,
+					this.localParticipants[j].ball,
+				);
 			}
 		}
 	}
