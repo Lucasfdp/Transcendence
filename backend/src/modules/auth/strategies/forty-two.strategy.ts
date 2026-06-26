@@ -27,7 +27,7 @@ export class FortyTwoStrategy extends PassportStrategy(Strategy, "42") {
 				configService.get("FORTYTWO_CLIENT_SECRET") || "placeholder",
 			callbackURL:
 				configService.get("FORTYTWO_CALLBACK_URL") ||
-				"https://localhost/api/auth/42/callback",
+				"https://localhost:42424/api/auth/42/callback",
 			scope: "public",
 		});
 	}
