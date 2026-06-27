@@ -240,7 +240,8 @@ export class UsersService {
 	/**
 	 * Update mutable profile fields for the given user.
 	 * Only fields present in the DTO are written — undefined keys are skipped.
-	 * `turtleName` lives on the User row; `bio` lives on the linked Profile row.
+	 * `turtleName` lives on the User row; `tag` and `showcasedAchievements`
+	 * live on the linked Profile row.
 	 * Returns the updated user (passwordHash excluded via select:false on the column).
 	 */
 	async updateProfile(userId: number, dto: UpdateProfileDto): Promise<User> {
@@ -253,8 +254,16 @@ export class UsersService {
 			if (dto.turtleName !== undefined) {
 				user.turtleName = dto.turtleName;
 			}
-			if (dto.bio !== undefined && user.profile) {
-				user.profile.bio = dto.bio;
+			if (user.profile) {
+				if (dto.tag !== undefined) {
+					user.profile.tag = dto.tag ?? null;
+				}
+				if (dto.showcasedAchievements !== undefined) {
+					user.profile.showcasedAchievements =
+						dto.showcasedAchievements.length > 0
+							? dto.showcasedAchievements
+							: null;
+				}
 			}
 
 			await this.usersRepo.save(user);
@@ -311,4 +320,77 @@ export class UsersService {
 			throw new InternalServerErrorException("Failed to update avatar");
 		}
 	}
+
+	/**
+	 * Derive the player's most-played game from their per-game stats.
+	 *
+	 * Tiebreaker order (all ascending where lower = loses):
+	 *   1. Highest gamesPlayed
+	 *   2. Highest win rate (totalWins / gamesPlayed)
+	 *   3. Alphabetical by gameId
+	 *
+	 * Returns null if the player has not completed any games yet.
+	 */
+	async getMostPlayedGame(userId: number): Promise<MostPlayedGame | null> {
+		try {
+			const rows = await this.getDataSource().query<
+				{ gameId: string; gamesPlayed: string; totalWins: string }[]
+			>(
+				`
+        SELECT "gameId", "gamesPlayed", "totalWins"
+        FROM   user_game_stats
+        WHERE  "userId" = $1
+          AND  "gamesPlayed" > 0
+        ORDER BY
+          "gamesPlayed" DESC,
+          CASE WHEN "gamesPlayed" > 0
+               THEN "totalWins"::float / "gamesPlayed"
+               ELSE 0
+          END DESC,
+          "gameId" ASC
+        LIMIT 1
+      `,
+				[userId],
+			);
+
+			if (rows.length === 0) return null;
+
+			const row = rows[0];
+			const gamesPlayed = Number(row.gamesPlayed);
+			const totalWins = Number(row.totalWins);
+
+			return {
+				gameId: row.gameId,
+				gameName: GAME_NAMES[row.gameId] ?? row.gameId,
+				gamesPlayed,
+				winRate:
+					gamesPlayed > 0
+						? Math.round((totalWins / gamesPlayed) * 100)
+						: 0,
+			};
+		} catch {
+			throw new InternalServerErrorException(
+				"Failed to derive most played game",
+			);
+		}
+	}
 }
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+export interface MostPlayedGame {
+	gameId: string;
+	gameName: string;
+	gamesPlayed: number;
+	/** Win rate as an integer percentage (0–100). */
+	winRate: number;
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+
+const GAME_NAMES: Record<string, string> = {
+	"kame-knock": "Kame Knock",
+	"bamboo-bash": "Bamboo Bash",
+	"bell-clash": "Bell Clash",
+	"temple-curling": "Temple Curling",
+};

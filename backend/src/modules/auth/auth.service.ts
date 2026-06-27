@@ -53,7 +53,6 @@ const DEV_LEVEL = 99;
 const DEV_XP = 999_999;
 const DEV_WINS = 999;
 const DEV_GAMES = 999;
-const DEV_BIO = "The legendary KameMaster. Undefeated.";
 
 @Injectable()
 export class AuthService {
@@ -242,7 +241,6 @@ export class AuthService {
 					user.profile.totalWins = DEV_WINS;
 					user.profile.totalLosses = 0;
 					user.profile.gamesPlayed = DEV_GAMES;
-					user.profile.bio = DEV_BIO;
 					await this.usersService.saveProfile(user.profile);
 				}
 			}

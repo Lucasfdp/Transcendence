@@ -1566,13 +1566,60 @@ input {
 	font-size: clamp(0.72rem, 1.2vw, 0.84rem);
 }
 
-.hub-page__topbar .menu-page__logout-button {
+/* Name + tag on one line */
+.hub-page__player-name-row {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+.hub-page__player-tag {
+	font-size: clamp(0.65rem, 1vw, 0.75rem);
+	color: #d4af37;
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.hub-page__most-played {
+	color: rgba(255, 247, 230, 0.5);
+	font-size: clamp(0.65rem, 1vw, 0.75rem);
+}
+
+/* Achievement showcase badges on the player card */
+.hub-page__player-badges {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3rem;
+	margin-top: 0.1rem;
+}
+
+.hub-page__player-badge {
+	font-size: 0.65rem;
+	padding: 0.15rem 0.45rem;
+	border: 1px solid rgba(212, 175, 55, 0.4);
+	border-radius: 20px;
+	background: rgba(212, 175, 55, 0.08);
+	color: rgba(255, 247, 230, 0.7);
+	white-space: nowrap;
+}
+
+/* Right-side topbar group: notif bell + logout share the 3rd grid column */
+.hub-page__topbar-right {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
 	justify-self: end;
+}
+
+/* Remove the old direct-child rule — logout is now inside .hub-page__topbar-right */
+.hub-page__topbar .menu-page__logout-button {
+	justify-self: unset;
 }
 
 .hub-page__content {
 	display: grid;
-	grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr) minmax(13rem, 16rem);
+	grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr);
 	gap: clamp(1rem, 2vw, 1.6rem);
 	align-items: end;
 	min-height: 0;
@@ -1586,6 +1633,8 @@ input {
 	justify-items: center;
 	gap: clamp(1.5rem, 3vw, 2.4rem);
 	min-height: 0;
+	/* Contain card hover transforms so they don't bleed over adjacent columns */
+	isolation: isolate;
 }
 
 .hub-page__mode-grid {
@@ -1728,16 +1777,12 @@ input {
 	color: #94672d;
 }
 
-.hub-page__leaderboard h2 {
-	color: #f1d391;
-	font-family: var(--choose-mode-font);
-	font-size: 2.6rem;
-	font-weight: 400;
-	line-height: 0.85;
-	letter-spacing: 0.04em;
-	text-shadow:
-		0 2px 0 rgba(70, 43, 18, 0.58),
-		0 0 18px rgba(197, 145, 68, 0.16);
+/* Rankings modal content */
+.hub-modal__rankings {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	min-width: 22rem;
 }
 
 .hub-game-card:hover {
@@ -2939,10 +2984,6 @@ input {
 		order: 2;
 	}
 
-	.hub-page__leaderboard {
-		order: 3;
-	}
-
 	.hub-page__mode-grid,
 	.hub-page__normal-view,
 	.hub-page__game-grid {
@@ -3061,6 +3102,170 @@ input {
 	color: #6fcf97;
 	font-size: 0.85rem;
 	margin: 0;
+}
+
+/* ── Tag chip grid (profile modal) ── */
+.hub-modal__tag-grid {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.hub-modal__tag-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	padding: 0.3rem 0.6rem;
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	border-radius: 20px;
+	background: rgba(255, 255, 255, 0.06);
+	color: inherit;
+	font-size: 0.8rem;
+	cursor: pointer;
+	transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+	white-space: nowrap;
+}
+
+.hub-modal__tag-chip:hover {
+	background: rgba(255, 255, 255, 0.12);
+	border-color: rgba(255, 255, 255, 0.3);
+}
+
+.hub-modal__tag-chip--selected {
+	background: rgba(212, 175, 55, 0.18);
+	border-color: #d4af37;
+	color: #d4af37;
+}
+
+.hub-modal__tag-chip--selected:hover {
+	background: rgba(212, 175, 55, 0.26);
+}
+
+.hub-modal__tag-chip-emoji {
+	font-size: 1rem;
+	line-height: 1;
+}
+
+.hub-modal__tag-chip-label {
+	font-weight: 500;
+}
+
+/* ── Achievement showcase (profile modal) ── */
+.hub-modal__showcase-slots {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.hub-modal__showcase-slot-wrapper {
+	flex: 1;
+	position: relative;
+}
+
+.hub-modal__showcase-slot {
+	width: 100%;
+	min-height: 3.5rem;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.2rem;
+	padding: 0.4rem 0.5rem;
+	border: 1px dashed rgba(255, 255, 255, 0.2);
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.04);
+	color: inherit;
+	font-size: 0.75rem;
+	cursor: pointer;
+	text-align: center;
+	transition: border-color 0.15s, background 0.15s;
+}
+
+.hub-modal__showcase-slot:hover {
+	border-color: rgba(255, 255, 255, 0.35);
+	background: rgba(255, 255, 255, 0.08);
+}
+
+.hub-modal__showcase-slot--filled {
+	border-style: solid;
+	border-color: rgba(212, 175, 55, 0.5);
+	background: rgba(212, 175, 55, 0.08);
+}
+
+.hub-modal__showcase-slot--filled:hover {
+	border-color: #d4af37;
+	background: rgba(212, 175, 55, 0.14);
+}
+
+.hub-modal__showcase-lock {
+	font-size: 1rem;
+	opacity: 0.4;
+}
+
+.hub-modal__showcase-empty-label {
+	opacity: 0.4;
+}
+
+.hub-modal__showcase-title {
+	font-size: 0.72rem;
+	font-weight: 600;
+	color: #d4af37;
+	line-height: 1.2;
+}
+
+.hub-modal__showcase-picker {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	right: 0;
+	z-index: 10;
+	background: #1a1a2e;
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	border-radius: 6px;
+	padding: 0.4rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	max-height: 160px;
+	overflow-y: auto;
+}
+
+.hub-modal__showcase-picker-empty {
+	font-size: 0.75rem;
+	opacity: 0.5;
+	margin: 0.25rem 0;
+	text-align: center;
+}
+
+.hub-modal__showcase-option {
+	width: 100%;
+	padding: 0.3rem 0.5rem;
+	text-align: left;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	color: inherit;
+	font-size: 0.75rem;
+	cursor: pointer;
+	transition: background 0.1s, border-color 0.1s;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.hub-modal__showcase-option:hover:not(:disabled) {
+	background: rgba(255, 255, 255, 0.08);
+	border-color: rgba(255, 255, 255, 0.15);
+}
+
+.hub-modal__showcase-option--selected {
+	background: rgba(212, 175, 55, 0.15);
+	border-color: #d4af37;
+	color: #d4af37;
+}
+
+.hub-modal__showcase-option--used {
+	opacity: 0.3;
+	cursor: not-allowed;
 }
 
 /* ── Social modal ── */

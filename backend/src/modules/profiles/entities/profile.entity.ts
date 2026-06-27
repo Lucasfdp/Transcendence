@@ -31,6 +31,14 @@ export class Profile {
 	@Column({ default: 0 })
 	totalCoinsEarned: number;
 
-	@Column({ nullable: true })
-	bio: string;
+	/** Single turtle personality tag chosen by the player. Null = not set. */
+	@Column({ type: "varchar", nullable: true, default: null })
+	tag: string | null;
+
+	/**
+	 * Up to 3 achievement IDs the player has pinned to their public profile.
+	 * Stored as a JSON array; validated against ACHIEVEMENTS on write.
+	 */
+	@Column({ type: "json", nullable: true, default: null })
+	showcasedAchievements: string[] | null;
 }

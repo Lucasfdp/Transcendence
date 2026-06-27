@@ -143,6 +143,14 @@ async function readErrorMessage(
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
+export interface MostPlayedGame {
+	gameId: string;
+	gameName: string;
+	gamesPlayed: number;
+	/** Win rate as an integer percentage (0–100). */
+	winRate: number;
+}
+
 export interface User {
 	id: number;
 	username: string;
@@ -156,12 +164,16 @@ export interface User {
 	isGuest: boolean;
 	isDevAccount: boolean;
 	avatar: string | null;
+	mostPlayedGame: MostPlayedGame | null;
 	profile?: {
 		totalWins: number;
 		totalLosses: number;
 		gamesPlayed: number;
 		totalCoinsEarned: number;
-		bio: string | null;
+		/** Single turtle personality tag chosen by the player. */
+		tag: string | null;
+		/** Up to 3 pinned achievement IDs. */
+		showcasedAchievements: string[] | null;
 	};
 }
 
@@ -301,8 +313,12 @@ export type RankedGameId = (typeof RANKED_GAMES)[number]["id"];
 // ── API surface ───────────────────────────────────────────────────────────────
 
 export const api = {
-	/** Update the current user's turtle name and/or bio. */
-	updateProfile: (data: { turtleName?: string; bio?: string }): Promise<User> =>
+	/** Update the current user's turtle name, tag, and/or showcased achievements. */
+	updateProfile: (data: {
+		turtleName?: string;
+		tag?: string | null;
+		showcasedAchievements?: string[];
+	}): Promise<User> =>
 		apiFetch<User>("/users/me", {
 			method: "PATCH",
 			body: JSON.stringify(data),

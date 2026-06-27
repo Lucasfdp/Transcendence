@@ -13,7 +13,8 @@ function makeProfile(overrides: Partial<Profile> = {}): Profile {
 	profile.totalLosses = overrides.totalLosses ?? 0;
 	profile.gamesPlayed = overrides.gamesPlayed ?? 0;
 	profile.totalCoinsEarned = overrides.totalCoinsEarned ?? 0;
-	profile.bio = overrides.bio ?? null;
+	profile.tag = overrides.tag ?? null;
+	profile.showcasedAchievements = overrides.showcasedAchievements ?? null;
 	return profile;
 }
 

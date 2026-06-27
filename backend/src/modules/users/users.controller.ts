@@ -25,7 +25,7 @@ import { FriendsService } from "../friends/friends.service";
 import { PresenceService } from "../presence/presence.service";
 import { User } from "./entities/user.entity";
 import { UpdateProfileDto } from "./dto/update-profile.dto";
-import { UsersService } from "./users.service";
+import { MostPlayedGame, UsersService } from "./users.service";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // TODO(#leaderboard-refactor): frontend/src/features/hub/api.ts line 281
@@ -95,14 +95,20 @@ export class UsersController {
 	@Get("me")
 	async getMe(
 		@Request() req: { user: { id: number } },
-	): Promise<Omit<User, "passwordHash">> {
+	): Promise<Omit<User, "passwordHash"> & { mostPlayedGame: MostPlayedGame | null }> {
 		const user = await this.usersService.findById(req.user.id);
 		if (!user) throw new UnauthorizedException();
 		const { passwordHash: _pw, ...safe } = user as User & {
 			passwordHash?: unknown;
 		};
 		void _pw;
-		return safe as Omit<User, "passwordHash">;
+		const mostPlayedGame = await this.usersService.getMostPlayedGame(
+			req.user.id,
+		);
+		return {
+			...(safe as Omit<User, "passwordHash">),
+			mostPlayedGame,
+		};
 	}
 
 	// ── PATCH /api/users/me ──────────────────────────────────────────────────────
@@ -235,16 +241,18 @@ export class UsersController {
 	@Get(":username")
 	async getUser(
 		@Param("username") username: string,
-	): Promise<(Omit<User, "passwordHash"> & { isOnline: boolean }) | null> {
+	): Promise<(Omit<User, "passwordHash"> & { isOnline: boolean; mostPlayedGame: MostPlayedGame | null }) | null> {
 		const user = await this.usersService.findByUsername(username);
 		if (!user) return null;
 		const { passwordHash: _pw, ...safe } = user as User & {
 			passwordHash?: unknown;
 		};
 		void _pw;
+		const mostPlayedGame = await this.usersService.getMostPlayedGame(user.id);
 		return {
 			...(safe as Omit<User, "passwordHash">),
 			isOnline: this.presence.isOnline(user.id),
+			mostPlayedGame,
 		};
 	}
 

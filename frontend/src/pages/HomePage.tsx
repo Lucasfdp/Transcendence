@@ -24,6 +24,7 @@ import {
 	type LeaderboardScope,
 	type User,
 } from "../features/hub/api";
+import { TURTLE_TAGS } from "../shared/turtle-tags";
 import { getGameSocket } from "../services/network/gameSocket";
 
 type HubView = "choose" | "normal";
@@ -412,12 +413,14 @@ function HomeMenu(): JSX.Element {
 	const [cosmetics, setCosmetics] = useState<Cosmetic[] | null>(null);
 	const [modalError, setModalError] = useState("");
 	const [activeModal, setActiveModal] = useState<
-		"achievements" | "customization" | "profile" | "social" | null
+		"achievements" | "customization" | "profile" | "social" | "rankings" | null
 	>(null);
 	const [profileSaving, setProfileSaving] = useState(false);
 	const [profileSuccess, setProfileSuccess] = useState("");
 	const [profileTurtleName, setProfileTurtleName] = useState("");
-	const [profileBio, setProfileBio] = useState("");
+	const [profileTag, setProfileTag] = useState<string | null>(null);
+	const [profileShowcasedAchievements, setProfileShowcasedAchievements] = useState<(string | null)[]>([null, null, null]);
+	const [showcasePickerSlot, setShowcasePickerSlot] = useState<number | null>(null);
 	const [friends, setFriends] = useState<FriendView[] | null>(null);
 	const [pendingRequests, setPendingRequests] = useState<PendingView[] | null>(null);
 	const [socialLoading, setSocialLoading] = useState(false);
@@ -439,15 +442,17 @@ function HomeMenu(): JSX.Element {
 
 		async function loadHub(): Promise<void> {
 			try {
-				const [nextPlayer, nextMinigames] =
+				const [nextPlayer, nextMinigames, nextAchievements] =
 					await Promise.all([
 						api.getMe(),
 						api.getMiniGames().catch(() => []),
+						api.getAchievements().catch(() => []),
 					]);
 
 				if (!cancelled) {
 					setPlayer(nextPlayer);
 					setMinigames(nextMinigames);
+					setAchievements(nextAchievements);
 				}
 			} catch (err: unknown) {
 				console.warn("[HomeMenu] Failed to load hub:", err);
@@ -685,6 +690,54 @@ function HomeMenu(): JSX.Element {
 		}
 	};
 
+	const openProfile = async () => {
+		setProfileTurtleName(player?.turtleName ?? "");
+		setProfileTag(player?.profile?.tag ?? null);
+		setProfileSuccess("");
+		setModalError("");
+		setShowcasePickerSlot(null);
+		setActiveModal("profile");
+
+		// Fetch achievements to power the showcase picker (reuse cached if available).
+		let loaded = achievements;
+		if (!loaded) {
+			try {
+				loaded = await api.getAchievements();
+				setAchievements(loaded);
+			} catch {
+				// Non-fatal — showcase picker will show a loading message.
+			}
+		}
+
+		// Seed showcase: use saved selection if present, else pre-fill with the
+		// 3 most recently unlocked achievements.
+		const saved = player?.profile?.showcasedAchievements;
+		if (saved && saved.length > 0) {
+			setProfileShowcasedAchievements([
+				saved[0] ?? null,
+				saved[1] ?? null,
+				saved[2] ?? null,
+			]);
+		} else if (loaded) {
+			const recent = [...loaded]
+				.filter((a) => a.unlocked && a.unlockedAt !== null)
+				.sort(
+					(a, b) =>
+						new Date(b.unlockedAt!).getTime() -
+						new Date(a.unlockedAt!).getTime(),
+				)
+				.slice(0, 3)
+				.map((a) => a.id);
+			setProfileShowcasedAchievements([
+				recent[0] ?? null,
+				recent[1] ?? null,
+				recent[2] ?? null,
+			]);
+		} else {
+			setProfileShowcasedAchievements([null, null, null]);
+		}
+	};
+
 	const openCustomization = async () => {
 		setActiveModal("customization");
 		setModalError("");
@@ -733,9 +786,13 @@ function HomeMenu(): JSX.Element {
 		setProfileSuccess("");
 		try {
 			await api.getCsrfToken();
-			const updates: { turtleName?: string; bio?: string } = {};
+			setShowcasePickerSlot(null);
+			const updates: Parameters<typeof api.updateProfile>[0] = {};
 			if (profileTurtleName.trim()) updates.turtleName = profileTurtleName.trim();
-			updates.bio = profileBio.trim();
+			updates.tag = profileTag;
+			updates.showcasedAchievements = profileShowcasedAchievements.filter(
+				(id): id is string => id !== null,
+			);
 			const updated = await api.updateProfile(updates);
 			setPlayer(updated);
 			setProfileSuccess("Profile updated.");
@@ -825,6 +882,17 @@ function HomeMenu(): JSX.Element {
 	if (isLoading) return <RouteLoading />;
 
 	const playerName = player?.turtleName ?? player?.username ?? "Player";
+
+	const profileTagId = player?.profile?.tag ?? null;
+	const currentTag = profileTagId
+		? (TURTLE_TAGS.find((t) => t.id === profileTagId) ?? null)
+		: null;
+
+	const showcasedIds = player?.profile?.showcasedAchievements ?? [];
+	const showcasedAchievements = showcasedIds
+		.map((id) => achievements?.find((a) => a.id === id) ?? null)
+		.filter((a): a is Achievement => a !== null);
+
 	const displayedNow =
 		manualMinutes === null ? now : createManualTime(now, manualMinutes);
 	const currentTimeLabel = formatClockTime(displayedNow);
@@ -838,19 +906,34 @@ function HomeMenu(): JSX.Element {
 					<button
 						className="hub-page__player-card"
 						type="button"
-						onClick={() => {
-							setProfileTurtleName(player?.turtleName ?? "");
-							setProfileBio(player?.profile?.bio ?? "");
-							setProfileSuccess("");
-							setModalError("");
-							setActiveModal("profile");
-						}}
+						onClick={() => void openProfile()}
 					>
 						<span className="menu-page__player-label">Player</span>
-						<strong className="menu-page__player-name">{playerName}</strong>
+						<span className="hub-page__player-name-row">
+							<strong className="menu-page__player-name">{playerName}</strong>
+							{currentTag ? (
+								<span className="hub-page__player-tag">
+									{currentTag.emoji} {currentTag.label}
+								</span>
+							) : null}
+						</span>
 						<span className="hub-page__player-meta">
 							Lvl {player?.level ?? 1} · Shell {player?.shellSkin ?? "kanagawa"} · ⬡ {player?.coins ?? 0}
 						</span>
+						{player?.mostPlayedGame ? (
+							<span className="hub-page__most-played">
+								🐢 {player.mostPlayedGame.gameName} · {player.mostPlayedGame.gamesPlayed} {player.mostPlayedGame.gamesPlayed === 1 ? "match" : "matches"} · {player.mostPlayedGame.winRate}% wins
+							</span>
+						) : null}
+						{showcasedAchievements.length > 0 ? (
+							<span className="hub-page__player-badges">
+								{showcasedAchievements.map((a) => (
+									<span key={a.id} className="hub-page__player-badge">
+										{a.title}
+									</span>
+								))}
+							</span>
+						) : null}
 					</button>
 
 					<div className="hub-page__clock-wrap">
@@ -894,26 +977,29 @@ function HomeMenu(): JSX.Element {
 						) : null}
 					</div>
 
-					<button
-						className={`hub-notif-bell${isNotifDrawerOpen ? " is-open" : ""}`}
-						type="button"
-						aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
-						onClick={() => setIsNotifDrawerOpen((o) => !o)}
-					>
-						🔔
-						{unreadCount > 0 && (
-							<span className="hub-notif-bell__badge">{unreadCount}</span>
-						)}
-					</button>
+					{/* Notif bell + logout grouped so the 3-column topbar grid stays intact */}
+					<div className="hub-page__topbar-right">
+						<button
+							className={`hub-notif-bell${isNotifDrawerOpen ? " is-open" : ""}`}
+							type="button"
+							aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+							onClick={() => setIsNotifDrawerOpen((o) => !o)}
+						>
+							🔔
+							{unreadCount > 0 && (
+								<span className="hub-notif-bell__badge">{unreadCount}</span>
+							)}
+						</button>
 
-					<NineSliceButton
-						className="menu-page__logout-button"
-						type="button"
-						onClick={handleLogout}
-						disabled={isLoggingOut}
-					>
-						{isLoggingOut ? "Closing session..." : "Logout"}
-					</NineSliceButton>
+						<NineSliceButton
+							className="menu-page__logout-button"
+							type="button"
+							onClick={handleLogout}
+							disabled={isLoggingOut}
+						>
+							{isLoggingOut ? "Closing session..." : "Logout"}
+						</NineSliceButton>
+					</div>
 				</header>
 
 				<section className="hub-page__content">
@@ -948,6 +1034,13 @@ function HomeMenu(): JSX.Element {
 						</NineSliceButton>
 						<NineSliceButton type="button" className="hub-panel__button" onClick={() => void openSocial()}>
 							Social
+						</NineSliceButton>
+						<NineSliceButton
+							type="button"
+							className="hub-panel__button"
+							onClick={() => setActiveModal("rankings")}
+						>
+							Rankings
 						</NineSliceButton>
 					</aside>
 
@@ -1041,79 +1134,6 @@ function HomeMenu(): JSX.Element {
 						)}
 					</section>
 
-					<aside className="hub-panel hub-page__leaderboard">
-						<h2>Rankings</h2>
-
-						{/* Controls: game selector + scope toggle */}
-						<div className="hub-leaderboard-controls">
-							<select
-								className="hub-leaderboard-select"
-								value={leaderboardGame}
-								onChange={(e) => setLeaderboardGame(e.target.value)}
-								aria-label="Select game leaderboard"
-							>
-								<option value="overall">Overall (Total Wins)</option>
-								{RANKED_GAMES.map((g) => (
-									<option key={g.id} value={g.id}>{g.label}</option>
-								))}
-							</select>
-
-							<div className="hub-leaderboard-scope" role="group" aria-label="Leaderboard scope">
-								<button
-									className={`hub-leaderboard-scope__btn${leaderboardScope === "global" ? " is-active" : ""}`}
-									onClick={() => setLeaderboardScope("global")}
-								>
-									Global
-								</button>
-								<button
-									className={`hub-leaderboard-scope__btn${leaderboardScope === "friends" ? " is-active" : ""}`}
-									onClick={() => setLeaderboardScope("friends")}
-								>
-									Friends
-								</button>
-							</div>
-						</div>
-
-						{leaderboardLoading ? (
-							<p className="hub-panel__muted">Loading…</p>
-						) : leaderboardGame === "overall" ? (
-							overallLeaderboard.length > 0 ? (
-								<ol className="hub-ranking-list">
-									{overallLeaderboard.map((entry) => (
-										<li key={entry.userId}>
-											<span className="hub-ranking-list__rank">#{entry.rank}</span>
-											<strong className="hub-ranking-list__name">
-												{entry.turtleName ?? entry.username}
-											</strong>
-											<small className="hub-ranking-list__stat">
-												{entry.totalWins} wins
-											</small>
-										</li>
-									))}
-								</ol>
-							) : (
-								<p className="hub-panel__muted">No rankings yet.</p>
-							)
-						) : (
-							gameLeaderboard.length > 0 ? (
-								<ol className="hub-ranking-list">
-									{gameLeaderboard.map((entry) => (
-										<li key={entry.userId}>
-											<span className="hub-ranking-list__rank">#{entry.rank}</span>
-											<strong className="hub-ranking-list__name">
-												{entry.turtleName ?? entry.username}
-											</strong>
-											<small className="hub-ranking-list__stat">
-												{entry.rating} ELO · {entry.wins}W/{entry.losses}L
-											</small>
-										</li>
-									))}
-								</ol>
-							) : (
-								<p className="hub-panel__muted">No rankings yet.</p>
-							)
-						)}
-					</aside>
 				</section>
 			</div>
 
@@ -1282,6 +1302,81 @@ function HomeMenu(): JSX.Element {
 				</HubModal>
 			) : null}
 
+			{activeModal === "rankings" ? (
+				<HubModal title="Rankings" onClose={() => setActiveModal(null)}>
+					<div className="hub-modal__rankings">
+						<div className="hub-leaderboard-controls">
+							<select
+								className="hub-leaderboard-select"
+								value={leaderboardGame}
+								onChange={(e) => setLeaderboardGame(e.target.value)}
+								aria-label="Select game leaderboard"
+							>
+								<option value="overall">Overall (Total Wins)</option>
+								{RANKED_GAMES.map((g) => (
+									<option key={g.id} value={g.id}>{g.label}</option>
+								))}
+							</select>
+
+							<div className="hub-leaderboard-scope" role="group" aria-label="Leaderboard scope">
+								<button
+									className={`hub-leaderboard-scope__btn${leaderboardScope === "global" ? " is-active" : ""}`}
+									onClick={() => setLeaderboardScope("global")}
+								>
+									Global
+								</button>
+								<button
+									className={`hub-leaderboard-scope__btn${leaderboardScope === "friends" ? " is-active" : ""}`}
+									onClick={() => setLeaderboardScope("friends")}
+								>
+									Friends
+								</button>
+							</div>
+						</div>
+
+						{leaderboardLoading ? (
+							<p className="hub-panel__muted">Loading…</p>
+						) : leaderboardGame === "overall" ? (
+							overallLeaderboard.length > 0 ? (
+								<ol className="hub-ranking-list">
+									{overallLeaderboard.map((entry) => (
+										<li key={entry.userId}>
+											<span className="hub-ranking-list__rank">#{entry.rank}</span>
+											<strong className="hub-ranking-list__name">
+												{entry.turtleName ?? entry.username}
+											</strong>
+											<small className="hub-ranking-list__stat">
+												{entry.totalWins} wins
+											</small>
+										</li>
+									))}
+								</ol>
+							) : (
+								<p className="hub-panel__muted">No rankings yet.</p>
+							)
+						) : (
+							gameLeaderboard.length > 0 ? (
+								<ol className="hub-ranking-list">
+									{gameLeaderboard.map((entry) => (
+										<li key={entry.userId}>
+											<span className="hub-ranking-list__rank">#{entry.rank}</span>
+											<strong className="hub-ranking-list__name">
+												{entry.turtleName ?? entry.username}
+											</strong>
+											<small className="hub-ranking-list__stat">
+												{entry.rating} ELO · {entry.wins}W/{entry.losses}L
+											</small>
+										</li>
+									))}
+								</ol>
+							) : (
+								<p className="hub-panel__muted">No rankings yet.</p>
+							)
+						)}
+					</div>
+				</HubModal>
+			) : null}
+
 			{activeModal === "achievements" ? (
 				<HubModal title="Achievements" onClose={() => setActiveModal(null)}>
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
@@ -1348,18 +1443,124 @@ function HomeMenu(): JSX.Element {
 							placeholder={player?.username ?? ""}
 							onChange={(e) => setProfileTurtleName(e.target.value)}
 						/>
-						<label className="hub-modal__field-label" htmlFor="bio-input">
-							Bio
-						</label>
-						<textarea
-							id="bio-input"
-							className="hub-modal__field-input hub-modal__field-input--textarea"
-							maxLength={200}
-							rows={3}
-							value={profileBio}
-							placeholder="Tell the dojo about yourself…"
-							onChange={(e) => setProfileBio(e.target.value)}
-						/>
+						<span className="hub-modal__field-label">Your dojo tag</span>
+						<div className="hub-modal__tag-grid" role="group" aria-label="Dojo tag selection">
+							{TURTLE_TAGS.map((tag) => {
+								const selected = profileTag === tag.id;
+								return (
+									<button
+										key={tag.id}
+										type="button"
+										className={`hub-modal__tag-chip${selected ? " hub-modal__tag-chip--selected" : ""}`}
+										aria-pressed={selected}
+										title={tag.description}
+										onClick={() => setProfileTag(selected ? null : tag.id)}
+									>
+										<span className="hub-modal__tag-chip-emoji">{tag.emoji}</span>
+										<span className="hub-modal__tag-chip-label">{tag.label}</span>
+									</button>
+								);
+							})}
+						</div>
+						<span className="hub-modal__field-label">Achievement showcase</span>
+						<div className="hub-modal__showcase-slots">
+							{profileShowcasedAchievements.map((achievementId, slotIdx) => {
+								const achievement = achievementId
+									? achievements?.find((a) => a.id === achievementId)
+									: null;
+								const isOpen = showcasePickerSlot === slotIdx;
+								const unlockedAchievements =
+									achievements?.filter((a) => a.unlocked) ?? [];
+
+								return (
+									<div
+										key={slotIdx}
+										className="hub-modal__showcase-slot-wrapper"
+									>
+										<button
+											type="button"
+											className={`hub-modal__showcase-slot${achievement ? " hub-modal__showcase-slot--filled" : ""}`}
+											aria-expanded={isOpen}
+											aria-label={
+												achievement
+													? `Slot ${slotIdx + 1}: ${achievement.title}. Click to change.`
+													: `Slot ${slotIdx + 1}: empty. Click to add.`
+											}
+											onClick={() =>
+												setShowcasePickerSlot(isOpen ? null : slotIdx)
+											}
+										>
+											{achievement ? (
+												<span className="hub-modal__showcase-title">
+													{achievement.title}
+												</span>
+											) : (
+												<>
+													<span className="hub-modal__showcase-lock">🔒</span>
+													<span className="hub-modal__showcase-empty-label">
+														{achievements ? "Empty" : "Loading…"}
+													</span>
+												</>
+											)}
+										</button>
+
+										{isOpen ? (
+											<div
+												className="hub-modal__showcase-picker"
+												role="listbox"
+												aria-label={`Choose achievement for slot ${slotIdx + 1}`}
+											>
+												{unlockedAchievements.length === 0 ? (
+													<p className="hub-modal__showcase-picker-empty">
+														Earn achievements to showcase them here.
+													</p>
+												) : (
+													unlockedAchievements.map((a) => {
+														const isSelected =
+															profileShowcasedAchievements[slotIdx] === a.id;
+														const usedInOtherSlot =
+															profileShowcasedAchievements.some(
+																(id, i) => i !== slotIdx && id === a.id,
+															);
+														return (
+															<button
+																key={a.id}
+																type="button"
+																role="option"
+																aria-selected={isSelected}
+																disabled={usedInOtherSlot}
+																className={[
+																	"hub-modal__showcase-option",
+																	isSelected
+																		? "hub-modal__showcase-option--selected"
+																		: "",
+																	usedInOtherSlot
+																		? "hub-modal__showcase-option--used"
+																		: "",
+																]
+																	.filter(Boolean)
+																	.join(" ")}
+																onClick={() => {
+																	const next = [
+																		...profileShowcasedAchievements,
+																	];
+																	next[slotIdx] = isSelected ? null : a.id;
+																	setProfileShowcasedAchievements(next);
+																	setShowcasePickerSlot(null);
+																}}
+															>
+																{a.title}
+															</button>
+														);
+													})
+												)}
+											</div>
+										) : null}
+									</div>
+								);
+							})}
+						</div>
+
 						<button
 							className="hub-modal__save-button"
 							type="button"
