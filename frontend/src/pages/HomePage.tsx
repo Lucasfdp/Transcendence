@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
 import { NineSliceButton } from "../components/common/NineSliceButton";
 import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { WorkInProgressNotice } from "../components/common/WorkInProgressNotice";
+import { GameSphereSelector } from "../components/hub/GameSphereSelector";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
 import {
 	hubBackgroundClass,
@@ -500,6 +501,25 @@ function HomeMenu(): JSX.Element {
 		navigate("/", { replace: true });
 	};
 
+	const handleGameSelection = (gameId: string) => {
+		navigate(`/play/${gameId}`);
+	};
+
+	const handleLockedGameSelection = (game: {
+		id: string;
+		name: string;
+		description: string;
+	}) => {
+		if (game.id === "river-rush") {
+			setIsRiverRushWipOpen(true);
+			return;
+		}
+		setInfoModal({
+			title: game.name,
+			description: `${game.description}\n\nArena is being built. Check back soon!`,
+		});
+	};
+
 	const openAchievements = async () => {
 		setActiveModal("achievements");
 		setModalError("");
@@ -802,37 +822,11 @@ function HomeMenu(): JSX.Element {
 							</div>
 						) : (
 							<div className="hub-page__normal-view">
-								<div className="hub-page__game-grid">
-									{gameCards.map((game) =>
-										game.available ? (
-											<Link
-												key={game.id}
-												className="hub-game-card"
-												to={`/play/${game.id}`}
-											>
-												<span>{game.name}</span>
-												<small>{game.description}</small>
-											</Link>
-										) : (
-											<button
-												key={game.id}
-												className="hub-game-card hub-game-card--locked"
-												type="button"
-												onClick={() =>
-													game.id === "river-rush"
-														? setIsRiverRushWipOpen(true)
-														: setInfoModal({
-																title: game.name,
-																description: `${game.description}\n\nArena is being built. Check back soon!`,
-															})
-												}
-											>
-												<span>{game.name}</span>
-												<small>Coming soon</small>
-											</button>
-										),
-									)}
-								</div>
+								<GameSphereSelector
+									games={gameCards}
+									onSelectGame={handleGameSelection}
+									onSelectLockedGame={handleLockedGameSelection}
+								/>
 
 								<button
 									className="hub-page__mode-back-button"

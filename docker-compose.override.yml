@@ -41,6 +41,9 @@ services:
         environment:
             - NODE_ENV=development
             - VITE_API_URL=/api # Relative path — Vite proxies this to backend:8000
+            - VITE_HMR_PROTOCOL=wss
+            - VITE_HMR_HOST=localhost
+            - VITE_HMR_CLIENT_PORT=${HTTPS_PORT:-42424}
         # The builder stage has no wget; use node for the health probe instead.
         healthcheck:
             test:
