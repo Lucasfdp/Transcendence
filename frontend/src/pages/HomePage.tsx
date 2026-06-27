@@ -215,12 +215,24 @@ function getDayProgress(now: Date): number {
 }
 
 function formatClockTime(now: Date): string {
-	return now.toLocaleTimeString([], {
+	const { time, period } = formatClockParts(now);
+	return period ? `${time} ${period}` : time;
+}
+
+function formatClockParts(now: Date): { time: string; period: string } {
+	const parts = new Intl.DateTimeFormat([], {
 		hour: "numeric",
 		minute: "2-digit",
-		second: "2-digit",
 		hour12: true,
-	});
+	}).formatToParts(now);
+	const period = parts.find((part) => part.type === "dayPeriod")?.value ?? "";
+	const time = parts
+		.filter((part) => part.type !== "dayPeriod")
+		.map((part) => part.value)
+		.join("")
+		.trim();
+
+	return { time, period };
 }
 
 function createManualTime(base: Date, totalMinutes: number): Date {
@@ -895,6 +907,7 @@ function HomeMenu(): JSX.Element {
 
 	const displayedNow =
 		manualMinutes === null ? now : createManualTime(now, manualMinutes);
+	const currentTimeParts = formatClockParts(displayedNow);
 	const currentTimeLabel = formatClockTime(displayedNow);
 	const manualTimeLabel = formatClockTime(createManualTime(now, manualMinutes ?? getTotalMinutes(now)));
 
@@ -908,7 +921,6 @@ function HomeMenu(): JSX.Element {
 						type="button"
 						onClick={() => void openProfile()}
 					>
-						<span className="menu-page__player-label">Player</span>
 						<span className="hub-page__player-name-row">
 							<strong className="menu-page__player-name">{playerName}</strong>
 							{currentTag ? (
@@ -944,7 +956,18 @@ function HomeMenu(): JSX.Element {
 							aria-expanded={isClockDebugOpen}
 							onClick={() => setIsClockDebugOpen((open) => !open)}
 						>
-							{currentTimeLabel}
+							<img
+								className="hub-page__clock-icon"
+								src="/assets/ui/counter/icon-time@2x.png"
+								alt=""
+								aria-hidden="true"
+							/>
+							<span className="hub-page__clock-time">
+								<span>{currentTimeParts.time}</span>
+								{currentTimeParts.period ? (
+									<span className="hub-page__clock-period">{currentTimeParts.period}</span>
+								) : null}
+							</span>
 						</button>
 						{showCycleBackdrop && isClockDebugOpen ? (
 							<div className="hub-page__clock-debug">
@@ -976,7 +999,6 @@ function HomeMenu(): JSX.Element {
 							</div>
 						) : null}
 					</div>
-
 					{/* Notif bell + logout grouped so the 3-column topbar grid stays intact */}
 					<div className="hub-page__topbar-right">
 						<button
@@ -992,12 +1014,14 @@ function HomeMenu(): JSX.Element {
 						</button>
 
 						<NineSliceButton
-							className="menu-page__logout-button"
+							className="menu-page__logout-button hub-page__logout-button"
 							type="button"
 							onClick={handleLogout}
 							disabled={isLoggingOut}
 						>
-							{isLoggingOut ? "Closing session..." : "Logout"}
+							<span className="hub-page__logout-label">
+								{isLoggingOut ? "Closing session..." : "Logout"}
+							</span>
 						</NineSliceButton>
 					</div>
 				</header>
