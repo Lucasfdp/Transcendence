@@ -1,3 +1,9 @@
+@font-face {
+	font-family: "ThirstyCaps";
+	src: url("../assets/fonts/ThirstyCaps.otf") format("opentype");
+	font-display: swap;
+}
+
 :root {
 	--bg: #0c1015;
 	--panel: rgba(12, 17, 24, 0.82);
@@ -6,6 +12,7 @@
 	--muted: #b3a996;
 	--accent: #f1d391;
 	--accent-strong: #e88a3d;
+	--choose-mode-font: "ThirstyCaps", var(--display-font);
 	--display-font: "Palatino Linotype", "Book Antiqua", Palatino, serif;
 	--body-font: "Trebuchet MS", "Lucida Sans Unicode", sans-serif;
 	--mono-font: "IBM Plex Mono", "Cascadia Code", "Fira Code", Consolas,
@@ -150,6 +157,17 @@ input {
 	text-shadow: 0 18px 45px rgba(0, 0, 0, 0.38);
 }
 
+.auth-page__logo-title {
+	margin: 0;
+}
+
+.auth-page__logo {
+	display: block;
+	width: min(38rem, 88vw);
+	height: auto;
+	filter: drop-shadow(0 18px 45px rgba(0, 0, 0, 0.38));
+}
+
 .auth-page__description,
 .menu-page__description {
 	width: min(36rem, 90vw);
@@ -161,17 +179,16 @@ input {
 
 .auth-card {
 	width: min(100%, 28rem);
-	padding: 1.35rem 1.45rem;
-	border: 1px solid rgba(241, 211, 145, 0.18);
+	padding: 1.6rem;
+	border: 1px solid rgba(202, 204, 142, 0.34);
 	border-radius: 1.8rem;
-	background: linear-gradient(
-		180deg,
-		rgba(22, 18, 24, 0.96) 0%,
-		rgba(11, 14, 20, 0.94) 100%
-	);
+	background:
+		linear-gradient(180deg, rgba(33, 37, 24, 0.92), rgba(8, 11, 15, 0.94)),
+		rgba(7, 10, 16, 0.82);
 	box-shadow:
 		0 24px 60px rgba(0, 0, 0, 0.34),
-		inset 0 1px 0 rgba(255, 255, 255, 0.04);
+		0 0 28px rgba(120, 123, 74, 0.12),
+		inset 0 0 0 1px rgba(202, 204, 142, 0.08);
 	backdrop-filter: blur(12px);
 }
 
@@ -1032,7 +1049,7 @@ input {
 	display: grid;
 	justify-items: center;
 	gap: 1rem;
-	width: min(42rem, 84vw);
+	width: min(68rem, 92vw);
 }
 
 .menu-page__heading-line {
@@ -1062,79 +1079,66 @@ input {
 
 .menu-page__choose-label {
 	margin: 0;
-	color: #ffe7ad;
-	font-family: var(--display-font);
-	font-size: clamp(3rem, 5.6vw, 4.9rem);
-	line-height: 0.9;
-	letter-spacing: 0.16em;
+	color: #4fffd4;
+	font-family: var(--choose-mode-font);
+	font-size: clamp(6rem, 11vw, 9.8rem);
+	line-height: 0.82;
+	letter-spacing: 0.04em;
 	text-transform: uppercase;
 	text-align: center;
+	-webkit-text-stroke: 1px rgba(24, 10, 34, 0.9);
 	text-shadow:
-		0 2px 0 rgba(113, 69, 26, 0.9),
-		0 18px 42px rgba(0, 0, 0, 0.58),
-		0 0 24px rgba(241, 211, 145, 0.2);
+		0 4px 0 rgba(7, 28, 28, 0.92),
+		0 0 14px rgba(126, 255, 133, 0.46),
+		0 20px 46px rgba(0, 0, 0, 0.64),
+		0 0 34px rgba(48, 216, 190, 0.42);
 }
 
 .menu-page__mode-card {
 	position: relative;
 	display: grid;
-	grid-template-rows: 1fr auto auto auto;
-	align-items: end;
+	grid-template-rows: auto auto auto auto;
+	align-content: center;
+	align-items: center;
 	justify-content: center;
 	width: 100%;
-	max-width: 31rem;
-	min-height: clamp(20rem, 43vh, 25rem);
+	max-width: 28rem;
+	min-height: clamp(15rem, 30vh, 18rem);
 	justify-self: center;
-	padding: clamp(2rem, 3.4vw, 3rem) clamp(1.5rem, 3vw, 2.4rem)
-		clamp(2rem, 3vw, 2.6rem);
-	border: 1px solid rgba(241, 211, 145, 0.72);
-	border-radius: 1.5rem;
+	padding: clamp(1.2rem, 2.2vw, 1.8rem) clamp(1.35rem, 2.4vw, 2rem)
+		clamp(1.35rem, 2.4vw, 2rem);
+	border: 32px solid transparent;
+	border-image-source: url("/assets/ui/pongo/button-rect-default@2x.png");
+	border-image-slice: 48 56 62 56 fill;
+	border-image-width: 32px 36px 38px;
+	border-image-repeat: stretch;
+	border-radius: 0;
 	overflow: hidden;
 	color: var(--text);
 	text-align: center;
 	cursor: pointer;
-	background:
-		radial-gradient(
-			circle at 50% -6%,
-			rgba(255, 227, 154, 0.28),
-			transparent 22%
-		),
-		radial-gradient(
-			circle at 50% 104%,
-			rgba(232, 138, 61, 0.2),
-			transparent 28%
-		),
-		linear-gradient(
-			180deg,
-			rgba(31, 34, 33, 0.88),
-			rgba(7, 9, 10, 0.96) 58%,
-			rgba(3, 4, 6, 0.98) 100%
-		);
+	background: transparent;
 	box-shadow:
-		0 28px 68px rgba(0, 0, 0, 0.44),
-		0 0 42px rgba(232, 138, 61, 0.1),
-		inset 0 0 0 1px rgba(241, 211, 145, 0.13),
-		inset 0 -42px 70px rgba(0, 0, 0, 0.32);
+		0 18px 42px rgba(0, 0, 0, 0.32),
+		0 0 26px rgba(202, 204, 142, 0.08);
 	transition:
 		transform 180ms ease,
-		border-color 180ms ease,
+		border-image-source 180ms ease,
 		box-shadow 180ms ease,
-		background 180ms ease,
 		filter 180ms ease;
 }
 
 .menu-page__mode-card::before {
 	content: "";
 	position: absolute;
-	inset: 0.8rem;
-	border: 1px solid rgba(241, 211, 145, 0.32);
-	border-radius: 1rem;
+	inset: 1.2rem 1.4rem 1.55rem;
+	border-radius: 0.55rem;
 	background:
-		linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 26%),
+		linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 30%),
 		radial-gradient(
-			circle at 50% 32%,
-			rgba(241, 211, 145, 0.08),
-			transparent 27%
+			circle at 50% 30%,
+			rgba(255, 247, 210, 0.12),
+			transparent 31%
 		);
 	pointer-events: none;
 }
@@ -1169,31 +1173,16 @@ input {
 
 .menu-page__mode-card:hover {
 	transform: translateY(-8px) scale(1.018);
-	border-color: rgba(255, 232, 169, 0.96);
-	background:
-		radial-gradient(
-			circle at 50% -6%,
-			rgba(255, 227, 154, 0.36),
-			transparent 24%
-		),
-		radial-gradient(
-			circle at 50% 104%,
-			rgba(232, 138, 61, 0.28),
-			transparent 30%
-		),
-		linear-gradient(
-			180deg,
-			rgba(37, 38, 34, 0.94),
-			rgba(9, 11, 11, 0.98) 58%,
-			rgba(4, 5, 7, 0.99) 100%
-		);
+	border-image-source: url("/assets/ui/pongo/button-rect-hover@2x.png");
+	background: transparent;
 	box-shadow:
-		0 38px 92px rgba(0, 0, 0, 0.46),
-		0 0 0 1px rgba(232, 138, 61, 0.18),
-		0 0 44px rgba(232, 138, 61, 0.18),
-		inset 0 1px 0 rgba(255, 255, 255, 0.06),
-		inset 0 -44px 72px rgba(232, 138, 61, 0.08);
+		0 26px 58px rgba(0, 0, 0, 0.38),
+		0 0 34px rgba(202, 204, 142, 0.18);
 	filter: saturate(1.06);
+}
+
+.menu-page__mode-card .menu-page__mode-corners {
+	display: none;
 }
 
 .menu-page__mode-card:hover::after {
@@ -1237,92 +1226,34 @@ input {
 	position: relative;
 	z-index: 1;
 	display: block;
-	font-family: var(--display-font);
+	font-family: var(--choose-mode-font);
 	max-width: 100%;
-	color: #fff2c1;
-	font-size: clamp(1.8rem, 3.2vw, 2.6rem);
+	color: #8c5d24;
+	font-size: clamp(3.82rem, 5.82vw, 5.22rem);
 	line-height: 0.98;
-	letter-spacing: 0.08em;
+	letter-spacing: 0.04em;
 	text-transform: uppercase;
 	white-space: nowrap;
 	overflow-wrap: normal;
+	margin-top: -1.35rem;
 	text-shadow:
-		0 2px 0 rgba(113, 69, 26, 0.72),
-		0 12px 28px rgba(0, 0, 0, 0.5);
+		0 2px 0 rgba(255, 224, 151, 0.28),
+		0 12px 28px rgba(0, 0, 0, 0.5),
+		0 0 12px rgba(255, 216, 132, 0.12);
 }
 
 .menu-page__mode-art {
 	position: relative;
 	z-index: 1;
+	display: block;
 	align-self: center;
 	justify-self: center;
-	width: clamp(5.7rem, 10vw, 8rem);
-	aspect-ratio: 1;
-	margin-bottom: clamp(1.2rem, 2vh, 1.8rem);
-	color: #ffd97e;
+	width: clamp(10.5rem, 18vw, 14.4rem);
+	height: auto;
+	margin-bottom: 0;
+	object-fit: contain;
 	filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.34))
 		drop-shadow(0 0 18px rgba(241, 211, 145, 0.22));
-}
-
-.menu-page__mode-art::before,
-.menu-page__mode-art::after {
-	content: "";
-	position: absolute;
-}
-
-.menu-page__mode-art--normal::before,
-.menu-page__mode-art--normal::after {
-	left: 50%;
-	top: 10%;
-	width: 1rem;
-	height: 78%;
-	border-radius: 0.18rem 0.18rem 0.42rem 0.42rem;
-	background:
-		linear-gradient(90deg, rgba(255, 255, 255, 0.78), transparent 32%),
-		linear-gradient(180deg, #fff2b8, #dc9237 72%, #9b5a22);
-	transform-origin: 50% 74%;
-	box-shadow:
-		0 58px 0 -0.2rem #e9a847,
-		0 66px 0 -0.38rem #9b5a22;
-}
-
-.menu-page__mode-art--normal::before {
-	transform: translateX(-50%) rotate(-42deg);
-}
-
-.menu-page__mode-art--normal::after {
-	transform: translateX(-50%) rotate(42deg);
-}
-
-.menu-page__mode-art--tournament {
-	border-bottom: 0.55rem solid #b8752b;
-	border-radius: 0 0 48% 48%;
-}
-
-.menu-page__mode-art--tournament::before {
-	left: 22%;
-	top: 5%;
-	width: 56%;
-	height: 58%;
-	border-radius: 0.3rem 0.3rem 1.5rem 1.5rem;
-	background:
-		radial-gradient(circle at 50% 38%, #111 0 13%, transparent 14%),
-		linear-gradient(180deg, #fff0b0, #d89537 76%, #a76224);
-	box-shadow:
-		-2rem 0.78rem 0 -1.2rem transparent,
-		2rem 0.78rem 0 -1.2rem transparent,
-		0 4.3rem 0 -1.5rem #d89537;
-}
-
-.menu-page__mode-art--tournament::after {
-	left: 10%;
-	top: 18%;
-	width: 80%;
-	height: 36%;
-	border: 0.62rem solid #f2c76f;
-	border-bottom: 0;
-	border-radius: 2.2rem 2.2rem 0 0;
-	z-index: -1;
 }
 
 .menu-page__mode-divider {
@@ -1355,8 +1286,9 @@ input {
 .menu-page__mode-description {
 	position: relative;
 	z-index: 1;
-	color: rgba(255, 250, 235, 0.92);
+	color: rgba(75, 49, 25, 0.92);
 	font-size: clamp(0.98rem, 1.4vw, 1.18rem);
+	font-weight: 700;
 	line-height: 1.45;
 }
 
@@ -1649,6 +1581,7 @@ input {
 
 .hub-page__stage {
 	display: grid;
+	align-self: center;
 	align-content: center;
 	justify-items: center;
 	gap: clamp(1.5rem, 3vw, 2.4rem);
@@ -1676,6 +1609,18 @@ input {
 		0 24px 54px rgba(0, 0, 0, 0.36),
 		inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 	backdrop-filter: blur(9px);
+}
+
+.hub-page__extras,
+.hub-page__leaderboard {
+	border-color: rgba(202, 204, 142, 0.34);
+	background:
+		linear-gradient(180deg, rgba(33, 37, 24, 0.88), rgba(8, 11, 15, 0.9)),
+		rgba(7, 10, 16, 0.82);
+	box-shadow:
+		0 24px 54px rgba(0, 0, 0, 0.36),
+		0 0 28px rgba(120, 123, 74, 0.12),
+		inset 0 0 0 1px rgba(202, 204, 142, 0.08);
 }
 
 .hub-panel h2 {
@@ -1749,10 +1694,50 @@ input {
 	box-shadow: 0 0 24px rgba(232, 138, 61, 0.06);
 }
 
+.hub-page__extras .hub-panel__button.nine-slice-button {
+	border-width: 22px 24px 26px;
+	border-image-source: url("/assets/ui/pongo/button-rect-default@2x.png");
+	border-image-slice: 48 56 62 56 fill;
+	border-image-width: 22px 24px 26px;
+	background: transparent;
+	background-clip: padding-box;
+	color: #805826;
+	font-family: var(--choose-mode-font);
+	font-size: 2.29rem;
+	font-weight: 400;
+	line-height: 0.9;
+	letter-spacing: 0.04em;
+	text-align: center;
+	text-shadow:
+		0 1px 0 rgba(255, 232, 169, 0.24),
+		0 0 10px rgba(255, 216, 132, 0.1);
+	box-shadow:
+		0 8px 18px rgba(0, 0, 0, 0.18),
+		0 0 16px rgba(202, 204, 142, 0.08);
+}
+
 .hub-panel__button:hover {
 	transform: translateY(-2px);
 	border-color: rgba(241, 211, 145, 0.52);
 	background: rgba(12, 16, 22, 0.8);
+}
+
+.hub-page__extras .hub-panel__button.nine-slice-button:hover {
+	border-image-source: url("/assets/ui/pongo/button-rect-hover@2x.png");
+	background: transparent;
+	color: #94672d;
+}
+
+.hub-page__leaderboard h2 {
+	color: #f1d391;
+	font-family: var(--choose-mode-font);
+	font-size: 2.6rem;
+	font-weight: 400;
+	line-height: 0.85;
+	letter-spacing: 0.04em;
+	text-shadow:
+		0 2px 0 rgba(70, 43, 18, 0.58),
+		0 0 18px rgba(197, 145, 68, 0.16);
 }
 
 .hub-game-card:hover {
@@ -1846,10 +1831,15 @@ input {
 	max-height: calc(100vh - 2rem);
 	display: grid;
 	grid-template-rows: auto minmax(0, 1fr);
-	border: 1px solid rgba(241, 211, 145, 0.46);
+	border: 1px solid rgba(202, 204, 142, 0.42);
 	border-radius: 1.2rem;
-	background: rgba(7, 10, 16, 0.97);
-	box-shadow: 0 36px 100px rgba(0, 0, 0, 0.48);
+	background:
+		linear-gradient(180deg, rgba(33, 37, 24, 0.96), rgba(8, 11, 15, 0.98)),
+		rgba(7, 10, 16, 0.97);
+	box-shadow:
+		0 36px 100px rgba(0, 0, 0, 0.48),
+		0 0 34px rgba(120, 123, 74, 0.16),
+		inset 0 0 0 1px rgba(202, 204, 142, 0.08);
 	overflow: hidden;
 }
 
@@ -2875,8 +2865,8 @@ input {
 	}
 
 	.menu-page__choose-label {
-		font-size: clamp(2.15rem, 12vw, 3.3rem);
-		letter-spacing: 0.09em;
+		font-size: clamp(4.3rem, 19vw, 6.6rem);
+		letter-spacing: 0.02em;
 	}
 
 	.menu-page__mode-grid {
@@ -2899,16 +2889,16 @@ input {
 		max-width: 100%;
 		min-height: 17.5rem;
 		padding: 1.7rem 1.2rem;
-		border-radius: 1.1rem;
+		border-radius: 0;
 	}
 
 	.menu-page__mode-title {
-		font-size: clamp(1.75rem, 8.4vw, 2.35rem);
+		font-size: clamp(3.42rem, 15.5vw, 4.42rem);
 	}
 
 	.menu-page__mode-art {
-		width: clamp(4.7rem, 24vw, 6rem);
-		margin-bottom: 0.9rem;
+		width: clamp(10.5rem, 44vw, 14.4rem);
+		margin-bottom: 0;
 	}
 
 	.menu-page__mode-description {

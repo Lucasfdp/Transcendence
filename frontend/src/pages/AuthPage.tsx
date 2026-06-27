@@ -187,8 +187,13 @@ export function AuthPage(): JSX.Element {
 
 			<section className="auth-page__shell">
 				<div className="auth-page__intro">
-					<p className="auth-page__eyebrow">Dojo Gate</p>
-					<h1 className="auth-page__title">Shell Smash</h1>
+					<h1 className="auth-page__logo-title">
+						<img
+							className="auth-page__logo"
+							src="/assets/logo.png"
+							alt="Shell Smash"
+						/>
+					</h1>
 					<p className="auth-page__description">
 						Access the courtyard first. Once your session is active,
 						the main menu will be unlocked.

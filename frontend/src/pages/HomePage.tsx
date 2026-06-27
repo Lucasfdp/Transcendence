@@ -782,7 +782,12 @@ function HomeMenu(): JSX.Element {
 									onClick={() => setView("normal")}
 								>
 									<span className="menu-page__mode-corners" aria-hidden="true" />
-									<span className="menu-page__mode-art menu-page__mode-art--normal" aria-hidden="true" />
+									<img
+										className="menu-page__mode-art"
+										src="/assets/ui/soloMode.png"
+										alt=""
+										aria-hidden="true"
+									/>
 									<span className="menu-page__mode-title">Normal</span>
 									<span className="menu-page__mode-divider" aria-hidden="true" />
 									<span className="menu-page__mode-description">Play a standard match.</span>
@@ -794,7 +799,12 @@ function HomeMenu(): JSX.Element {
 									onClick={() => setIsTournamentModalOpen(true)}
 								>
 									<span className="menu-page__mode-corners" aria-hidden="true" />
-									<span className="menu-page__mode-art menu-page__mode-art--tournament" aria-hidden="true" />
+									<img
+										className="menu-page__mode-art"
+										src="/assets/ui/onlineMode.png"
+										alt=""
+										aria-hidden="true"
+									/>
 									<span className="menu-page__mode-title">Tournament</span>
 									<span className="menu-page__mode-divider" aria-hidden="true" />
 									<span className="menu-page__mode-description">Compete for the top.</span>
