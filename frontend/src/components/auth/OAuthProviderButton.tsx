@@ -6,6 +6,7 @@ interface OAuthProviderButtonProps {
 	disabled?: boolean;
 	title?: string;
 	onClick?: () => void;
+	className?: string;
 }
 
 export function OAuthProviderButton({
@@ -16,18 +17,20 @@ export function OAuthProviderButton({
 	disabled = false,
 	title,
 	onClick,
+	className,
 }: OAuthProviderButtonProps): JSX.Element {
-	const className = [
+	const buttonClassName = [
 		"oauth-button",
 		variant === "square" ? "oauth-button--square" : "",
 		tone ? `oauth-button--${tone}` : "",
+		className ?? "",
 	]
 		.filter(Boolean)
 		.join(" ");
 
 	return (
 		<button
-			className={className}
+			className={buttonClassName}
 			type="button"
 			disabled={disabled}
 			title={title ?? label}
@@ -35,7 +38,7 @@ export function OAuthProviderButton({
 			onClick={onClick}
 		>
 			{logo}
-			{variant === "full" ? <span>{label}</span> : null}
+			<span className="oauth-button__label">{label}</span>
 		</button>
 	);
 }

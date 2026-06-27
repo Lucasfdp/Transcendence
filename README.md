@@ -42,6 +42,10 @@ Runtime secrets now live in local Vault bootstrap files under `secrets/vault/`
 (gitignored). Put OAuth client credentials in `secrets/vault/dev-seed.env`
 before rerunning `make vault-seed-dev`.
 
+Prepared OAuth secret slots currently include `42`, `GitHub`, `Google`,
+`Reddit`, `Steam`, `Xbox`, `Nintendo`, `PlayStation`, `ChatGPT`, `Claude`,
+`DeepSeek`, and `Perplexity`.
+
 If local bootstrap fails with `Permission denied` while creating `secrets/...`,
 the repository or `secrets/` directory is not writable by your user. Fix the
 ownership first, for example:

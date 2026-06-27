@@ -43,6 +43,7 @@ EDGE_SERVICES := \
 ifeq ($(shell tput colors 2>/dev/null),)
 	GREEN   :=
 	RED     :=
+	GRAY    :=
 	YELLOW  :=
 	MAGENTA :=
 	CYAN	:=
@@ -54,6 +55,7 @@ else
 
 	GREEN   := $(BOLD)$(shell tput setaf 2)
 	RED     := $(BOLD)$(shell tput setaf 1)
+	GRAY    := $(shell tput setaf 8)
 	YELLOW  := $(BOLD)$(shell tput setaf 3)
 	MAGENTA := $(BOLD)$(shell tput setaf 5)
 	CYAN    := $(BOLD)$(shell tput setaf 6)
@@ -176,6 +178,47 @@ logs:
 ## ps: Show status of all running containers
 ps:
 	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) ps
+
+## diagnosis: Check local prerequisites for running the project without stopping at the first failure
+diagnosis:
+	@failures=0; \
+		check() { \
+			label="$$1"; \
+			command="$$2"; \
+			hint="$$3"; \
+			printf "\r$(GRAY)Analyzing: %s...$(RESET)" "$$label"; \
+			if sh -c "$$command" >/dev/null 2>&1; then \
+				printf "\r$(GREEN)OK$(RESET) %s\n" "$$label"; \
+			else \
+				failures=$$((failures + 1)); \
+				printf "\r$(RED)FAIL$(RESET) %s\n" "$$label"; \
+				if [ -n "$$hint" ]; then \
+					printf "  $(GRAY)%s$(RESET)\n" "$$hint"; \
+				fi; \
+			fi; \
+		}; \
+		check "docker command available" "command -v docker" "Install Docker Engine or Docker Desktop."; \
+		check "docker compose plugin available" "docker compose version" "Make sure Docker Compose v2 is installed."; \
+		check "Docker daemon access" "docker info" "Check that Docker is running and that your user has permission to use it."; \
+		check "$(COMPOSE_FILE) file present" "[ -f '$(COMPOSE_FILE)' ]" "The main Docker Compose file is missing."; \
+		check "$(OVERRIDE_FILE) file present" "[ -f '$(OVERRIDE_FILE)' ]" "The development override file is missing."; \
+		check "$(ENV_FILE) file present" "[ -f '$(ENV_FILE)' ]" "Run: cp .env.example .env"; \
+		check ".env.example template present" "[ -f '.env.example' ]" "The committed template should exist at the repository root."; \
+		check "Vault scripts present" "[ -f scripts/vault-init.sh ] && [ -f scripts/vault-unseal.sh ] && [ -f scripts/vault-seed-dev.sh ]" "Vault bootstrap scripts are missing."; \
+		check "Certificate script present" "[ -f scripts/generate-local-certs.sh ]" "The local certificate generation script is missing."; \
+		check "Repository writable for secrets/" "[ -w . ] && ( [ -d secrets ] || [ ! -e secrets ] )" "You need write permission in the repository to create secrets/."; \
+		check "secrets/ directory writable" "mkdir -p secrets/vault/approle/backend secrets/vault/approle/database secrets/vault/approle/redis secrets/vault/approle/monitoring secrets/nginx_ssl && [ -w secrets ] && [ -w secrets/vault ]" "Fix permissions, for example: sudo chown -R $$(id -un):$$(id -gn) secrets"; \
+		check "Docker Compose configuration valid" "[ -f '$(ENV_FILE)' ] && docker compose -f '$(COMPOSE_FILE)' -f '$(OVERRIDE_FILE)' --env-file '$(ENV_FILE)' config" "Review .env variables and docker-compose syntax."; \
+		check "Vault bootstrap init.txt present or path writable" "[ -f '$(VAULT_INIT_FILE)' ] || { mkdir -p secrets/vault && [ -w secrets/vault ]; }" "make vault-init needs to be able to write secrets/vault/init.txt."; \
+		check "Vault dev-seed.env present or path writable" "[ -f '$(VAULT_SEED_FILE)' ] || { mkdir -p secrets/vault && [ -w secrets/vault ]; }" "make vault-seed-dev needs to be able to write secrets/vault/dev-seed.env."; \
+		check "mkcert available or certificates already generated" "command -v mkcert || { [ -s '$(CERT_DIR)/cert.pem' ] && [ -s '$(CERT_DIR)/key.pem' ]; }" "If mkcert is unavailable, the project will fall back to a self-signed certificate at startup."; \
+		printf "\n"; \
+		if [ "$$failures" -eq 0 ]; then \
+			printf "$(GREEN)Diagnosis completed: everything looks good.$(RESET)\n"; \
+		else \
+			printf "$(RED)Diagnosis completed: %s check(s) failed.$(RESET)\n" "$$failures"; \
+			exit 1; \
+		fi
 
 # ==============================================================================
 # CLEAN TARGETS
@@ -334,4 +377,4 @@ help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /'
 	@echo ""
 
-.PHONY: up dev prod down restart restart-front restart-back rebuild-front rebuild-back refresh-app build logs ps clean fclean re shell status inspect volumes networks db test health open certs check-env push help
+.PHONY: up dev prod down restart restart-front restart-back rebuild-front rebuild-back refresh-app build logs ps diagnosis clean fclean re shell status inspect volumes networks db test health open certs check-env push help
