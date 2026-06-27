@@ -15,11 +15,16 @@ import {
 	api,
 	Cosmetic,
 	FriendView,
-	LeaderboardEntry,
+	GameLeaderboardEntry,
 	MiniGameDefinition,
+	NotificationView,
+	OverallLeaderboardEntry,
 	PendingView,
+	RANKED_GAMES,
+	type LeaderboardScope,
 	type User,
 } from "../features/hub/api";
+import { getGameSocket } from "../services/network/gameSocket";
 
 type HubView = "choose" | "normal";
 type InfoModal = { title: string; description: string } | null;
@@ -337,6 +342,30 @@ function CycleBackdrop({ now }: { now: Date }): JSX.Element {
 	);
 }
 
+/** Displays a live countdown to a lobby/invite expiry timestamp. */
+function LobbyCountdown({ expiresAt }: { expiresAt: number }): JSX.Element {
+	const [remaining, setRemaining] = useState(() =>
+		Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)),
+	);
+
+	useEffect(() => {
+		const id = setInterval(() => {
+			const secs = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+			setRemaining(secs);
+			if (secs === 0) clearInterval(id);
+		}, 1000);
+		return () => clearInterval(id);
+	}, [expiresAt]);
+
+	const mins = Math.floor(remaining / 60);
+	const secs = remaining % 60;
+	return (
+		<span className="hub-lobby-countdown">
+			{mins}:{String(secs).padStart(2, "0")}
+		</span>
+	);
+}
+
 function HomeMenu(): JSX.Element {
 	const navigate = useNavigate();
 	const [searchParams] = useSearchParams();
@@ -349,7 +378,32 @@ function HomeMenu(): JSX.Element {
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
 	const [player, setPlayer] = useState<User | null>(null);
 	const [minigames, setMinigames] = useState<MiniGameDefinition[]>([]);
-	const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+	const [leaderboardGame, setLeaderboardGame] = useState<string>("overall");
+	const [leaderboardScope, setLeaderboardScope] = useState<LeaderboardScope>("global");
+	const [gameLeaderboard, setGameLeaderboard] = useState<GameLeaderboardEntry[]>([]);
+	const [overallLeaderboard, setOverallLeaderboard] = useState<OverallLeaderboardEntry[]>([]);
+	const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+	const [notifications, setNotifications] = useState<NotificationView[]>([]);
+	const [isNotifDrawerOpen, setIsNotifDrawerOpen] = useState(false);
+	// Private lobby — host side
+	const [activeLobby, setActiveLobby] = useState<{
+		lobbyId: string;
+		gameId: string;
+		expiresAt: number;
+	} | null>(null);
+	// Inline game picker shown when clicking Invite on a friend
+	const [inviteTarget, setInviteTarget] = useState<{
+		userId: number;
+		name: string;
+	} | null>(null);
+	const [inviteGameId, setInviteGameId] = useState(RANKED_GAMES[0].id as string);
+	// Incoming invite — invitee side
+	const [incomingInvite, setIncomingInvite] = useState<{
+		lobbyId: string;
+		fromUsername: string;
+		gameId: string;
+		expiresAt: number;
+	} | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isTournamentModalOpen, setIsTournamentModalOpen] = useState(false);
 	const [isRiverRushWipOpen, setIsRiverRushWipOpen] = useState(false);
@@ -385,17 +439,15 @@ function HomeMenu(): JSX.Element {
 
 		async function loadHub(): Promise<void> {
 			try {
-				const [nextPlayer, nextMinigames, nextLeaderboard] =
+				const [nextPlayer, nextMinigames] =
 					await Promise.all([
 						api.getMe(),
 						api.getMiniGames().catch(() => []),
-						api.getLeaderboard().catch(() => []),
 					]);
 
 				if (!cancelled) {
 					setPlayer(nextPlayer);
 					setMinigames(nextMinigames);
-					setLeaderboard(nextLeaderboard.slice(0, 5));
 				}
 			} catch (err: unknown) {
 				console.warn("[HomeMenu] Failed to load hub:", err);
@@ -409,6 +461,128 @@ function HomeMenu(): JSX.Element {
 			cancelled = true;
 		};
 	}, []);
+
+	// Re-fetch leaderboard whenever the selected game or scope changes
+	useEffect(() => {
+		let cancelled = false;
+
+		async function loadLeaderboard(): Promise<void> {
+			setLeaderboardLoading(true);
+			try {
+				if (leaderboardGame === "overall") {
+					const rows = await api.getOverallLeaderboard(leaderboardScope);
+					if (!cancelled) setOverallLeaderboard(rows.slice(0, 10));
+				} else {
+					const rows = await api.getGameLeaderboard(leaderboardGame, leaderboardScope);
+					if (!cancelled) setGameLeaderboard(rows.slice(0, 10));
+				}
+			} catch (err) {
+				console.warn("[HomeMenu] Failed to load leaderboard:", err);
+			} finally {
+				if (!cancelled) setLeaderboardLoading(false);
+			}
+		}
+
+		void loadLeaderboard();
+		return () => { cancelled = true; };
+	}, [leaderboardGame, leaderboardScope]);
+
+	// Subscribe to notification + lobby events on the shared game socket
+	useEffect(() => {
+		const socket = getGameSocket();
+
+		const onInbox = (items: NotificationView[]) => setNotifications(items);
+		const onNew = (item: NotificationView) =>
+			setNotifications((prev) => [item, ...prev]);
+
+		const onLobbyCreated = (data: { lobbyId: string; gameId: string; expiresAt: number }) =>
+			setActiveLobby(data);
+
+		const onLobbyExpired = () => setActiveLobby(null);
+		const onLobbyCancelled = (data: { lobbyId: string }) => {
+			setActiveLobby((prev) => (prev?.lobbyId === data.lobbyId ? null : prev));
+			setIncomingInvite((prev) => (prev?.lobbyId === data.lobbyId ? null : prev));
+		};
+
+		const onLobbyDeclined = () => {
+			// Host: invitee declined — clear invite state, lobby stays open so host can re-invite
+			setInviteTarget(null);
+		};
+
+		const onLobbyInvited = (data: {
+			lobbyId: string;
+			fromUsername: string;
+			gameId: string;
+			expiresAt: number;
+		}) => setIncomingInvite(data);
+
+		// Both host and joiner receive this — navigate into match via existing match:status flow
+		const onLobbyMatched = (data: { matchId: string; side: number; gameId: string }) => {
+			setActiveLobby(null);
+			setIncomingInvite(null);
+			// Emit match:status to sync the hub's in-match state (same path as ranked queue)
+			socket.emit("match:status");
+		};
+
+		socket.on("notification:inbox", onInbox);
+		socket.on("notification:new", onNew);
+		socket.on("lobby:created", onLobbyCreated);
+		socket.on("lobby:expired", onLobbyExpired);
+		socket.on("lobby:cancelled", onLobbyCancelled);
+		socket.on("lobby:declined", onLobbyDeclined);
+		socket.on("lobby:invited", onLobbyInvited);
+		socket.on("lobby:matched", onLobbyMatched);
+
+		return () => {
+			socket.off("notification:inbox", onInbox);
+			socket.off("notification:new", onNew);
+			socket.off("lobby:created", onLobbyCreated);
+			socket.off("lobby:expired", onLobbyExpired);
+			socket.off("lobby:cancelled", onLobbyCancelled);
+			socket.off("lobby:declined", onLobbyDeclined);
+			socket.off("lobby:invited", onLobbyInvited);
+			socket.off("lobby:matched", onLobbyMatched);
+		};
+	}, []);
+
+	const unreadCount = notifications.length;
+
+	function handleMarkAllRead(): void {
+		getGameSocket().emit("notification:read-all");
+		setNotifications([]);
+	}
+
+	function handleMarkRead(id: number): void {
+		getGameSocket().emit("notification:read", { notificationId: id });
+		setNotifications((prev) => prev.filter((n) => n.id !== id));
+	}
+
+	function handleCreateLobby(friendUserId: number, gameId: string): void {
+		getGameSocket().emit("lobby:create", { gameId, shellSelection: [] });
+		// After lobby:created fires, send the invite
+		getGameSocket().once("lobby:created", (data: { lobbyId: string }) => {
+			getGameSocket().emit("lobby:invite", { lobbyId: data.lobbyId, inviteeUserId: friendUserId });
+			setInviteTarget(null);
+		});
+	}
+
+	function handleCancelLobby(): void {
+		if (!activeLobby) return;
+		getGameSocket().emit("lobby:cancel", { lobbyId: activeLobby.lobbyId });
+		setActiveLobby(null);
+	}
+
+	function handleAcceptInvite(): void {
+		if (!incomingInvite) return;
+		getGameSocket().emit("lobby:join", { lobbyId: incomingInvite.lobbyId, shellSelection: [] });
+		setIncomingInvite(null);
+	}
+
+	function handleDeclineInvite(): void {
+		if (!incomingInvite) return;
+		getGameSocket().emit("lobby:decline", { lobbyId: incomingInvite.lobbyId });
+		setIncomingInvite(null);
+	}
 
 	useEffect(() => {
 		let timerId = 0;
@@ -720,6 +894,18 @@ function HomeMenu(): JSX.Element {
 						) : null}
 					</div>
 
+					<button
+						className={`hub-notif-bell${isNotifDrawerOpen ? " is-open" : ""}`}
+						type="button"
+						aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+						onClick={() => setIsNotifDrawerOpen((o) => !o)}
+					>
+						🔔
+						{unreadCount > 0 && (
+							<span className="hub-notif-bell__badge">{unreadCount}</span>
+						)}
+					</button>
+
 					<NineSliceButton
 						className="menu-page__logout-button"
 						type="button"
@@ -857,18 +1043,75 @@ function HomeMenu(): JSX.Element {
 
 					<aside className="hub-panel hub-page__leaderboard">
 						<h2>Rankings</h2>
-						{leaderboard.length > 0 ? (
-							<ol className="hub-ranking-list">
-								{leaderboard.map((entry) => (
-									<li key={entry.userId}>
-										<span>#{entry.rank}</span>
-										<strong>{entry.turtleName ?? entry.username}</strong>
-										<small>{entry.wins} wins</small>
-									</li>
+
+						{/* Controls: game selector + scope toggle */}
+						<div className="hub-leaderboard-controls">
+							<select
+								className="hub-leaderboard-select"
+								value={leaderboardGame}
+								onChange={(e) => setLeaderboardGame(e.target.value)}
+								aria-label="Select game leaderboard"
+							>
+								<option value="overall">Overall (Total Wins)</option>
+								{RANKED_GAMES.map((g) => (
+									<option key={g.id} value={g.id}>{g.label}</option>
 								))}
-							</ol>
+							</select>
+
+							<div className="hub-leaderboard-scope" role="group" aria-label="Leaderboard scope">
+								<button
+									className={`hub-leaderboard-scope__btn${leaderboardScope === "global" ? " is-active" : ""}`}
+									onClick={() => setLeaderboardScope("global")}
+								>
+									Global
+								</button>
+								<button
+									className={`hub-leaderboard-scope__btn${leaderboardScope === "friends" ? " is-active" : ""}`}
+									onClick={() => setLeaderboardScope("friends")}
+								>
+									Friends
+								</button>
+							</div>
+						</div>
+
+						{leaderboardLoading ? (
+							<p className="hub-panel__muted">Loading…</p>
+						) : leaderboardGame === "overall" ? (
+							overallLeaderboard.length > 0 ? (
+								<ol className="hub-ranking-list">
+									{overallLeaderboard.map((entry) => (
+										<li key={entry.userId}>
+											<span className="hub-ranking-list__rank">#{entry.rank}</span>
+											<strong className="hub-ranking-list__name">
+												{entry.turtleName ?? entry.username}
+											</strong>
+											<small className="hub-ranking-list__stat">
+												{entry.totalWins} wins
+											</small>
+										</li>
+									))}
+								</ol>
+							) : (
+								<p className="hub-panel__muted">No rankings yet.</p>
+							)
 						) : (
-							<p className="hub-panel__muted">No rankings yet.</p>
+							gameLeaderboard.length > 0 ? (
+								<ol className="hub-ranking-list">
+									{gameLeaderboard.map((entry) => (
+										<li key={entry.userId}>
+											<span className="hub-ranking-list__rank">#{entry.rank}</span>
+											<strong className="hub-ranking-list__name">
+												{entry.turtleName ?? entry.username}
+											</strong>
+											<small className="hub-ranking-list__stat">
+												{entry.rating} ELO · {entry.wins}W/{entry.losses}L
+											</small>
+										</li>
+									))}
+								</ol>
+							) : (
+								<p className="hub-panel__muted">No rankings yet.</p>
+							)
 						)}
 					</aside>
 				</section>
@@ -888,6 +1131,150 @@ function HomeMenu(): JSX.Element {
 				description="River Rush is not designed yet. This shrine will open when the mode is ready."
 				closeLabel="Return to Hub"
 			/>
+
+			{/* Active lobby waiting room (host side) */}
+			{activeLobby && (
+				<div className="hub-lobby-waiting" role="status">
+					<div className="hub-lobby-waiting__inner">
+						<p className="hub-lobby-waiting__label">
+							Waiting for friend to accept…
+						</p>
+						<p className="hub-lobby-waiting__game">
+							{RANKED_GAMES.find((g) => g.id === activeLobby.gameId)?.label ?? activeLobby.gameId}
+						</p>
+						<LobbyCountdown expiresAt={activeLobby.expiresAt} />
+						<button
+							type="button"
+							className="hub-lobby-waiting__cancel"
+							onClick={handleCancelLobby}
+						>
+							Cancel invite
+						</button>
+					</div>
+				</div>
+			)}
+
+			{/* Incoming game invite popup (invitee side) */}
+			{incomingInvite && (
+				<div className="hub-invite-popup" role="dialog" aria-label="Game invite">
+					<div className="hub-invite-popup__inner">
+						<p className="hub-invite-popup__from">
+							<strong>{incomingInvite.fromUsername}</strong> invited you to play
+						</p>
+						<p className="hub-invite-popup__game">
+							{RANKED_GAMES.find((g) => g.id === incomingInvite.gameId)?.label ?? incomingInvite.gameId}
+						</p>
+						<LobbyCountdown expiresAt={incomingInvite.expiresAt} />
+						<div className="hub-invite-popup__actions">
+							<button
+								type="button"
+								className="hub-invite-popup__accept"
+								onClick={handleAcceptInvite}
+							>
+								Accept
+							</button>
+							<button
+								type="button"
+								className="hub-invite-popup__decline"
+								onClick={handleDeclineInvite}
+							>
+								Decline
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Notification drawer */}
+			{isNotifDrawerOpen && (
+				<div className="hub-notif-drawer" role="dialog" aria-label="Notifications">
+					<div className="hub-notif-drawer__header">
+						<h3>Notifications</h3>
+						{unreadCount > 0 && (
+							<button
+								className="hub-notif-drawer__mark-all"
+								type="button"
+								onClick={handleMarkAllRead}
+							>
+								Mark all read
+							</button>
+						)}
+						<button
+							className="hub-notif-drawer__close"
+							type="button"
+							aria-label="Close notifications"
+							onClick={() => setIsNotifDrawerOpen(false)}
+						>
+							✕
+						</button>
+					</div>
+
+					{notifications.length === 0 ? (
+						<p className="hub-notif-drawer__empty">No new notifications.</p>
+					) : (
+						<ul className="hub-notif-drawer__list">
+							{notifications.map((notif) => (
+								<li key={notif.id} className="hub-notif-drawer__item">
+									<div className="hub-notif-drawer__item-body">
+										{notif.type === "friend_request" && (
+											<span>
+												<strong>{notif.fromUsername}</strong> sent you a friend request.
+											</span>
+										)}
+										{notif.type === "friend_accepted" && (
+											<span>
+												<strong>{notif.fromUsername}</strong> accepted your friend request.
+											</span>
+										)}
+									</div>
+									<div className="hub-notif-drawer__item-actions">
+										{notif.type === "friend_request" && (
+											<>
+												<button
+													type="button"
+													className="hub-notif-drawer__action hub-notif-drawer__action--accept"
+													onClick={async () => {
+														try {
+															await api.acceptFriendRequest(notif.fromUserId);
+															handleMarkRead(notif.id);
+														} catch {
+															// Non-fatal — button remains active if it fails
+														}
+													}}
+												>
+													Accept
+												</button>
+												<button
+													type="button"
+													className="hub-notif-drawer__action hub-notif-drawer__action--decline"
+													onClick={async () => {
+														try {
+															await api.removeFriend(notif.fromUserId);
+															handleMarkRead(notif.id);
+														} catch {
+															// Non-fatal
+														}
+													}}
+												>
+													Decline
+												</button>
+											</>
+										)}
+										<button
+											type="button"
+											className="hub-notif-drawer__dismiss"
+											aria-label="Dismiss notification"
+											onClick={() => handleMarkRead(notif.id)}
+										>
+											✕
+										</button>
+									</div>
+								</li>
+							))}
+						</ul>
+					)}
+				</div>
+			)}
 
 			{infoModal ? (
 				<HubModal title={infoModal.title} onClose={() => setInfoModal(null)}>
@@ -1042,12 +1429,56 @@ function HomeMenu(): JSX.Element {
 													<small> @{friend.username}</small>
 													{friend.isOnline ? <span className="hub-modal__social-online" aria-label="Online" /> : null}
 												</span>
-												<button type="button" onClick={() => void handleRemoveFriend(friend.userId)}>Remove</button>
+												<div className="hub-modal__social-actions">
+													{friend.isOnline && !activeLobby && (
+														<button
+															type="button"
+															className="hub-modal__social-invite-btn"
+															onClick={() => setInviteTarget({ userId: friend.userId, name: friend.turtleName ?? friend.username })}
+														>
+															Invite
+														</button>
+													)}
+													<button type="button" onClick={() => void handleRemoveFriend(friend.userId)}>Remove</button>
+												</div>
 											</li>
 										))}
 									</ul>
 								) : (
 									<p className="hub-panel__muted">No friends yet. Add someone above.</p>
+								)}
+
+								{/* Inline game picker — shown after clicking Invite on a friend */}
+								{inviteTarget && (
+									<div className="hub-lobby-picker">
+										<p>Invite <strong>{inviteTarget.name}</strong> to play:</p>
+										<select
+											className="hub-leaderboard-select"
+											value={inviteGameId}
+											onChange={(e) => setInviteGameId(e.target.value)}
+											aria-label="Select game to invite to"
+										>
+											{RANKED_GAMES.map((g) => (
+												<option key={g.id} value={g.id}>{g.label}</option>
+											))}
+										</select>
+										<div className="hub-lobby-picker__actions">
+											<button
+												type="button"
+												className="hub-lobby-picker__confirm"
+												onClick={() => handleCreateLobby(inviteTarget.userId, inviteGameId)}
+											>
+												Send invite
+											</button>
+											<button
+												type="button"
+												className="hub-lobby-picker__cancel"
+												onClick={() => setInviteTarget(null)}
+											>
+												Cancel
+											</button>
+										</div>
+									</div>
 								)}
 							</section>
 						</>

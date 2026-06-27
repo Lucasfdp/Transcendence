@@ -3121,3 +3121,501 @@ input {
 	display: flex;
 	gap: 0.35rem;
 }
+
+/* ── Leaderboard controls (game dropdown + scope toggle) ─────────────────── */
+
+.hub-leaderboard-controls {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin-bottom: 0.75rem;
+}
+
+.hub-leaderboard-select {
+	width: 100%;
+	padding: 0.4rem 0.6rem;
+	background: rgba(12, 17, 24, 0.9);
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	color: var(--text);
+	font-family: var(--body-font);
+	font-size: 0.85rem;
+	cursor: pointer;
+	appearance: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23f1d391'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 0.6rem center;
+	padding-right: 1.8rem;
+}
+
+.hub-leaderboard-select:focus {
+	outline: 1px solid var(--accent);
+}
+
+.hub-leaderboard-scope {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+}
+
+.hub-leaderboard-scope__btn {
+	padding: 0.3rem 0;
+	background: transparent;
+	border: 1px solid var(--line);
+	color: var(--muted);
+	font-family: var(--body-font);
+	font-size: 0.8rem;
+	cursor: pointer;
+	transition: background 0.15s, color 0.15s;
+}
+
+.hub-leaderboard-scope__btn:first-child {
+	border-radius: 4px 0 0 4px;
+}
+
+.hub-leaderboard-scope__btn:last-child {
+	border-radius: 0 4px 4px 0;
+	border-left: none;
+}
+
+.hub-leaderboard-scope__btn.is-active {
+	background: rgba(241, 211, 145, 0.15);
+	color: var(--accent);
+	border-color: var(--accent);
+}
+
+.hub-leaderboard-scope__btn:hover:not(.is-active) {
+	background: rgba(255, 255, 255, 0.05);
+	color: var(--text);
+}
+
+.hub-ranking-list__rank {
+	color: var(--accent);
+	font-weight: 700;
+	font-size: 0.85rem;
+}
+
+.hub-ranking-list__name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.hub-ranking-list__stat {
+	color: var(--muted);
+	font-size: 0.78rem;
+	white-space: nowrap;
+}
+
+/* ── Notification bell ───────────────────────────────────────────────────── */
+
+.hub-notif-bell {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 2.2rem;
+	height: 2.2rem;
+	padding: 0;
+	background: transparent;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	color: var(--text);
+	font-size: 1rem;
+	cursor: pointer;
+	transition: background 0.15s, border-color 0.15s;
+	flex-shrink: 0;
+}
+
+.hub-notif-bell:hover,
+.hub-notif-bell.is-open {
+	background: rgba(241, 211, 145, 0.1);
+	border-color: var(--accent);
+}
+
+.hub-notif-bell__badge {
+	position: absolute;
+	top: -5px;
+	right: -5px;
+	min-width: 1.1rem;
+	height: 1.1rem;
+	padding: 0 0.25rem;
+	background: var(--accent-strong);
+	border-radius: 999px;
+	color: #fff;
+	font-size: 0.65rem;
+	font-weight: 700;
+	line-height: 1.1rem;
+	text-align: center;
+	pointer-events: none;
+}
+
+/* ── Notification drawer ─────────────────────────────────────────────────── */
+
+.hub-notif-drawer {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 80;
+	width: min(360px, 92vw);
+	display: flex;
+	flex-direction: column;
+	background: #0e1319;
+	border-left: 1px solid var(--line);
+	box-shadow: -4px 0 24px rgba(0, 0, 0, 0.55);
+	overflow: hidden;
+}
+
+.hub-notif-drawer__header {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 1rem 1rem 0.75rem;
+	border-bottom: 1px solid var(--line);
+	flex-shrink: 0;
+}
+
+.hub-notif-drawer__header h3 {
+	margin: 0;
+	flex: 1;
+	font-family: var(--display-font);
+	font-size: 1rem;
+	color: var(--accent);
+}
+
+.hub-notif-drawer__mark-all {
+	padding: 0.25rem 0.6rem;
+	background: transparent;
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	color: var(--muted);
+	font-size: 0.75rem;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: color 0.15s, border-color 0.15s;
+}
+
+.hub-notif-drawer__mark-all:hover {
+	color: var(--text);
+	border-color: var(--accent);
+}
+
+.hub-notif-drawer__close {
+	width: 1.8rem;
+	height: 1.8rem;
+	display: grid;
+	place-items: center;
+	background: transparent;
+	border: none;
+	color: var(--muted);
+	font-size: 0.9rem;
+	cursor: pointer;
+	border-radius: 4px;
+	transition: color 0.15s, background 0.15s;
+}
+
+.hub-notif-drawer__close:hover {
+	color: var(--text);
+	background: rgba(255, 255, 255, 0.06);
+}
+
+.hub-notif-drawer__empty {
+	padding: 1.5rem 1rem;
+	color: var(--muted);
+	font-size: 0.88rem;
+	text-align: center;
+}
+
+.hub-notif-drawer__list {
+	flex: 1;
+	overflow-y: auto;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.hub-notif-drawer__item {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.75rem;
+	padding: 0.85rem 1rem;
+	border-bottom: 1px solid var(--line);
+	transition: background 0.12s;
+}
+
+.hub-notif-drawer__item:hover {
+	background: rgba(255, 255, 255, 0.03);
+}
+
+.hub-notif-drawer__item-body {
+	flex: 1;
+	font-size: 0.88rem;
+	line-height: 1.45;
+	color: var(--text);
+}
+
+.hub-notif-drawer__item-body strong {
+	color: var(--accent);
+}
+
+.hub-notif-drawer__item-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	flex-shrink: 0;
+}
+
+.hub-notif-drawer__action {
+	padding: 0.25rem 0.55rem;
+	border-radius: 4px;
+	font-size: 0.75rem;
+	font-family: var(--body-font);
+	cursor: pointer;
+	border: 1px solid transparent;
+	transition: opacity 0.15s;
+}
+
+.hub-notif-drawer__action:hover {
+	opacity: 0.8;
+}
+
+.hub-notif-drawer__action--accept {
+	background: rgba(111, 207, 151, 0.2);
+	border-color: #6fcf97;
+	color: #6fcf97;
+}
+
+.hub-notif-drawer__action--decline {
+	background: rgba(235, 87, 87, 0.15);
+	border-color: #eb5757;
+	color: #eb5757;
+}
+
+.hub-notif-drawer__dismiss {
+	width: 1.5rem;
+	height: 1.5rem;
+	display: grid;
+	place-items: center;
+	background: transparent;
+	border: none;
+	color: var(--muted);
+	font-size: 0.75rem;
+	cursor: pointer;
+	border-radius: 3px;
+	transition: color 0.12s, background 0.12s;
+}
+
+.hub-notif-drawer__dismiss:hover {
+	color: var(--text);
+	background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Social modal — invite button ────────────────────────────────────────── */
+
+.hub-modal__social-invite-btn {
+	padding: 0.25rem 0.6rem;
+	background: rgba(241, 211, 145, 0.12);
+	border: 1px solid var(--accent);
+	border-radius: 4px;
+	color: var(--accent);
+	font-size: 0.75rem;
+	font-family: var(--body-font);
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.hub-modal__social-invite-btn:hover {
+	background: rgba(241, 211, 145, 0.22);
+}
+
+/* ── Lobby game picker (inline in social modal) ──────────────────────────── */
+
+.hub-lobby-picker {
+	margin-top: 1rem;
+	padding: 0.85rem;
+	background: rgba(241, 211, 145, 0.06);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	display: flex;
+	flex-direction: column;
+	gap: 0.55rem;
+}
+
+.hub-lobby-picker p {
+	margin: 0;
+	font-size: 0.88rem;
+	color: var(--text);
+}
+
+.hub-lobby-picker__actions {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.hub-lobby-picker__confirm,
+.hub-lobby-picker__cancel {
+	flex: 1;
+	padding: 0.35rem 0;
+	border-radius: 4px;
+	font-size: 0.8rem;
+	font-family: var(--body-font);
+	cursor: pointer;
+	border: 1px solid transparent;
+	transition: opacity 0.15s;
+}
+
+.hub-lobby-picker__confirm {
+	background: rgba(111, 207, 151, 0.2);
+	border-color: #6fcf97;
+	color: #6fcf97;
+}
+
+.hub-lobby-picker__cancel {
+	background: rgba(255, 255, 255, 0.05);
+	border-color: var(--line);
+	color: var(--muted);
+}
+
+.hub-lobby-picker__confirm:hover,
+.hub-lobby-picker__cancel:hover {
+	opacity: 0.8;
+}
+
+/* ── Lobby countdown ─────────────────────────────────────────────────────── */
+
+.hub-lobby-countdown {
+	font-family: var(--mono-font);
+	font-size: 1.1rem;
+	color: var(--accent);
+	letter-spacing: 0.05em;
+}
+
+/* ── Active lobby waiting room overlay (host) ────────────────────────────── */
+
+.hub-lobby-waiting {
+	position: fixed;
+	inset: 0;
+	z-index: 75;
+	display: grid;
+	place-items: center;
+	background: rgba(5, 7, 10, 0.75);
+	backdrop-filter: blur(4px);
+}
+
+.hub-lobby-waiting__inner {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 2rem 2.5rem;
+	background: #0e1319;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+	text-align: center;
+	min-width: 260px;
+}
+
+.hub-lobby-waiting__label {
+	margin: 0;
+	color: var(--muted);
+	font-size: 0.9rem;
+}
+
+.hub-lobby-waiting__game {
+	margin: 0;
+	font-family: var(--display-font);
+	font-size: 1.1rem;
+	color: var(--accent);
+}
+
+.hub-lobby-waiting__cancel {
+	margin-top: 0.5rem;
+	padding: 0.35rem 1.2rem;
+	background: transparent;
+	border: 1px solid rgba(235, 87, 87, 0.5);
+	border-radius: 4px;
+	color: #eb5757;
+	font-size: 0.8rem;
+	font-family: var(--body-font);
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.hub-lobby-waiting__cancel:hover {
+	background: rgba(235, 87, 87, 0.12);
+}
+
+/* ── Incoming invite popup (invitee) ─────────────────────────────────────── */
+
+.hub-invite-popup {
+	position: fixed;
+	bottom: 1.5rem;
+	right: 1.5rem;
+	z-index: 85;
+}
+
+.hub-invite-popup__inner {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+	padding: 1.25rem 1.5rem;
+	background: #0e1319;
+	border: 1px solid var(--accent);
+	border-radius: 10px;
+	box-shadow: 0 6px 28px rgba(0, 0, 0, 0.65);
+	min-width: 240px;
+}
+
+.hub-invite-popup__from {
+	margin: 0;
+	font-size: 0.9rem;
+	color: var(--text);
+}
+
+.hub-invite-popup__from strong {
+	color: var(--accent);
+}
+
+.hub-invite-popup__game {
+	margin: 0;
+	font-family: var(--display-font);
+	font-size: 0.95rem;
+	color: var(--muted);
+}
+
+.hub-invite-popup__actions {
+	display: flex;
+	gap: 0.5rem;
+	margin-top: 0.25rem;
+}
+
+.hub-invite-popup__accept,
+.hub-invite-popup__decline {
+	flex: 1;
+	padding: 0.4rem 0;
+	border-radius: 4px;
+	font-size: 0.82rem;
+	font-family: var(--body-font);
+	cursor: pointer;
+	border: 1px solid transparent;
+	transition: opacity 0.15s;
+}
+
+.hub-invite-popup__accept {
+	background: rgba(111, 207, 151, 0.2);
+	border-color: #6fcf97;
+	color: #6fcf97;
+}
+
+.hub-invite-popup__decline {
+	background: rgba(235, 87, 87, 0.12);
+	border-color: #eb5757;
+	color: #eb5757;
+}
+
+.hub-invite-popup__accept:hover,
+.hub-invite-popup__decline:hover {
+	opacity: 0.8;
+}

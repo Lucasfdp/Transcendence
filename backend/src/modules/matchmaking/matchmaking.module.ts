@@ -2,7 +2,9 @@ import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { ConfigModule, ConfigService } from "@nestjs/config";
+import { FriendsModule } from "../friends/friends.module";
 import { GameResultsModule } from "../game-results/game-results.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { PresenceModule } from "../presence/presence.module";
 import { ShellsModule } from "../shells/shells.module";
 import { UsersModule } from "../users/users.module";
@@ -19,6 +21,7 @@ import { GameSessionService } from "./game-session.service";
 import { MatchesController } from "./matches.controller";
 import { MatchmakingGateway } from "./matchmaking.gateway";
 import { MatchmakingService } from "./matchmaking.service";
+import { PrivateLobbiesService } from "./private-lobbies.service";
 import { RoomService } from "./room.service";
 
 @Module({
@@ -40,6 +43,8 @@ import { RoomService } from "./room.service";
 		UsersModule,
 		ShellsModule,
 		GameResultsModule,
+		NotificationsModule,
+		FriendsModule,
 	],
 	controllers: [MatchesController],
 	providers: [
@@ -50,6 +55,7 @@ import { RoomService } from "./room.service";
 		BellClashEngine,
 		GameEngineRegistry,
 		RoomService,
+		PrivateLobbiesService,
 		GameSessionService,
 		MatchmakingGateway,
 	],

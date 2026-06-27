@@ -43,4 +43,9 @@ export class PresenceService {
 	isOnline(userId: number): boolean {
 		return this.userSockets.has(userId);
 	}
+
+	/** Returns all active socket IDs for a user (empty array if offline). */
+	getSocketIds(userId: number): string[] {
+		return [...(this.userSockets.get(userId) ?? [])];
+	}
 }

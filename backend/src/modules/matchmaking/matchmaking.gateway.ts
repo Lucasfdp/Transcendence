@@ -5,15 +5,19 @@ import {
 	MessageBody,
 	OnGatewayConnection,
 	OnGatewayDisconnect,
+	OnGatewayInit,
 	SubscribeMessage,
 	WebSocketGateway,
 	WebSocketServer,
 } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
 import { COOKIE_NAME } from "../auth/auth.service";
+import { FriendsService } from "../friends/friends.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { UsersService } from "../users/users.service";
 import { GameSessionService } from "./game-session.service";
 import { MatchmakingService } from "./matchmaking.service";
+import { PrivateLobbiesService } from "./private-lobbies.service";
 import {
 	BambooBashThrowEvent,
 	BellClashThrowEvent,
@@ -23,6 +27,7 @@ import {
 	MatchRoom,
 	QueueJoinPayload,
 	RoomPlayer,
+	SocketUser,
 	SpectatorJoinPayload,
 } from "./matchmaking.types";
 import { PresenceService } from "./presence.service";
@@ -50,7 +55,7 @@ function parseCookie(
 	},
 })
 export class MatchmakingGateway
-	implements OnGatewayConnection, OnGatewayDisconnect
+	implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
 	@WebSocketServer()
 	server: Server;
@@ -64,7 +69,15 @@ export class MatchmakingGateway
 		private readonly matchmaking: MatchmakingService,
 		private readonly rooms: RoomService,
 		private readonly sessions: GameSessionService,
+		private readonly notificationsService: NotificationsService,
+		private readonly privateLobbies: PrivateLobbiesService,
+		private readonly friendsService: FriendsService,
 	) {}
+
+	/** Wire the Socket.io server into NotificationsService for real-time push. */
+	afterInit(server: Server): void {
+		this.notificationsService.setServer(server);
+	}
 
 	async handleConnection(socket: Socket): Promise<void> {
 		try {
@@ -112,6 +125,14 @@ export class MatchmakingGateway
 				this.emitUserMatchStatus(socket);
 				this.emitState(room.matchId);
 			}
+
+			// Push unread notification inbox — guests have no persistent notifications
+			if (!socketUser.isGuest) {
+				void this.notificationsService.pushInboxToSocket(
+					socket.id,
+					socketUser.id,
+				);
+			}
 		} catch (err) {
 			socket.emit("error", {
 				message: "Unauthorized websocket connection",
@@ -134,6 +155,18 @@ export class MatchmakingGateway
 			RECONNECT_TIMEOUT_MS,
 		);
 		if (room) this.emitState(room.matchId);
+
+		// Cancel any open lobby the disconnecting user was hosting
+		const user = socket.data.user as SocketUser | undefined;
+		if (user) {
+			const cancelledLobby = this.privateLobbies.removeLobbyForUser(user.id);
+			if (cancelledLobby?.pendingInviteeId) {
+				for (const sid of this.presence.getSocketIds(cancelledLobby.pendingInviteeId)) {
+					this.server.to(sid).emit("lobby:cancelled", { lobbyId: cancelledLobby.lobbyId });
+				}
+			}
+		}
+
 		this.presence.disconnect(socket.id);
 	}
 
@@ -376,6 +409,192 @@ export class MatchmakingGateway
 	onSpectatorLeave(@ConnectedSocket() socket: Socket): void {
 		const room = this.rooms.removeSpectator(socket.id);
 		if (room) socket.leave(room.matchId);
+	}
+
+	// ── Private lobby handlers ────────────────────────────────────────────────
+
+	/**
+	 * Create a private casual lobby.
+	 * Emits lobby:created { lobbyId } back to the host.
+	 */
+	@SubscribeMessage("lobby:create")
+	async onLobbyCreate(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { gameId: string; shellSelection?: string[] },
+	): Promise<void> {
+		const user = socket.data.user as SocketUser;
+		if (user.isGuest) {
+			socket.emit("lobby:error", { message: "Guests cannot create lobbies" });
+			return;
+		}
+		try {
+			const lobby = this.privateLobbies.createLobby(
+				socket.id,
+				user,
+				payload.gameId,
+				payload.shellSelection ?? [],
+				(expired) => {
+					socket.emit("lobby:expired", { lobbyId: expired.lobbyId });
+					if (expired.pendingInviteeId) {
+						for (const sid of this.presence.getSocketIds(expired.pendingInviteeId)) {
+							this.server.to(sid).emit("lobby:cancelled", { lobbyId: expired.lobbyId });
+						}
+					}
+				},
+			);
+			socket.emit("lobby:created", {
+				lobbyId: lobby.lobbyId,
+				gameId: lobby.gameId,
+				expiresAt: lobby.createdAt + 2 * 60 * 1_000,
+			});
+		} catch (err) {
+			socket.emit("lobby:error", {
+				message: err instanceof Error ? err.message : "Failed to create lobby",
+			});
+		}
+	}
+
+	/**
+	 * Invite a friend to the lobby by their userId.
+	 * Validates friendship and that the invitee is online and not mid-match.
+	 */
+	@SubscribeMessage("lobby:invite")
+	async onLobbyInvite(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { lobbyId: string; inviteeUserId: number },
+	): Promise<void> {
+		const user = socket.data.user as SocketUser;
+		const lobby = this.privateLobbies.getLobby(payload.lobbyId);
+
+		if (!lobby || lobby.host.id !== user.id) {
+			socket.emit("lobby:error", { message: "Lobby not found" });
+			return;
+		}
+		if (this.rooms.hasActiveRoom(payload.inviteeUserId)) {
+			socket.emit("lobby:error", { message: "That player is already in a match" });
+			return;
+		}
+		if (!this.presence.isOnline(payload.inviteeUserId)) {
+			socket.emit("lobby:error", { message: "That player is offline" });
+			return;
+		}
+		const areFriends = await this.friendsService
+			.areFriends(user.id, payload.inviteeUserId)
+			.catch(() => false);
+		if (!areFriends) {
+			socket.emit("lobby:error", { message: "You can only invite friends" });
+			return;
+		}
+
+		this.privateLobbies.setInvitee(payload.lobbyId, payload.inviteeUserId);
+
+		const expiresAt = lobby.createdAt + 2 * 60 * 1_000;
+		for (const sid of this.presence.getSocketIds(payload.inviteeUserId)) {
+			this.server.to(sid).emit("lobby:invited", {
+				lobbyId: lobby.lobbyId,
+				fromUserId: user.id,
+				fromUsername: user.username,
+				gameId: lobby.gameId,
+				expiresAt,
+			});
+		}
+		socket.emit("lobby:invite-sent", { inviteeUserId: payload.inviteeUserId });
+	}
+
+	/**
+	 * Invitee accepts and joins the lobby.
+	 * Creates a match + room and emits lobby:matched to both players.
+	 */
+	@SubscribeMessage("lobby:join")
+	async onLobbyJoin(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { lobbyId: string; shellSelection?: string[] },
+	): Promise<void> {
+		const user = socket.data.user as SocketUser;
+		try {
+			const result = await this.privateLobbies.joinLobby(
+				payload.lobbyId,
+				socket.id,
+				user,
+				payload.shellSelection ?? [],
+			);
+			if (!result) {
+				socket.emit("lobby:error", { message: "Lobby no longer exists" });
+				return;
+			}
+
+			const { matchId, room } = result;
+			for (const player of room.players) {
+				for (const sid of this.presence.getSocketIds(player.user.id)) {
+					const s = this.server.sockets.sockets.get(sid);
+					if (s) {
+						s.join(matchId);
+						s.emit("lobby:matched", {
+							matchId,
+							side: player.side,
+							gameId: room.gameId,
+						});
+						s.emit("game:state", room.state);
+					}
+				}
+			}
+		} catch (err) {
+			socket.emit("lobby:error", {
+				message: err instanceof Error ? err.message : "Failed to join lobby",
+			});
+		}
+	}
+
+	/** Invitee declines — notifies the host. */
+	@SubscribeMessage("lobby:decline")
+	onLobbyDecline(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { lobbyId: string },
+	): void {
+		const lobby = this.privateLobbies.getLobby(payload.lobbyId);
+		if (!lobby) return;
+		lobby.pendingInviteeId = null;
+		for (const sid of this.presence.getSocketIds(lobby.host.id)) {
+			this.server.to(sid).emit("lobby:declined", { lobbyId: payload.lobbyId });
+		}
+	}
+
+	/** Host cancels the lobby — notifies any pending invitee. */
+	@SubscribeMessage("lobby:cancel")
+	onLobbyCancel(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { lobbyId: string },
+	): void {
+		const user = socket.data.user as SocketUser;
+		const lobby = this.privateLobbies.getLobby(payload.lobbyId);
+		if (!lobby || lobby.host.id !== user.id) return;
+
+		const cancelled = this.privateLobbies.cancelLobby(payload.lobbyId);
+		if (cancelled?.pendingInviteeId) {
+			for (const sid of this.presence.getSocketIds(cancelled.pendingInviteeId)) {
+				this.server.to(sid).emit("lobby:cancelled", { lobbyId: payload.lobbyId });
+			}
+		}
+		socket.emit("lobby:cancelled", { lobbyId: payload.lobbyId });
+	}
+
+	/** Mark a single notification as read for the authenticated user. */
+	@SubscribeMessage("notification:read")
+	async onNotificationRead(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() data: { notificationId: number },
+	): Promise<void> {
+		const user = socket.data.user as { id: number; isGuest: boolean } | undefined;
+		if (!user || user.isGuest) return;
+		await this.notificationsService.markRead(user.id, data.notificationId).catch(() => undefined);
+	}
+
+	/** Mark all unread notifications as read for the authenticated user. */
+	@SubscribeMessage("notification:read-all")
+	async onNotificationReadAll(@ConnectedSocket() socket: Socket): Promise<void> {
+		const user = socket.data.user as { id: number; isGuest: boolean } | undefined;
+		if (!user || user.isGuest) return;
+		await this.notificationsService.markAllRead(user.id).catch(() => undefined);
 	}
 
 	private emitState(matchId: string): void {

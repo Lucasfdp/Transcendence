@@ -248,18 +248,55 @@ export interface PendingView {
 	isOnline: boolean;
 }
 
-export interface LeaderboardEntry {
+/** Per-game ELO leaderboard entry returned by GET /api/leaderboard?gameId=… */
+export interface GameLeaderboardEntry {
 	rank: number;
 	userId: number;
 	username: string;
 	turtleName: string | null;
-	shellSkin: string;
 	avatar: string | null;
 	level: number;
+	rating: number;
 	wins: number;
-	gamesPlayed: number;
-	isOnline: boolean;
+	losses: number;
+	draws: number;
 }
+
+/** Cross-game total-wins entry returned by GET /api/leaderboard/overall */
+export interface OverallLeaderboardEntry {
+	rank: number;
+	userId: number;
+	username: string;
+	turtleName: string | null;
+	avatar: string | null;
+	level: number;
+	totalWins: number;
+}
+
+export type LeaderboardScope = "global" | "friends";
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+export type NotificationType = "friend_request" | "friend_accepted";
+
+export interface NotificationView {
+	id: number;
+	type: NotificationType;
+	fromUserId: number;
+	fromUsername: string;
+	payload: Record<string, unknown> | null;
+	createdAt: string;
+}
+
+/** The set of game IDs that have ranked leaderboards. */
+export const RANKED_GAMES = [
+	{ id: "temple-curling", label: "Temple Curling" },
+	{ id: "bamboo-bash", label: "Bamboo Bash" },
+	{ id: "kame-knock", label: "Kame Knock" },
+	{ id: "bell-clash", label: "Bell Clash" },
+] as const;
+
+export type RankedGameId = (typeof RANKED_GAMES)[number]["id"];
 
 // ── API surface ───────────────────────────────────────────────────────────────
 
@@ -412,15 +449,24 @@ export const api = {
 	// ── Leaderboard ────────────────────────────────────────────────────────────
 
 	/**
-	 * Fetch the leaderboard.
-	 * @param period  'all' (default) | 'monthly' | 'weekly'
-	 * @param scope   'global' (default) | 'friends'
+	 * Per-game ELO leaderboard.
+	 * Returns up to 100 entries ranked highest ELO first.
+	 * scope="friends" limits results to accepted friends + caller.
 	 */
-	getLeaderboard: (
-		period: "all" | "monthly" | "weekly" = "all",
-		scope: "global" | "friends" = "global",
-	): Promise<LeaderboardEntry[]> =>
-		apiFetch<LeaderboardEntry[]>(
-			`/users/leaderboard?period=${period}&scope=${scope}`,
+	getGameLeaderboard: (
+		gameId: string,
+		scope: LeaderboardScope = "global",
+	): Promise<GameLeaderboardEntry[]> =>
+		apiFetch<GameLeaderboardEntry[]>(
+			`/leaderboard?gameId=${encodeURIComponent(gameId)}&scope=${scope}`,
 		),
+
+	/**
+	 * Cross-game total-wins leaderboard.
+	 * Aggregates wins across all games (casual + ranked + private lobbies).
+	 */
+	getOverallLeaderboard: (
+		scope: LeaderboardScope = "global",
+	): Promise<OverallLeaderboardEntry[]> =>
+		apiFetch<OverallLeaderboardEntry[]>(`/leaderboard/overall?scope=${scope}`),
 };

@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Or, Repository } from "typeorm";
 import { PresenceService } from "../presence/presence.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { User } from "../users/entities/user.entity";
 import { Friendship } from "./entities/friendship.entity";
 
@@ -40,6 +41,7 @@ export class FriendsService {
 		@InjectRepository(User)
 		private readonly userRepo: Repository<User>,
 		private readonly presence: PresenceService,
+		private readonly notifications: NotificationsService,
 	) {}
 
 	/**
@@ -76,6 +78,10 @@ export class FriendsService {
 				);
 			}
 
+			const requester = await this.userRepo.findOne({
+				where: { id: requesterId },
+			});
+
 			await this.friendshipRepo.save(
 				this.friendshipRepo.create({
 					requesterId,
@@ -83,6 +89,13 @@ export class FriendsService {
 					status: "pending",
 				}),
 			);
+
+			// Notify the addressee — non-fatal if it fails
+			await this.notifications
+				.create("friend_request", requesterId, addressee.id, {
+					username: requester?.username ?? "",
+				})
+				.catch(() => undefined);
 		} catch (err) {
 			if (
 				err instanceof NotFoundException ||
@@ -113,6 +126,16 @@ export class FriendsService {
 
 			row.status = "accepted";
 			await this.friendshipRepo.save(row);
+
+			// Notify the original requester that their request was accepted — non-fatal
+			const accepter = await this.userRepo
+				.findOne({ where: { id: addresseeId } })
+				.catch(() => null);
+			await this.notifications
+				.create("friend_accepted", addresseeId, requesterId, {
+					username: accepter?.username ?? "",
+				})
+				.catch(() => undefined);
 		} catch (err) {
 			if (err instanceof NotFoundException) throw err;
 			throw new InternalServerErrorException(
