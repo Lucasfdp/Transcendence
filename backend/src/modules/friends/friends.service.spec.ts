@@ -6,6 +6,7 @@ import {
 import { Test, TestingModule } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { PresenceService } from "../presence/presence.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { User } from "../users/entities/user.entity";
 import { FriendView, FriendsService } from "./friends.service";
 import { Friendship } from "./entities/friendship.entity";
@@ -19,7 +20,9 @@ const mockFriendshipRepo = () => ({
 });
 
 const mockUserRepo = () => ({
-	findOne: jest.fn(),
+	// Default to a resolved promise so the service's `.catch()` chaining on
+	// findOne behaves like a real repository. Tests override per-case.
+	findOne: jest.fn().mockResolvedValue(null),
 });
 
 const mockPresence = () => ({
@@ -55,6 +58,10 @@ describe("FriendsService", () => {
 				},
 				{ provide: getRepositoryToken(User), useFactory: mockUserRepo },
 				{ provide: PresenceService, useFactory: mockPresence },
+				{
+					provide: NotificationsService,
+					useValue: { create: jest.fn().mockResolvedValue(undefined) },
+				},
 			],
 		}).compile();
 

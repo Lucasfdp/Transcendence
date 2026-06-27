@@ -8,6 +8,7 @@ import {
 	UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { CsrfGuard } from "../auth/guards/csrf.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UsersService } from "../users/users.service";
 import { GameResultsService, ProgressionResult } from "./game-results.service";
@@ -34,6 +35,7 @@ export class GameResultsController {
 	 */
 	@Post()
 	@HttpCode(200)
+	@UseGuards(CsrfGuard)
 	async submitResult(
 		@Request() req: { user: { id: number } },
 		@Body() dto: SubmitResultDto,
@@ -50,6 +52,7 @@ export class GameResultsController {
 				newCoins: 0,
 				leveledUp: false,
 				unlockedAchievements: [],
+				cardDrop: null,
 			};
 		}
 

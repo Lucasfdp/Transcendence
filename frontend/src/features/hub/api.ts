@@ -185,6 +185,54 @@ export interface ProgressionResult {
 	newCoins: number;
 	leveledUp: boolean;
 	unlockedAchievements: Achievement[];
+	/** Cosmetic card awarded for completing the match, or null if none. */
+	cardDrop: PackPull | null;
+}
+
+// ── Shell Cards (collectible binder) ─────────────────────────────────────────
+
+export type CardRarity = "stone" | "bronze" | "jade" | "gold";
+export type CardFamily =
+	| "power_shell"
+	| "shrine"
+	| "shell_skin"
+	| "character";
+
+export interface CardView {
+	id: string;
+	family: CardFamily;
+	rarity: CardRarity;
+	name: string;
+	flavor: string;
+	sourceRef: string;
+	imageUrl?: string;
+	owned: boolean;
+	count: number;
+	foilCount: number;
+}
+
+export interface CardSetProgress {
+	family: CardFamily;
+	owned: number;
+	total: number;
+}
+
+export interface BinderView {
+	cards: CardView[];
+	sets: CardSetProgress[];
+	totals: { owned: number; total: number };
+	packPrice: number;
+}
+
+export interface PackPull {
+	card: Omit<CardView, "owned" | "count" | "foilCount">;
+	foil: boolean;
+	isNew: boolean;
+}
+
+export interface PackResult {
+	pulls: PackPull[];
+	coins: number;
 }
 
 export interface Achievement {
@@ -362,12 +410,6 @@ export const api = {
 			body: JSON.stringify({ username, password }),
 		}),
 
-	/** Dev-only — requires ENABLE_DEV_LOGIN=true on the backend. */
-	devLogin: (username = "KameMaster"): Promise<{ ok: boolean }> =>
-		apiFetch<{ ok: boolean }>(
-			`/auth/dev-login?username=${encodeURIComponent(username)}`,
-		),
-
 	/** Logout — clears the auth cookie. */
 	logout: (): Promise<{ ok: boolean }> =>
 		apiFetch<{ ok: boolean }>("/auth/session", { method: "DELETE" }),
@@ -391,6 +433,13 @@ export const api = {
 			method: "POST",
 			body: JSON.stringify({ cosmeticId }),
 		}),
+
+	/** Fetch the player's Shell Cards binder (owned + locked + set progress). */
+	getCards: (): Promise<BinderView> => apiFetch<BinderView>("/cards"),
+
+	/** Spend coins to open one card pack. Returns the pulls and new balance. */
+	openCardPack: (): Promise<PackResult> =>
+		apiFetch<PackResult>("/cards/packs/open", { method: "POST" }),
 
 	/**
 	 * Record the outcome of a completed game session.

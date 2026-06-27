@@ -3,12 +3,10 @@ import {
 	Body,
 	Controller,
 	Delete,
-	ForbiddenException,
 	Get,
 	HttpCode,
 	HttpException,
 	Post,
-	Query,
 	Req,
 	Res,
 	UnauthorizedException,
@@ -271,37 +269,6 @@ export class AuthController {
 		}
 		this.authService.issueAuthCookie(res, req.user);
 		res.redirect("/");
-	}
-
-	// ── GET /api/auth/dev-login ───────────────────────────────────────────────────
-	// Double-gated dev endpoint — both conditions must be met simultaneously:
-	//   1. NODE_ENV !== 'production'   (Docker Compose env; cannot be spoofed)
-	//   2. ENABLE_DEV_LOGIN === 'true' (must be explicit; absent = disabled)
-	// Nginx also blocks this path at the network layer in production.
-
-	@Get("dev-login")
-	async devLogin(
-		@Query("username") usernameRaw: string | undefined,
-		@Req() req: Request,
-		@Res({ passthrough: true }) res: Response,
-	): Promise<{ ok: boolean }> {
-		if (process.env.NODE_ENV === "production") {
-			throw new ForbiddenException("Dev login is disabled in production");
-		}
-		if (process.env.ENABLE_DEV_LOGIN !== "true") {
-			throw new ForbiddenException(
-				"Dev login requires ENABLE_DEV_LOGIN=true",
-			);
-		}
-		if (!this.rateLimiter.allow(req, "dev-login", 5, 60_000)) {
-			throw TooManyRequests(
-				"Too many dev-login attempts — try again later.",
-			);
-		}
-		const username = validateUsername(usernameRaw ?? "KameMaster");
-		const user = await this.authService.devLogin(username);
-		this.authService.issueAuthCookie(res, user);
-		return { ok: true };
 	}
 
 	// ── CSRF validation ───────────────────────────────────────────────────────────

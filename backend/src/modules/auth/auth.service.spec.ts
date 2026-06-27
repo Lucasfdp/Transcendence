@@ -5,7 +5,7 @@ import {
 	InternalServerErrorException,
 	UnauthorizedException,
 } from "@nestjs/common";
-import { AuthService } from "./auth.service";
+import { AuthService, DEMO_COINS } from "./auth.service";
 import { UsersService } from "../users/users.service";
 import { User } from "../users/entities/user.entity";
 
@@ -139,41 +139,77 @@ describe("AuthService", () => {
 		});
 	});
 
-	// ── devLogin ─────────────────────────────────────────────────────────────────
+	// ── seedDemoAccount ──────────────────────────────────────────────────────────
 
-	describe("devLogin", () => {
-		it("returns an existing dev user without re-seeding stats", async () => {
-			usersService.findByFortyTwoId.mockResolvedValue(mockUser);
-			const result = await service.devLogin("testuser");
-			expect(result).toBe(mockUser);
+	describe("seedDemoAccount", () => {
+		it("creates the demo account as a password user seeded with max coins", async () => {
+			const created = { ...mockUser, profile: null } as unknown as User;
+			usersService.findByUsername.mockResolvedValue(null);
+			usersService.create.mockResolvedValue(created);
+			usersService.save.mockImplementation(async (u: User) => u);
+
+			const result = await service.seedDemoAccount();
+
+			expect(usersService.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					username: expect.any(String),
+					passwordHash: expect.any(String),
+				}),
+			);
+			expect(result?.coins).toBe(DEMO_COINS);
+		});
+
+		it("does not store the password in plaintext", async () => {
+			const created = { ...mockUser, profile: null } as unknown as User;
+			usersService.findByUsername.mockResolvedValue(null);
+			usersService.create.mockResolvedValue(created);
+			usersService.save.mockImplementation(async (u: User) => u);
+
+			await service.seedDemoAccount();
+
+			const createArg = usersService.create.mock.calls[0][0];
+			expect(createArg.passwordHash).toEqual(expect.any(String));
+			expect(createArg.passwordHash).not.toContain("KameMaster42");
+		});
+
+		it("tops the existing demo account back up to the coin cap when below it", async () => {
+			const existing = { ...mockUser, coins: 50 } as unknown as User;
+			usersService.findByUsername.mockResolvedValue(existing);
+			usersService.save.mockImplementation(async (u: User) => u);
+
+			const result = await service.seedDemoAccount();
+
+			expect(result?.coins).toBe(DEMO_COINS);
+			expect(usersService.save).toHaveBeenCalled();
 			expect(usersService.create).not.toHaveBeenCalled();
 		});
 
-		it("creates and seeds a new dev user when not found", async () => {
-			const seededUser = {
-				...mockUser,
-				level: 99,
-				xp: 999_999,
-				isDevAccount: true,
-				profile: {
-					totalWins: 0,
-					totalLosses: 0,
-					gamesPlayed: 0,
-					bio: null,
-				},
-			} as unknown as User;
-			usersService.findByFortyTwoId.mockResolvedValue(null);
-			usersService.create.mockResolvedValue(seededUser);
-			usersService.save.mockResolvedValue(seededUser);
-			usersService.saveProfile.mockResolvedValue(
-				seededUser.profile as never,
-			);
+		it("does not write when the demo account already has full coins", async () => {
+			const existing = { ...mockUser, coins: DEMO_COINS } as unknown as User;
+			usersService.findByUsername.mockResolvedValue(existing);
 
-			const result = await service.devLogin("newdev");
-			expect(usersService.create).toHaveBeenCalledWith(
-				expect.objectContaining({ isDevAccount: true }),
-			);
-			expect(result).toBe(seededUser);
+			await service.seedDemoAccount();
+
+			expect(usersService.create).not.toHaveBeenCalled();
+			expect(usersService.save).not.toHaveBeenCalled();
+		});
+
+		it("returns null and does not throw when seeding fails", async () => {
+			usersService.findByUsername.mockRejectedValue(new Error("db down"));
+
+			await expect(service.seedDemoAccount()).resolves.toBeNull();
+		});
+	});
+
+	describe("onApplicationBootstrap", () => {
+		it("seeds the demo account on boot in every environment", async () => {
+			const spy = jest
+				.spyOn(service, "seedDemoAccount")
+				.mockResolvedValue(mockUser);
+
+			await service.onApplicationBootstrap();
+
+			expect(spy).toHaveBeenCalledTimes(1);
 		});
 	});
 

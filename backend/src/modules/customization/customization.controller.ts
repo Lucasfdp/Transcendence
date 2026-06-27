@@ -8,6 +8,7 @@ import {
 	UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { CsrfGuard } from "../auth/guards/csrf.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UsersService } from "../users/users.service";
 import { CosmeticView } from "./customization.constants";
@@ -35,6 +36,7 @@ export class CustomizationController {
 	}
 
 	@Post("equip")
+	@UseGuards(CsrfGuard)
 	async equip(
 		@Request() req: { user: { id: number } },
 		@Body() dto: EquipCosmeticDto,
@@ -45,6 +47,7 @@ export class CustomizationController {
 	}
 
 	@Post("buy")
+	@UseGuards(CsrfGuard)
 	async buy(
 		@Request() req: { user: { id: number } },
 		@Body() dto: BuyCosmeticDto,

@@ -3,6 +3,8 @@ import { InternalServerErrorException } from "@nestjs/common";
 import { GameResultsService } from "./game-results.service";
 import { UsersService } from "../users/users.service";
 import { AchievementsService } from "../achievements/achievements.service";
+import { CardsService } from "../cards/cards.service";
+import { PackPull } from "../cards/cards.constants";
 import { User } from "../users/entities/user.entity";
 import { Profile } from "../profiles/entities/profile.entity";
 import { getRepositoryToken } from "@nestjs/typeorm";
@@ -52,10 +54,24 @@ describe("GameResultsService", () => {
 	let service: GameResultsService;
 	let usersService: jest.Mocked<UsersService>;
 	let achievementsService: jest.Mocked<AchievementsService>;
+	let cardsService: jest.Mocked<Pick<CardsService, "grantMatchDrop">>;
 	let gameStatsRepo: {
 		findOne: jest.Mock;
 		create: jest.Mock;
 		save: jest.Mock;
+	};
+
+	const sampleDrop: PackPull = {
+		card: {
+			id: "power-heavy",
+			family: "power_shell",
+			rarity: "stone",
+			name: "Heavy Shell",
+			flavor: "Dense as a temple stone.",
+			sourceRef: "heavy",
+		},
+		foil: false,
+		isNew: true,
 	};
 
 	beforeEach(async () => {
@@ -75,6 +91,11 @@ describe("GameResultsService", () => {
 			),
 			save: jest.fn(async (stats: UserGameStats) => stats),
 		};
+		const mockCardsService: jest.Mocked<
+			Pick<CardsService, "grantMatchDrop">
+		> = {
+			grantMatchDrop: jest.fn().mockResolvedValue(sampleDrop),
+		};
 
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
@@ -84,6 +105,7 @@ describe("GameResultsService", () => {
 					provide: AchievementsService,
 					useValue: mockAchievementsService,
 				},
+				{ provide: CardsService, useValue: mockCardsService },
 				{
 					provide: getRepositoryToken(UserGameStats),
 					useValue: mockGameStatsRepo,
@@ -94,6 +116,7 @@ describe("GameResultsService", () => {
 		service = module.get<GameResultsService>(GameResultsService);
 		usersService = module.get(UsersService);
 		achievementsService = module.get(AchievementsService);
+		cardsService = module.get(CardsService);
 		gameStatsRepo = module.get(getRepositoryToken(UserGameStats));
 	});
 
@@ -381,6 +404,38 @@ describe("GameResultsService", () => {
 		});
 
 		expect(result.unlockedAchievements).toEqual(unlocked);
+	});
+
+	// ── Match-completion card drop ───────────────────────────────────────────────
+
+	it("should include the cosmetic card drop in the result", async () => {
+		const user = makeUser();
+		usersService.save.mockResolvedValueOnce(user);
+
+		const result = await service.submitResult(user, {
+			gameId: "test-game",
+			outcome: "win",
+		});
+
+		expect(cardsService.grantMatchDrop).toHaveBeenCalledWith(user);
+		expect(result.cardDrop).toEqual(sampleDrop);
+	});
+
+	it("should still record the match with a null drop when the card grant fails", async () => {
+		const user = makeUser();
+		usersService.save.mockResolvedValueOnce(user);
+		cardsService.grantMatchDrop.mockRejectedValueOnce(
+			new Error("card grant failed"),
+		);
+
+		const result = await service.submitResult(user, {
+			gameId: "test-game",
+			outcome: "win",
+		});
+
+		expect(result.cardDrop).toBeNull();
+		expect(result.coinsGained).toBe(COINS_PER_WIN);
+		expect(usersService.save).toHaveBeenCalledWith(user);
 	});
 
 	// ── Accumulation ────────────────────────────────────────────────────────────

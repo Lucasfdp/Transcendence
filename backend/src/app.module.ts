@@ -9,6 +9,7 @@ import { MiniGamesModule } from "./modules/minigames/minigames.module";
 import { GameResultsModule } from "./modules/game-results/game-results.module";
 import { AchievementsModule } from "./modules/achievements/achievements.module";
 import { CustomizationModule } from "./modules/customization/customization.module";
+import { CardsModule } from "./modules/cards/cards.module";
 import { MetricsModule } from "./modules/metrics/metrics.module";
 import { HealthModule } from "./modules/health/health.module";
 import { PresenceModule } from "./modules/presence/presence.module";
@@ -53,6 +54,7 @@ import { AppController } from "./app.controller";
 		MiniGamesModule,
 		AchievementsModule,
 		CustomizationModule,
+		CardsModule,
 		GameResultsModule,
 		ShellsModule,
 		FriendsModule,

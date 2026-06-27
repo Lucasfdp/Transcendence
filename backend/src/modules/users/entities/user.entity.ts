@@ -70,8 +70,9 @@ export class User {
 	isGuest: boolean;
 
 	/**
-	 * True for accounts created via the dev-login endpoint.
-	 * Rendered with a gold "DEV" badge in the frontend HUD.
+	 * Legacy flag from the removed dev-login flow; retained for the gold "DEV"
+	 * badge in the frontend HUD and to avoid a schema migration. No current code
+	 * path sets it to true. Safe to drop in a future migration.
 	 */
 	@Column({ default: false })
 	isDevAccount: boolean;

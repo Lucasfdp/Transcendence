@@ -5,6 +5,7 @@ import { RouteLoading } from "../components/common/RouteLoading";
 import { NineSliceButton } from "../components/common/NineSliceButton";
 import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { WorkInProgressNotice } from "../components/common/WorkInProgressNotice";
+import { ShellCardsModal } from "../components/cards/ShellCardsModal";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
 import {
 	hubBackgroundClass,
@@ -425,7 +426,13 @@ function HomeMenu(): JSX.Element {
 	const [cosmetics, setCosmetics] = useState<Cosmetic[] | null>(null);
 	const [modalError, setModalError] = useState("");
 	const [activeModal, setActiveModal] = useState<
-		"achievements" | "customization" | "profile" | "social" | "rankings" | null
+		| "achievements"
+		| "customization"
+		| "profile"
+		| "social"
+		| "rankings"
+		| "cards"
+		| null
 	>(null);
 	const [profileSaving, setProfileSaving] = useState(false);
 	const [profileSuccess, setProfileSuccess] = useState("");
@@ -1032,13 +1039,7 @@ function HomeMenu(): JSX.Element {
 						<NineSliceButton
 							type="button"
 							className="hub-panel__button"
-							onClick={() =>
-								setInfoModal({
-									title: "Shell Cards",
-									description:
-										"A new card challenge is being prepared for the dojo.",
-								})
-							}
+							onClick={() => setActiveModal("cards")}
 						>
 							Shell Cards
 						</NineSliceButton>
@@ -1831,6 +1832,17 @@ function HomeMenu(): JSX.Element {
 					) : (
 						<p>Loading customization...</p>
 					)}
+				</HubModal>
+			) : null}
+
+			{activeModal === "cards" ? (
+				<HubModal title="Shell Cards" onClose={() => setActiveModal(null)}>
+					<ShellCardsModal
+						coins={player?.coins ?? 0}
+						onCoinsChange={(coins) =>
+							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+						}
+					/>
 				</HubModal>
 			) : null}
 		</main>

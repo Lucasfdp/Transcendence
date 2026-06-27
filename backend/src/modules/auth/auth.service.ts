@@ -2,6 +2,7 @@ import {
 	ConflictException,
 	Injectable,
 	InternalServerErrorException,
+	type OnApplicationBootstrap,
 	UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -47,19 +48,40 @@ const COOKIE_MAX_AGE_S = 60 * 60 * 24; // 24 h — full account
 const GUEST_MAX_AGE_S = 60 * 60 * 2; // 2 h  — guest session
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
-// ── Dev account seed stats ────────────────────────────────────────────────────
+// ── Demo account seed values ──────────────────────────────────────────────────
 
-const DEV_LEVEL = 99;
-const DEV_XP = 999_999;
-const DEV_WINS = 999;
-const DEV_GAMES = 999;
+const DEMO_LEVEL = 99;
+const DEMO_XP = 999_999;
+const DEMO_WINS = 999;
+const DEMO_GAMES = 999;
+
+/**
+ * Coin balance seeded on (and topped back up to on every startup of) the demo
+ * account. Effectively unlimited for showcasing packs — 1e9 coins is ~10M packs
+ * at the current price — while staying well under the int32 column ceiling so
+ * duplicate refunds can't overflow it.
+ */
+export const DEMO_COINS = 1_000_000_000;
+
+/** Defaults for the always-present demo account (override via env). */
+const DEFAULT_DEMO_USERNAME = "KameMaster";
+const DEFAULT_DEMO_PASSWORD = "KameMaster42";
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnApplicationBootstrap {
 	constructor(
 		private readonly usersService: UsersService,
 		private readonly jwtService: JwtService,
 	) {}
+
+	/**
+	 * On boot, ensure the shared demo account exists so anyone (e.g. evaluators)
+	 * can log in through the normal username/password form. Seeded in every
+	 * environment. Failures are non-fatal — seeding must never block startup.
+	 */
+	async onApplicationBootstrap(): Promise<void> {
+		await this.seedDemoAccount();
+	}
 
 	// ── Cookie helpers ────────────────────────────────────────────────────────────
 
@@ -213,43 +235,52 @@ export class AuthService {
 		}
 	}
 
-	// ── Dev login ─────────────────────────────────────────────────────────────────
+	// ── Demo account ──────────────────────────────────────────────────────────────
 
 	/**
-	 * Find or create a dev account with max stats.
-	 * Stats are only seeded at creation — subsequent calls return the existing record.
+	 * Ensure the shared demo account exists as a normal username/password user,
+	 * so it can be logged into through the standard login form. Credentials come
+	 * from DEMO_USERNAME / DEMO_PASSWORD (with defaults). The coin balance is
+	 * topped back up on every boot so packs can always be showcased.
+	 *
+	 * Best-effort: any failure is swallowed so it can never block startup.
 	 */
-	async devLogin(username: string): Promise<User> {
+	async seedDemoAccount(): Promise<User | null> {
+		const username = process.env.DEMO_USERNAME ?? DEFAULT_DEMO_USERNAME;
+		const password = process.env.DEMO_PASSWORD ?? DEFAULT_DEMO_PASSWORD;
+
 		try {
-			const devId = `dev-${username}`;
-			let user = await this.usersService.findByFortyTwoId(devId);
+			let user = await this.usersService.findByUsername(username);
 
 			if (!user) {
+				const passwordHash = await this.hashPassword(password);
 				user = await this.usersService.create({
-					fortyTwoId: devId,
 					username,
-					email: `${username}@dev.local`,
-					isDevAccount: true,
+					email: `${username}@demo.local`,
+					passwordHash,
 				});
 
-				user.level = DEV_LEVEL;
-				user.xp = DEV_XP;
-				user.isDevAccount = true;
+				user.level = DEMO_LEVEL;
+				user.xp = DEMO_XP;
+				user.coins = DEMO_COINS;
 				user = await this.usersService.save(user);
 
 				if (user.profile) {
-					user.profile.totalWins = DEV_WINS;
+					user.profile.totalWins = DEMO_WINS;
 					user.profile.totalLosses = 0;
-					user.profile.gamesPlayed = DEV_GAMES;
+					user.profile.gamesPlayed = DEMO_GAMES;
 					await this.usersService.saveProfile(user.profile);
 				}
+			} else if (user.coins < DEMO_COINS) {
+				// Top the demo account back up so packs can always be showcased.
+				user.coins = DEMO_COINS;
+				user = await this.usersService.save(user);
 			}
 
 			return user;
 		} catch {
-			throw new InternalServerErrorException(
-				"Failed to process dev login",
-			);
+			// Non-fatal: a demo seeding failure must not prevent the app booting.
+			return null;
 		}
 	}
 

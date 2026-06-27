@@ -5,6 +5,8 @@ import { UsersService } from "../users/users.service";
 import { User } from "../users/entities/user.entity";
 import { AchievementView } from "../achievements/achievements.constants";
 import { AchievementsService } from "../achievements/achievements.service";
+import { CardsService } from "../cards/cards.service";
+import { type PackPull } from "../cards/cards.constants";
 import { SubmitResultDto } from "./dto/submit-result.dto";
 import { UserGameStats } from "./entities/user-game-stats.entity";
 import {
@@ -27,6 +29,8 @@ export interface ProgressionResult {
 	newCoins: number;
 	leveledUp: boolean;
 	unlockedAchievements: AchievementView[];
+	/** Cosmetic card awarded for completing the match, or null if none. */
+	cardDrop: PackPull | null;
 }
 
 @Injectable()
@@ -34,6 +38,7 @@ export class GameResultsService {
 	constructor(
 		private readonly usersService: UsersService,
 		private readonly achievementsService: AchievementsService,
+		private readonly cardsService: CardsService,
 		@InjectRepository(UserGameStats)
 		private readonly userGameStatsRepo: Repository<UserGameStats>,
 	) {}
@@ -87,6 +92,15 @@ export class GameResultsService {
 			const unlockedAchievements =
 				await this.achievementsService.evaluateForUser(user);
 
+			// Cosmetic match-completion card drop is best-effort: a failure here
+			// must never roll back or block the recorded match progression.
+			let cardDrop: PackPull | null = null;
+			try {
+				cardDrop = await this.cardsService.grantMatchDrop(user);
+			} catch {
+				cardDrop = null;
+			}
+
 			return {
 				xpGained,
 				coinsGained,
@@ -95,6 +109,7 @@ export class GameResultsService {
 				newCoins: coins,
 				leveledUp,
 				unlockedAchievements,
+				cardDrop,
 			};
 		} catch (err) {
 			if (err instanceof InternalServerErrorException) throw err;

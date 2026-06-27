@@ -69,6 +69,7 @@ describe("GameSessionService", () => {
 	let matchRepo: { update: jest.Mock };
 	let matchPlayerRepo: { update: jest.Mock };
 	let ratingRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
+	let dataSource: { transaction: jest.Mock };
 
 	beforeEach(() => {
 		roomService = {
@@ -97,12 +98,32 @@ describe("GameSessionService", () => {
 			create: jest.fn((rating) => rating),
 			save: jest.fn(),
 		};
+		// Transaction mock routes getRepository() to the same repo mocks the
+		// tests assert against, so the transactional persistence path is covered.
+		dataSource = {
+			transaction: jest.fn(
+				async (
+					callback: (manager: {
+						getRepository: (entity: unknown) => unknown;
+					}) => unknown,
+				) =>
+					callback({
+						getRepository: (entity: unknown) => {
+							if (entity === Match) return matchRepo;
+							if (entity === MatchPlayer) return matchPlayerRepo;
+							if (entity === UserRating) return ratingRepo;
+							throw new Error("Unknown repository");
+						},
+					}),
+			),
+		};
 
 		service = new GameSessionService(
 			roomService,
 			engines,
 			usersService,
 			gameResultsService,
+			dataSource as never,
 			matchRepo as never,
 			matchPlayerRepo as never,
 			ratingRepo as never,

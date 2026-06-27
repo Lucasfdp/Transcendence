@@ -1,0 +1,40 @@
+import {
+	CanActivate,
+	ExecutionContext,
+	Injectable,
+	UnauthorizedException,
+} from "@nestjs/common";
+import { Request } from "express";
+
+/** Cookie holding the double-submit CSRF token (readable by JS, not httpOnly). */
+const CSRF_COOKIE = "csrf_token";
+
+/** Read a single cookie value from a raw `Cookie` header string. */
+function parseCookie(cookieHeader: string, name: string): string | null {
+	for (const part of cookieHeader.split(";")) {
+		const trimmed = part.trim();
+		if (trimmed.startsWith(`${name}=`)) {
+			return trimmed.slice(name.length + 1);
+		}
+	}
+	return null;
+}
+
+/**
+ * Double-submit CSRF guard for state-changing routes. The client must send the
+ * CSRF token both as the `X-CSRF-Token` header and the `csrf_token` cookie; the
+ * two must match. Mirrors the validation in AuthController for reuse.
+ */
+@Injectable()
+export class CsrfGuard implements CanActivate {
+	canActivate(context: ExecutionContext): boolean {
+		const req = context.switchToHttp().getRequest<Request>();
+		const headerToken = req.headers["x-csrf-token"] as string | undefined;
+		const cookieToken = parseCookie(req.headers.cookie ?? "", CSRF_COOKIE);
+
+		if (!headerToken || !cookieToken || headerToken !== cookieToken) {
+			throw new UnauthorizedException("Invalid or missing CSRF token");
+		}
+		return true;
+	}
+}
