@@ -363,6 +363,16 @@ const SHELL_SKIN_CARDS: readonly CardDefinition[] = [
 
 const CHARACTER_CARDS: readonly CardDefinition[] = [
 	{
+		id: "char-pirate",
+		family: "character",
+		rarity: "gold",
+		name: "Kaizoku, the Corsair Shell",
+		flavor:
+			"Exiled from the mountain dojo, he claimed a ship and a code of his own. The seven seas are his sheet now.",
+		sourceRef: "pirate-turtle",
+		imageUrl: "/assets/character/pirate-turtle.webp",
+	},
+	{
 		id: "char-reaper",
 		family: "character",
 		rarity: "gold",
@@ -371,6 +381,16 @@ const CHARACTER_CARDS: readonly CardDefinition[] = [
 			"A hooded turtle who harvests fallen shells by lantern-light. Few ever see his scythe twice.",
 		sourceRef: "reaper-turtle",
 		imageUrl: "/assets/character/reaper-turtle.jpg",
+	},
+	{
+		id: "char-samurai",
+		family: "character",
+		rarity: "gold",
+		name: "Kabuto, the Bushido Shell",
+		flavor:
+			"A masterless samurai turtle bound by the dojo's code. His blade is patient; his shell, unbroken.",
+		sourceRef: "samurai-turtle",
+		imageUrl: "/assets/character/samurai-turtle.webp",
 	},
 ];
 

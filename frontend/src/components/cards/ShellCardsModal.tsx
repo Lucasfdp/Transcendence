@@ -155,7 +155,7 @@ export function ShellCardsModal({
 	const canAfford = binder !== null && coins >= binder.packPrice;
 
 	const handleOpenPack = async (): Promise<void> => {
-		if (opening || !binder || !canAfford) return;
+		if (opening || reveal !== null || !binder || !canAfford) return;
 		setOpening(true);
 		setError("");
 		try {
@@ -190,7 +190,7 @@ export function ShellCardsModal({
 				<button
 					type="button"
 					className="hub-cards__open-button"
-					disabled={opening || !canAfford}
+					disabled={opening || reveal !== null || !canAfford}
 					onClick={() => void handleOpenPack()}
 				>
 					{opening

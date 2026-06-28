@@ -74,6 +74,14 @@ describe("cards.constants", () => {
 			expect(reaper?.rarity).toBe("gold");
 			expect(reaper?.imageUrl).toBe("/assets/character/reaper-turtle.jpg");
 		});
+
+		it("should include the Corsair Shell pirate character card with static art", () => {
+			const pirate = findCard("char-pirate");
+			expect(pirate).toBeDefined();
+			expect(pirate?.family).toBe("character");
+			expect(pirate?.rarity).toBe("gold");
+			expect(pirate?.imageUrl).toBe("/assets/character/pirate-turtle.webp");
+		});
 	});
 
 	describe("pack & duplicate economy constants", () => {
