@@ -235,6 +235,51 @@ export interface PackResult {
 	coins: number;
 }
 
+// ── Fortune Wheel (the gambling den) ─────────────────────────────────────────
+
+export interface WheelSegment {
+	id: string;
+	label: string;
+	multiplier: number;
+	weight: number;
+}
+
+export interface WheelSegmentView extends WheelSegment {
+	/** Probability of landing here = weight / total weight. */
+	probability: number;
+}
+
+export interface WheelView {
+	segments: WheelSegmentView[];
+	/** Weighted-average return-to-player (1.0 = net-neutral, no house edge). */
+	rtp: number;
+	freeStake: number;
+	minWager: number;
+	maxWager: number;
+	coins: number;
+	freeSpinAvailable: boolean;
+}
+
+/** Provably-fair data the player can recompute to verify a spin. */
+export interface SpinFairness {
+	serverSeed: string;
+	serverSeedHash: string;
+	clientSeed: string;
+	nonce: number;
+	roll: number;
+}
+
+export interface SpinResult {
+	mode: "free" | "wagered";
+	segment: WheelSegment;
+	stake: number;
+	paid: number;
+	payout: number;
+	net: number;
+	coins: number;
+	fairness: SpinFairness;
+}
+
 export interface Achievement {
 	id: string;
 	title: string;
@@ -440,6 +485,23 @@ export const api = {
 	/** Spend coins to open one card pack. Returns the pulls and new balance. */
 	openCardPack: (): Promise<PackResult> =>
 		apiFetch<PackResult>("/cards/packs/open", { method: "POST" }),
+
+	/** Fetch the Fortune Wheel layout, odds, bounds, balance and free-spin state. */
+	getWheel: (): Promise<WheelView> => apiFetch<WheelView>("/casino/wheel"),
+
+	/** Take the daily free spin. Optional client seed feeds the provable roll. */
+	spinFreeWheel: (clientSeed?: string): Promise<SpinResult> =>
+		apiFetch<SpinResult>("/casino/wheel/free", {
+			method: "POST",
+			body: JSON.stringify({ clientSeed }),
+		}),
+
+	/** Stake coins on a wagered spin. Returns the outcome and new balance. */
+	spinWheel: (stake: number, clientSeed?: string): Promise<SpinResult> =>
+		apiFetch<SpinResult>("/casino/wheel/spin", {
+			method: "POST",
+			body: JSON.stringify({ stake, clientSeed }),
+		}),
 
 	/**
 	 * Record the outcome of a completed game session.

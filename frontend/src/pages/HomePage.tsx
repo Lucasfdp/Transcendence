@@ -6,6 +6,7 @@ import { NineSliceButton } from "../components/common/NineSliceButton";
 import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { WorkInProgressNotice } from "../components/common/WorkInProgressNotice";
 import { ShellCardsModal } from "../components/cards/ShellCardsModal";
+import { FortuneWheelModal } from "../components/casino/FortuneWheelModal";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
 import {
 	hubBackgroundClass,
@@ -432,6 +433,7 @@ function HomeMenu(): JSX.Element {
 		| "social"
 		| "rankings"
 		| "cards"
+		| "casino"
 		| null
 	>(null);
 	const [profileSaving, setProfileSaving] = useState(false);
@@ -1146,6 +1148,15 @@ function HomeMenu(): JSX.Element {
 											</button>
 										),
 									)}
+									<button
+										key="fortune-wheel"
+										className="hub-game-card hub-game-card--casino"
+										type="button"
+										onClick={() => setActiveModal("casino")}
+									>
+										<span>Fortune Wheel</span>
+										<small>Wager coins at the gambling den</small>
+									</button>
 								</div>
 
 								<button
@@ -1838,6 +1849,17 @@ function HomeMenu(): JSX.Element {
 			{activeModal === "cards" ? (
 				<HubModal title="Shell Cards" onClose={() => setActiveModal(null)}>
 					<ShellCardsModal
+						coins={player?.coins ?? 0}
+						onCoinsChange={(coins) =>
+							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+						}
+					/>
+				</HubModal>
+			) : null}
+
+			{activeModal === "casino" ? (
+				<HubModal title="Fortune Wheel" onClose={() => setActiveModal(null)}>
+					<FortuneWheelModal
 						coins={player?.coins ?? 0}
 						onCoinsChange={(coins) =>
 							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
