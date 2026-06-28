@@ -29,7 +29,7 @@ import {
 import { TURTLE_TAGS } from "../shared/turtle-tags";
 import { getGameSocket } from "../services/network/gameSocket";
 
-type HubView = "choose" | "normal";
+type HubView = "choose" | "normal" | "gambit";
 type InfoModal = { title: string; description: string } | null;
 
 type CosmeticCategoryType = Extract<
@@ -387,9 +387,12 @@ function HomeMenu(): JSX.Element {
 	const [now, setNow] = useState(() => new Date());
 	const [isClockDebugOpen, setIsClockDebugOpen] = useState(false);
 	const [manualMinutes, setManualMinutes] = useState<number | null>(null);
-	const [view, setView] = useState<HubView>(() =>
-		searchParams.get("view") === "normal" ? "normal" : "choose",
-	);
+	const [view, setView] = useState<HubView>(() => {
+		const initialView = searchParams.get("view");
+		return initialView === "normal" || initialView === "gambit"
+			? initialView
+			: "choose";
+	});
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
 	const [player, setPlayer] = useState<User | null>(null);
 	const [minigames, setMinigames] = useState<MiniGameDefinition[]>([]);
@@ -700,6 +703,13 @@ function HomeMenu(): JSX.Element {
 		navigate("/", { replace: true });
 	};
 
+	const modeHeading =
+		view === "choose"
+			? "Choose Mode"
+			: view === "gambit"
+				? "Shell's Gambit"
+				: "Normal";
+
 	const openAchievements = async () => {
 		setActiveModal("achievements");
 		setModalError("");
@@ -965,12 +975,6 @@ function HomeMenu(): JSX.Element {
 							aria-expanded={isClockDebugOpen}
 							onClick={() => setIsClockDebugOpen((open) => !open)}
 						>
-							<img
-								className="hub-page__clock-icon"
-								src="/assets/ui/counter/icon-time@2x.png"
-								alt=""
-								aria-hidden="true"
-							/>
 							<span className="hub-page__clock-time">
 								<span>{currentTimeParts.time}</span>
 								{currentTimeParts.period ? (
@@ -1075,7 +1079,7 @@ function HomeMenu(): JSX.Element {
 						<div className="menu-page__heading">
 							<span className="menu-page__heading-line" />
 							<h1 className="menu-page__choose-label">
-								{view === "choose" ? "Choose Mode" : "Normal"}
+								{modeHeading}
 							</h1>
 							<span className="menu-page__heading-line" />
 						</div>
@@ -1115,48 +1119,67 @@ function HomeMenu(): JSX.Element {
 									<span className="menu-page__mode-divider" aria-hidden="true" />
 									<span className="menu-page__mode-description">Compete for the top.</span>
 								</button>
+
+								<button
+									className="menu-page__mode-card menu-page__mode-card--gambit"
+									type="button"
+									onClick={() => setView("gambit")}
+								>
+									<span className="menu-page__mode-corners" aria-hidden="true" />
+									<img
+										className="menu-page__mode-art"
+										src="/assets/ui/gambitMode.png"
+										alt=""
+										aria-hidden="true"
+									/>
+									<span className="menu-page__mode-title">Shell's Gambit</span>
+									<span className="menu-page__mode-divider" aria-hidden="true" />
+									<span className="menu-page__mode-description">Risk coins for glory.</span>
+								</button>
 							</div>
 						) : (
 							<div className="hub-page__normal-view">
 								<div className="hub-page__game-grid">
-									{gameCards.map((game) =>
-										game.available ? (
-											<Link
-												key={game.id}
-												className="hub-game-card"
-												to={`/play/${game.id}`}
-											>
-												<span>{game.name}</span>
-												<small>{game.description}</small>
-											</Link>
-										) : (
-											<button
-												key={game.id}
-												className="hub-game-card hub-game-card--locked"
-												type="button"
-												onClick={() =>
-													game.id === "river-rush"
-														? setIsRiverRushWipOpen(true)
-														: setInfoModal({
-																title: game.name,
-																description: `${game.description}\n\nArena is being built. Check back soon!`,
-															})
-												}
-											>
-												<span>{game.name}</span>
-												<small>Coming soon</small>
-											</button>
-										),
+									{view === "gambit" ? (
+										<button
+											className="hub-game-card"
+											type="button"
+											onClick={() => setActiveModal("casino")}
+										>
+											<span>Fortune Wheel</span>
+											<small>Wager coins at the gambling den</small>
+										</button>
+									) : (
+										gameCards.map((game) =>
+											game.available ? (
+												<Link
+													key={game.id}
+													className="hub-game-card"
+													to={`/play/${game.id}`}
+												>
+													<span>{game.name}</span>
+													<small>{game.description}</small>
+												</Link>
+											) : (
+												<button
+													key={game.id}
+													className="hub-game-card hub-game-card--locked"
+													type="button"
+													onClick={() =>
+														game.id === "river-rush"
+															? setIsRiverRushWipOpen(true)
+															: setInfoModal({
+																	title: game.name,
+																	description: `${game.description}\n\nArena is being built. Check back soon!`,
+																})
+													}
+												>
+													<span>{game.name}</span>
+													<small>Coming soon</small>
+												</button>
+											),
+										)
 									)}
-									<button
-										key="fortune-wheel"
-										className="hub-game-card hub-game-card--casino"
-										type="button"
-										onClick={() => setActiveModal("casino")}
-									>
-										<span>Fortune Wheel</span>
-										<small>Wager coins at the gambling den</small>
-									</button>
 								</div>
 
 								<button
