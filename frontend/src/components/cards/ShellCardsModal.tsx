@@ -69,7 +69,7 @@ function CardSlot({ card }: { card: CardView }): JSX.Element {
 	);
 }
 
-/** The pack-opening reveal overlay. */
+/** The pack-opening reveal overlay — tap each card to flip it. */
 function RevealOverlay({
 	pulls,
 	onDismiss,
@@ -77,40 +77,79 @@ function RevealOverlay({
 	pulls: readonly PackPull[];
 	onDismiss: () => void;
 }): JSX.Element {
+	const [flipped, setFlipped] = useState<ReadonlySet<number>>(new Set());
+
+	const flip = (index: number): void => {
+		setFlipped((prev) => new Set([...prev, index]));
+	};
+
 	return (
 		<div className="hub-cards__reveal" role="dialog" aria-modal="true">
-			<h3 className="hub-cards__reveal-title">Pack opened!</h3>
+			<h3 className="hub-cards__reveal-title">Tap to reveal!</h3>
 			<div className="hub-cards__reveal-row">
-				{pulls.map((pull, index) => (
-					<div
-						key={`${pull.card.id}-${index}`}
-						className={[
-							"hub-cards__card",
-							`hub-cards__card--${pull.card.rarity}`,
-							"is-owned",
-							"hub-cards__card--reveal",
-							pull.foil ? "is-foil" : "",
-						]
-							.filter(Boolean)
-							.join(" ")}
-						style={{ animationDelay: `${index * 0.12}s` }}
-					>
-						<div className="hub-cards__art" aria-hidden="true">
-							{pull.card.imageUrl ? (
-								<img src={pull.card.imageUrl} alt="" />
-							) : (
-								<span className="hub-cards__art-initial">
-									{pull.card.name.charAt(0)}
-								</span>
-							)}
+				{pulls.map((pull, index) => {
+					const isFlipped = flipped.has(index);
+					return (
+						<div
+							key={`${pull.card.id}-${index}`}
+							className={[
+								"hub-cards__reveal-wrapper",
+								isFlipped ? "is-flipped" : "",
+							]
+								.filter(Boolean)
+								.join(" ")}
+							role="button"
+							tabIndex={isFlipped ? -1 : 0}
+							aria-label={isFlipped ? pull.card.name : "Tap to reveal card"}
+							onClick={() => flip(index)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									flip(index);
+								}
+							}}
+						>
+							<div className="hub-cards__reveal-inner">
+								{/* Back face — face-down black card */}
+								<div
+									className="hub-cards__reveal-face hub-cards__reveal-face--back"
+									aria-hidden="true"
+								>
+									<span>?</span>
+								</div>
+								{/* Front face — the actual card */}
+								<div
+									className={[
+										"hub-cards__card",
+										`hub-cards__card--${pull.card.rarity}`,
+										"is-owned",
+										"hub-cards__reveal-face",
+										"hub-cards__reveal-face--front",
+										pull.foil ? "is-foil" : "",
+									]
+										.filter(Boolean)
+										.join(" ")}
+									aria-hidden={!isFlipped}
+								>
+									<div className="hub-cards__art" aria-hidden="true">
+										{pull.card.imageUrl ? (
+											<img src={pull.card.imageUrl} alt="" />
+										) : (
+											<span className="hub-cards__art-initial">
+												{pull.card.name.charAt(0)}
+											</span>
+										)}
+									</div>
+									<strong className="hub-cards__name">{pull.card.name}</strong>
+									<span className="hub-cards__tag">
+										{pull.isNew ? "NEW" : "dupe"}
+										{pull.foil ? " · ✦ foil" : ""}
+									</span>
+								</div>
+							</div>
 						</div>
-						<strong className="hub-cards__name">{pull.card.name}</strong>
-						<span className="hub-cards__tag">
-							{pull.isNew ? "NEW" : "dupe"}
-							{pull.foil ? " · ✦ foil" : ""}
-						</span>
-					</div>
-				))}
+					);
+				})}
 			</div>
 			<button
 				type="button"

@@ -4188,21 +4188,53 @@ input {
 	max-width: 620px;
 }
 
-.hub-cards__reveal-row .hub-cards__card {
+/* Tap-to-reveal flip card */
+.hub-cards__reveal-wrapper {
 	width: 116px;
+	perspective: 700px;
+	cursor: pointer;
 }
 
-.hub-cards__card--reveal {
-	opacity: 0;
-	transform: rotateY(90deg) scale(0.8);
-	animation: hub-cards-flip 0.45s ease forwards;
+.hub-cards__reveal-wrapper.is-flipped {
+	cursor: default;
+	pointer-events: none;
 }
 
-@keyframes hub-cards-flip {
-	to {
-		opacity: 1;
-		transform: rotateY(0) scale(1);
-	}
+.hub-cards__reveal-inner {
+	display: grid;
+	grid-template-areas: "face";
+	transform-style: preserve-3d;
+	transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hub-cards__reveal-wrapper.is-flipped .hub-cards__reveal-inner {
+	transform: rotateY(180deg);
+}
+
+.hub-cards__reveal-face {
+	grid-area: face;
+	backface-visibility: hidden;
+	-webkit-backface-visibility: hidden;
+}
+
+/* Back face — face-down black card */
+.hub-cards__reveal-face--back {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 160px;
+	border-radius: 10px;
+	border: 2px solid rgba(255, 255, 255, 0.12);
+	background: #0d0d1a;
+	font-size: 2rem;
+	font-weight: 800;
+	color: rgba(255, 255, 255, 0.25);
+	user-select: none;
+}
+
+/* Front face — actual card, pre-rotated so it starts hidden */
+.hub-cards__reveal-face--front {
+	transform: rotateY(180deg);
 }
 
 .hub-cards__tag {
@@ -4222,13 +4254,11 @@ input {
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.hub-cards__card.is-foil::after,
-	.hub-cards__card--reveal {
+	.hub-cards__card.is-foil::after {
 		animation: none;
 	}
-	.hub-cards__card--reveal {
-		opacity: 1;
-		transform: none;
+	.hub-cards__reveal-inner {
+		transition: none;
 	}
 }
 
