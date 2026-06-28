@@ -122,6 +122,25 @@ const GAME_ROUTES: Record<
 		description: "Strike the shrine bells before time runs out.",
 		available: true,
 	},
+	"river-rush": {
+		label: "River Rush",
+		description: "Ride the current through a wild river course.",
+		available: false,
+	},
+	"oni-dodge": {
+		label: "Oni Dodge",
+		description: "Dodge the oni assault. Coming soon.",
+		available: false,
+	},
+};
+
+const GAME_BUTTON_IMAGES: Record<string, string> = {
+	"bamboo-bash": "/assets/ui/gamesButtons/bambooBashButton.png",
+	"bell-clash": "/assets/ui/gamesButtons/bellClashButton.png",
+	"kame-knock": "/assets/ui/gamesButtons/kameKnockButton.png",
+	"oni-dodge": "/assets/ui/gamesButtons/oniDodgeButton.png",
+	"river-rush": "/assets/ui/gamesButtons/riverRushButton.png",
+	"temple-curling": "/assets/ui/gamesButtons/templeCurlingButton.png",
 };
 
 type RgbColor = { r: number; g: number; b: number };
@@ -641,6 +660,7 @@ function HomeMenu(): JSX.Element {
 				id,
 				name: apiGame?.name ?? meta.label,
 				description: apiGame?.description ?? meta.description,
+				buttonImage: GAME_BUTTON_IMAGES[id],
 				available:
 					meta.available === true || apiGame?.status === "available",
 			};
@@ -652,6 +672,7 @@ function HomeMenu(): JSX.Element {
 				id: game.id,
 				name: game.name,
 				description: game.description,
+				buttonImage: GAME_BUTTON_IMAGES[game.id],
 				available: game.status === "available",
 			}));
 
@@ -1154,19 +1175,34 @@ function HomeMenu(): JSX.Element {
 											game.available ? (
 												<Link
 													key={game.id}
-													className="hub-game-card"
+													className={`hub-game-card hub-game-card--${game.id}`}
 													to={`/play/${game.id}`}
 												>
-													<span>{game.name}</span>
-													<small>{game.description}</small>
+													{game.buttonImage ? (
+														<>
+															<img
+																className="hub-game-card__image"
+																src={game.buttonImage}
+																alt=""
+																aria-hidden="true"
+															/>
+															<span className="sr-only">{game.name}</span>
+															<small>{game.description}</small>
+														</>
+													) : (
+														<>
+															<span>{game.name}</span>
+															<small>{game.description}</small>
+														</>
+													)}
 												</Link>
 											) : (
 												<button
 													key={game.id}
-													className="hub-game-card hub-game-card--locked"
+													className={`hub-game-card hub-game-card--locked hub-game-card--${game.id}`}
 													type="button"
 													onClick={() =>
-														game.id === "river-rush"
+														game.id === "river-rush" || game.id === "oni-dodge"
 															? setIsRiverRushWipOpen(true)
 															: setInfoModal({
 																	title: game.name,
@@ -1174,8 +1210,23 @@ function HomeMenu(): JSX.Element {
 																})
 													}
 												>
-													<span>{game.name}</span>
-													<small>Coming soon</small>
+													{game.buttonImage ? (
+														<>
+															<img
+																className="hub-game-card__image"
+																src={game.buttonImage}
+																alt=""
+																aria-hidden="true"
+															/>
+															<span className="sr-only">{game.name}</span>
+															<small>{game.description}</small>
+														</>
+													) : (
+														<>
+															<span>{game.name}</span>
+															<small>Coming soon</small>
+														</>
+													)}
 												</button>
 											),
 										)
