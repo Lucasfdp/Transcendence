@@ -1,5 +1,6 @@
 import {
 	computeRoll,
+	computeRolls,
 	generateServerSeed,
 	hashSeed,
 } from "./casino.fair";
@@ -55,6 +56,54 @@ describe("casino.fair", () => {
 
 		it("should change when the server seed changes", () => {
 			expect(computeRoll("a", "c", 1)).not.toBe(computeRoll("b", "c", 1));
+		});
+	});
+
+	describe("computeRolls", () => {
+		it("should return exactly `count` rolls", () => {
+			expect(computeRolls("s", "c", 0, 3)).toHaveLength(3);
+			expect(computeRolls("s", "c", 0, 1)).toHaveLength(1);
+			expect(computeRolls("s", "c", 0, 0)).toHaveLength(0);
+		});
+
+		it("should return every roll in [0, 1)", () => {
+			for (const roll of computeRolls("server", "client", 7, 5)) {
+				expect(roll).toBeGreaterThanOrEqual(0);
+				expect(roll).toBeLessThan(1);
+			}
+		});
+
+		it("should be deterministic for identical inputs", () => {
+			expect(computeRolls("s", "c", 7, 3)).toEqual(
+				computeRolls("s", "c", 7, 3),
+			);
+		});
+
+		it("should draw independent values per reel index", () => {
+			const [a, b, c] = computeRolls("s", "c", 7, 3);
+			expect(a).not.toBe(b);
+			expect(b).not.toBe(c);
+			expect(a).not.toBe(c);
+		});
+
+		it("should append the reel index, so roll 0 differs from single-roll computeRoll", () => {
+			// computeRoll uses "<clientSeed>:<nonce>"; computeRolls appends ":<i>",
+			// so a multi-roll spin's first reel is NOT the wheel's single roll.
+			expect(computeRolls("s", "c", 7, 3)[0]).not.toBe(
+				computeRoll("s", "c", 7),
+			);
+		});
+
+		it("should change when the nonce changes", () => {
+			expect(computeRolls("s", "c", 1, 3)).not.toEqual(
+				computeRolls("s", "c", 2, 3),
+			);
+		});
+
+		it("should change when the client seed changes", () => {
+			expect(computeRolls("s", "a", 1, 3)).not.toEqual(
+				computeRolls("s", "b", 1, 3),
+			);
 		});
 	});
 });

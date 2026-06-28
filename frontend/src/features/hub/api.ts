@@ -260,24 +260,88 @@ export interface WheelView {
 	freeSpinAvailable: boolean;
 }
 
+/** Which gambling-den game a spin belongs to. */
+export type CasinoGame = "wheel" | "flip" | "monte" | "slots";
+
 /** Provably-fair data the player can recompute to verify a spin. */
 export interface SpinFairness {
 	serverSeed: string;
 	serverSeedHash: string;
 	clientSeed: string;
 	nonce: number;
+	/** The first roll in [0, 1) — equals `rolls[0]`. */
 	roll: number;
+	/** Every roll drawn for this spin (one per reel; single-roll games = [roll]). */
+	rolls: number[];
 }
 
-export interface SpinResult {
+/** Generic outcome of any resolved spin (shared by every game). */
+export interface SpinResolution {
+	game: CasinoGame;
 	mode: "free" | "wagered";
-	segment: WheelSegment;
+	/** Stable id of the resolved outcome (e.g. "x2", "heads", "shell-1"). */
+	outcomeId: string;
+	multiplier: number;
 	stake: number;
 	paid: number;
 	payout: number;
 	net: number;
 	coins: number;
 	fairness: SpinFairness;
+}
+
+/** A resolved Fortune Wheel spin: the generic resolution plus its segment. */
+export interface SpinResult extends SpinResolution {
+	segment: WheelSegment;
+}
+
+// ── Shell Flip ───────────────────────────────────────────────────────────────
+
+/** A called/landed shell side. */
+export type FlipSide = "heads" | "tails";
+
+/** Shell Flip layout: multiplier, RTP, bounds and the player's balance. */
+export interface FlipConfig {
+	multiplier: number;
+	rtp: number;
+	minWager: number;
+	maxWager: number;
+	coins: number;
+}
+
+// ── Three-Shell Monte ────────────────────────────────────────────────────────
+
+/** Three-Shell Monte layout: risk tiers, default, RTP, bounds and balance. */
+export interface MonteConfig {
+	shellOptions: number[];
+	defaultShells: number;
+	rtp: number;
+	minWager: number;
+	maxWager: number;
+	coins: number;
+}
+
+// ── Shrine Slots ─────────────────────────────────────────────────────────────
+
+/** One reel symbol with its odds and three-of-a-kind payout. */
+export interface SlotSymbolView {
+	id: string;
+	label: string;
+	weight: number;
+	/** Probability of this symbol on one reel. */
+	probability: number;
+	/** Three-of-a-kind payout multiplier. */
+	payout: number;
+}
+
+/** Shrine Slots layout: reel, paytable, RTP, bounds and balance. */
+export interface SlotsView {
+	symbols: SlotSymbolView[];
+	reelCount: number;
+	rtp: number;
+	minWager: number;
+	maxWager: number;
+	coins: number;
 }
 
 export interface Achievement {
@@ -499,6 +563,45 @@ export const api = {
 	/** Stake coins on a wagered spin. Returns the outcome and new balance. */
 	spinWheel: (stake: number, clientSeed?: string): Promise<SpinResult> =>
 		apiFetch<SpinResult>("/casino/wheel/spin", {
+			method: "POST",
+			body: JSON.stringify({ stake, clientSeed }),
+		}),
+
+	/** Fetch the Shell Flip layout, multiplier, bounds and balance. */
+	getFlip: (): Promise<FlipConfig> => apiFetch<FlipConfig>("/casino/flip"),
+
+	/** Call a shell side and stake coins. Returns the outcome and new balance. */
+	flip: (
+		stake: number,
+		pick: FlipSide,
+		clientSeed?: string,
+	): Promise<SpinResolution> =>
+		apiFetch<SpinResolution>("/casino/flip", {
+			method: "POST",
+			body: JSON.stringify({ stake, pick, clientSeed }),
+		}),
+
+	/** Fetch the Three-Shell Monte layout: risk tiers, RTP, bounds and balance. */
+	getMonte: (): Promise<MonteConfig> => apiFetch<MonteConfig>("/casino/monte"),
+
+	/** Guess a shell and stake coins. Returns the outcome and new balance. */
+	monte: (
+		stake: number,
+		pick: number,
+		shells?: number,
+		clientSeed?: string,
+	): Promise<SpinResolution> =>
+		apiFetch<SpinResolution>("/casino/monte", {
+			method: "POST",
+			body: JSON.stringify({ stake, pick, shells, clientSeed }),
+		}),
+
+	/** Fetch the Shrine Slots reel, paytable, RTP, bounds and balance. */
+	getSlots: (): Promise<SlotsView> => apiFetch<SlotsView>("/casino/slots"),
+
+	/** Stake coins and spin the reels. Returns the outcome and new balance. */
+	spinSlots: (stake: number, clientSeed?: string): Promise<SpinResolution> =>
+		apiFetch<SpinResolution>("/casino/slots", {
 			method: "POST",
 			body: JSON.stringify({ stake, clientSeed }),
 		}),

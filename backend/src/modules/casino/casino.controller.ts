@@ -16,8 +16,21 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RateLimiterService } from "../auth/rate-limiter.service";
 import type { User } from "../users/entities/user.entity";
 import { UsersService } from "../users/users.service";
-import { type SpinResult, type WheelView } from "./casino.constants";
+import {
+	type SpinResolution,
+	type SpinResult,
+	type WheelView,
+} from "./casino.constants";
 import { CasinoService } from "./casino.service";
+import { type FlipConfig } from "./flip.constants";
+import { FlipService } from "./flip.service";
+import { type MonteConfig } from "./monte.constants";
+import { MonteService } from "./monte.service";
+import { type SlotsView } from "./slots.constants";
+import { SlotsService } from "./slots.service";
+import { FlipDto } from "./dto/flip.dto";
+import { MonteDto } from "./dto/monte.dto";
+import { SlotsSpinDto } from "./dto/slots.dto";
 import { FreeSpinDto, SpinDto } from "./dto/spin.dto";
 
 /** Authenticated request: JwtAuthGuard attaches the decoded user. */
@@ -39,6 +52,9 @@ const tooManyRequests = (): HttpException =>
 export class CasinoController {
 	constructor(
 		private readonly casinoService: CasinoService,
+		private readonly flipService: FlipService,
+		private readonly monteService: MonteService,
+		private readonly slotsService: SlotsService,
 		private readonly usersService: UsersService,
 		private readonly rateLimiter: RateLimiterService,
 	) {}
@@ -74,6 +90,72 @@ export class CasinoController {
 		this.enforceSpinRate(req);
 		const user = await this.requireUser(req);
 		return this.casinoService.wageredSpin(user, dto.stake, {
+			clientSeed: dto.clientSeed,
+		});
+	}
+
+	/** GET /casino/flip — Shell Flip multiplier, RTP, bounds and balance. */
+	@Get("flip")
+	async flipConfig(@Request() req: AuthedRequest): Promise<FlipConfig> {
+		const user = await this.requireUser(req);
+		return this.flipService.getFlipConfig(user);
+	}
+
+	/** POST /casino/flip — call a shell side and stake coins (CSRF-protected). */
+	@Post("flip")
+	@HttpCode(200)
+	@UseGuards(CsrfGuard)
+	async flip(
+		@Request() req: AuthedRequest,
+		@Body() dto: FlipDto,
+	): Promise<SpinResolution> {
+		this.enforceSpinRate(req);
+		const user = await this.requireUser(req);
+		return this.flipService.flip(user, dto.pick, dto.stake, {
+			clientSeed: dto.clientSeed,
+		});
+	}
+
+	/** GET /casino/monte — Three-Shell Monte tiers, RTP, bounds and balance. */
+	@Get("monte")
+	async monteConfig(@Request() req: AuthedRequest): Promise<MonteConfig> {
+		const user = await this.requireUser(req);
+		return this.monteService.getMonteConfig(user);
+	}
+
+	/** POST /casino/monte — guess a shell and stake coins (CSRF-protected). */
+	@Post("monte")
+	@HttpCode(200)
+	@UseGuards(CsrfGuard)
+	async monte(
+		@Request() req: AuthedRequest,
+		@Body() dto: MonteDto,
+	): Promise<SpinResolution> {
+		this.enforceSpinRate(req);
+		const user = await this.requireUser(req);
+		return this.monteService.monte(user, dto.pick, dto.shells, dto.stake, {
+			clientSeed: dto.clientSeed,
+		});
+	}
+
+	/** GET /casino/slots — reel, paytable, RTP, bounds and balance. */
+	@Get("slots")
+	async slotsView(@Request() req: AuthedRequest): Promise<SlotsView> {
+		const user = await this.requireUser(req);
+		return this.slotsService.getSlotsView(user);
+	}
+
+	/** POST /casino/slots — stake coins and spin the reels (CSRF-protected). */
+	@Post("slots")
+	@HttpCode(200)
+	@UseGuards(CsrfGuard)
+	async slots(
+		@Request() req: AuthedRequest,
+		@Body() dto: SlotsSpinDto,
+	): Promise<SpinResolution> {
+		this.enforceSpinRate(req);
+		const user = await this.requireUser(req);
+		return this.slotsService.slots(user, dto.stake, {
 			clientSeed: dto.clientSeed,
 		});
 	}

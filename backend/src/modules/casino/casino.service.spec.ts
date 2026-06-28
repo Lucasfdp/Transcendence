@@ -6,6 +6,7 @@ import {
 import { Test, TestingModule } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
+import { Profile } from "../profiles/entities/profile.entity";
 import { User } from "../users/entities/user.entity";
 import {
 	FREE_SPIN_STAKE_COINS,
@@ -15,6 +16,7 @@ import {
 	selectSegment,
 } from "./casino.constants";
 import { computeRoll, hashSeed } from "./casino.fair";
+import { CasinoEngine } from "./casino.engine";
 import { CasinoService } from "./casino.service";
 import { Wager } from "./entities/wager.entity";
 
@@ -50,6 +52,7 @@ describe("CasinoService", () => {
 		save: jest.Mock;
 	};
 	let usersRepo: { findOne: jest.Mock; save: jest.Mock };
+	let profilesRepo: { findOne: jest.Mock; save: jest.Mock };
 	let dataSource: { transaction: jest.Mock };
 
 	beforeEach(async () => {
@@ -63,6 +66,14 @@ describe("CasinoService", () => {
 			findOne: jest.fn(),
 			save: jest.fn(async (user: User) => user),
 		};
+		profilesRepo = {
+			findOne: jest.fn(async () => {
+				const profile = new Profile();
+				profile.totalCoinsEarned = 0;
+				return profile;
+			}),
+			save: jest.fn(async (profile: Profile) => profile),
+		};
 		dataSource = {
 			transaction: jest.fn(
 				async (
@@ -74,6 +85,7 @@ describe("CasinoService", () => {
 						getRepository: (entity: unknown) => {
 							if (entity === User) return usersRepo;
 							if (entity === Wager) return wagersRepo;
+							if (entity === Profile) return profilesRepo;
 							throw new Error("Unknown repository");
 						},
 					}),
@@ -83,6 +95,9 @@ describe("CasinoService", () => {
 		const moduleRef: TestingModule = await Test.createTestingModule({
 			providers: [
 				CasinoService,
+				// The service now delegates the locked/atomic core to the real
+				// engine; wiring it here keeps this an end-to-end behaviour test.
+				CasinoEngine,
 				{ provide: getRepositoryToken(Wager), useValue: wagersRepo },
 				{ provide: DataSource, useValue: dataSource },
 			],
@@ -187,6 +202,33 @@ describe("CasinoService", () => {
 			expect(result.payout).toBe(0);
 			expect(result.net).toBe(-100);
 			expect(result.coins).toBe(400);
+		});
+
+		it("should credit positive net winnings to profile.totalCoinsEarned", async () => {
+			usersRepo.findOne.mockResolvedValue(makeUser({ coins: 500 }));
+			const profile = new Profile();
+			profile.totalCoinsEarned = 1_000;
+			profilesRepo.findOne.mockResolvedValue(profile);
+			const serverSeed = seedForMultiplier(2); // net = +100
+
+			await service.wageredSpin(makeUser({ coins: 500 }), 100, {
+				serverSeed,
+			});
+
+			expect(profilesRepo.save).toHaveBeenCalledWith(
+				expect.objectContaining({ totalCoinsEarned: 1_100 }),
+			);
+		});
+
+		it("should not change totalCoinsEarned on a losing spin", async () => {
+			usersRepo.findOne.mockResolvedValue(makeUser({ coins: 500 }));
+			const serverSeed = seedForMultiplier(0); // net = -100
+
+			await service.wageredSpin(makeUser({ coins: 500 }), 100, {
+				serverSeed,
+			});
+
+			expect(profilesRepo.save).not.toHaveBeenCalled();
 		});
 
 		it("should throw BadRequestException when the stake is below the minimum", async () => {

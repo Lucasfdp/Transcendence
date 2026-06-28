@@ -6,7 +6,7 @@ import {
 	ManyToOne,
 	PrimaryGeneratedColumn,
 } from "typeorm";
-import type { SpinMode } from "../casino.constants";
+import type { CasinoGame, SpinMode } from "../casino.constants";
 import { User } from "../../users/entities/user.entity";
 
 /**
@@ -28,6 +28,13 @@ export class Wager {
 	@ManyToOne(() => User, { onDelete: "CASCADE" })
 	user: User;
 
+	/**
+	 * Which game produced the spin ("wheel", "flip", "monte", "slots"). Defaults
+	 * to "wheel" so rows written before this discriminator existed stay valid.
+	 */
+	@Column({ type: "varchar", default: "wheel" })
+	game: CasinoGame;
+
 	/** "free" = daily faucet spin (player paid nothing); "wagered" = staked. */
 	@Column({ type: "varchar" })
 	mode: SpinMode;
@@ -44,7 +51,11 @@ export class Wager {
 	@Column({ type: "int" })
 	paid: number;
 
-	/** Winning wheel segment id (e.g. "x2", "jackpot"). */
+	/**
+	 * Stable id of the resolved outcome. Wheel: segment id (e.g. "x2",
+	 * "jackpot"). Flip: "heads"/"tails". Monte: "shell-<n>". Slots:
+	 * "<s0>|<s1>|<s2>". The column name is historical (the wheel came first).
+	 */
 	@Column({ type: "varchar" })
 	segmentId: string;
 

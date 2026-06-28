@@ -21,6 +21,13 @@ export type Rng = () => number;
 /** How a spin was paid for: the daily faucet, or a staked wager. */
 export type SpinMode = "free" | "wagered";
 
+/**
+ * Which attraction in the gambling den a wager belongs to. Stored on every
+ * audit row so a single `wagers` table backs all games. "wheel" is the legacy
+ * default for rows written before the discriminator existed.
+ */
+export type CasinoGame = "wheel" | "flip" | "monte" | "slots";
+
 /** One wedge on the Fortune Wheel. */
 export interface WheelSegment {
 	/** Stable id stored on the Wager audit row, e.g. "x2". */
@@ -126,15 +133,29 @@ export interface SpinFairness {
 	clientSeed: string;
 	/** Per-user counter used in the roll. */
 	nonce: number;
-	/** The resolved roll in [0, 1). */
+	/** The first resolved roll in [0, 1) — equals `rolls[0]`. */
 	roll: number;
+	/**
+	 * Every roll drawn for this spin. Single-roll games (wheel, flip, monte)
+	 * expose `[roll]`; multi-roll games (slots) expose one entry per reel.
+	 */
+	rolls: number[];
 }
 
-/** Outcome of a single resolved spin. */
-export interface SpinResult {
+/**
+ * Generic outcome of a resolved spin, produced by the shared {@link
+ * SpinResolution}-returning engine and shared by every game. `outcomeId` is the
+ * stable id written to the audit row (e.g. "x2", "heads", "shell-1",
+ * "bell|bell|bell").
+ */
+export interface SpinResolution {
+	/** Which game produced this spin. */
+	game: CasinoGame;
 	mode: SpinMode;
-	/** The winning wheel segment (includes its public odds weight). */
-	segment: WheelSegment;
+	/** Stable id of the resolved outcome, stored on the audit row. */
+	outcomeId: string;
+	/** Payout multiplier applied to the stake (0 = lose the stake). */
+	multiplier: number;
 	/** Coins the payout scaled from (paid stake, or the free-spin stake). */
 	stake: number;
 	/** Coins actually debited (0 for a free spin). */
@@ -146,6 +167,12 @@ export interface SpinResult {
 	/** The player's coin balance after the spin. */
 	coins: number;
 	fairness: SpinFairness;
+}
+
+/** A resolved Fortune Wheel spin: the generic resolution plus its segment. */
+export interface SpinResult extends SpinResolution {
+	/** The winning wheel segment (includes its public odds weight). */
+	segment: WheelSegment;
 }
 
 /** Optional per-spin inputs (defaults are filled in by the service). */

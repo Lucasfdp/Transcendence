@@ -7,6 +7,9 @@ import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { WorkInProgressNotice } from "../components/common/WorkInProgressNotice";
 import { ShellCardsModal } from "../components/cards/ShellCardsModal";
 import { FortuneWheelModal } from "../components/casino/FortuneWheelModal";
+import { ShellFlipModal } from "../components/casino/ShellFlipModal";
+import { ThreeShellMonteModal } from "../components/casino/ThreeShellMonteModal";
+import { ShrineSlotsModal } from "../components/casino/ShrineSlotsModal";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
 import {
 	hubBackgroundClass,
@@ -456,6 +459,9 @@ function HomeMenu(): JSX.Element {
 		| "rankings"
 		| "cards"
 		| "casino"
+		| "flip"
+		| "monte"
+		| "slots"
 		| null
 	>(null);
 	const [profileSaving, setProfileSaving] = useState(false);
@@ -1162,14 +1168,40 @@ function HomeMenu(): JSX.Element {
 							<div className="hub-page__normal-view">
 								<div className="hub-page__game-grid">
 									{view === "gambit" ? (
-										<button
-											className="hub-game-card"
-											type="button"
-											onClick={() => setActiveModal("casino")}
-										>
-											<span>Fortune Wheel</span>
-											<small>Wager coins at the gambling den</small>
-										</button>
+										<>
+											<button
+												className="hub-game-card"
+												type="button"
+												onClick={() => setActiveModal("casino")}
+											>
+												<span>Fortune Wheel</span>
+												<small>Wager coins at the gambling den</small>
+											</button>
+											<button
+												className="hub-game-card"
+												type="button"
+												onClick={() => setActiveModal("flip")}
+											>
+												<span>Shell Flip</span>
+												<small>Call a shell, double or nothing</small>
+											</button>
+											<button
+												className="hub-game-card"
+												type="button"
+												onClick={() => setActiveModal("monte")}
+											>
+												<span>Three-Shell Monte</span>
+												<small>Find the pearl, pay up to 5×</small>
+											</button>
+											<button
+												className="hub-game-card"
+												type="button"
+												onClick={() => setActiveModal("slots")}
+											>
+												<span>Shrine Slots</span>
+												<small>Spin three reels for the jackpot</small>
+											</button>
+										</>
 									) : (
 										gameCards.map((game) =>
 											game.available ? (
@@ -1934,6 +1966,42 @@ function HomeMenu(): JSX.Element {
 			{activeModal === "casino" ? (
 				<HubModal title="Fortune Wheel" onClose={() => setActiveModal(null)}>
 					<FortuneWheelModal
+						coins={player?.coins ?? 0}
+						onCoinsChange={(coins) =>
+							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+						}
+					/>
+				</HubModal>
+			) : null}
+
+			{activeModal === "flip" ? (
+				<HubModal title="Shell Flip" onClose={() => setActiveModal(null)}>
+					<ShellFlipModal
+						coins={player?.coins ?? 0}
+						onCoinsChange={(coins) =>
+							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+						}
+					/>
+				</HubModal>
+			) : null}
+
+			{activeModal === "monte" ? (
+				<HubModal
+					title="Three-Shell Monte"
+					onClose={() => setActiveModal(null)}
+				>
+					<ThreeShellMonteModal
+						coins={player?.coins ?? 0}
+						onCoinsChange={(coins) =>
+							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+						}
+					/>
+				</HubModal>
+			) : null}
+
+			{activeModal === "slots" ? (
+				<HubModal title="Shrine Slots" onClose={() => setActiveModal(null)}>
+					<ShrineSlotsModal
 						coins={player?.coins ?? 0}
 						onCoinsChange={(coins) =>
 							setPlayer((prev) => (prev ? { ...prev, coins } : prev))

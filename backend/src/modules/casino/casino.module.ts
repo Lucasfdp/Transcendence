@@ -4,7 +4,11 @@ import { AuthModule } from "../auth/auth.module";
 import { User } from "../users/entities/user.entity";
 import { UsersModule } from "../users/users.module";
 import { CasinoController } from "./casino.controller";
+import { CasinoEngine } from "./casino.engine";
 import { CasinoService } from "./casino.service";
+import { FlipService } from "./flip.service";
+import { MonteService } from "./monte.service";
+import { SlotsService } from "./slots.service";
 import { Wager } from "./entities/wager.entity";
 
 /**
@@ -16,7 +20,13 @@ import { Wager } from "./entities/wager.entity";
 @Module({
 	imports: [TypeOrmModule.forFeature([Wager, User]), UsersModule, AuthModule],
 	controllers: [CasinoController],
-	providers: [CasinoService],
+	providers: [
+		CasinoEngine,
+		CasinoService,
+		FlipService,
+		MonteService,
+		SlotsService,
+	],
 	exports: [CasinoService],
 })
 export class CasinoModule {}

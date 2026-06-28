@@ -45,3 +45,28 @@ export function computeRoll(
 	const slice = parseInt(digest.slice(0, 8), 16);
 	return slice / UINT32_RANGE;
 }
+
+/**
+ * Draw `count` independent rolls for a single multi-roll spin (e.g. the three
+ * reels of Shrine Slots). Each roll appends its zero-based index to the HMAC
+ * message — `"<clientSeed>:<nonce>:<i>"` — so the reels are independent yet still
+ * fully recomputable from the revealed seeds.
+ *
+ * NOTE the trailing `:<i>` means `computeRolls(...)[0]` is intentionally NOT the
+ * same value as {@link computeRoll}; single-roll games keep using `computeRoll`.
+ */
+export function computeRolls(
+	serverSeed: string,
+	clientSeed: string,
+	nonce: number,
+	count: number,
+): number[] {
+	const rolls: number[] = [];
+	for (let index = 0; index < count; index++) {
+		const digest = createHmac("sha256", serverSeed)
+			.update(`${clientSeed}:${nonce}:${index}`)
+			.digest("hex");
+		rolls.push(parseInt(digest.slice(0, 8), 16) / UINT32_RANGE);
+	}
+	return rolls;
+}
