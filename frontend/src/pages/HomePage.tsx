@@ -37,12 +37,13 @@ type InfoModal = { title: string; description: string } | null;
 
 type CosmeticCategoryType = Extract<
 	Cosmetic["type"],
-	"shell_skin" | "hub_background"
+	"shell_skin" | "hub_background" | "dojo_tag"
 >;
 
 const COSMETIC_CATEGORIES: { type: CosmeticCategoryType; title: string }[] = [
 	{ type: "shell_skin", title: "Shells" },
 	{ type: "hub_background", title: "Backgrounds" },
+	{ type: "dojo_tag", title: "Dojo Tags" },
 ];
 
 const COSMETIC_PREVIEWS: Partial<Record<Cosmetic["id"], string>> = {
@@ -446,7 +447,7 @@ function HomeMenu(): JSX.Element {
 	} | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isTournamentModalOpen, setIsTournamentModalOpen] = useState(false);
-	const [isRiverRushWipOpen, setIsRiverRushWipOpen] = useState(false);
+	const [wipGameId, setWipGameId] = useState<"river-rush" | "oni-dodge" | null>(null);
 	const [infoModal, setInfoModal] = useState<InfoModal>(null);
 	const [achievements, setAchievements] = useState<Achievement[] | null>(null);
 	const [cosmetics, setCosmetics] = useState<Cosmetic[] | null>(null);
@@ -467,7 +468,6 @@ function HomeMenu(): JSX.Element {
 	const [profileSaving, setProfileSaving] = useState(false);
 	const [profileSuccess, setProfileSuccess] = useState("");
 	const [profileTurtleName, setProfileTurtleName] = useState("");
-	const [profileTag, setProfileTag] = useState<string | null>(null);
 	const [profileShowcasedAchievements, setProfileShowcasedAchievements] = useState<(string | null)[]>([null, null, null]);
 	const [showcasePickerSlot, setShowcasePickerSlot] = useState<number | null>(null);
 	const [friends, setFriends] = useState<FriendView[] | null>(null);
@@ -750,7 +750,6 @@ function HomeMenu(): JSX.Element {
 
 	const openProfile = async () => {
 		setProfileTurtleName(player?.turtleName ?? "");
-		setProfileTag(player?.profile?.tag ?? null);
 		setProfileSuccess("");
 		setModalError("");
 		setShowcasePickerSlot(null);
@@ -824,12 +823,21 @@ function HomeMenu(): JSX.Element {
 			const equippedShell = nextCosmetics.find(
 				(item) => item.equipped && item.type === "shell_skin",
 			);
+			const equippedTag = nextCosmetics.find(
+				(item) => item.equipped && item.type === "dojo_tag",
+			);
 			if (player) {
 				setPlayer({
 					...player,
 					hubBackground: equippedBackground?.id ?? player.hubBackground,
 					hubBackgroundAlter: equippedBackgroundAlter?.id ?? null,
 					shellSkin: equippedShell?.id ?? player.shellSkin,
+					profile: player.profile
+						? {
+								...player.profile,
+								tag: equippedTag?.id ?? player.profile.tag,
+							}
+						: player.profile,
 				});
 			}
 		} catch {
@@ -847,7 +855,6 @@ function HomeMenu(): JSX.Element {
 			setShowcasePickerSlot(null);
 			const updates: Parameters<typeof api.updateProfile>[0] = {};
 			if (profileTurtleName.trim()) updates.turtleName = profileTurtleName.trim();
-			updates.tag = profileTag;
 			updates.showcasedAchievements = profileShowcasedAchievements.filter(
 				(id): id is string => id !== null,
 			);
@@ -1121,7 +1128,7 @@ function HomeMenu(): JSX.Element {
 									<span className="menu-page__mode-corners" aria-hidden="true" />
 									<img
 										className="menu-page__mode-art"
-										src="/assets/ui/soloMode.png"
+										src="/assets/ui/modesButtons/normalButton.png"
 										alt=""
 										aria-hidden="true"
 									/>
@@ -1138,7 +1145,7 @@ function HomeMenu(): JSX.Element {
 									<span className="menu-page__mode-corners" aria-hidden="true" />
 									<img
 										className="menu-page__mode-art"
-										src="/assets/ui/onlineMode.png"
+										src="/assets/ui/modesButtons/tournamentButton.png"
 										alt=""
 										aria-hidden="true"
 									/>
@@ -1155,7 +1162,7 @@ function HomeMenu(): JSX.Element {
 									<span className="menu-page__mode-corners" aria-hidden="true" />
 									<img
 										className="menu-page__mode-art"
-										src="/assets/ui/gambitMode.png"
+										src="/assets/ui/modesButtons/gambitButton.png"
 										alt=""
 										aria-hidden="true"
 									/>
@@ -1234,8 +1241,8 @@ function HomeMenu(): JSX.Element {
 													className={`hub-game-card hub-game-card--locked hub-game-card--${game.id}`}
 													type="button"
 													onClick={() =>
-														game.id === "river-rush" || game.id === "oni-dodge"
-															? setIsRiverRushWipOpen(true)
+												game.id === "river-rush" || game.id === "oni-dodge"
+													? setWipGameId(game.id)
 															: setInfoModal({
 																	title: game.name,
 																	description: `${game.description}\n\nArena is being built. Check back soon!`,
@@ -1286,11 +1293,15 @@ function HomeMenu(): JSX.Element {
 			/>
 
 			<WorkInProgressModal
-				isOpen={isRiverRushWipOpen}
-				onClose={() => setIsRiverRushWipOpen(false)}
-				featureName="River Rush"
+				isOpen={wipGameId !== null}
+				onClose={() => setWipGameId(null)}
+				featureName={wipGameId ? GAME_ROUTES[wipGameId].label : "Game"}
 				title="Work In Progress"
-				description="River Rush is not designed yet. This shrine will open when the mode is ready."
+				description={
+					wipGameId === "oni-dodge"
+						? "Oni Dodge is not designed yet. The oni assault will begin when the mode is ready."
+						: "River Rush is not designed yet. This shrine will open when the mode is ready."
+				}
 				closeLabel="Return to Hub"
 			/>
 
@@ -1523,7 +1534,7 @@ function HomeMenu(): JSX.Element {
 				<HubModal title="Achievements" onClose={() => setActiveModal(null)}>
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					{achievements ? (
-						<div className="hub-modal__list">
+						<div className="hub-modal__list hub-modal__list--achievements">
 							{achievements.map((achievement) => {
 								const progress = getAchievementProgress(achievement);
 
@@ -1586,23 +1597,16 @@ function HomeMenu(): JSX.Element {
 							onChange={(e) => setProfileTurtleName(e.target.value)}
 						/>
 						<span className="hub-modal__field-label">Your dojo tag</span>
-						<div className="hub-modal__tag-grid" role="group" aria-label="Dojo tag selection">
-							{TURTLE_TAGS.map((tag) => {
-								const selected = profileTag === tag.id;
-								return (
-									<button
-										key={tag.id}
-										type="button"
-										className={`hub-modal__tag-chip${selected ? " hub-modal__tag-chip--selected" : ""}`}
-										aria-pressed={selected}
-										title={tag.description}
-										onClick={() => setProfileTag(selected ? null : tag.id)}
-									>
-										<span className="hub-modal__tag-chip-emoji">{tag.emoji}</span>
-										<span className="hub-modal__tag-chip-label">{tag.label}</span>
-									</button>
-								);
-							})}
+						<div className="hub-modal__current-tag">
+							{currentTag ? (
+								<span className="hub-modal__tag-chip hub-modal__tag-chip--selected">
+									<span className="hub-modal__tag-chip-emoji">{currentTag.emoji}</span>
+									<span className="hub-modal__tag-chip-label">{currentTag.label}</span>
+								</span>
+							) : (
+								<span className="hub-panel__muted">No dojo tag selected.</span>
+							)}
+							<small>Choose and unlock dojo tags from Customization.</small>
 						</div>
 						<span className="hub-modal__field-label">Achievement showcase</span>
 						<div className="hub-modal__showcase-slots">
@@ -1855,13 +1859,19 @@ function HomeMenu(): JSX.Element {
 													.filter(Boolean)
 													.join(" ");
 
-												return (
-													<article key={cosmetic.id}>
-														<div
-															className={previewClassName}
-															style={getCosmeticPreviewStyle(cosmetic)}
-															aria-hidden="true"
-														/>
+										return (
+											<article key={cosmetic.id}>
+												<div
+													className={previewClassName}
+													style={getCosmeticPreviewStyle(cosmetic)}
+													aria-hidden="true"
+												>
+													{cosmetic.type === "dojo_tag" ? (
+														<span className="hub-modal__cosmetic-tag-emoji">
+															{cosmetic.tagEmoji}
+														</span>
+													) : null}
+												</div>
 														<strong>{cosmetic.name}</strong>
 														<p>{cosmetic.description}</p>
 														{alters.length > 0 ? (

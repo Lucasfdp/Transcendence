@@ -174,8 +174,13 @@ function PowerupMatchmakingPanel({
 	const gameId = sceneData.gameId as GameId;
 	const [message, setMessage] = useState("Random power-ups will appear during the match.");
 	const [messageTone, setMessageTone] = useState<"muted" | "gold" | "error">("muted");
+	const [soloPowerupsEnabled, setSoloPowerupsEnabled] = useState(true);
+	const [localVsPlayerCount, setLocalVsPlayerCount] = useState(2);
+	const [localVsPowerupsEnabled, setLocalVsPowerupsEnabled] = useState(true);
 	const [onlinePlayerCount, setOnlinePlayerCount] = useState(2);
-	const [localPowerupsEnabled, setLocalPowerupsEnabled] = useState(true);
+	const [privateOnlinePlayerCount, setPrivateOnlinePlayerCount] = useState(2);
+	const [privateOnlinePowerupsEnabled, setPrivateOnlinePowerupsEnabled] = useState(true);
+	const [privateRoomPin, setPrivateRoomPin] = useState("");
 	const [isSearchingOnline, setIsSearchingOnline] = useState(false);
 	const [activeMatchStatus, setActiveMatchStatus] = useState<MatchStatusPayload | null>(null);
 	const isSearchingOnlineRef = useRef(false);
@@ -219,7 +224,29 @@ function PowerupMatchmakingPanel({
 		? Math.max(0, Math.ceil((activeMatchStatus.reconnectExpiresAt - Date.now()) / 1000))
 		: 45;
 
-	const launchLocalGame = (localMode: LocalGameMode) => {
+	const renderPlayerPicker = (
+		selectedCount: number,
+		onSelect: (count: number) => void,
+		label: string,
+		disabled = false,
+	) => (
+		<div className="power-picker-page__player-picker" aria-label={label}>
+			{[2, 3, 4, 5].map((count) => (
+				<button
+					key={count}
+					type="button"
+					className={selectedCount === count ? "is-selected" : ""}
+					disabled={disabled}
+					onClick={() => onSelect(count)}
+				>
+					{count}
+					<span className="power-picker-page__shell-icon" aria-hidden="true" />
+				</button>
+			))}
+		</div>
+	);
+
+	const launchLocalGame = (localMode: LocalGameMode, localPowerupsEnabled: boolean) => {
 		if (!sceneData.localModes[localMode]) {
 			setMessage(
 				localMode === "solo"
@@ -236,6 +263,20 @@ function PowerupMatchmakingPanel({
 			localMode,
 			localPowerupsEnabled,
 		});
+	};
+
+	const showPrivateRoomMessage = (action: "create" | "join") => {
+		if (action === "join" && !privateRoomPin.trim()) {
+			setMessage("Enter a room PIN before joining a private match.");
+			setMessageTone("error");
+			return;
+		}
+		setMessage(
+			action === "create"
+				? `Private rooms are prepared for ${privateOnlinePlayerCount} players. Room creation is coming soon.`
+				: `Private room ${privateRoomPin.trim()} is ready for join integration.`,
+		);
+		setMessageTone("gold");
 	};
 
 	const cancelOnlineSearch = () => {
@@ -356,72 +397,57 @@ function PowerupMatchmakingPanel({
 
 				<footer className="power-picker-page__actions">
 					<section className="power-picker-page__mode-card">
-						<h2>Local Game</h2>
-						<p>Choose solo training or couch versus.</p>
-						<div className="power-picker-page__local-buttons" aria-label="Local game mode">
-							<button
-								type="button"
-								className="power-picker-page__primary"
-								disabled={!sceneData.localModes.solo}
-								onClick={() => launchLocalGame("solo")}
-							>
-								Solo
-							</button>
-							<button
-								type="button"
-								className="power-picker-page__primary"
-								disabled={!sceneData.localModes.versus}
-								onClick={() => launchLocalGame("versus")}
-							>
-								Local VS
-							</button>
-						</div>
+						<h2>Local Solo</h2>
+						<p>Train alone and tune the chaos before facing other turtles.</p>
 						<button
 							type="button"
-							className={`power-picker-page__toggle ${localPowerupsEnabled ? "is-selected" : ""}`}
-							aria-pressed={localPowerupsEnabled}
-							onClick={() => setLocalPowerupsEnabled((enabled) => !enabled)}
+							className={`power-picker-page__toggle ${soloPowerupsEnabled ? "is-selected" : ""}`}
+							aria-pressed={soloPowerupsEnabled}
+							onClick={() => setSoloPowerupsEnabled((enabled) => !enabled)}
 						>
-							Power-ups {localPowerupsEnabled ? "On" : "Off"}
+							Power-ups {soloPowerupsEnabled ? "On" : "Off"}
 						</button>
-						<p className="power-picker-page__mode-note">
-							{sceneData.defaultLocalMode === "solo"
-								? "Local VS will be enabled when this game mode is ready."
-								: "Solo will be enabled when this game mode is ready."}
-						</p>
+						<button
+							type="button"
+							className="power-picker-page__primary"
+							disabled={!sceneData.localModes.solo}
+							onClick={() => launchLocalGame("solo", soloPowerupsEnabled)}
+						>
+							Play Solo
+						</button>
+					</section>
+
+					<section className="power-picker-page__mode-card">
+						<h2>Local VS</h2>
+						<p>Couch battle setup for a bigger local showdown.</p>
+						{renderPlayerPicker(localVsPlayerCount, setLocalVsPlayerCount, "Local VS player count", !sceneData.localModes.versus)}
+						<button
+							type="button"
+							className={`power-picker-page__toggle ${localVsPowerupsEnabled ? "is-selected" : ""}`}
+							aria-pressed={localVsPowerupsEnabled}
+							onClick={() => setLocalVsPowerupsEnabled((enabled) => !enabled)}
+						>
+							Power-ups {localVsPowerupsEnabled ? "On" : "Off"}
+						</button>
+						<button
+							type="button"
+							className="power-picker-page__primary"
+							disabled={!sceneData.localModes.versus}
+							onClick={() => launchLocalGame("versus", localVsPowerupsEnabled)}
+						>
+							Start Local VS
+						</button>
+						<p className="power-picker-page__mode-note">Players selected: {localVsPlayerCount}</p>
 					</section>
 
 					{isOnlineGame ? (
 						<section className="power-picker-page__mode-card power-picker-page__mode-card--online">
 							<h2>Multiplayer Online</h2>
+							<p>Jump into matchmaking against online opponents.</p>
+							{renderPlayerPicker(onlinePlayerCount, setOnlinePlayerCount, "Online player count", Boolean(activeMatchStatus))}
 							<button type="button" className="power-picker-page__online-button" onClick={() => void findOnlineMatch()}>
 								{activeMatchStatus ? "Rejoin Match" : isSearchingOnline ? "Cancel Search" : "Find Online Match"}
 							</button>
-							<div className="power-picker-page__player-picker" aria-label="Online player count">
-								{[2, 3].map((count) => (
-									<button
-										key={count}
-										type="button"
-										className={onlinePlayerCount === count ? "is-selected" : ""}
-										disabled={Boolean(activeMatchStatus)}
-										onClick={() => setOnlinePlayerCount(count)}
-									>
-										{count}
-									</button>
-								))}
-								<span className="power-picker-page__shell-icon" aria-hidden="true" />
-								{[4, 5].map((count) => (
-									<button
-										key={count}
-										type="button"
-										className={onlinePlayerCount === count ? "is-selected" : ""}
-										disabled={Boolean(activeMatchStatus)}
-										onClick={() => setOnlinePlayerCount(count)}
-									>
-										{count}
-									</button>
-								))}
-							</div>
 							<p className="power-picker-page__online-status">
 								{activeMatchStatus
 									? `Reconnect window: ${activeReconnectSeconds}s`
@@ -432,6 +458,36 @@ function PowerupMatchmakingPanel({
 							{activeMatchStatus ? <button type="button" className="power-picker-page__danger" onClick={abandonActiveMatch}>Abandon Match</button> : null}
 						</section>
 					) : null}
+
+					<section className="power-picker-page__mode-card power-picker-page__mode-card--private">
+						<h2>Private Online</h2>
+						<p>Create a room or prepare to enter a friend's <span className="power-picker-page__pin-word">PIN</span>.</p>
+						{renderPlayerPicker(privateOnlinePlayerCount, setPrivateOnlinePlayerCount, "Private online player count")}
+						<button
+							type="button"
+							className={`power-picker-page__toggle ${privateOnlinePowerupsEnabled ? "is-selected" : ""}`}
+							aria-pressed={privateOnlinePowerupsEnabled}
+							onClick={() => setPrivateOnlinePowerupsEnabled((enabled) => !enabled)}
+						>
+							Power-ups {privateOnlinePowerupsEnabled ? "On" : "Off"}
+						</button>
+						<div className="power-picker-page__pin-row">
+							<input
+								className="power-picker-page__pin-input"
+								value={privateRoomPin}
+								onChange={(event) => setPrivateRoomPin(event.target.value.toUpperCase())}
+								placeholder="PIN"
+								maxLength={8}
+								aria-label="Private room PIN"
+							/>
+							<button type="button" className="power-picker-page__primary" onClick={() => showPrivateRoomMessage("join")}>
+								Join
+							</button>
+							<button type="button" className="power-picker-page__online-button" onClick={() => showPrivateRoomMessage("create")}>
+								Create
+							</button>
+						</div>
+					</section>
 				</footer>
 			</section>
 		</main>

@@ -1,5 +1,7 @@
 import {
+	BadRequestException,
 	ConflictException,
+	ForbiddenException,
 	forwardRef,
 	Inject,
 	Injectable,
@@ -12,6 +14,8 @@ import { User } from "./entities/user.entity";
 import { Profile } from "../profiles/entities/profile.entity";
 import { ShellsService } from "../shells/shells.service";
 import { UpdateProfileDto } from "./dto/update-profile.dto";
+import { findCosmetic } from "../customization/customization.constants";
+import { UserCosmetic } from "../customization/entities/user-cosmetic.entity";
 
 @Injectable()
 export class UsersService {
@@ -19,6 +23,8 @@ export class UsersService {
 		@InjectRepository(User) private readonly usersRepo: Repository<User>,
 		@InjectRepository(Profile)
 		private readonly profilesRepo: Repository<Profile>,
+		@InjectRepository(UserCosmetic)
+		private readonly userCosmeticsRepo: Repository<UserCosmetic>,
 		@Inject(forwardRef(() => ShellsService))
 		private readonly shellsService: ShellsService,
 	) {}
@@ -256,6 +262,7 @@ export class UsersService {
 			}
 			if (user.profile) {
 				if (dto.tag !== undefined) {
+					if (dto.tag !== null) await this.assertTagOwned(user.id, dto.tag);
 					user.profile.tag = dto.tag ?? null;
 				}
 				if (dto.showcasedAchievements !== undefined) {
@@ -280,12 +287,28 @@ export class UsersService {
 		} catch (err) {
 			if (
 				err instanceof NotFoundException ||
-				err instanceof InternalServerErrorException
+				err instanceof InternalServerErrorException ||
+				err instanceof BadRequestException ||
+				err instanceof ForbiddenException
 			) {
 				throw err;
 			}
 			throw new InternalServerErrorException("Failed to update profile");
 		}
+	}
+
+	private async assertTagOwned(userId: number, tagId: string): Promise<void> {
+		const cosmetic = findCosmetic(tagId);
+		if (!cosmetic || cosmetic.type !== "dojo_tag") {
+			throw new BadRequestException("Invalid dojo tag");
+		}
+		if (cosmetic.defaultUnlocked) return;
+
+		const owned = await this.userCosmeticsRepo.exists({
+			where: { user: { id: userId }, cosmeticId: tagId },
+			relations: ["user"],
+		});
+		if (!owned) throw new ForbiddenException("Dojo tag is not unlocked");
 	}
 
 	/**

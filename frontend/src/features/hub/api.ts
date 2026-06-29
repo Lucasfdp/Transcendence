@@ -363,13 +363,14 @@ export interface Achievement {
 
 export interface Cosmetic {
 	id: string;
-	type: "shell_skin" | "hub_background" | "hub_background_alter";
+	type: "shell_skin" | "hub_background" | "hub_background_alter" | "dojo_tag";
 	name: string;
 	description: string;
 	price: number;
 	accentColor: number;
 	previewColor?: number;
 	parentCosmeticId?: string;
+	tagEmoji?: string;
 	owned: boolean;
 	equipped: boolean;
 	unlockAchievementId?: string;

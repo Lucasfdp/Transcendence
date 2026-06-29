@@ -58,6 +58,10 @@ export class CustomizationService {
 				throw new ForbiddenException("Parent background is not owned");
 			user.hubBackground = parentCosmetic.id;
 			user.hubBackgroundAlter = cosmetic.id;
+		} else if (cosmetic.type === "dojo_tag") {
+			if (!user.profile)
+				throw new BadRequestException("User profile is missing");
+			user.profile.tag = cosmetic.id;
 		} else throw new BadRequestException("Cosmetic is not equippable");
 
 		await this.usersRepo.save(user);
@@ -202,6 +206,7 @@ export class CustomizationService {
 			return (
 				normalizeCosmeticId(user.hubBackgroundAlter ?? "") === cosmetic.id
 			);
+		if (cosmetic.type === "dojo_tag") return user.profile?.tag === cosmetic.id;
 		return false;
 	}
 
