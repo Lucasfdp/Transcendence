@@ -27,6 +27,13 @@ export class NetworkError extends Error {
 	}
 }
 
+const TRANSIENT_HTTP_STATUSES = new Set([502, 503, 504]);
+const TRANSIENT_RETRY_DELAY_MS = 350;
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 // ── CSRF token — cached in-memory after first getCsrfToken() call ─────────────
 
 let cachedCsrfToken: string | null = null;
@@ -38,6 +45,57 @@ function readCsrfCookie(): string | null {
 	return match ? match.trim().slice("csrf_token=".length) : null;
 }
 
+function getCurrentCsrfToken(): string | null {
+	// Always prefer the browser cookie because it is the server-authoritative
+	// token. The in-memory cache can go stale across tabs or after a later refresh.
+	return readCsrfCookie() ?? cachedCsrfToken;
+}
+
+async function fetchCsrfToken(): Promise<string> {
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		const res = await fetch(`${API_BASE}/auth/csrf-token`, {
+			credentials: "include",
+		});
+
+		if (res.ok) {
+			const data = (await res.json()) as { csrfToken: string };
+			cachedCsrfToken = data.csrfToken;
+			return data.csrfToken;
+		}
+
+		const message = await readErrorMessage(
+			res,
+			`${res.status} on /auth/csrf-token`,
+		);
+		if (
+			attempt === 0 &&
+			TRANSIENT_HTTP_STATUSES.has(res.status)
+		) {
+			await sleep(TRANSIENT_RETRY_DELAY_MS);
+			continue;
+		}
+
+		throw new AuthError(res.status, message);
+	}
+	throw new AuthError(503, "Temporary auth bootstrap failure");
+}
+
+function isCsrfFailure(res: Response, message: string): boolean {
+	return (
+		(res.status === 401 || res.status === 403) &&
+		message.toLowerCase().includes("csrf")
+	);
+}
+
+function withCsrfHeader(
+	headers: Record<string, string>,
+	method: string,
+): Record<string, string> {
+	if (method === "GET" || method === "HEAD") return headers;
+	const token = getCurrentCsrfToken();
+	return token ? { ...headers, "X-CSRF-Token": token } : headers;
+}
+
 // ── Core fetch helper ─────────────────────────────────────────────────────────
 
 async function apiFetch<T>(
@@ -45,23 +103,21 @@ async function apiFetch<T>(
 	options: RequestInit = {},
 ): Promise<T> {
 	const method = (options.method ?? "GET").toUpperCase();
-	const headers: Record<string, string> = {
+	const baseHeaders: Record<string, string> = {
 		"Content-Type": "application/json",
 		...(options.headers as Record<string, string>),
 	};
 
-	if (method !== "GET" && method !== "HEAD") {
-		const token = cachedCsrfToken ?? readCsrfCookie();
-		if (token) headers["X-CSRF-Token"] = token;
-	}
+	const runFetch = () =>
+		fetch(`${API_BASE}${path}`, {
+			...options,
+			headers: withCsrfHeader(baseHeaders, method),
+			credentials: "include",
+		});
 
 	let res: Response;
 	try {
-		res = await fetch(`${API_BASE}${path}`, {
-			...options,
-			headers,
-			credentials: "include",
-		});
+		res = await runFetch();
 	} catch (err) {
 		throw new NetworkError(
 			`Network request failed for ${path}: ${String(err)}`,
@@ -69,10 +125,44 @@ async function apiFetch<T>(
 	}
 
 	if (!res.ok) {
-		throw new AuthError(
-			res.status,
-			await readErrorMessage(res, `${res.status} on ${path}`),
-		);
+		const message = await readErrorMessage(res, `${res.status} on ${path}`);
+		if (
+			TRANSIENT_HTTP_STATUSES.has(res.status) &&
+			method === "GET"
+		) {
+			await sleep(TRANSIENT_RETRY_DELAY_MS);
+			try {
+				res = await runFetch();
+			} catch (err) {
+				throw new NetworkError(
+					`Network request failed for ${path}: ${String(err)}`,
+				);
+			}
+			if (!res.ok) {
+				throw new AuthError(
+					res.status,
+					await readErrorMessage(res, `${res.status} on ${path}`),
+				);
+			}
+		} else
+		if (isCsrfFailure(res, message) && method !== "GET" && method !== "HEAD") {
+			await fetchCsrfToken();
+			try {
+				res = await runFetch();
+			} catch (err) {
+				throw new NetworkError(
+					`Network request failed for ${path}: ${String(err)}`,
+				);
+			}
+			if (!res.ok) {
+				throw new AuthError(
+					res.status,
+					await readErrorMessage(res, `${res.status} on ${path}`),
+				);
+			}
+		} else {
+			throw new AuthError(res.status, message);
+		}
 	}
 	if (res.status === 204) return {} as T;
 	return res.json() as Promise<T>;
@@ -82,9 +172,7 @@ async function apiUploadFile<T>(
 	path: string,
 	formData: FormData,
 ): Promise<T> {
-	const headers: Record<string, string> = {};
-	const token = cachedCsrfToken ?? readCsrfCookie();
-	if (token) headers["X-CSRF-Token"] = token;
+	const headers = withCsrfHeader({}, "POST");
 	let res: Response;
 	try {
 		res = await fetch(`${API_BASE}${path}`, {
@@ -99,10 +187,24 @@ async function apiUploadFile<T>(
 		);
 	}
 	if (!res.ok) {
-		throw new AuthError(
-			res.status,
-			await readErrorMessage(res, `${res.status} on ${path}`),
-		);
+		const message = await readErrorMessage(res, `${res.status} on ${path}`);
+		if (isCsrfFailure(res, message)) {
+			await fetchCsrfToken();
+			res = await fetch(`${API_BASE}${path}`, {
+				method: "POST",
+				headers: withCsrfHeader({}, "POST"),
+				credentials: "include",
+				body: formData,
+			});
+			if (!res.ok) {
+				throw new AuthError(
+					res.status,
+					await readErrorMessage(res, `${res.status} on ${path}`),
+				);
+			}
+		} else {
+			throw new AuthError(res.status, message);
+		}
 	}
 	return res.json() as Promise<T>;
 }
@@ -443,6 +545,32 @@ export interface OverallLeaderboardEntry {
 	totalWins: number;
 }
 
+export interface ReplayFrame {
+	seq: number;
+	recordedAt: string;
+	snapshot: Record<string, unknown>;
+}
+
+export interface ReplaySummary {
+	id: string;
+	matchId: string;
+	gameId: string;
+	mode: string;
+	status: string;
+	frameCount: number;
+	createdAt: string;
+	finishedAt: string | null;
+	expiresAt: string | null;
+	winnerSide: number | null;
+	playerUserIds: number[];
+	playerNames: string[];
+	isSavedByCurrentUser: boolean;
+}
+
+export interface ReplayDetail extends ReplaySummary {
+	frames: ReplayFrame[];
+}
+
 export type LeaderboardScope = "global" | "friends";
 
 // ── Notifications ─────────────────────────────────────────────────────────────
@@ -490,11 +618,7 @@ export const api = {
 	},
 
 	/** Fetch and cache the CSRF token. Call once before any POST/DELETE. */
-	getCsrfToken: async (): Promise<string> => {
-		const data = await apiFetch<{ csrfToken: string }>("/auth/csrf-token");
-		cachedCsrfToken = data.csrfToken;
-		return data.csrfToken;
-	},
+	getCsrfToken: (): Promise<string> => fetchCsrfToken(),
 
 	/** Returns the current user or throws AuthError(401) if no session. */
 	getMe: (): Promise<User> => apiFetch<User>("/auth/me"),
@@ -700,4 +824,20 @@ export const api = {
 		scope: LeaderboardScope = "global",
 	): Promise<OverallLeaderboardEntry[]> =>
 		apiFetch<OverallLeaderboardEntry[]>(`/leaderboard/overall?scope=${scope}`),
+
+	getMyReplays: (): Promise<ReplaySummary[]> =>
+		apiFetch<ReplaySummary[]>("/matches/replays/me"),
+
+	getReplay: (matchId: string): Promise<ReplayDetail> =>
+		apiFetch<ReplayDetail>(`/matches/${encodeURIComponent(matchId)}/replay`),
+
+	saveReplay: (matchId: string): Promise<ReplaySummary> =>
+		apiFetch<ReplaySummary>(`/matches/${encodeURIComponent(matchId)}/replay/save`, {
+			method: "POST",
+		}),
+
+	unsaveReplay: (matchId: string): Promise<ReplaySummary> =>
+		apiFetch<ReplaySummary>(`/matches/${encodeURIComponent(matchId)}/replay/save`, {
+			method: "DELETE",
+		}),
 };

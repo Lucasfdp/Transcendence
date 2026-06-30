@@ -44,6 +44,8 @@ export class RoomService {
 				{ matchId, gameId, mode, players },
 				roomPlayers,
 			),
+			replayFrames: [],
+			replayLastCapturedSeq: null,
 		};
 
 		this.rooms.set(matchId, room);

@@ -63,6 +63,15 @@ function parseCookie(cookieHeader: string, name: string): string | null {
 	return null;
 }
 
+function shouldUseSecureCookies(req: Request): boolean {
+	if (process.env.NODE_ENV === "production") return true;
+	const forwardedProto = req.headers["x-forwarded-proto"];
+	return (
+		typeof forwardedProto === "string" &&
+		forwardedProto.split(",")[0].trim() === "https"
+	);
+}
+
 @ApiTags("auth")
 @Controller("auth")
 export class AuthController {
@@ -101,13 +110,16 @@ export class AuthController {
 	// The frontend attaches it as X-CSRF-Token on every non-GET request.
 
 	@Get("csrf-token")
-	getCsrfToken(@Res({ passthrough: true }) res: Response): {
+	getCsrfToken(
+		@Req() req: Request,
+		@Res({ passthrough: true }) res: Response,
+	): {
 		csrfToken: string;
 	} {
 		const token = randomBytes(32).toString("hex");
 		res.cookie(CSRF_COOKIE, token, {
 			httpOnly: false,
-			secure: process.env.NODE_ENV === "production",
+			secure: shouldUseSecureCookies(req),
 			sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
 			path: "/",
 		});
@@ -129,7 +141,7 @@ export class AuthController {
 			throw TooManyRequests("Too many guest sessions — try again later.");
 		}
 		const user = await this.authService.guestLogin();
-		this.authService.issueAuthCookie(res, user, true);
+		this.authService.issueAuthCookie(req, res, user, true);
 		return { ok: true };
 	}
 
@@ -168,7 +180,7 @@ export class AuthController {
 		}
 
 		const user = await this.authService.localRegister(username, password);
-		this.authService.issueAuthCookie(res, user);
+		this.authService.issueAuthCookie(req, res, user);
 		return { ok: true };
 	}
 
@@ -198,7 +210,7 @@ export class AuthController {
 		}
 
 		const user = await this.authService.localLogin(username, password);
-		this.authService.issueAuthCookie(res, user);
+		this.authService.issueAuthCookie(req, res, user);
 		return { ok: true };
 	}
 
@@ -219,7 +231,7 @@ export class AuthController {
 				await this.tokenDenyListService.revoke(jti, remainingTtl);
 			}
 		}
-		this.authService.clearAuthCookie(res);
+		this.authService.clearAuthCookie(req, res);
 		return { ok: true };
 	}
 
@@ -247,7 +259,7 @@ export class AuthController {
 			res.redirect("/?auth_error=oauth_failed");
 			return;
 		}
-		this.authService.issueAuthCookie(res, req.user);
+		this.authService.issueAuthCookie(req, res, req.user);
 		res.redirect("/");
 	}
 
@@ -267,7 +279,7 @@ export class AuthController {
 			res.redirect("/?auth_error=oauth_failed");
 			return;
 		}
-		this.authService.issueAuthCookie(res, req.user);
+		this.authService.issueAuthCookie(req, res, req.user);
 		res.redirect("/");
 	}
 

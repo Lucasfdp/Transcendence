@@ -18,7 +18,7 @@ server {
     # unsafe-eval required by Phaser 3 shader pipeline (see https://phaser.io/phaser3 known limitations)
     # unsafe-inline (script-src) required until nonce-based CSP is implemented — tracked TODO(#csp-nonce)
     # unsafe-inline (style-src) required until CSS-in-JS is replaced with external stylesheets — tracked TODO(#csp-nonce)
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:3000 https://localhost:3000 ws://localhost:3000 wss://localhost:3000 ws://localhost wss://localhost;" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:3000 https://localhost:3000 https://localhost:42424 ws://localhost:3000 wss://localhost:3000 ws://localhost wss://localhost wss://localhost:42424;" always;
 
     location / {
         modsecurity off;
@@ -63,7 +63,8 @@ server {
         proxy_set_header   X-Forwarded-Proto   $scheme;
         proxy_http_version 1.1;
         proxy_read_timeout 120s;
-        limit_req zone=api_limit burst=20 nodelay;
+        limit_req zone=api_limit burst=60 nodelay;
+        limit_req_status 429;
         client_max_body_size 10m;
     }
 
@@ -91,6 +92,7 @@ server {
         proxy_set_header   X-Forwarded-Proto   $scheme;
         proxy_http_version 1.1;
         proxy_read_timeout 120s;
-        limit_req zone=api_limit burst=10 nodelay;
+        limit_req zone=api_limit burst=20 nodelay;
+        limit_req_status 429;
     }
 }

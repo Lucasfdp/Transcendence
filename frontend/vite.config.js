@@ -10,7 +10,7 @@ export default defineConfig({
 		hmr: {
 			protocol: "wss",
 			host: "localhost",
-			clientPort: 443,
+			clientPort: 42424,
 		},
 		watch: {
 			usePolling: true, // needed for Docker volume mounts on Mac

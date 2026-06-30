@@ -3,9 +3,11 @@ import {
 	CreateDateColumn,
 	Entity,
 	OneToMany,
+	OneToOne,
 	PrimaryGeneratedColumn,
 } from "typeorm";
 import { MatchPlayer } from "./match-player.entity";
+import { MatchReplay } from "./match-replay.entity";
 import { MatchSpectator } from "./match-spectator.entity";
 
 export type MatchMode = "casual" | "ranked";
@@ -50,4 +52,7 @@ export class Match {
 
 	@OneToMany(() => MatchSpectator, (spectator) => spectator.match)
 	spectators: MatchSpectator[];
+
+	@OneToOne(() => MatchReplay, (replay) => replay.match)
+	replay: MatchReplay | null;
 }

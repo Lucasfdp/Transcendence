@@ -6,7 +6,7 @@ import {
 	UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { Response } from "express";
+import { Request, Response } from "express";
 import {
 	randomBytes,
 	randomUUID,
@@ -47,6 +47,26 @@ export const COOKIE_NAME = "auth_token";
 const COOKIE_MAX_AGE_S = 60 * 60 * 24; // 24 h — full account
 const GUEST_MAX_AGE_S = 60 * 60 * 2; // 2 h  — guest session
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+function shouldUseSecureCookies(req: Request): boolean {
+	if (IS_PRODUCTION) return true;
+	const forwardedProto = req.headers["x-forwarded-proto"];
+	return (
+		typeof forwardedProto === "string" &&
+		forwardedProto.split(",")[0].trim() === "https"
+	);
+}
+
+function authCookieOptions(req: Request, maxAgeMs: number) {
+	const secure = shouldUseSecureCookies(req);
+	return {
+		httpOnly: true,
+		secure,
+		sameSite: IS_PRODUCTION ? ("strict" as const) : ("lax" as const),
+		maxAge: maxAgeMs,
+		path: "/",
+	};
+}
 
 // ── Demo account seed values ──────────────────────────────────────────────────
 
@@ -89,7 +109,12 @@ export class AuthService implements OnApplicationBootstrap {
 	 * Sign a JWT for `user` and write it as an httpOnly cookie onto `res`.
 	 * Uses a 2-hour TTL for guest sessions, 24-hour TTL for full accounts.
 	 */
-	issueAuthCookie(res: Response, user: User, isGuest = false): void {
+	issueAuthCookie(
+		req: Request,
+		res: Response,
+		user: User,
+		isGuest = false,
+	): void {
 		try {
 			const payload = {
 				sub: user.id,
@@ -101,13 +126,14 @@ export class AuthService implements OnApplicationBootstrap {
 			const token = this.jwtService.sign(payload, {
 				expiresIn: isGuest ? "2h" : "24h",
 			});
-			res.cookie(COOKIE_NAME, token, {
-				httpOnly: true,
-				secure: IS_PRODUCTION,
-				sameSite: IS_PRODUCTION ? "strict" : "lax",
-				maxAge: (isGuest ? GUEST_MAX_AGE_S : COOKIE_MAX_AGE_S) * 1000,
-				path: "/",
-			});
+				res.cookie(
+					COOKIE_NAME,
+					token,
+					authCookieOptions(
+						req,
+						(isGuest ? GUEST_MAX_AGE_S : COOKIE_MAX_AGE_S) * 1000,
+					),
+				);
 		} catch {
 			throw new InternalServerErrorException(
 				"Failed to issue auth cookie",
@@ -116,8 +142,11 @@ export class AuthService implements OnApplicationBootstrap {
 	}
 
 	/** Clear the auth cookie (logout). */
-	clearAuthCookie(res: Response): void {
-		res.clearCookie(COOKIE_NAME, { path: "/", httpOnly: true });
+	clearAuthCookie(req: Request, res: Response): void {
+		res.clearCookie(
+			COOKIE_NAME,
+			authCookieOptions(req, 0),
+		);
 	}
 
 	// ── 42 OAuth ──────────────────────────────────────────────────────────────────

@@ -10,6 +10,8 @@ import { ShellsModule } from "../shells/shells.module";
 import { UsersModule } from "../users/users.module";
 import { Match } from "./entities/match.entity";
 import { MatchPlayer } from "./entities/match-player.entity";
+import { MatchReplay } from "./entities/match-replay.entity";
+import { MatchReplaySave } from "./entities/match-replay-save.entity";
 import { MatchSpectator } from "./entities/match-spectator.entity";
 import { UserRating } from "./entities/user-rating.entity";
 import { BellClashEngine } from "./engines/bell-clash.engine";
@@ -22,6 +24,7 @@ import { MatchesController } from "./matches.controller";
 import { MatchmakingGateway } from "./matchmaking.gateway";
 import { MatchmakingService } from "./matchmaking.service";
 import { PrivateLobbiesService } from "./private-lobbies.service";
+import { ReplayService } from "./replay.service";
 import { RoomService } from "./room.service";
 
 @Module({
@@ -29,6 +32,8 @@ import { RoomService } from "./room.service";
 		TypeOrmModule.forFeature([
 			Match,
 			MatchPlayer,
+			MatchReplay,
+			MatchReplaySave,
 			MatchSpectator,
 			UserRating,
 		]),
@@ -56,6 +61,7 @@ import { RoomService } from "./room.service";
 		GameEngineRegistry,
 		RoomService,
 		PrivateLobbiesService,
+		ReplayService,
 		GameSessionService,
 		MatchmakingGateway,
 	],

@@ -8,6 +8,7 @@ import { MatchPlayer } from "./entities/match-player.entity";
 import { UserRating } from "./entities/user-rating.entity";
 import { GameEngineRegistry } from "./engines/game-engine.registry";
 import { GameInputPayload, MatchRoom, RoomPlayer } from "./matchmaking.types";
+import { ReplayService } from "./replay.service";
 import { RoomService } from "./room.service";
 
 const ELO_K = 32;
@@ -22,6 +23,7 @@ export class GameSessionService implements OnModuleInit {
 		private readonly engines: GameEngineRegistry,
 		private readonly usersService: UsersService,
 		private readonly gameResultsService: GameResultsService,
+		private readonly replayService: ReplayService,
 		private readonly dataSource: DataSource,
 		@InjectRepository(Match) private readonly matchRepo: Repository<Match>,
 		@InjectRepository(MatchPlayer)
@@ -156,6 +158,7 @@ export class GameSessionService implements OnModuleInit {
 					await this.applyEloRatings(room, winnerSide, ratingRepo);
 				}
 			});
+			await this.replayService.persistReplayForRoom(room);
 			room.rewardsGranted = true;
 		} catch (err) {
 			this.logger.error(

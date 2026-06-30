@@ -219,4 +219,10 @@ export interface MatchRoom {
 	seq: number;
 	state: GameSnapshot;
 	rewardsGranted?: boolean;
+	replayFrames: Array<{
+		seq: number;
+		recordedAt: string;
+		snapshot: Record<string, unknown>;
+	}>;
+	replayLastCapturedSeq: number | null;
 }

@@ -12,7 +12,14 @@ export function AppRoutes(): JSX.Element {
 		<Suspense fallback={<RouteLoading />}>
 			<Routes>
 				<Route path="/auth" element={<AuthPage />} />
-				<Route path="/" element={<HomePage />} />
+				<Route
+					path="/"
+					element={
+						<ProtectedRoute>
+							<HomePage />
+						</ProtectedRoute>
+					}
+				/>
 				<Route
 					path="/play/:gameId"
 					element={

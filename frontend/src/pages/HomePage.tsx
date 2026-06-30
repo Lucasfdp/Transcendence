@@ -18,6 +18,7 @@ import {
 import {
 	Achievement,
 	api,
+	AuthError,
 	Cosmetic,
 	FriendView,
 	GameLeaderboardEntry,
@@ -26,6 +27,8 @@ import {
 	OverallLeaderboardEntry,
 	PendingView,
 	RANKED_GAMES,
+	ReplayDetail,
+	ReplaySummary,
 	type LeaderboardScope,
 	type User,
 } from "../features/hub/api";
@@ -100,6 +103,18 @@ function getAchievementProgress(achievement: Achievement): {
 		current,
 		target,
 	};
+}
+
+function getReplayGameLabel(gameId: string): string {
+	return (
+		RANKED_GAMES.find((game) => game.id === gameId)?.label ??
+		gameId.replace(/-/g, " ")
+	);
+}
+
+function formatReplayDate(value: string | null): string {
+	if (!value) return "Pending";
+	return new Date(value).toLocaleString();
 }
 
 const GAME_ROUTES: Record<
@@ -456,6 +471,7 @@ function HomeMenu(): JSX.Element {
 		| "achievements"
 		| "customization"
 		| "profile"
+		| "replays"
 		| "social"
 		| "rankings"
 		| "cards"
@@ -469,6 +485,13 @@ function HomeMenu(): JSX.Element {
 	const [profileSuccess, setProfileSuccess] = useState("");
 	const [profileTurtleName, setProfileTurtleName] = useState("");
 	const [profileShowcasedAchievements, setProfileShowcasedAchievements] = useState<(string | null)[]>([null, null, null]);
+	const [replays, setReplays] = useState<ReplaySummary[] | null>(null);
+	const [replaysLoading, setReplaysLoading] = useState(false);
+	const [selectedReplay, setSelectedReplay] = useState<ReplayDetail | null>(null);
+	const [selectedReplayFrame, setSelectedReplayFrame] = useState(0);
+	const [replayActionLoading, setReplayActionLoading] = useState<string | null>(
+		null,
+	);
 	const [showcasePickerSlot, setShowcasePickerSlot] = useState<number | null>(null);
 	const [friends, setFriends] = useState<FriendView[] | null>(null);
 	const [pendingRequests, setPendingRequests] = useState<PendingView[] | null>(null);
@@ -490,24 +513,27 @@ function HomeMenu(): JSX.Element {
 		let cancelled = false;
 
 		async function loadHub(): Promise<void> {
-			try {
-				const [nextPlayer, nextMinigames, nextAchievements] =
-					await Promise.all([
-						api.getMe(),
+				try {
+					const [nextPlayer, nextMinigames, nextAchievements] =
+						await Promise.all([
+							api.getMe(),
 						api.getMiniGames().catch(() => []),
 						api.getAchievements().catch(() => []),
 					]);
 
-				if (!cancelled) {
-					setPlayer(nextPlayer);
-					setMinigames(nextMinigames);
-					setAchievements(nextAchievements);
+					if (!cancelled) {
+						setPlayer(nextPlayer);
+						setMinigames(nextMinigames);
+						setAchievements(nextAchievements);
+					}
+				} catch (err: unknown) {
+					console.warn("[HomeMenu] Failed to load hub:", err);
+					if (!cancelled && err instanceof AuthError) {
+						navigate("/auth", { replace: true });
+					}
+				} finally {
+					if (!cancelled) setIsLoading(false);
 				}
-			} catch (err: unknown) {
-				console.warn("[HomeMenu] Failed to load hub:", err);
-			} finally {
-				if (!cancelled) setIsLoading(false);
-			}
 		}
 
 		void loadHub();
@@ -900,6 +926,69 @@ function HomeMenu(): JSX.Element {
 		}
 	};
 
+	const openReplays = async () => {
+		setActiveModal("replays");
+		setModalError("");
+		setReplaysLoading(true);
+		setSelectedReplay(null);
+		setSelectedReplayFrame(0);
+		try {
+			const nextReplays = await api.getMyReplays();
+			setReplays(nextReplays);
+		} catch (err: unknown) {
+			setModalError(
+				err instanceof Error ? err.message : "Could not load replays.",
+			);
+			setReplays(null);
+		} finally {
+			setReplaysLoading(false);
+		}
+	};
+
+	const handleLoadReplay = async (matchId: string) => {
+		setReplayActionLoading(matchId);
+		setModalError("");
+		try {
+			const replay = await api.getReplay(matchId);
+			setSelectedReplay(replay);
+			setSelectedReplayFrame(0);
+		} catch (err: unknown) {
+			setModalError(
+				err instanceof Error ? err.message : "Could not load replay.",
+			);
+		} finally {
+			setReplayActionLoading(null);
+		}
+	};
+
+	const handleSaveReplay = async (
+		matchId: string,
+		nextSavedState: boolean,
+	) => {
+		setReplayActionLoading(matchId);
+		setModalError("");
+		try {
+			await api.getCsrfToken();
+			const updated = nextSavedState
+				? await api.saveReplay(matchId)
+				: await api.unsaveReplay(matchId);
+			setReplays((prev) =>
+				prev?.map((replay) =>
+					replay.matchId === matchId ? updated : replay,
+				) ?? null,
+			);
+			setSelectedReplay((prev) =>
+				prev && prev.matchId === matchId ? { ...prev, ...updated } : prev,
+			);
+		} catch (err: unknown) {
+			setModalError(
+				err instanceof Error ? err.message : "Could not update replay.",
+			);
+		} finally {
+			setReplayActionLoading(null);
+		}
+	};
+
 	const handleSendFriendRequest = async () => {
 		const trimmed = friendUsername.trim();
 		if (!trimmed || friendActionLoading) return;
@@ -957,6 +1046,10 @@ function HomeMenu(): JSX.Element {
 	const showcasedAchievements = showcasedIds
 		.map((id) => achievements?.find((a) => a.id === id) ?? null)
 		.filter((a): a is Achievement => a !== null);
+	const replayFrame =
+		selectedReplay?.frames[
+			Math.min(selectedReplayFrame, Math.max(selectedReplay.frames.length - 1, 0))
+		] ?? null;
 
 	const displayedNow =
 		manualMinutes === null ? now : createManualTime(now, manualMinutes);
@@ -1096,6 +1189,13 @@ function HomeMenu(): JSX.Element {
 							onClick={openCustomization}
 						>
 							Customization
+						</NineSliceButton>
+						<NineSliceButton
+							type="button"
+							className="hub-panel__button"
+							onClick={() => void openReplays()}
+						>
+							Replays
 						</NineSliceButton>
 						<NineSliceButton type="button" className="hub-panel__button" onClick={() => void openSocial()}>
 							Social
@@ -1715,6 +1815,111 @@ function HomeMenu(): JSX.Element {
 						>
 							{profileSaving ? "Saving…" : "Save changes"}
 						</button>
+					</div>
+				</HubModal>
+			) : null}
+
+			{activeModal === "replays" ? (
+				<HubModal
+					title="Match Replays"
+					onClose={() => {
+						setActiveModal(null);
+						setSelectedReplay(null);
+						setSelectedReplayFrame(0);
+					}}
+				>
+					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
+					<div className="hub-modal__replays">
+						<div className="hub-modal__replay-list">
+							<h3>Available replays</h3>
+							{replaysLoading ? (
+								<p>Loading…</p>
+							) : replays && replays.length > 0 ? (
+								<ul className="hub-modal__replay-items">
+									{replays.map((replay) => (
+										<li key={replay.matchId} className="hub-modal__replay-item">
+											<div className="hub-modal__replay-copy">
+												<strong>{getReplayGameLabel(replay.gameId)}</strong>
+												<small>
+													{replay.playerNames.join(" vs ")} · {replay.frameCount} frames
+												</small>
+												<small>
+													Finished: {formatReplayDate(replay.finishedAt)}
+												</small>
+												<small>
+													{replay.isSavedByCurrentUser
+														? "Saved in profile"
+														: replay.expiresAt
+															? `Auto-delete: ${formatReplayDate(replay.expiresAt)}`
+															: "Temporary replay"}
+												</small>
+											</div>
+											<div className="hub-modal__replay-actions">
+												<button
+													type="button"
+													disabled={replayActionLoading === replay.matchId}
+													onClick={() => void handleLoadReplay(replay.matchId)}
+												>
+													{selectedReplay?.matchId === replay.matchId ? "Viewing" : "View"}
+												</button>
+												<button
+													type="button"
+													disabled={replayActionLoading === replay.matchId}
+													onClick={() =>
+														void handleSaveReplay(
+															replay.matchId,
+															!replay.isSavedByCurrentUser,
+														)
+													}
+												>
+													{replay.isSavedByCurrentUser ? "Remove" : "Save"}
+												</button>
+											</div>
+										</li>
+									))}
+								</ul>
+							) : (
+								<p className="hub-panel__muted">
+									No replays yet. Finished matches will appear here until they expire.
+								</p>
+							)}
+						</div>
+
+						<div className="hub-modal__replay-viewer">
+							<h3>Replay viewer</h3>
+							{selectedReplay && replayFrame ? (
+								<>
+									<p className="hub-modal__replay-meta">
+										<strong>{getReplayGameLabel(selectedReplay.gameId)}</strong>
+										<span>
+											Frame {selectedReplayFrame + 1} / {selectedReplay.frames.length}
+										</span>
+									</p>
+									<input
+										className="hub-modal__replay-slider"
+										type="range"
+										min="0"
+										max={Math.max(selectedReplay.frames.length - 1, 0)}
+										step="1"
+										value={selectedReplayFrame}
+										onChange={(event) =>
+											setSelectedReplayFrame(Number(event.target.value))
+										}
+									/>
+									<div className="hub-modal__replay-frame-meta">
+										<small>Recorded: {formatReplayDate(replayFrame.recordedAt)}</small>
+										<small>Seq: {replayFrame.seq}</small>
+									</div>
+									<pre className="hub-modal__replay-json">
+										{JSON.stringify(replayFrame.snapshot, null, 2)}
+									</pre>
+								</>
+							) : (
+								<p className="hub-panel__muted">
+									Select a replay to inspect its server-authoritative timeline.
+								</p>
+							)}
+						</div>
 					</div>
 				</HubModal>
 			) : null}

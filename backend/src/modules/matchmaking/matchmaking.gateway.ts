@@ -31,6 +31,7 @@ import {
 	SpectatorJoinPayload,
 } from "./matchmaking.types";
 import { PresenceService } from "./presence.service";
+import { ReplayService } from "./replay.service";
 import { RoomService } from "./room.service";
 
 const RECONNECT_TIMEOUT_MS = 45_000;
@@ -72,6 +73,7 @@ export class MatchmakingGateway
 		private readonly notificationsService: NotificationsService,
 		private readonly privateLobbies: PrivateLobbiesService,
 		private readonly friendsService: FriendsService,
+		private readonly replays: ReplayService,
 	) {}
 
 	/** Wire the Socket.io server into NotificationsService for real-time push. */
@@ -599,7 +601,10 @@ export class MatchmakingGateway
 
 	private emitState(matchId: string): void {
 		const room = this.rooms.getRoom(matchId);
-		if (room) this.server.to(matchId).emit("game:state", room.state);
+		if (room) {
+			this.replays.captureFrame(room);
+			this.server.to(matchId).emit("game:state", room.state);
+		}
 	}
 
 	private emitUserMatchStatus(socket: Socket): void {
