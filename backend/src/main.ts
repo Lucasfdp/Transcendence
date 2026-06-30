@@ -21,9 +21,13 @@ async function bootstrap() {
 
 	// CORS — frontend reaches backend via nginx proxy
 	app.enableCors({
-		origin: process.env.ALLOWED_ORIGINS?.split(",") ?? [
-			"https://localhost",
-		],
+		origin(origin, callback) {
+			if (!origin) return callback(null, true);
+			const allowed = process.env.ALLOWED_ORIGINS?.split(",") ?? [];
+			if (allowed.some((o) => origin.startsWith(o.trim()))) return callback(null, true);
+			if (process.env.NODE_ENV !== "production") return callback(null, true);
+			callback(new Error("Not allowed by CORS"));
+		},
 		credentials: true,
 	});
 
