@@ -42,6 +42,8 @@ interface ScoreHudOptions {
 	readonly showRoundInfo?: boolean;
 	readonly playerColours?: readonly number[];
 	readonly playerHexColours?: readonly string[];
+	readonly statusLabel?: (player: number, state: TurnState) => string;
+	readonly minPlayerCount?: number;
 }
 
 // ── ScoreHud ──────────────────────────────────────────────────────────────────
@@ -127,6 +129,13 @@ export class ScoreHud {
 				this.playerLabel(player, 5),
 				style("9px", PLAYER_HEX[player]),
 			);
+			add(
+				`status${player}`,
+				0,
+				BAR_HEIGHT + STONES_ROW_H / 2 + 2,
+				"",
+				style("9px", PLAYER_HEX[player]),
+			);
 		}
 	}
 
@@ -144,7 +153,10 @@ export class ScoreHud {
 		}
 
 		// Active team underline
-		const playerCount = Math.max(2, state.score.length);
+		const playerCount = Math.max(
+			this.options.minPlayerCount ?? 2,
+			state.score.length,
+		);
 		const slotW = w / playerCount;
 		const underW = Math.min(w * 0.2, slotW * 0.7);
 		const underY = BAR_HEIGHT - 3;
@@ -152,8 +164,9 @@ export class ScoreHud {
 		this.gfx.fillStyle(this.playerColour(state.currentTeam), 0.85);
 		this.gfx.fillRect(underX0, underY, underW, 2);
 
-		// Stones-remaining dots
-		this.drawStoneDots(state, w);
+		// Stones-remaining dots, or game-specific per-player status labels.
+		if (this.options.statusLabel) this.drawStatusLabels(state, w);
+		else this.drawStoneDots(state, w);
 
 		// Update text values
 		this.repositionTexts(w, playerCount);
@@ -169,6 +182,11 @@ export class ScoreHud {
 				?.setVisible(visible)
 				.setColor(this.playerHexColour(player))
 				.setText(this.playerLabel(player, playerCount));
+			this.texts
+				.get(`status${player}`)
+				?.setVisible(visible && Boolean(this.options.statusLabel))
+				.setColor(this.playerHexColour(player))
+				.setText(this.options.statusLabel?.(player, state) ?? "");
 		}
 		const showRoundInfo = this.options.showRoundInfo !== false;
 		this.texts
@@ -193,7 +211,10 @@ export class ScoreHud {
 	private drawStoneDots(state: TurnState, w: number): void {
 		const dotY = BAR_HEIGHT + STONES_ROW_H / 2 + 2;
 
-		const playerCount = Math.max(2, state.score.length);
+		const playerCount = Math.max(
+			this.options.minPlayerCount ?? 2,
+			state.score.length,
+		);
 		const slotW = w / playerCount;
 
 		for (let team = 0; team < playerCount; team++) {
@@ -211,6 +232,14 @@ export class ScoreHud {
 		}
 	}
 
+	private drawStatusLabels(state: TurnState, w: number): void {
+		const playerCount = Math.max(
+			this.options.minPlayerCount ?? 2,
+			state.score.length,
+		);
+		this.repositionStatusTexts(w, playerCount);
+	}
+
 	private repositionTexts(w: number, playerCount: number): void {
 		this.texts.get("end")?.setX(w * 0.5);
 		this.texts.get("phase")?.setX(w * 0.5);
@@ -218,6 +247,14 @@ export class ScoreHud {
 			const x = (player + 0.5) * (w / playerCount);
 			this.texts.get(`score${player}`)?.setX(x);
 			this.texts.get(`label${player}`)?.setX(x);
+			this.texts.get(`status${player}`)?.setX(x);
+		}
+	}
+
+	private repositionStatusTexts(w: number, playerCount: number): void {
+		for (let player = 0; player < 5; player++) {
+			const x = (player + 0.5) * (w / playerCount);
+			this.texts.get(`status${player}`)?.setX(x);
 		}
 	}
 

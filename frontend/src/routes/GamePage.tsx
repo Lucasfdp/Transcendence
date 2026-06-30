@@ -51,7 +51,7 @@ const GAME_SCENES: Record<string, GameSceneConfig> = {
 	"bamboo-bash": {
 		targetScene: "BambooBashScene",
 		playerCount: 2,
-		localModes: { solo: false, versus: true },
+		localModes: { solo: true, versus: true },
 		defaultLocalMode: "versus",
 	},
 	"temple-curling": {

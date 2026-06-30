@@ -257,9 +257,20 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.lastOnlineSeq = -1;
 		this.powerUsed = Array.from({ length: 5 }, () => new Set<PowerType>());
 		this.arena = this.resolveArena();
+		const localPlayerCount = Math.max(
+			2,
+			Math.min(
+				5,
+				Math.floor(Number(this.registry.get("localPlayerCount") ?? 2)),
+			),
+		);
 		this.turnManager = new TurnManager({
 			totalEnds: TOTAL_ENDS,
 			stonesPerTeam: STONES_PER_TEAM,
+			playerCount:
+				this.onlineMatch?.snapshot?.gameId === "temple-curling"
+					? this.onlineMatch.snapshot.score.length
+					: localPlayerCount,
 		});
 
 		// Read per-player shell selections from the registry (set by ShellPickerScene).

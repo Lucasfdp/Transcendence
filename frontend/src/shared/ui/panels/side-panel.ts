@@ -56,7 +56,7 @@ export class SidePanel {
 
 	// Collapsible (drop-down) mode state. `collapsed` persists across rebuilds.
 	private collapsible = false;
-	private collapsed = true;
+	private collapsed = false;
 	private side: "left" | "right" = "right";
 	private lastConfig: SidePanelConfig | null = null;
 
@@ -175,14 +175,13 @@ export class SidePanel {
 			.setShadow(0, 2, "rgba(5, 28, 18, 0.78)", 2);
 		this.texts.push(text);
 
-		// Collapsible header: chevron + a click-zone over the title strip that
-		// toggles the panel open/closed. When collapsed we draw only this strip.
+		// Collapsible mode anchors the full panel to an edge on small viewports.
 		if (this.collapsible) {
 			const chev = this.scene.add
 				.text(
 					rect.x + rect.width - PAD - 12,
 					rect.y + PAD - 2,
-					this.collapsed ? "▾" : "▴",
+					"▴",
 					{
 						fontSize: "16px",
 						color: THEME.textGold,
@@ -199,16 +198,9 @@ export class SidePanel {
 				.setInteractive({ useHandCursor: true })
 				.setDepth(this.depth + 2);
 			toggle.on("pointerup", () => {
-				this.collapsed = !this.collapsed;
-				if (this.lastConfig)
-					this.render({
-						...this.lastConfig,
-						rect: this.collapsibleRect(),
-					});
+				if (this.lastConfig) this.render(this.lastConfig);
 			});
 			this.zones.push(toggle);
-
-			if (this.collapsed) return;
 		}
 
 		this.gfx.lineStyle(1, THEME.stoneLight, 0.36);

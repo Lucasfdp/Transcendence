@@ -29,6 +29,7 @@ import {
 } from "../../shared/mechanics/ball";
 import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
+import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
 import { THEME } from "../../shared/theme";
 import { api } from "../../features/hub/api";
@@ -68,7 +69,11 @@ import {
 	type GameSnapshot,
 	type OnlineMatchContext,
 } from "../../services/network/gameSocket";
-import { resolveGameHudLayout } from "../../shared/game-ui";
+import {
+	PLAYER_COLOUR_VALUES,
+	PLAYER_HEX_COLOURS,
+	resolveGameHudLayout,
+} from "../../shared/game-ui";
 
 // Slingshot tuning in arena source px (scaled by the letterbox factor so the
 // game feels identical at 1080p, 4K, or a tiny window)
@@ -97,6 +102,7 @@ const BAMBOO_ASSETS: Record<number, string> = {
 };
 
 const SCORE_LOG_LIMIT = 8;
+const LOCAL_PLAYER_COLOURS = PLAYER_COLOUR_VALUES;
 
 interface LocalParticipant {
 	ball: BallState;
@@ -120,6 +126,7 @@ export class BambooBashScene extends ResponsiveScene {
 	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
 	private slingshot!: Slingshot;
 	private localParticipants: LocalParticipant[] = [];
+	private localTimeLeftMs: number[] = [];
 	private activeLocalParticipantIndex = 0;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -135,7 +142,10 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private scoreText!: Phaser.GameObjects.Text;
 	private timerText!: Phaser.GameObjects.Text;
+	private scoreHud: ScoreHud | null = null;
 	private overlay?: Phaser.GameObjects.Container;
+	private turnAnnouncementText?: Phaser.GameObjects.Text;
+	private localTurnAnnouncementActive = false;
 
 	// ── Side panels ──────────────────────────────────────────────────────────────
 	private scoreLogPanel: SidePanel | null = null;
@@ -228,6 +238,8 @@ export class BambooBashScene extends ResponsiveScene {
 		this.overlay = undefined;
 		this.scoreLogPanel = null;
 		this.scoreEvents = [];
+		this.localTurnAnnouncementActive = false;
+		this.turnAnnouncementText = undefined;
 		this.ballWasMoving = false;
 		this.powerUsed = new Set();
 		this.activePower = PowerType.NONE;
@@ -237,12 +249,19 @@ export class BambooBashScene extends ResponsiveScene {
 
 		// Read shell selection from registry (set by ShellPickerScene).
 		const sel = this.registry.get("shellSelection") as
-			| { player0?: string[]; player1?: string[] }
+			| Record<string, string[] | undefined>
 			| undefined;
 		const localMode = this.registry.get("localMode") as
 			| "solo"
 			| "versus"
 			| undefined;
+		const requestedLocalPlayerCount = Math.max(
+			1,
+			Math.min(
+				5,
+				Math.floor(Number(this.registry.get("localPlayerCount") ?? 1)),
+			),
+		);
 		const localPowerupsEnabled = this.onlineMatch
 			? true
 			: this.registry.get("localPowerupsEnabled") !== false;
@@ -279,9 +298,16 @@ export class BambooBashScene extends ResponsiveScene {
 		// launch early (attached in beginPlay()).
 
 		if (!this.onlineMatch) {
-			const localPlayerCount = localMode === "solo" ? 1 : 2;
+			const localPlayerCount =
+				localMode === "versus"
+					? Math.max(2, requestedLocalPlayerCount)
+					: 1;
 			const pools = Array.from({ length: localPlayerCount }, (_, index) =>
-				buildPool(sel?.[`player${index}` as "player0" | "player1"]),
+				buildPool(sel?.[`player${index}`]),
+			);
+			this.localTimeLeftMs = Array.from(
+				{ length: localPlayerCount },
+				() => ROUND_MS,
 			);
 			this.localParticipants = pools.map((powers, index) => {
 				const ball: BallState = {
@@ -313,6 +339,8 @@ export class BambooBashScene extends ResponsiveScene {
 				};
 			});
 			this.slingshot.destroy();
+		} else {
+			this.localTimeLeftMs = [];
 		}
 
 		if (!this.onlineMatch) {
@@ -323,6 +351,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.drawBamboos();
 		this.drawBalls();
 		this.buildHud();
+		this.updateHudText();
 		if (this.onlineMatch) this.createOnlineStatusText();
 		this.updateSidePanels();
 		this.showPowerPanel();
@@ -419,7 +448,10 @@ export class BambooBashScene extends ResponsiveScene {
 		this.overlay?.destroy(true);
 		this.powerSidePanel?.destroy();
 		this.powerSidePanel = null;
+		this.scoreHud?.destroy();
+		this.scoreHud = null;
 		this.countdownText?.destroy();
+		this.turnAnnouncementText?.destroy();
 		this.destroySidePanels();
 		if (this.onlineMatch) {
 			const socket = getGameSocket();
@@ -434,14 +466,19 @@ export class BambooBashScene extends ResponsiveScene {
 
 		// Countdown. Online rounds use the server-provided deadline so simultaneous
 		// games end together even if clients loaded the scene at slightly different times.
-		if (!this.syncOnlineTimeLeft())
+		if (this.isLocalVersus()) {
+			this.updateLocalVersusClock(delta);
+		} else if (!this.syncOnlineTimeLeft()) {
 			this.timeLeftMs = Math.max(0, this.timeLeftMs - delta);
+		}
+		if (!this.running) return;
 		const timeLabel = this.formatTime();
 		if (this.timerText.text !== timeLabel) {
 			this.timerText.setText(timeLabel);
+			if (this.localParticipants.length > 0) this.updateHudText();
 			this.powerSidePanel?.refresh();
 		}
-		if (this.timeLeftMs <= 0) {
+		if (!this.isLocalVersus() && this.timeLeftMs <= 0) {
 			this.endRound();
 			return;
 		}
@@ -1181,6 +1218,21 @@ export class BambooBashScene extends ResponsiveScene {
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
 			this.markOnlineAway(),
 		);
+		this.scoreHud = new ScoreHud(this, DEPTH_HUD, {
+			minPlayerCount: 1,
+			showBackground: false,
+			showRoundInfo: false,
+			playerColours: PLAYER_COLOUR_VALUES,
+			playerHexColours: PLAYER_HEX_COLOURS,
+			playerLabel: (player) => `P${player + 1}`,
+			statusLabel: (player, state) => {
+				if (this.isLocalVersus()) {
+					if ((this.localTimeLeftMs[player] ?? 0) <= 0) return "TIME OUT";
+					return player === state.currentTeam ? "ACTIVE" : "READY";
+				}
+				return player === state.currentTeam ? "ACTIVE" : "READY";
+			},
+		});
 
 		this.scoreText = this.add
 			.text(16, 16, `SCORE  ${this.score}`, {
@@ -1204,30 +1256,53 @@ export class BambooBashScene extends ResponsiveScene {
 			.setVisible(false);
 	}
 
-	private formatTime(): string {
-		const s = Math.ceil(this.timeLeftMs / 1000);
+	private formatTime(ms?: number): string {
+		const value = ms ?? this.currentDisplayTimeMs();
+		const s = Math.ceil(value / 1000);
 		return `⏱ ${s}s`;
 	}
 
+	private currentDisplayTimeMs(): number {
+		if (this.isLocalVersus())
+			return this.localTimeLeftMs[this.activeLocalParticipantIndex] ?? 0;
+		return this.timeLeftMs;
+	}
+
 	private updateHudText(): void {
+		this.updateScoreHud();
 		if (this.onlineMatch) {
 			this.scoreText?.setText(
 				`ROUND ${this.onlineRoundNumber}/${this.onlineTotalRounds}  SCORE ${this.score}  TOTAL ${this.totalScore}`,
 			);
 		} else if (this.localParticipants.length > 0) {
-			const scoreLine = this.localParticipants
-				.map(
-					(participant, index) =>
-						`P${index + 1} ${participant.score}`,
-				)
-				.join("   ");
-			this.scoreText?.setText(
-				`${scoreLine}   TURN P${this.activeLocalParticipantIndex + 1}`,
-			);
+			this.scoreText?.setVisible(false);
 		} else {
+			this.scoreText?.setVisible(false);
 			this.scoreText?.setText(`SCORE  ${this.score}`);
 		}
 		this.timerText?.setText(this.formatTime());
+	}
+
+	private updateScoreHud(): void {
+		const score = this.localParticipants.length
+			? this.localParticipants.map((participant) => participant.score)
+			: (this.onlineScores.length ? this.onlineScores : [this.score, 0]);
+		this.scoreHud?.update({
+			currentTeam: this.localParticipants.length
+				? this.activeLocalParticipantIndex
+				: 0,
+			currentEnd: this.onlineMatch ? this.onlineRoundNumber - 1 : 0,
+			stonesLeft: score.map((_value, player) =>
+				this.isLocalVersus()
+					? (this.localTimeLeftMs[player] ?? 0) > 0
+						? 1
+						: 0
+					: 1,
+			),
+			score,
+			phase: this.running ? "aiming" : "settling",
+			hasHammer: false,
+		});
 	}
 
 	// ── Rendering helpers ───────────────────────────────────────────────────────
@@ -1285,8 +1360,7 @@ export class BambooBashScene extends ResponsiveScene {
 			for (const [side, ball] of [...this.onlineBalls.entries()].sort(
 				([a], [b]) => a - b,
 			)) {
-				const colour =
-					side === this.onlineMatch?.side ? THEME.gold : THEME.red;
+				const colour = LOCAL_PLAYER_COLOURS[side % LOCAL_PLAYER_COLOURS.length];
 				if (
 					!drawIngamePlayerTexture(
 						this,
@@ -1320,7 +1394,7 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 
 		this.localParticipants.forEach((participant, index) => {
-			const colour = index === 0 ? THEME.gold : THEME.red;
+			const colour = LOCAL_PLAYER_COLOURS[index % LOCAL_PLAYER_COLOURS.length];
 			if (
 				!drawIngamePlayerTexture(
 					this,
@@ -1412,11 +1486,115 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private resetLocalBall(ball: BallState, index: number): void {
-		ball.x = this.arena.cx + (index === 0 ? -0.22 : 0.22) * this.arena.rx;
-		ball.y = this.arena.cy;
+		const total = Math.max(
+			1,
+			this.localParticipants.length || this.localTimeLeftMs.length || 1,
+		);
+		if (total === 1) {
+			ball.x = this.arena.cx;
+			ball.y = this.arena.cy;
+		} else if (total === 2) {
+			ball.x = this.arena.cx + (index === 0 ? -0.22 : 0.22) * this.arena.rx;
+			ball.y = this.arena.cy;
+		} else {
+			const angle = -Math.PI / 2 + (index / total) * Math.PI * 2;
+			ball.x = this.arena.cx + Math.cos(angle) * this.arena.rx * 0.24;
+			ball.y = this.arena.cy + Math.sin(angle) * this.arena.ry * 0.24;
+		}
 		ball.vx = 0;
 		ball.vy = 0;
 		ball.r = BALL_SRC_R * this.arena.scale;
+	}
+
+	private isLocalVersus(): boolean {
+		return !this.onlineMatch && this.localParticipants.length > 1;
+	}
+
+	private updateLocalVersusClock(delta: number): void {
+		const active = this.localParticipants[this.activeLocalParticipantIndex];
+		if (!active) return;
+		if (this.localTurnAnnouncementActive) return;
+		if (
+			this.localParticipants.some((participant) =>
+				isBallMoving(participant.ball),
+			)
+		)
+			return;
+
+		const current = this.localTimeLeftMs[this.activeLocalParticipantIndex] ?? 0;
+		this.localTimeLeftMs[this.activeLocalParticipantIndex] = Math.max(
+			0,
+			current - delta,
+		);
+		if (this.localTimeLeftMs[this.activeLocalParticipantIndex] > 0) {
+			this.updateHudText();
+			this.updateSidePanels();
+			return;
+		}
+
+		this.advanceLocalTurn();
+	}
+
+	private advanceLocalTurn(): void {
+		if (!this.isLocalVersus()) return;
+		const next = this.nextLocalParticipantWithTime();
+		if (next < 0) {
+			this.endRound();
+			return;
+		}
+
+		this.activeLocalParticipantIndex = next;
+		this.showLocalTurnAnnouncement(next);
+		this.updateHudText();
+		this.updateSidePanels();
+		this.updateScoreHud();
+	}
+
+	private showLocalTurnAnnouncement(playerIndex: number): void {
+		this.localTurnAnnouncementActive = true;
+		this.localParticipants.forEach((participant) => participant.slingshot.destroy());
+		this.powerSidePanel?.refresh();
+		this.turnAnnouncementText?.destroy();
+		this.turnAnnouncementText = this.add
+			.text(
+				this.scale.width / 2,
+				this.scale.height / 2,
+				`P${playerIndex + 1} TURN`,
+				{
+					fontSize: "96px",
+					color: PLAYER_HEX_COLOURS[playerIndex % PLAYER_HEX_COLOURS.length],
+					fontFamily: THEME.font,
+					fontStyle: "bold",
+				},
+			)
+			.setOrigin(0.5)
+			.setDepth(DEPTH_OVERLAY);
+
+		this.tweens.add({
+			targets: this.turnAnnouncementText,
+			alpha: { from: 1, to: 0.15 },
+			scale: { from: 0.92, to: 1.06 },
+			duration: 1800,
+			ease: "Cubic.easeOut",
+		});
+		this.time.delayedCall(2000, () => {
+			this.turnAnnouncementText?.destroy();
+			this.turnAnnouncementText = undefined;
+			this.localTurnAnnouncementActive = false;
+			if (!this.running) return;
+			this.syncLocalSlingshots();
+			this.showPowerPanel();
+			this.updateScoreHud();
+		});
+	}
+
+	private nextLocalParticipantWithTime(): number {
+		const total = this.localParticipants.length;
+		for (let offset = 1; offset <= total; offset++) {
+			const candidate = (this.activeLocalParticipantIndex + offset) % total;
+			if ((this.localTimeLeftMs[candidate] ?? 0) > 0) return candidate;
+		}
+		return -1;
 	}
 
 	private updateLocalParticipants(delta: number): void {
@@ -1468,12 +1646,12 @@ export class BambooBashScene extends ResponsiveScene {
 		const active = this.localParticipants[this.activeLocalParticipantIndex];
 		const allStopped = moving.every((isMoving) => !isMoving);
 		if (active && allStopped && anyWasMoving && this.running) {
-			this.activeLocalParticipantIndex =
-				(this.activeLocalParticipantIndex + 1) %
-				this.localParticipants.length;
-			this.syncLocalSlingshots();
-			this.showPowerPanel();
-			this.updateHudText();
+			if (this.isLocalVersus()) this.advanceLocalTurn();
+			else {
+				this.syncLocalSlingshots();
+				this.showPowerPanel();
+				this.updateHudText();
+			}
 		}
 	}
 
@@ -1525,7 +1703,8 @@ export class BambooBashScene extends ResponsiveScene {
 		this.localParticipants.forEach((participant, index) => {
 			if (
 				index === this.activeLocalParticipantIndex &&
-				!isBallMoving(participant.ball)
+				!isBallMoving(participant.ball) &&
+				(!this.isLocalVersus() || (this.localTimeLeftMs[index] ?? 0) > 0)
 			) {
 				participant.slingshot.attach();
 			} else {
@@ -1686,11 +1865,16 @@ export class BambooBashScene extends ResponsiveScene {
 		this.timerText.setPosition(this.scale.width / 2, 16);
 		this.onlineStatusText?.setPosition(this.scale.width / 2, 48);
 		this.overlay?.setPosition(this.scale.width / 2, this.scale.height / 2);
+		this.turnAnnouncementText?.setPosition(
+			this.scale.width / 2,
+			this.scale.height / 2,
+		);
 		this.countdownText?.setPosition(
 			this.scale.width / 2,
 			this.scale.height / 2,
 		);
 		this.updateSidePanels();
+		this.updateScoreHud();
 		// Re-show power panel if ball is currently stopped (player can still aim)
 		const activeLocal =
 			this.localParticipants[this.activeLocalParticipantIndex];
@@ -1766,8 +1950,14 @@ export class BambooBashScene extends ResponsiveScene {
 		labelColor?: string;
 		valueColor?: string;
 	}[] {
-		const rows = [{ label: "TIME", value: this.formatTime() }];
+		const rows: {
+			label: string;
+			value: string;
+			labelColor?: string;
+			valueColor?: string;
+		}[] = [];
 		if (this.onlineMatch) {
+			rows.push({ label: "TIME", value: this.formatTime() });
 			rows.push({
 				label: "ROUND",
 				value: `${this.onlineRoundNumber}/${this.onlineTotalRounds}`,
@@ -1781,6 +1971,20 @@ export class BambooBashScene extends ResponsiveScene {
 				label: "TURN",
 				value: `P${this.activeLocalParticipantIndex + 1}`,
 			});
+			if (this.isLocalVersus()) {
+				this.localParticipants.forEach((_participant, index) => {
+					const active = index === this.activeLocalParticipantIndex;
+					const colour = PLAYER_HEX_COLOURS[index % PLAYER_HEX_COLOURS.length];
+					rows.push({
+						label: active ? `P${index + 1} TIMER ACTIVE` : `P${index + 1} TIMER`,
+						value: this.formatTime(this.localTimeLeftMs[index] ?? 0),
+						labelColor: active ? colour : undefined,
+						valueColor: colour,
+					});
+				});
+			} else {
+				rows.push({ label: "TIME", value: this.formatTime(this.timeLeftMs) });
+			}
 			rows.push({
 				label: "SCORE",
 				value: String(
@@ -1790,6 +1994,7 @@ export class BambooBashScene extends ResponsiveScene {
 			return rows;
 		}
 
+		rows.push({ label: "TIME", value: this.formatTime() });
 		rows.push({ label: "SCORE", value: String(this.score) });
 		return rows;
 	}
@@ -1831,14 +2036,20 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private buildScoreFooterRows(): SidePanelRow[] {
 		if (this.localParticipants.length > 0) {
-			return this.localParticipants.map((participant, index) => ({
-				label: `P${index + 1} SCORE`,
-				value: String(participant.score),
-				labelColor: THEME.textGold,
-				valueColor: THEME.textGold,
-				labelFontSize: "14px",
-				valueFontSize: "22px",
-			}));
+			return this.localParticipants.map((participant, index) => {
+				const active =
+					this.isLocalVersus() && index === this.activeLocalParticipantIndex;
+				const colour = active ? THEME.textGold : THEME.text;
+
+				return {
+					label: `P${index + 1} SCORE`,
+					value: String(participant.score),
+					labelColor: colour,
+					valueColor: colour,
+					labelFontSize: "14px",
+					valueFontSize: "22px",
+				};
+			});
 		}
 
 		return [

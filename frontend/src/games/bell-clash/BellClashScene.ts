@@ -27,6 +27,8 @@ import {
 } from "../../shared/mechanics/ball";
 import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
+import { ScoreHud } from "../../shared/mechanics/score-hud";
+import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
 import { THEME } from "../../shared/theme";
 import {
@@ -53,7 +55,11 @@ import {
 	type GameSnapshot,
 	type OnlineMatchContext,
 } from "../../services/network/gameSocket";
-import { resolveGameHudLayout } from "../../shared/game-ui";
+import {
+	PLAYER_COLOUR_VALUES,
+	PLAYER_HEX_COLOURS,
+	resolveGameHudLayout,
+} from "../../shared/game-ui";
 
 type ZoneKind = "red" | "yellow" | "green";
 
@@ -94,7 +100,7 @@ const ZONE_DEFS: Record<
 };
 
 const TWO_PI = Math.PI * 2;
-const PLAYER_COLOURS = [THEME.gold, THEME.red, 0x66aaff, 0x6ab04c, 0xb56cff];
+const PLAYER_COLOURS = PLAYER_COLOUR_VALUES;
 
 /** Fallback power pool when no ShellPicker selection is present. */
 const FALLBACK_POWERS: PowerType[] = [
@@ -127,6 +133,7 @@ export class BellClashScene extends ResponsiveScene {
 	private scoreText: Phaser.GameObjects.Text | null = null;
 	private shotText: Phaser.GameObjects.Text | null = null;
 	private lastHitText: Phaser.GameObjects.Text | null = null;
+	private scoreHud: ScoreHud | null = null;
 
 	private scoreLogPanel: SidePanel | null = null;
 	private scoreEvents: string[] = [];
@@ -308,6 +315,8 @@ export class BellClashScene extends ResponsiveScene {
 		this.scoreText = null;
 		this.shotText = null;
 		this.lastHitText = null;
+		this.scoreHud?.destroy();
+		this.scoreHud = null;
 		this.onlineStatusText?.destroy();
 		this.onlineStatusText = null;
 		this.powerSidePanel?.destroy();
@@ -984,6 +993,15 @@ export class BellClashScene extends ResponsiveScene {
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
 			this.markOnlineAway(),
 		);
+		this.scoreHud = new ScoreHud(this, DEPTH_HUD, {
+			minPlayerCount: 1,
+			showBackground: false,
+			showRoundInfo: false,
+			playerColours: PLAYER_COLOUR_VALUES,
+			playerHexColours: PLAYER_HEX_COLOURS,
+			playerLabel: (player) => `P${player + 1}`,
+		});
+		this.updateScoreHud();
 
 		this.scoreText = this.add
 			.text(16, 16, this.formatScoreText(), {
@@ -1080,6 +1098,7 @@ export class BellClashScene extends ResponsiveScene {
 	private updateSidePanels(): void {
 		const layout = this.resolveLayout();
 		this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
+		this.updateScoreHud();
 
 		const content = {
 			title: "SHELL LOG",
@@ -1184,6 +1203,43 @@ export class BellClashScene extends ResponsiveScene {
 		this.scoreEvents.unshift(`${label}\t${value}`);
 		this.scoreEvents = this.scoreEvents.slice(0, SCORE_LOG_LIMIT);
 		this.updateSidePanels();
+	}
+
+	private updateScoreHud(): void {
+		this.scoreHud?.update(this.buildScoreHudState());
+	}
+
+	private buildScoreHudState(): TurnState {
+		const score = this.onlineMatch?.snapshot?.gameId === "bell-clash"
+			? this.onlineMatch.snapshot.score
+			: [this.score];
+		const playerCount = Math.max(1, score.length);
+		const shellIndex = this.onlineMatch
+			? Math.min(this.onlineLocalShotNumber, this.onlineShotsPerRound - 1)
+			: this.currentShot;
+		return {
+			currentTeam: Phaser.Math.Clamp(
+				this.currentPlayerIndex(),
+				0,
+				playerCount - 1,
+			),
+			currentEnd: this.onlineMatch ? this.onlineRoundNumber - 1 : 0,
+			stonesLeft: score.map(() =>
+				Math.max(
+					0,
+					(this.onlineMatch ? this.onlineShotsPerRound : SHOTS_TOTAL) -
+						shellIndex,
+				),
+			),
+			score,
+			phase: this.currentTurnPhase(),
+			hasHammer: false,
+		};
+	}
+
+	private currentTurnPhase(): TurnPhase {
+		if (!this.running && this.overlay) return "gameover";
+		return this.launchedThisShot ? "sweeping" : "aiming";
 	}
 
 	// ── Rendering ────────────────────────────────────────────────────────────────

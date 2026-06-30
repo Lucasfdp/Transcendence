@@ -213,6 +213,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private onlineReleasePending = false;
 	private visibleBallSide = 0;
 	private onlineBalls = new Map<number, BallState>();
+	private localMode: "solo" | "versus" = "solo";
 
 	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
 		if (snapshot.gameId === "kame-knock")
@@ -299,16 +300,17 @@ export class KameKnockScene extends ResponsiveScene {
 			return pool.length > 1 ? pool : FALLBACK_POWERS;
 		};
 
-		const localMode = this.registry.get("localMode") as
+		const registryLocalMode = this.registry.get("localMode") as
 			| "solo"
 			| "versus"
 			| undefined;
+		this.localMode = registryLocalMode === "versus" ? "versus" : "solo";
 		const requestedLocalPlayerCount = Number(
 			this.registry.get("localPlayerCount") ?? 1,
 		);
 		this.localPlayerCount = this.onlineMatch
 			? (this.onlineMatch.snapshot?.players.length ?? 2)
-			: localMode === "versus"
+			: this.localMode === "versus"
 				? Phaser.Math.Clamp(Math.floor(requestedLocalPlayerCount), 2, 5)
 				: 1;
 		this.localScores = Array.from(
@@ -1211,6 +1213,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.scoreHud = new ScoreHud(this, DEPTH_HUD, {
 			roundLabel: "SHELL",
 			totalRounds: BALL_ROUNDS.length,
+			minPlayerCount: this.localMode === "solo" ? 1 : this.localPlayerCount,
 			showBackground: false,
 			showRoundInfo: false,
 			playerColours: PLAYER_COLOUR_VALUES,
@@ -1338,7 +1341,9 @@ export class KameKnockScene extends ResponsiveScene {
 	private buildScoreHudState(): TurnState {
 		const score = this.onlineMatch?.snapshot?.gameId === "kame-knock"
 			? this.onlineMatch.snapshot.score
-			: this.localScores;
+			: this.localMode === "solo"
+				? [this.localScores[0] ?? 0]
+				: this.localScores;
 		const playerCount = Math.max(1, score.length, this.localPlayerCount);
 		return {
 			currentTeam: Phaser.Math.Clamp(
@@ -1365,6 +1370,15 @@ export class KameKnockScene extends ResponsiveScene {
 
 		const firstTurnInBall = this.currentBallIndex * playerCount;
 		const turnInBall = Math.max(0, this.localTurnNumber - firstTurnInBall);
+		if (this.localMode === "solo") {
+			dots[0] = Math.max(
+				0,
+				BALL_ROUNDS.length -
+					this.currentBallIndex -
+					(this.launchedThisBall ? 1 : 0),
+			);
+			return dots;
+		}
 		for (let player = turnInBall; player < playerCount; player++) {
 			dots[player] =
 				player === turnInBall && this.launchedThisBall ? 0 : 1;

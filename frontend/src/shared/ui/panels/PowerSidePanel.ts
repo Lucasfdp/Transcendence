@@ -141,7 +141,7 @@ export class PowerSidePanel {
 	// Collapsible (drop-down) mode state. `collapsed` persists across rebuilds so
 	// toggling and resizes don't reset what the player opened.
 	private collapsible = false;
-	private collapsed = true;
+	private collapsed = false;
 	private side: "left" | "right" = "left";
 
 	// Scroll window over the power rows when the list is taller than the panel.
@@ -261,8 +261,7 @@ export class PowerSidePanel {
 	}
 
 	hide(): void {
-		this.active = false;
-		this.clear();
+		this.refresh();
 	}
 
 	destroy(): void {
@@ -310,13 +309,12 @@ export class PowerSidePanel {
 			fontStyle: "bold",
 		}).setShadow(0, 2, "rgba(5, 28, 18, 0.78)", 2);
 
-		// Collapsible header: chevron + a click-zone over the title strip that
-		// toggles the panel open/closed. When collapsed we draw only this strip.
+		// Collapsible mode anchors the full panel to an edge on small viewports.
 		if (this.collapsible) {
 			this.addText(
 				r.x + r.width - PAD - 12,
 				r.y + PAD - 2,
-				this.collapsed ? "▾" : "▴",
+				"▴",
 				{
 					fontSize: "14px",
 					color: THEME.textGold,
@@ -329,13 +327,8 @@ export class PowerSidePanel {
 				.setOrigin(0, 0)
 				.setInteractive({ useHandCursor: true })
 				.setDepth(this.depth + 2);
-			toggle.on("pointerup", () => {
-				this.collapsed = !this.collapsed;
-				this.updateCollapsibleRect();
-				this.rebuild();
-			});
+			toggle.on("pointerup", () => this.rebuild());
 			this.zones.push(toggle);
-			if (this.collapsed) return;
 		}
 
 		this.gfx.lineStyle(1, THEME.stoneLight, 0.36);
