@@ -27,7 +27,6 @@ services:
         environment:
             - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
             - HTTPS_PORT=${HTTPS_PORT:-42424}
-            - MONITORING_PORT=${MONITORING_PORT:-3001}
         logging:
             driver: "${LOG_DRIVER:-json-file}"
             options:
@@ -46,7 +45,7 @@ services:
         image: ${COMPOSE_PROJECT_NAME}/frontend:local
         restart: unless-stopped
         expose:
-            - "${FRONTEND_PORT:-3000}"
+            - "3000"
         volumes:
             - logs:/var/log/frontend
         networks:
@@ -64,7 +63,7 @@ services:
                     "--quiet",
                     "--tries=1",
                     "--spider",
-                    "http://localhost:${FRONTEND_PORT:-3000}/",
+                    "http://localhost:3000/",
                 ]
             interval: 30s
             timeout: 10s
@@ -86,7 +85,7 @@ services:
         image: ${COMPOSE_PROJECT_NAME}/backend:local
         restart: unless-stopped
         expose:
-            - "${BACKEND_PORT:-8000}"
+            - "8000"
         volumes:
             - logs:/var/log/backend
             - backend_vault_rendered:/vault/secrets:ro
@@ -104,12 +103,13 @@ services:
             - NODE_ENV=${BACKEND_ENV:-development}
             - APP_ENV=${BACKEND_ENV:-development}
             - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://localhost:42424}
+            - BACKEND_PORT=8000
             - POSTGRES_HOST=database
-            - POSTGRES_PORT=${POSTGRES_PORT:-5432}
-            - POSTGRES_DB=${POSTGRES_DB}
-            - POSTGRES_USER=${POSTGRES_USER}
+            - POSTGRES_PORT=5432
+            - POSTGRES_DB=${POSTGRES_DB:-shellsmash}
+            - POSTGRES_USER=${POSTGRES_USER:-shellsmash}
             - REDIS_HOST=redis
-            - REDIS_PORT=${REDIS_PORT:-6379}
+            - REDIS_PORT=6379
             - JWT_EXPIRY=${JWT_EXPIRY:-3600}
             - DEMO_USERNAME=${DEMO_USERNAME:-KameMaster}
             - DEMO_PASSWORD=${DEMO_PASSWORD:-KameMaster42}
@@ -135,12 +135,12 @@ services:
                     "--quiet",
                     "--tries=1",
                     "--spider",
-                    "http://localhost:${BACKEND_PORT:-8000}/api/health",
+                    "http://localhost:8000/api/health",
                 ]
             interval: 30s
             timeout: 10s
             retries: 5
-            start_period: 60s
+            start_period: 90s
         logging:
             driver: "${LOG_DRIVER:-json-file}"
             options:
@@ -164,8 +164,8 @@ services:
             database_vault_agent:
                 condition: service_healthy
         environment:
-            - POSTGRES_DB=${POSTGRES_DB}
-            - POSTGRES_USER=${POSTGRES_USER}
+            - POSTGRES_DB=${POSTGRES_DB:-shellsmash}
+            - POSTGRES_USER=${POSTGRES_USER:-shellsmash}
             - POSTGRES_INITDB_ARGS=${POSTGRES_INITDB_ARGS:---encoding=UTF8}
             - POSTGRES_PASSWORD_FILE=/vault/secrets/postgres_password
             - SECRETS_WAIT_TIMEOUT=${SECRETS_WAIT_TIMEOUT:-120}
@@ -173,11 +173,11 @@ services:
             test:
                 [
                     "CMD-SHELL",
-                    "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}",
+                    "pg_isready -U ${POSTGRES_USER:-shellsmash} -d ${POSTGRES_DB:-shellsmash}",
                 ]
             interval: 10s
             timeout: 5s
-            retries: 5
+            retries: 12
             start_period: 60s
         logging:
             driver: "${LOG_DRIVER:-json-file}"
@@ -193,7 +193,7 @@ services:
         image: ${COMPOSE_PROJECT_NAME}/redis:local
         restart: unless-stopped
         expose:
-            - "${REDIS_PORT:-6379}"
+            - "6379"
         volumes:
             - redis_data:/data
             - redis_vault_rendered:/vault/secrets:ro
@@ -215,7 +215,7 @@ services:
                 ]
             interval: 10s
             timeout: 5s
-            retries: 5
+            retries: 12
             start_period: 60s
         logging:
             driver: "${LOG_DRIVER:-json-file}"
@@ -232,7 +232,7 @@ services:
         restart: unless-stopped
         # Grafana is proxied through Nginx — do not expose directly on host
         expose:
-            - "${MONITORING_PORT:-3001}"
+            - "3001"
         volumes:
             - monitoring_data:/var/lib/monitoring
             - logs:/var/log/monitoring
@@ -246,7 +246,7 @@ services:
         environment:
             - GF_ADMIN_USER=${GF_ADMIN_USER:-admin}
             - PROMETHEUS_SCRAPE_INTERVAL=${PROMETHEUS_SCRAPE_INTERVAL:-15s}
-            - MONITORING_PORT=${MONITORING_PORT:-3001}
+            - MONITORING_PORT=3001
             - VAULT_ENV_FILE=/vault/secrets/monitoring.env
             - SECRETS_WAIT_TIMEOUT=${SECRETS_WAIT_TIMEOUT:-120}
         healthcheck:
@@ -257,7 +257,7 @@ services:
                     "--quiet",
                     "--tries=1",
                     "--spider",
-                    "http://localhost:${MONITORING_PORT:-3001}/api/health",
+                    "http://localhost:3001/api/health",
                 ]
             interval: 30s
             timeout: 10s
@@ -275,11 +275,10 @@ services:
         restart: unless-stopped
         expose:
             - "8200"
-        cap_add:
-            - IPC_LOCK
         command: server
         environment:
             - VAULT_ADDR=http://127.0.0.1:8200
+            - VAULT_DISABLE_MLOCK=true
         volumes:
             - ./infra/vault/config:/vault/config:ro
             - vault_data:/vault/file
@@ -322,7 +321,7 @@ services:
             test: ["CMD-SHELL", "[ -s /vault/rendered/backend.env ]"]
             interval: 5s
             timeout: 3s
-            retries: 24
+            retries: 60
             start_period: 5s
 
     database_vault_agent:
@@ -345,7 +344,7 @@ services:
             test: ["CMD-SHELL", "[ -s /vault/rendered/postgres_password ]"]
             interval: 5s
             timeout: 3s
-            retries: 24
+            retries: 60
             start_period: 5s
 
     redis_vault_agent:
@@ -368,7 +367,7 @@ services:
             test: ["CMD-SHELL", "[ -s /vault/rendered/redis_password ]"]
             interval: 5s
             timeout: 3s
-            retries: 24
+            retries: 60
             start_period: 5s
 
     monitoring_vault_agent:
@@ -391,7 +390,7 @@ services:
             test: ["CMD-SHELL", "[ -s /vault/rendered/monitoring.env ]"]
             interval: 5s
             timeout: 3s
-            retries: 24
+            retries: 60
             start_period: 5s
 
 volumes:

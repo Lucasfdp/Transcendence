@@ -10,34 +10,12 @@ COMPOSE_FILE	:= docker-compose.yml
 OVERRIDE_FILE	:= docker-compose.override.yml
 DEV_COMPOSE	:= -f $(COMPOSE_FILE) -f $(OVERRIDE_FILE)
 ENV_FILE		:= .env
+BASE_COMPOSE	:= docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE)
+HOT_COMPOSE	:= docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE)
 PROJECT_NAME	:= transcendence
 CERT_DIR		:= secrets/nginx_ssl
 VAULT_INIT_FILE	:= secrets/vault/init.txt
 VAULT_SEED_FILE	:= secrets/vault/dev-seed.env
-BASE_SERVICES	:= \
-	backend_vault_agent \
-	database_vault_agent \
-	redis_vault_agent \
-	monitoring_vault_agent \
-	database \
-	redis \
-	backend \
-	frontend \
-	monitoring \
-	reverse_proxy
-VAULT_AGENT_SERVICES := \
-	backend_vault_agent \
-	database_vault_agent \
-	redis_vault_agent \
-	monitoring_vault_agent
-CORE_SERVICES := \
-	database \
-	redis \
-	frontend
-EDGE_SERVICES := \
-	backend \
-	monitoring \
-	reverse_proxy
 
 # --- COLOR DEFINITON ---
 ifeq ($(shell tput colors 2>/dev/null),)
@@ -73,31 +51,28 @@ endif
 ## up: Build images (if needed) and start all services in detached mode
 up: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting all services...$(RESET)"
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --no-deps $(VAULT_AGENT_SERVICES)
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(CORE_SERVICES)
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(EDGE_SERVICES)
+	$(BASE_COMPOSE) config >/dev/null
+	$(BASE_COMPOSE) up -d --build --remove-orphans
 	@echo "$(GREEN)All services are up. Run 'make ps' to verify.$(RESET)"
 
-## dev: Start with hot-reload override (Vite HMR + NestJS watch). Access frontend at http://localhost:3000
+## dev: Start with hot-reload override (Vite HMR + NestJS watch). Access frontend at https://localhost:42424
 dev: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting in DEV mode (hot-reload)...$(RESET)"
-	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --no-deps $(VAULT_AGENT_SERVICES)
-	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --no-deps $(CORE_SERVICES)
-	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --no-deps $(EDGE_SERVICES)
-	@echo "$(GREEN)Dev server running. Frontend: http://localhost:3000$(RESET)"
+	$(HOT_COMPOSE) config >/dev/null
+	$(HOT_COMPOSE) up -d --build --remove-orphans
+	@echo "$(GREEN)Dev server running. Frontend: https://localhost:42424$(RESET)"
 
 ## prod: Start WITHOUT the dev override — production-like mode (compiled frontend + runtime images)
 prod: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting in PROD mode (no override)...$(RESET)"
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --no-deps $(VAULT_AGENT_SERVICES)
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(CORE_SERVICES)
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --build --no-deps $(EDGE_SERVICES)
+	$(BASE_COMPOSE) config >/dev/null
+	$(BASE_COMPOSE) up -d --build --remove-orphans
 	@echo "$(GREEN)Production-mode services up. Frontend: https://localhost:42424$(RESET)"
 
 ## vault-bootstrap: Ensure the local Vault is initialised, unsealed and seeded before starting dependants
 vault-bootstrap: check-env
 	@echo "$(CYAN)Bootstrapping Vault for local dev...$(RESET)"
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d vault
+	$(BASE_COMPOSE) up -d vault
 	@$(MAKE) vault-init
 	@$(MAKE) vault-unseal
 	@$(MAKE) vault-seed-dev
@@ -165,19 +140,19 @@ refresh-app: rebuild-front restart-back
 ## build: Build or rebuild all images without starting containers
 build: check-env
 	@echo "$(CYAN)Building all images...$(RESET)"
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) build --no-cache
+	$(BASE_COMPOSE) build --no-cache
 
 ## logs: Tail logs for all services, or one service. Usage: make logs [SERVICE=backend]
 logs:
 	@if [ "$(SERVICE)" ]; then \
-		docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) logs -f $(SERVICE); \
+		$(HOT_COMPOSE) logs -f $(SERVICE); \
 	else \
-		docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) logs -f; \
+		$(HOT_COMPOSE) logs -f; \
 	fi
 
 ## ps: Show status of all running containers
 ps:
-	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) ps
+	$(HOT_COMPOSE) ps
 
 ## diagnosis: Check local prerequisites for running the project without stopping at the first failure
 diagnosis:

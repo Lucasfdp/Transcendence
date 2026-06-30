@@ -5,7 +5,7 @@
 # DO NOT commit secrets here. DO NOT use this file in production.
 #
 # FRONTEND — Vite HMR dev server
-#   Access at:  http://localhost:3000  (direct — HMR WebSocket works natively)
+#   Access at:  https://localhost:42424  (through Nginx only)
 #   API calls:  proxied to backend:8000 by Vite's built-in proxy (vite.config.js)
 #   Live reload: edit anything in frontend/ or public/
 #
@@ -14,8 +14,8 @@
 #   TypeScript is recompiled and the server restarted automatically on save.
 #
 # Usage:
-#   make up        (override is picked up automatically)
-#   make re        (rebuild + override)
+#   make dev       (loads this override explicitly)
+#   make up        (production-like, does not load this override)
 #
 # To run WITHOUT the override (production-like):
 #   docker compose -f docker-compose.yml up --build
@@ -36,8 +36,6 @@ services:
             - ./public:/app/public
             - /app/frontend/node_modules
         command: npm run dev -- --host 0.0.0.0
-        ports:
-            - "3000:3000" # Expose directly so the browser's HMR WebSocket works
         environment:
             - NODE_ENV=development
             - VITE_API_URL=/api # Relative path — Vite proxies this to backend:8000
