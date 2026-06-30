@@ -32,7 +32,7 @@ export enum PowerType {
 	STICKY = "sticky", // fuses with first stone it contacts; they coast together
 	LIGHTNING = "lightning", // on stop: teleports the nearest enemy stone off-sheet
 	VORTEX = "vortex", // spirals inward when near the house centre
-	CLONE = "clone", // spawns a mirror-image stone on the opposite curl path
+	MIRROR = "mirror", // spawns a mirror-image stone on the opposite curl path
 	RICOCHET = "ricochet", // passes through first stone, hits second at full speed
 	PHANTOM = "phantom", // invisible while moving; reveals on stop
 }
@@ -66,8 +66,8 @@ export interface PowerDef {
 
 /** Near-frictionless multiplier for SLICK (per-frame at 60 fps). */
 export const FRICTION_SLICK = 0.994;
-/** HEAVY stone radius scale factor. */
-export const HEAVY_RADIUS_FACTOR = 1.4;
+/** HEAVY launch speed multiplier. */
+export const HEAVY_SPEED_FACTOR = 0.75;
 /** Mass ratio applied to collision impulse for HEAVY stones. */
 export const HEAVY_MASS_RATIO = 2.5;
 /** SPINNING curl bias (4× default CURL_BIAS — dramatic arc across the sheet). */
@@ -81,7 +81,7 @@ export const MAGNET_RANGE_SRC = 220;
 /** Attraction velocity for MAGNET in source px/s. */
 export const MAGNET_PULL_SRC = 55;
 /** SPLITTER child stone radius factor. */
-export const SPLITTER_RADIUS = 0.65;
+export const SPLITTER_RADIUS = 0.75;
 /** Spread angle (radians) for SPLITTER child stones. */
 export const SPLITTER_SPREAD = Math.PI / 12; // 15°
 /** ROCKET launch speed multiplier. */
@@ -107,7 +107,7 @@ const NONE_DEF: PowerDef = {
 	type: PowerType.NONE,
 	label: "No Power",
 	accentColour: 0x888888,
-	description: "Standard stone — no special ability.",
+	description: "Standard shell — no special ability.",
 	onApply() {
 		/* nothing */
 	},
@@ -117,9 +117,10 @@ const HEAVY_DEF: PowerDef = {
 	type: PowerType.HEAVY,
 	label: "Heavy Shell",
 	accentColour: 0x886633,
-	description: "Larger, harder to deflect. Slower curl.",
+	description: "Slower and heavier, harder to deflect. Slower curl.",
 	onApply(stone) {
-		stone.r *= HEAVY_RADIUS_FACTOR;
+		stone.vx *= HEAVY_SPEED_FACTOR;
+		stone.vy *= HEAVY_SPEED_FACTOR;
 		stone.curlBias *= 0.4; // harder to drift
 	},
 };
@@ -128,7 +129,7 @@ const BOMB_DEF: PowerDef = {
 	type: PowerType.BOMB,
 	label: "Bomb Shell",
 	accentColour: 0xff6600,
-	description: "Explodes on rest — pushes all nearby stones outward.",
+	description: "Explodes on rest — pushes all nearby shells outward.",
 	onApply() {
 		/* nothing at launch */
 	},
@@ -157,7 +158,7 @@ const SPLITTER_DEF: PowerDef = {
 	type: PowerType.SPLITTER,
 	label: "Splitter",
 	accentColour: 0xffee00,
-	description: "Splits into 3 smaller stones on first collision.",
+	description: "Splits into 3 smaller shells on first collision.",
 	onApply() {
 		/* nothing at launch */
 	},
@@ -175,7 +176,7 @@ const GHOST_DEF: PowerDef = {
 	type: PowerType.GHOST,
 	label: "Ghost Shell",
 	accentColour: 0xaaddff,
-	description: "Passes through the first stone it hits.",
+	description: "Passes through the first shell it hits.",
 	onApply() {
 		/* nothing at launch */
 	},
@@ -191,7 +192,7 @@ const MAGNET_DEF: PowerDef = {
 	type: PowerType.MAGNET,
 	label: "Magnet Shell",
 	accentColour: 0xff44cc,
-	description: "Pulls nearby stones toward it when it stops.",
+	description: "Pulls nearby shells toward it when it stops.",
 	onApply() {
 		/* nothing at launch */
 	},
@@ -257,7 +258,6 @@ const SHIELD_DEF: PowerDef = {
 		if (dist <= arena.houseRadii[0]) {
 			// Make it behave like a very heavy stone so collisions barely move it.
 			stone.power = PowerType.HEAVY;
-			(stone as { r: number }).r *= HEAVY_RADIUS_FACTOR * 0.5; // subtle visual cue
 		}
 	},
 };
@@ -267,7 +267,7 @@ const FREEZE_DEF: PowerDef = {
 	label: "Freeze Shell",
 	accentColour: 0x88ccff,
 	description:
-		"Freezes the first enemy stone it touches for the rest of the end.",
+		"Freezes the first enemy shell it touches for the rest of the end.",
 	onApply() {
 		/* nothing at launch */
 	},
@@ -387,7 +387,7 @@ const REPEL_DEF: PowerDef = {
 	label: "Repel Shell",
 	accentColour: 0xff44aa,
 	description:
-		"Pushes all stones away when it stops — the inverse of MAGNET.",
+		"Pushes all shells away when it stops — the inverse of MAGNET.",
 	onApply() {
 		/* nothing at launch */
 	},
@@ -416,7 +416,7 @@ const STICKY_DEF: PowerDef = {
 	label: "Sticky Shell",
 	accentColour: 0x996633,
 	description:
-		"Fuses with the first stone it touches — they glide together and stop as a pair.",
+		"Fuses with the first shell it touches — they glide together and stop as a pair.",
 	onApply(stone) {
 		(stone as unknown as StickyStone).stickyFused = false;
 	},
@@ -441,7 +441,7 @@ const LIGHTNING_DEF: PowerDef = {
 	label: "Lightning Shell",
 	accentColour: 0xeeff00,
 	description:
-		"On stop, the nearest enemy stone is instantly struck off the sheet.",
+		"On stop, the nearest enemy shell is instantly struck off the sheet.",
 	onApply() {
 		/* nothing at launch */
 	},
@@ -493,15 +493,15 @@ const VORTEX_DEF: PowerDef = {
 	},
 };
 
-const CLONE_DEF: PowerDef = {
-	type: PowerType.CLONE,
-	label: "Clone Shell",
+const MIRROR_DEF: PowerDef = {
+	type: PowerType.MIRROR,
+	label: "Mirror",
 	accentColour: 0x88ff88,
 	description:
-		"Spawns a mirror-image stone on the opposite curl path. Scene must handle the split flag.",
+		"Creates a mirror copy on the opposite path. Scene must handle the mirror flag.",
 	onApply(stone) {
-		// The scene reads `clonePending` and creates the mirror stone.
-		(stone as unknown as { clonePending: boolean }).clonePending = true;
+		// The scene reads `mirrorPending` and creates the mirror stone.
+		(stone as unknown as { mirrorPending: boolean }).mirrorPending = true;
 	},
 };
 
@@ -510,7 +510,7 @@ const RICOCHET_DEF: PowerDef = {
 	label: "Ricochet Shell",
 	accentColour: 0xff8844,
 	description:
-		"Passes straight through the first stone it hits, then impacts the second at full speed.",
+		"Passes straight through the first shell it hits, then impacts the second at full speed.",
 	onApply(stone) {
 		(stone as unknown as RicochetStone).ricochetUsed = false;
 	},
@@ -581,7 +581,7 @@ export const ALL_POWERS: Record<PowerType, PowerDef> = {
 	[PowerType.STICKY]: STICKY_DEF,
 	[PowerType.LIGHTNING]: LIGHTNING_DEF,
 	[PowerType.VORTEX]: VORTEX_DEF,
-	[PowerType.CLONE]: CLONE_DEF,
+	[PowerType.MIRROR]: MIRROR_DEF,
 	[PowerType.RICOCHET]: RICOCHET_DEF,
 	[PowerType.PHANTOM]: PHANTOM_DEF,
 };
@@ -651,6 +651,6 @@ export interface PhantomStoneState {
 	phantomHidden: boolean;
 }
 
-export interface CloneStoneState {
-	clonePending: boolean;
+export interface MirrorStoneState {
+	mirrorPending: boolean;
 }

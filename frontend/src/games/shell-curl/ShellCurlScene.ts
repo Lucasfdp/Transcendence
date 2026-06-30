@@ -11,7 +11,7 @@ import { api } from "../../features/hub/api";
 import { ResponsiveScene } from "../../shared/responsive-scene";
 import { CURL_SHEET } from "../../shared/arenas/curl-sheet";
 import {
-	rectArenaToScreen,
+	rectArenaPlayableToScreenInRect,
 	drawIceSheet,
 	isStoneInHouse,
 	isStoneOutOfBounds,
@@ -31,6 +31,7 @@ import {
 	PowerRegistry,
 	ALL_POWERS,
 } from "../../shared/mechanics/power-system";
+import { GAME_POWERS } from "../../shared/mechanics/game-powers";
 import {
 	TurnManager,
 	type TurnPhase,
@@ -41,7 +42,11 @@ import { showAchievementUnlocks } from "../../shared/achievement-popup";
 import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { PowerSidePanel } from "../../shared/ui/panels/PowerSidePanel";
-import { PanelRect } from "../../shared/ui/panels/side-panel";
+import {
+	PanelRect,
+	SidePanel,
+	type SidePanelRow,
+} from "../../shared/ui/panels/side-panel";
 import {
 	destroyIngamePlayerTexture,
 	drawIngamePlayerTexture,
@@ -53,6 +58,12 @@ import {
 	type CurlingThrowEvent,
 	type OnlineMatchContext,
 } from "../../services/network/gameSocket";
+import { THEME } from "../../shared/theme";
+import {
+	PLAYER_COLOUR_VALUES,
+	PLAYER_HEX_COLOURS,
+	resolveGameHudLayout,
+} from "../../shared/game-ui";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -80,16 +91,7 @@ const ONLINE_REPLAY_MAX_FRAME_MS = 100;
  */
 const FALLBACK_POWERS: PowerType[] = [
 	PowerType.NONE,
-	PowerType.HEAVY,
-	PowerType.BOMB,
-	PowerType.SPLITTER,
-	PowerType.GHOST,
-	PowerType.MAGNET,
-	PowerType.SPINNING,
-	PowerType.BOUNCER,
-	PowerType.SHIELD,
-	PowerType.FREEZE,
-	PowerType.SLICK,
+	...GAME_POWERS["temple-curling"],
 ];
 
 /** Depth constants (consistent with HubScene). */
@@ -105,13 +107,7 @@ const DEPTH_OVERLAY = 100;
 /** Pause in ms between end-of-throw and advancing to next turn. */
 const SETTLING_DELAY_MS = 800;
 
-// Side-panel layout — panel sits in the LEFT strip beside the sheet.
-// Min width is deliberately lower than other games because the curling sheet
-// already has a reserved left margin (see curl-sheet.ts sheetX: 230).
-const SIDE_PANEL_MIN_W = 80;
-const SIDE_PANEL_MAX_W = 200;
-const SIDE_PANEL_PAD = 12;
-const SIDE_PANEL_TOP = 74;
+const PLAYER_COLOURS = PLAYER_HEX_COLOURS;
 
 // ── Pinball bumpers ───────────────────────────────────────────────────────────
 
@@ -127,6 +123,14 @@ interface Bumper {
 	readonly fx: number;
 	readonly fy: number;
 	flashTimer: number; // ms remaining for hit-flash visual
+}
+
+interface PowerPickup {
+	id: number;
+	type: PowerType;
+	fx: number;
+	fy: number;
+	rSrc: number;
 }
 
 /**
@@ -161,6 +165,9 @@ function generateBumperDefs(): BumperDef[] {
 const BUMPER_RADIUS_SRC = 28; // source px — same as stone radius
 const BUMPER_FLASH_MS = 130; // duration of hit-flash glow
 const BUMPER_BOOST = 1.1; // 10% speed boost on bumper hit (pinball feel)
+const PICKUP_RADIUS_SRC = 18;
+const PICKUP_SPAWN_ATTEMPTS = 80;
+const PICKUP_CLEARANCE_SRC = 12;
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
 
@@ -187,6 +194,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
 	private sheetGfx!: Phaser.GameObjects.Graphics;
 	private bumperGfx!: Phaser.GameObjects.Graphics;
+	private pickupGfx!: Phaser.GameObjects.Graphics;
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 	private stoneTrails: Map<number, Array<{ x: number; y: number }>> =
@@ -194,12 +202,16 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	// ── Bumpers ───────────────────────────────────────────────────────────────
 	private bumpers: Bumper[] = [];
+	private pickups: PowerPickup[] = [];
+	private nextPickupId = 0;
+	private powerupsEnabled = true;
 
 	// ── Overlay ───────────────────────────────────────────────────────────────
 	private overlayContainer: Phaser.GameObjects.Container | null = null;
 
 	// ── Power side panel (replaces the bottom PowerPicker bar) ────────────────
 	private powerSidePanel: PowerSidePanel | null = null;
+	private scoreLogPanel: SidePanel | null = null;
 
 	private onlineMatch: OnlineMatchContext | null = null;
 	private onlineStatusText: Phaser.GameObjects.Text | null = null;
@@ -244,11 +256,7 @@ export class ShellCurlScene extends ResponsiveScene {
 				| undefined) ?? null;
 		this.lastOnlineSeq = -1;
 		this.powerUsed = Array.from({ length: 5 }, () => new Set<PowerType>());
-		this.arena = rectArenaToScreen(
-			CURL_SHEET,
-			this.scale.width,
-			this.scale.height,
-		);
+		this.arena = this.resolveArena();
 		this.turnManager = new TurnManager({
 			totalEnds: TOTAL_ENDS,
 			stonesPerTeam: STONES_PER_TEAM,
@@ -262,6 +270,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		const localPowerupsEnabled = this.onlineMatch
 			? true
 			: this.registry.get("localPowerupsEnabled") !== false;
+		this.powerupsEnabled = !this.onlineMatch && localPowerupsEnabled;
 
 		const buildPool = (picks: string[] | undefined): PowerType[] => {
 			if (!localPowerupsEnabled) return [PowerType.NONE];
@@ -290,6 +299,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
 		this.sheetGfx = this.add.graphics().setDepth(DEPTH_SHEET);
 		this.bumperGfx = this.add.graphics().setDepth(DEPTH_BUMPERS);
+		this.pickupGfx = this.add.graphics().setDepth(DEPTH_STONES - 0.5);
 		this.trailGfx = this.add.graphics().setDepth(DEPTH_STONES - 0.25);
 
 		// Draw background & sheet
@@ -299,7 +309,13 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.drawBumpers();
 
 		// HUD
-		this.scoreHud = new ScoreHud(this, DEPTH_HUD);
+		this.scoreHud = new ScoreHud(this, DEPTH_HUD, {
+			showBackground: false,
+			showRoundInfo: false,
+			playerColours: PLAYER_COLOUR_VALUES,
+			playerHexColours: PLAYER_COLOURS,
+			playerLabel: (player) => `P${player + 1}`,
+		});
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
 			this.markOnlineAway(),
 		);
@@ -344,8 +360,11 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.scoreHud.destroy();
 		this.powerSidePanel?.destroy();
 		this.powerSidePanel = null;
+		this.scoreLogPanel?.destroy();
+		this.scoreLogPanel = null;
 		this.clearAllStoneGfx();
 		this.bumperGfx.destroy();
+		this.pickupGfx.destroy();
 		this.trailGfx.destroy();
 		this.overlayContainer?.destroy(true);
 		if (this.onlineMatch) {
@@ -377,6 +396,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			for (const s of this.allStones) {
 				if (!s.stopped) stepStone(s, delta, this.arena);
 			}
+			this.collectPowerPickup(this.activeStone);
 
 			// Apply active power update
 			const def = this.powerRegistry.get(this.activeStone.power);
@@ -525,9 +545,11 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		this.scoreHud.update(state);
 		this.addActiveRing(stone);
+		this.spawnPowerPickup();
+		this.drawPowerPickups();
+		this.updateSidePanels();
 
 		this.turnManager.setPhase("aiming");
-		this.showPowerPanel();
 	}
 
 	private onLaunch(vx: number, vy: number): void {
@@ -535,8 +557,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			return;
 
 		if (this.onlineMatch) {
-			const power = this.powerSidePanel?.getSelected() ?? PowerType.NONE;
-			if (power !== PowerType.NONE) this.currentPowerUsed().add(power);
+			const power = PowerType.NONE;
 			// game:throw transports source px/s; clients convert to their local canvas scale.
 			const sourceVx = vx / this.arena.scale;
 			const sourceVy = vy / this.arena.scale;
@@ -554,18 +575,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			return;
 		}
 
-		// Apply power
-		const power = this.powerSidePanel?.getSelected() ?? PowerType.NONE;
-		this.activeStone.power = power;
-		const def = this.powerRegistry.get(power);
-		def.onApply(this.activeStone, this.arena);
-
-		if (power !== PowerType.NONE) {
-			(
-				this.powerUsed[this.turnManager.state.currentTeam] ??
-				this.powerUsed[0]
-			).add(power);
-		}
+		this.activeStone.power = PowerType.NONE;
 
 		this.activeStone.vx = vx;
 		this.activeStone.vy = vy;
@@ -598,6 +608,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		this.turnManager.setPhase("sweeping");
 		this.scoreHud.update(this.turnManager.state);
+		this.updateSidePanels();
 	}
 
 	private finishThrow(): void {
@@ -632,6 +643,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		if (inHouse.length === 0) {
 			// Blank end
 			this.turnManager.endEnd(null, 0);
+			this.updateSidePanels();
 			this.showEndScoreOverlay(null, 0);
 			return;
 		}
@@ -663,6 +675,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.animateScoringStones(scoringTeam);
 
 		this.turnManager.endEnd(scoringTeam, points);
+		this.updateSidePanels();
 		this.showEndScoreOverlay(scoringTeam, points);
 	}
 
@@ -775,41 +788,6 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.bgGfx.fillStyle(0x0c0a07, 0.58);
 		this.bgGfx.fillRect(0, 0, width, height);
 
-		// ── Side column base (slightly warmer dark) ───────────────────────────────
-		const rightX = a.sheetX + a.sheetW;
-		const rightW = width - rightX;
-		this.bgGfx.fillStyle(0x130e08, 0.42);
-		this.bgGfx.fillRect(0, 0, a.sheetX, height);
-		this.bgGfx.fillRect(rightX, 0, rightW, height);
-
-		// ── Wood-grain planks on side panels ─────────────────────────────────────
-		const grainStep = Math.max(7, 9 * a.scale);
-		for (let y = 0; y < height; y += grainStep) {
-			const wave = Math.sin(y * 0.07 + 1.2) * 2 * a.scale;
-			this.bgGfx.lineStyle(1, 0x231805, 0.45);
-			if (a.sheetX > 4) {
-				this.bgGfx.lineBetween(wave, y, a.sheetX + wave * 0.5, y);
-			}
-			if (rightW > 4) {
-				this.bgGfx.lineBetween(rightX - wave * 0.5, y, width - wave, y);
-			}
-		}
-
-		// ── Bamboo stalks — adapt count to available side-strip width ────────────
-		const sideW = a.sheetX; // left strip width in screen px (same for right)
-		const stalkFracs =
-			sideW < 120 ? [0.5] : sideW < 250 ? [0.3, 0.7] : [0.18, 0.5, 0.82];
-		if (a.sheetX > 18) {
-			for (const frac of stalkFracs) {
-				this.drawBambooStalk(a.sheetX * frac, height, a.scale);
-			}
-		}
-		if (rightW > 18) {
-			for (const frac of stalkFracs) {
-				this.drawBambooStalk(rightX + rightW * frac, height, a.scale);
-			}
-		}
-
 		// ── Paper lanterns — flanking the scoring house ───────────────────────────
 		// For horizontal layout: hang lanterns near the far (right) end of the sheet.
 		// For vertical layout: hang them in the top strip above the sheet.
@@ -870,20 +848,6 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.bgGfx.fillRect(a.sheetX - bw, a.sheetY, bw, a.sheetH);
 		// Right bar
 		this.bgGfx.fillRect(a.sheetX + a.sheetW, a.sheetY, bw, a.sheetH);
-
-		// ── Gold accent corner brackets ───────────────────────────────────────────
-		const cs = Math.max(10, 14 * a.scale); // corner arm length
-		const lw = Math.max(1.5, 2.0 * a.scale);
-		this.bgGfx.lineStyle(lw, 0xd4a843, 0.92);
-		for (const [cx, cy] of [
-			[a.sheetX - bw, a.sheetY - bw],
-			[a.sheetX + a.sheetW + bw, a.sheetY - bw],
-			[a.sheetX - bw, a.sheetY + a.sheetH + bw],
-			[a.sheetX + a.sheetW + bw, a.sheetY + a.sheetH + bw],
-		] as [number, number][]) {
-			this.bgGfx.lineBetween(cx - cs, cy, cx + cs, cy);
-			this.bgGfx.lineBetween(cx, cy - cs, cx, cy + cs);
-		}
 
 		// ── Top/bottom vignette ───────────────────────────────────────────────────
 		const vigH = Math.max(16, 24 * a.scale);
@@ -1051,8 +1015,6 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private animateScoringStones(teamId: number): void {
-		const colours = [0x2255cc, 0xcc2222, 0x22aa55, 0xbb55dd, 0xd4a843];
-		const colour = colours[teamId % colours.length];
 		for (const s of this.allStones) {
 			if (s.teamId !== teamId || !isStoneInHouse(s, this.arena)) continue;
 			const gfx = this.stoneGfx.get(s.id);
@@ -1091,8 +1053,10 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		this.showOverlay(message, "NEXT END", () => {
 			this.clearAllStoneGfx();
+			this.pickups = [];
 			this.buildBumpers(true); // fresh random layout for new end
 			this.drawBumpers();
+			this.drawPowerPickups();
 			this.beginTurn();
 		});
 	}
@@ -1339,7 +1303,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			.text(this.scale.width / 2, 18, "", {
 				fontSize: "13px",
 				color: "#d4a843",
-				fontFamily: "monospace",
+				fontFamily: THEME.fontUrbanStone,
 				fontStyle: "bold",
 			})
 			.setOrigin(0.5, 0)
@@ -1547,24 +1511,31 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.overlayContainer?.destroy(true);
 
 		const { width, height } = this.scale;
+		const panelW = Math.min(520, Math.max(320, width - 32));
+		const panelH = buttonLabel ? 220 : 150;
+		const messageY = buttonLabel ? -34 : 0;
+		const buttonY = panelH / 2 - 54;
+		const buttonW = Math.min(200, panelW - 80);
+		const buttonH = 42;
 		const c = this.add
 			.container(width / 2, height / 2)
 			.setDepth(DEPTH_OVERLAY);
 
 		const bg = this.add.graphics();
 		bg.fillStyle(0x000000, 0.65);
-		bg.fillRoundedRect(-240, -80, 480, 160, 12);
-		bg.lineStyle(2, 0xd4a843, 0.8);
-		bg.strokeRoundedRect(-240, -80, 480, 160, 12);
+		bg.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
+		bg.lineStyle(2, THEME.gold, 0.8);
+		bg.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
 		c.add(bg);
 
 		const txt = this.add
-			.text(0, -28, message, {
+			.text(0, messageY, message, {
 				fontSize: "20px",
-				color: "#e6ddd0",
-				fontFamily: "monospace",
+				color: THEME.text,
+				fontFamily: THEME.fontUrbanStone,
 				fontStyle: "bold",
 				align: "center",
+				wordWrap: { width: panelW - 56 },
 			})
 			.setOrigin(0.5);
 		c.add(txt);
@@ -1572,23 +1543,35 @@ export class ShellCurlScene extends ResponsiveScene {
 		if (buttonLabel && onButton) {
 			const btnBg = this.add.graphics();
 			btnBg.fillStyle(0x1a1005, 0.9);
-			btnBg.fillRoundedRect(-80, 20, 160, 38, 6);
-			btnBg.lineStyle(1.5, 0xd4a843, 0.8);
-			btnBg.strokeRoundedRect(-80, 20, 160, 38, 6);
+			btnBg.fillRoundedRect(
+				-buttonW / 2,
+				buttonY - buttonH / 2,
+				buttonW,
+				buttonH,
+				6,
+			);
+			btnBg.lineStyle(1.5, THEME.gold, 0.8);
+			btnBg.strokeRoundedRect(
+				-buttonW / 2,
+				buttonY - buttonH / 2,
+				buttonW,
+				buttonH,
+				6,
+			);
 			c.add(btnBg);
 
 			const btnTxt = this.add
-				.text(0, 39, buttonLabel, {
+				.text(0, buttonY, buttonLabel, {
 					fontSize: "14px",
 					color: "#d4a843",
-					fontFamily: "monospace",
+					fontFamily: THEME.fontUrbanStone,
 					fontStyle: "bold",
 				})
 				.setOrigin(0.5);
 			c.add(btnTxt);
 
 			const zone = this.add
-				.zone(0, 39, 160, 38)
+				.zone(0, buttonY, buttonW, buttonH)
 				.setInteractive({ useHandCursor: true });
 			zone.on("pointerup", () => {
 				this.overlayContainer?.destroy(true);
@@ -1790,15 +1773,133 @@ export class ShellCurlScene extends ResponsiveScene {
 		}
 	}
 
+	// ── Power pickups ─────────────────────────────────────────────────────────
+
+	private spawnPowerPickup(): void {
+		if (!this.powerupsEnabled) return;
+		const pool = GAME_POWERS["temple-curling"];
+		if (pool.length === 0) return;
+
+		for (let attempt = 0; attempt < PICKUP_SPAWN_ATTEMPTS; attempt++) {
+			const fx = Phaser.Math.FloatBetween(0.18, 0.82);
+			const fy = Phaser.Math.FloatBetween(0.2, 0.8);
+			if (!this.canPlacePowerPickup(fx, fy, PICKUP_RADIUS_SRC)) continue;
+
+			this.pickups.push({
+				id: this.nextPickupId++,
+				type: Phaser.Math.RND.pick(pool),
+				fx,
+				fy,
+				rSrc: PICKUP_RADIUS_SRC,
+			});
+			return;
+		}
+	}
+
+	private canPlacePowerPickup(fx: number, fy: number, rSrc: number): boolean {
+		const x = this.arena.sheetX + fx * this.arena.sheetW;
+		const y = this.arena.sheetY + fy * this.arena.sheetH;
+		const r = rSrc * this.arena.scale;
+		const clearance = PICKUP_CLEARANCE_SRC * this.arena.scale;
+		const minDistance = (otherR: number) => r + otherR + clearance;
+
+		for (const bumper of this.bumpers) {
+			if (Math.hypot(x - bumper.x, y - bumper.y) < minDistance(bumper.r))
+				return false;
+		}
+
+		for (const stone of this.allStones) {
+			if (Math.hypot(x - stone.x, y - stone.y) < minDistance(stone.r))
+				return false;
+		}
+
+		for (const pickup of this.pickups) {
+			const pos = this.pickupPosition(pickup);
+			if (
+				Math.hypot(x - pos.x, y - pos.y) <
+				minDistance(pickup.rSrc * this.arena.scale)
+			)
+				return false;
+		}
+
+		return true;
+	}
+
+	private collectPowerPickup(stone: StoneState | null): void {
+		if (!stone || stone.power !== PowerType.NONE || this.pickups.length === 0)
+			return;
+
+		for (const pickup of [...this.pickups]) {
+			const pos = this.pickupPosition(pickup);
+			const pickupR = pickup.rSrc * this.arena.scale;
+			if (Math.hypot(stone.x - pos.x, stone.y - pos.y) > stone.r + pickupR)
+				continue;
+
+			stone.power = pickup.type;
+			this.powerRegistry.get(pickup.type).onApply(stone, this.arena);
+			this.pickups = this.pickups.filter((p) => p.id !== pickup.id);
+			this.drawPowerPickups();
+			this.showPowerPickupNotice(pickup.type, pos.x, pos.y);
+			this.updateSidePanels();
+			return;
+		}
+	}
+
+	private showPowerPickupNotice(type: PowerType, x: number, y: number): void {
+		const def = ALL_POWERS[type];
+		const label = this.add
+			.text(x, y - 34 * this.arena.scale, `POWER UP\n${def.label}`, {
+				fontSize: `${Math.max(18, 28 * this.arena.scale)}px`,
+				color: "#fff7d6",
+				fontFamily: THEME.fontUrbanStone,
+				fontStyle: "bold",
+				align: "center",
+				stroke: "#171008",
+				strokeThickness: 4,
+			})
+			.setOrigin(0.5)
+			.setDepth(DEPTH_HUD + 4)
+			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
+
+		this.tweens.add({
+			targets: label,
+			y: label.y - 46 * this.arena.scale,
+			alpha: 0,
+			duration: 950,
+			ease: "Cubic.easeOut",
+			onComplete: () => label.destroy(),
+		});
+	}
+
+	private pickupPosition(pickup: PowerPickup): { x: number; y: number } {
+		return {
+			x: this.arena.sheetX + pickup.fx * this.arena.sheetW,
+			y: this.arena.sheetY + pickup.fy * this.arena.sheetH,
+		};
+	}
+
+	private drawPowerPickups(): void {
+		this.pickupGfx.clear();
+		if (!this.powerupsEnabled) return;
+
+		for (const pickup of this.pickups) {
+			const def = ALL_POWERS[pickup.type];
+			const { x, y } = this.pickupPosition(pickup);
+			const r = pickup.rSrc * this.arena.scale;
+			this.pickupGfx.fillStyle(def.accentColour, 0.25);
+			this.pickupGfx.fillCircle(x, y, r * 1.65);
+			this.pickupGfx.lineStyle(Math.max(1, 2 * this.arena.scale), 0xffffff, 0.75);
+			this.pickupGfx.strokeCircle(x, y, r * 1.15);
+			this.pickupGfx.fillStyle(def.accentColour, 0.9);
+			this.pickupGfx.fillCircle(x, y, r);
+		}
+	}
+
 	// ── Resize ────────────────────────────────────────────────────────────────
 
 	protected relayout(): void {
 		const oldArena = this.arena;
-		this.arena = rectArenaToScreen(
-			CURL_SHEET,
-			this.scale.width,
-			this.scale.height,
-		);
+		this.arena = this.resolveArena();
 
 		const vScale = this.arena.scale / oldArena.scale;
 
@@ -1825,6 +1926,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		drawIceSheet(this.sheetGfx, this.arena);
 		this.buildBumpers();
 		this.drawBumpers();
+		this.drawPowerPickups();
 		this.redrawAllStones();
 
 		this.scoreHud.update(this.turnManager.state);
@@ -1833,33 +1935,35 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
 			this.markOnlineAway(),
 		);
-		this.updatePowerPanel();
+		this.updateSidePanels();
 	}
 
 	// ── Power side panel ──────────────────────────────────────────────────────
 
-	private resolveLayout(): { rect: PanelRect; panelW: number } | null {
-		const { width: canvasW, height: canvasH } = this.scale;
-		const a = this.arena;
+	private resolveLayout(): {
+		leftPanel: PanelRect | null;
+		rightPanel: PanelRect | null;
+	} {
+		const { leftPanel, rightPanel } = resolveGameHudLayout(
+			this.scale.width,
+			this.scale.height,
+		);
+		return { leftPanel: leftPanel ?? null, rightPanel: rightPanel ?? null };
+	}
 
-		// Panel occupies the RIGHT strip beside the ice sheet.
-		const rightX = a.sheetX + a.sheetW + SIDE_PANEL_PAD;
-		const availW = canvasW - rightX - SIDE_PANEL_PAD;
-		if (availW < SIDE_PANEL_MIN_W) return null;
-
-		const panelW = Math.min(availW, SIDE_PANEL_MAX_W);
-		const panelH = canvasH - SIDE_PANEL_TOP - 16;
-		if (panelH < 200) return null;
-
-		return {
-			rect: {
-				x: rightX,
-				y: SIDE_PANEL_TOP,
-				width: panelW,
-				height: panelH,
-			},
-			panelW,
-		};
+	private resolveArena(): RectArenaPixels {
+		const layout = resolveGameHudLayout(
+			this.scale.width,
+			this.scale.height,
+		);
+		const content = layout.contentRect;
+		return rectArenaPlayableToScreenInRect(
+			CURL_SHEET,
+			content.x,
+			content.y,
+			content.width,
+			content.height,
+		);
 	}
 
 	/** Returns the power pool for the team whose turn it currently is. */
@@ -1870,61 +1974,124 @@ export class ShellCurlScene extends ResponsiveScene {
 		return this.playerPowers[team] ?? FALLBACK_POWERS;
 	}
 
-	/** Show the power panel fresh at the start of each aiming turn (resets selection to NONE). */
+	private updateSidePanels(): void {
+		this.showPowerPanel();
+		this.updateScoreLogPanel();
+	}
+
+	/** Show available powers as information only; pickups activate them during play. */
 	private showPowerPanel(): void {
 		const layout = this.resolveLayout();
-
 		if (!this.powerSidePanel) {
-			this.powerSidePanel = new PowerSidePanel(this, () => {}, DEPTH_HUD);
+			this.powerSidePanel = new PowerSidePanel(
+				this,
+				() => {},
+				DEPTH_HUD,
+				"TEMPLE CURLING",
+				true,
+			);
 		}
-		if (!layout) {
-			// No room to dock — collapse into an edge drop-down instead of vanishing.
+
+		const powers = this.powerupsEnabled
+			? GAME_POWERS["temple-curling"]
+			: [PowerType.NONE];
+		if (!layout.leftPanel) {
 			this.powerSidePanel.showCollapsible(
-				"right",
-				this.currentTeamPowers(),
+				"left",
+				powers,
 				PowerType.NONE,
-				this.currentPowerUsed(),
 			);
 			return;
 		}
-		this.powerSidePanel.show(
-			layout.rect,
-			this.currentTeamPowers(),
-			PowerType.NONE,
-			this.currentPowerUsed(),
-		);
+
+		this.powerSidePanel.show(layout.leftPanel, powers, PowerType.NONE);
 	}
 
 	/** Refresh the power panel on resize — preserves the current selection. */
 	private updatePowerPanel(): void {
+		this.showPowerPanel();
+	}
+
+	private updateScoreLogPanel(): void {
 		const layout = this.resolveLayout();
-		const isAiming = this.turnManager.state.phase === "aiming";
+		this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
+		const content = {
+			title: "SCORE LOG",
+			rows: this.buildScoreLogRows(),
+			footerRows: this.buildScoreFooterRows(),
+		};
 
-		if (!isAiming) {
-			this.powerSidePanel?.hide();
+		if (!layout.rightPanel) {
+			this.scoreLogPanel.updateCollapsible("right", content);
 			return;
 		}
 
-		if (!this.powerSidePanel) {
-			this.powerSidePanel = new PowerSidePanel(this, () => {}, DEPTH_HUD);
-		}
-		const sel = this.powerSidePanel.getSelected();
-		if (!layout) {
-			// No room to dock — collapse into an edge drop-down instead of vanishing.
-			this.powerSidePanel.showCollapsible(
-				"right",
-				this.currentTeamPowers(),
-				sel,
-				this.currentPowerUsed(),
-			);
-			return;
-		}
-		this.powerSidePanel.show(
-			layout.rect,
-			this.currentTeamPowers(),
-			sel,
-			this.currentPowerUsed(),
-		);
+		this.scoreLogPanel.update({ ...content, rect: layout.rightPanel });
+	}
+
+	private buildScoreLogRows(): SidePanelRow[] {
+		return [{ label: "No scores yet", muted: true }];
+	}
+
+	private buildScoreFooterRows(): SidePanelRow[] {
+		const state = this.turnManager.state;
+		const rows: SidePanelRow[] = [
+			{
+				label: "END",
+				value: `${Math.min(state.currentEnd + 1, TOTAL_ENDS)}/${TOTAL_ENDS}`,
+				labelColor: THEME.textGold,
+				valueColor: THEME.textGold,
+				labelFontSize: "14px",
+				valueFontSize: "18px",
+			},
+			{
+				label: "STATUS",
+				value: state.phase.toUpperCase(),
+				labelColor: THEME.textJade,
+				valueColor: THEME.text,
+				labelFontSize: "13px",
+				valueFontSize: "16px",
+			},
+			{
+				label: "IN HOUSE",
+				value: String(
+					this.allStones.filter((s) => isStoneInHouse(s, this.arena)).length,
+				),
+				labelColor: THEME.text,
+				valueColor: THEME.text,
+				labelFontSize: "13px",
+				valueFontSize: "18px",
+			},
+			{
+				label: "ACTIVE POWER",
+				value: this.activeStone?.power
+					? ALL_POWERS[this.activeStone.power].label
+					: "None",
+				valueColor:
+					this.activeStone?.power && this.activeStone.power !== PowerType.NONE
+						? THEME.textGold
+						: undefined,
+				labelFontSize: "13px",
+				valueFontSize: "16px",
+			},
+		];
+
+		state.score.forEach((score, index) => {
+			rows.push({
+				label: `P${index + 1}`,
+				value: String(score),
+				labelColor: this.playerHexColour(index),
+				valueColor: this.playerHexColour(index),
+				labelFontSize: "13px",
+				valueFontSize: "22px",
+			});
+		});
+
+		return rows;
+	}
+
+	private playerHexColour(player: number): string {
+		return PLAYER_COLOURS[player % PLAYER_COLOURS.length] ?? THEME.textGold;
 	}
 
 	private currentPowerUsed(): Set<PowerType> {

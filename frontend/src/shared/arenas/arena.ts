@@ -68,6 +68,28 @@ export function arenaToScreenInRect(
 	};
 }
 
+/** Fit the playable ellipse bounds into a rectangle, ignoring authored margins. */
+export function arenaPlayableToScreenInRect(
+	def: ArenaDef,
+	rectX: number,
+	rectY: number,
+	rectW: number,
+	rectH: number,
+): ArenaPixels {
+	const boundsW = def.rx * 2;
+	const boundsH = def.ry * 2;
+	const scale = Math.min(rectW / boundsW, rectH / boundsH);
+	const offX = rectX + (rectW - boundsW * scale) / 2;
+	const offY = rectY + (rectH - boundsH * scale) / 2;
+	return {
+		cx: offX + def.rx * scale,
+		cy: offY + def.ry * scale,
+		rx: def.rx * scale,
+		ry: def.ry * scale,
+		scale,
+	};
+}
+
 // ── Boundary maths ────────────────────────────────────────────────────────────
 
 /** True if the point (px, py) is inside the elliptical ring. */

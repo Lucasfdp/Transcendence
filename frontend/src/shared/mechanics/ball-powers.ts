@@ -26,7 +26,7 @@ import type { ArenaPixels } from "../arenas/arena";
 import { BALL_FRICTION_BASE, type BallState } from "./ball";
 import {
 	PowerType,
-	HEAVY_RADIUS_FACTOR,
+	HEAVY_SPEED_FACTOR,
 	GIANT_RADIUS_FACTOR,
 	TINY_RADIUS_FACTOR,
 	ROCKET_SPEED_FACTOR,
@@ -66,7 +66,7 @@ export { BALL_FRICTION_BASE };
 /**
  * Mutate `ball` at launch time to apply the selected shell power.
  * Call exactly once per shot, after resetBall() has reset ball.r and velocity.
- * Powers not in the table below are no-ops (NONE, SHIELD, VORTEX, CLONE,
+ * Powers not in the table below are no-ops (NONE, SHIELD, VORTEX, MIRROR,
  * LIGHTNING, MAGNET, STICKY, RICOCHET, SPLITTER, BOOMERANG — these either
  * require scene-level creation logic or have no ball-physics analogue).
  */
@@ -89,7 +89,8 @@ export function applyBallPower(
 	switch (power) {
 		// ── Radius modifiers ───────────────────────────────────────────────────────
 		case PowerType.HEAVY:
-			ext.r *= HEAVY_RADIUS_FACTOR;
+			ext.vx *= HEAVY_SPEED_FACTOR;
+			ext.vy *= HEAVY_SPEED_FACTOR;
 			break;
 
 		case PowerType.GIANT:
@@ -160,7 +161,7 @@ export function applyBallPower(
 		case PowerType.NONE:
 		case PowerType.SHIELD:
 		case PowerType.VORTEX:
-		case PowerType.CLONE:
+		case PowerType.MIRROR:
 		case PowerType.LIGHTNING:
 		case PowerType.MAGNET:
 		case PowerType.STICKY:

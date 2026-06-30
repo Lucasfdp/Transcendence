@@ -108,7 +108,7 @@ const GAME_ROUTES: Record<
 > = {
 	"kame-knock": {
 		label: "Kame Knock",
-		description: "Precision shell shots in the dojo arena.",
+		description: "Precision shell launches in the dojo arena.",
 		available: true,
 	},
 	"bamboo-bash": {
@@ -118,7 +118,7 @@ const GAME_ROUTES: Record<
 	},
 	"temple-curling": {
 		label: "Temple Curling",
-		description: "Slide stones across the temple sheet.",
+		description: "Slide shells across the temple sheet.",
 		available: true,
 	},
 	"bell-clash": {

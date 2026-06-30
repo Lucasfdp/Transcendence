@@ -45,7 +45,7 @@ const GAME_SCENES: Record<string, GameSceneConfig> = {
 	"kame-knock": {
 		targetScene: "KameKnockScene",
 		playerCount: 1,
-		localModes: { solo: true, versus: false },
+		localModes: { solo: true, versus: true },
 		defaultLocalMode: "solo",
 	},
 	"bamboo-bash": {
@@ -256,11 +256,18 @@ function PowerupMatchmakingPanel({
 			setMessageTone("muted");
 			return;
 		}
+		const playerCount = localMode === "versus" ? localVsPlayerCount : 1;
 		onLaunch({
 			gameId,
 			targetScene: sceneData.targetScene,
-			shellSelection: { player0: [], player1: [] },
+			shellSelection: Object.fromEntries(
+				Array.from({ length: playerCount }, (_value, index) => [
+					`player${index}`,
+					[],
+				]),
+			) as Record<string, string[]>,
 			localMode,
+			localPlayerCount: playerCount,
 			localPowerupsEnabled,
 		});
 	};

@@ -72,9 +72,20 @@ export function rectArenaToScreen(
 	canvasW: number,
 	canvasH: number,
 ): RectArenaPixels {
-	const scale = Math.min(canvasW / def.srcW, canvasH / def.srcH);
-	const offX = (canvasW - def.srcW * scale) / 2;
-	const offY = (canvasH - def.srcH * scale) / 2;
+	return rectArenaToScreenInRect(def, 0, 0, canvasW, canvasH);
+}
+
+/** Letterbox-fit the arena def into an arbitrary canvas-space rectangle. */
+export function rectArenaToScreenInRect(
+	def: RectArenaDef,
+	rectX: number,
+	rectY: number,
+	rectW: number,
+	rectH: number,
+): RectArenaPixels {
+	const scale = Math.min(rectW / def.srcW, rectH / def.srcH);
+	const offX = rectX + (rectW - def.srcW * scale) / 2;
+	const offY = rectY + (rectH - def.srcH * scale) / 2;
 
 	const sheetX = offX + def.sheetX * scale;
 	const sheetY = offY + def.sheetY * scale;
@@ -133,6 +144,29 @@ export function rectArenaToScreen(
 		orientation,
 		scale,
 	};
+}
+
+/** Fit the playable sheet bounds into a rectangle, ignoring authored margins. */
+export function rectArenaPlayableToScreenInRect(
+	def: RectArenaDef,
+	rectX: number,
+	rectY: number,
+	rectW: number,
+	rectH: number,
+): RectArenaPixels {
+	return rectArenaToScreenInRect(
+		{
+			...def,
+			srcW: def.sheetW,
+			srcH: def.sheetH,
+			sheetX: 0,
+			sheetY: 0,
+		},
+		rectX,
+		rectY,
+		rectW,
+		rectH,
+	);
 }
 
 // ── Boundary helpers ──────────────────────────────────────────────────────────

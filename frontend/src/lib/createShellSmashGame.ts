@@ -13,8 +13,9 @@ import type { OnlineMatchContext } from "../services/network/gameSocket";
 export interface ShellSmashStartData {
 	gameId: GameId;
 	targetScene: string;
-	shellSelection: { player0: string[]; player1: string[] };
+	shellSelection: Record<string, string[]>;
 	localMode?: "solo" | "versus";
+	localPlayerCount?: number;
 	localPowerupsEnabled?: boolean;
 	onlineMatch?: OnlineMatchContext;
 }
@@ -50,6 +51,7 @@ export function createShellSmashGame(
 	if (initialScene) {
 		game.registry.set("shellSelection", initialScene.shellSelection);
 		game.registry.set("localMode", initialScene.localMode ?? "solo");
+		game.registry.set("localPlayerCount", initialScene.localPlayerCount ?? 1);
 		game.registry.set(
 			"localPowerupsEnabled",
 			initialScene.localPowerupsEnabled ?? true,

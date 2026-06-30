@@ -18,6 +18,7 @@ import { PanelRect } from "./side-panel";
 
 const PAD = 12;
 const TITLE_H = 30;
+const SECTION_H = 26;
 const ROW_H = 28;
 const ICON_R = 7; // icon circle radius
 const DESC_H = 68; // description footer height (name + two wrapped lines)
@@ -50,43 +51,43 @@ const POWER_LABELS: Record<PowerType, string> = {
 	[PowerType.STICKY]: "Sticky",
 	[PowerType.LIGHTNING]: "Lightning",
 	[PowerType.VORTEX]: "Vortex",
-	[PowerType.CLONE]: "Clone",
+	[PowerType.MIRROR]: "Mirror",
 	[PowerType.RICOCHET]: "Ricochet",
 	[PowerType.PHANTOM]: "Phantom",
 };
 
 const POWER_DESC: Record<PowerType, string> = {
 	[PowerType.NONE]: "Standard delivery, no special effect",
-	[PowerType.HEAVY]: "Extra knockback on contact with other stones",
-	[PowerType.BOMB]: "Explodes on first hit, scattering nearby stones",
-	[PowerType.SPLITTER]: "Splits into 3 smaller stones on first collision",
-	[PowerType.GHOST]: "Passes through opponent stones without deflecting",
-	[PowerType.MAGNET]: "Pulls nearby enemy stones toward your delivery",
+	[PowerType.HEAVY]: "Slower and heavier; harder to deflect",
+	[PowerType.BOMB]: "Explodes on first hit, scattering nearby shells",
+	[PowerType.SPLITTER]: "Splits into 3 smaller shells on first collision",
+	[PowerType.GHOST]: "Passes through opponent shells without deflecting",
+	[PowerType.MAGNET]: "Pulls nearby enemy shells toward your delivery",
 	[PowerType.SPINNING]: "Follows an unpredictable curved path",
 	[PowerType.BOUNCER]: "Bounces off bumpers with an extra speed boost",
 	[PowerType.SHIELD]: "Immune to all enemy power effects this throw",
-	[PowerType.FREEZE]: "Any stone you touch is frozen in place",
+	[PowerType.FREEZE]: "Any shell you touch is frozen in place",
 	[PowerType.SLICK]: "Extra low friction — slides much farther than normal",
 	[PowerType.ROCKET]:
 		"Launches at double speed — harder to aim but massive momentum",
 	[PowerType.GIANT]:
-		"Your stone is twice as large — covers more ground on delivery",
+		"Your shell is twice as large — covers more ground on delivery",
 	[PowerType.TINY]:
 		"Shrinks to half size — slips through tight gaps effortlessly",
 	[PowerType.BOOMERANG]:
 		"Curves outward then reverses, striking targets twice",
 	[PowerType.REPEL]:
-		"Blasts nearby stones away on contact — clears the house",
+		"Blasts nearby shells away on contact — clears the house",
 	[PowerType.STICKY]:
-		"Adheres to the first stone it touches, forming a cluster",
+		"Adheres to the first shell it touches, forming a cluster",
 	[PowerType.LIGHTNING]:
-		"Strikes a random opponent stone with a bolt on landing",
+		"Strikes a random opponent shell with a bolt on landing",
 	[PowerType.VORTEX]:
-		"Creates a whirlpool that slowly drags nearby stones in",
-	[PowerType.CLONE]:
-		"Spawns a ghost copy that follows the same path one beat later",
+		"Creates a whirlpool that slowly drags nearby shells in",
+	[PowerType.MIRROR]:
+		"Creates a mirror copy on the opposite path",
 	[PowerType.RICOCHET]:
-		"Bounces off any stone it hits at full speed — chain collisions",
+		"Bounces off any shell it hits at full speed — chain collisions",
 	[PowerType.PHANTOM]:
 		"Invisible while moving; only revealed when it comes to rest",
 };
@@ -111,10 +112,17 @@ const ACCENT_COLOURS: Record<PowerType, number> = {
 	[PowerType.STICKY]: 0xaa8855,
 	[PowerType.LIGHTNING]: 0xeeff44,
 	[PowerType.VORTEX]: 0x6699ff,
-	[PowerType.CLONE]: 0x55dddd,
+	[PowerType.MIRROR]: 0x55dddd,
 	[PowerType.RICOCHET]: 0xff9944,
 	[PowerType.PHANTOM]: 0xbbbbbb,
 };
+
+export interface PowerPanelInfoRow {
+	label: string;
+	value: string;
+	labelColor?: string;
+	valueColor?: string;
+}
 
 // ── PowerSidePanel ────────────────────────────────────────────────────────────
 
@@ -144,6 +152,9 @@ export class PowerSidePanel {
 		private readonly scene: Phaser.Scene,
 		private readonly onSelect: (type: PowerType) => void,
 		private readonly depth = 20,
+		private readonly gameTitle = "GAME",
+		private readonly readOnly = false,
+		private readonly infoRows: () => PowerPanelInfoRow[] = () => [],
 	) {
 		this.gfx = scene.add.graphics().setDepth(depth);
 		this.scene.input.on("wheel", this.onWheel, this);
@@ -239,7 +250,7 @@ export class PowerSidePanel {
 		} else {
 			const maxH = sh - COLLAPSE_TOP - EDGE_PAD;
 			const need =
-				headerH + 8 + this.powers.length * ROW_H + DESC_H + PAD;
+				headerH + SECTION_H + 8 + this.powers.length * ROW_H + DESC_H + PAD;
 			this.rect = {
 				x,
 				y: COLLAPSE_TOP,
@@ -278,18 +289,26 @@ export class PowerSidePanel {
 		const r = this.rect;
 
 		// Frame
-		this.gfx.fillStyle(0x0a1208, 0.88);
+		this.gfx.fillStyle(THEME.stoneDeep, 0.88);
 		this.gfx.fillRoundedRect(r.x, r.y, r.width, r.height, 12);
-		this.gfx.lineStyle(1.5, THEME.gold, 0.65);
+		this.gfx.lineStyle(2, THEME.stoneLight, 0.64);
 		this.gfx.strokeRoundedRect(r.x, r.y, r.width, r.height, 12);
+		this.gfx.lineStyle(1, THEME.gold, 0.52);
+		this.gfx.strokeRoundedRect(
+			r.x + 3,
+			r.y + 3,
+			r.width - 6,
+			r.height - 6,
+			10,
+		);
 
 		// Title
-		this.addText(r.x + PAD, r.y + PAD - 2, "POWERS", {
-			fontSize: "14px",
-			color: THEME.textGold,
-			fontFamily: THEME.font,
+		this.addText(r.x + PAD, r.y + PAD - 2, this.gameTitle, {
+			fontSize: "20px",
+			color: THEME.textJade,
+			fontFamily: THEME.fontBlowbrush,
 			fontStyle: "bold",
-		});
+		}).setShadow(0, 2, "rgba(5, 28, 18, 0.78)", 2);
 
 		// Collapsible header: chevron + a click-zone over the title strip that
 		// toggles the panel open/closed. When collapsed we draw only this strip.
@@ -319,7 +338,7 @@ export class PowerSidePanel {
 			if (this.collapsed) return;
 		}
 
-		this.gfx.lineStyle(1, THEME.gold, 0.25);
+		this.gfx.lineStyle(1, THEME.stoneLight, 0.36);
 		this.gfx.lineBetween(
 			r.x + PAD,
 			r.y + PAD + TITLE_H,
@@ -327,9 +346,37 @@ export class PowerSidePanel {
 			r.y + PAD + TITLE_H,
 		);
 
+		let sectionY = r.y + PAD + TITLE_H + 9;
+		const infoRows = this.infoRows();
+		infoRows.forEach((row, index) => {
+			const y = sectionY + index * 22;
+			this.addText(r.x + PAD, y, row.label, {
+				fontSize: "12px",
+				color: row.labelColor ?? THEME.textJade,
+				fontFamily: THEME.fontUrbanStone,
+				fontStyle: "bold",
+			}).setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
+			this.addText(r.x + r.width - PAD, y, row.value, {
+				fontSize: "13px",
+				color: row.valueColor ?? THEME.textGold,
+				fontFamily: THEME.fontUrbanStone,
+				fontStyle: "bold",
+			})
+				.setOrigin(1, 0)
+				.setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
+		});
+		sectionY += infoRows.length * 22;
+
+		this.addText(r.x + PAD, sectionY, "AVAILABLE POWERS", {
+			fontSize: "13px",
+			color: THEME.textGold,
+			fontFamily: THEME.fontUrbanStone,
+			fontStyle: "bold",
+		}).setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
+
 		// Power rows. When the list is taller than the space above the footer, show
 		// a scrollable window (mouse-wheel over the panel) instead of clipping rows.
-		const rowsStartY = r.y + PAD + TITLE_H + 8;
+		const rowsStartY = sectionY + SECTION_H;
 		const iconX = r.x + PAD + ICON_R;
 		const regionBot = r.y + r.height - DESC_H - PAD;
 		const visibleRows = Math.max(
@@ -418,18 +465,18 @@ export class PowerSidePanel {
 					{
 						fontSize: "12px",
 						color: labelColor,
-						fontFamily: THEME.font,
+						fontFamily: THEME.fontUrbanStone,
 						fontStyle: isSel && !isUsed ? "bold" : "normal",
 					},
 					dim,
 				);
 
-				// Hit zone — only for non-used powers
+				// Hit zone — hover is always useful; selection can be disabled for pickup mode.
 				if (!isUsed) {
 					const zone = this.scene.add
 						.zone(r.x + 4, ry, r.width - 8, ROW_H)
 						.setOrigin(0, 0)
-						.setInteractive({ useHandCursor: true });
+						.setInteractive({ useHandCursor: !this.readOnly });
 
 					zone.on("pointerover", () => {
 						this.hovered = power;
@@ -440,6 +487,7 @@ export class PowerSidePanel {
 						this.rebuild();
 					});
 					zone.on("pointerup", () => {
+						if (this.readOnly) return;
 						if (power === this.selected) return;
 						this.selected = power;
 						this.onSelect(power);
@@ -469,22 +517,26 @@ export class PowerSidePanel {
 
 		// Description footer
 		const footerY = r.y + r.height - DESC_H - PAD;
-		const descPower = this.hovered ?? this.selected;
+		const descPower =
+			this.hovered ??
+			(this.powers.includes(this.selected)
+				? this.selected
+				: (this.powers[0] ?? this.selected));
 
 		this.gfx.lineStyle(1, THEME.gold, 0.25);
 		this.gfx.lineBetween(r.x + PAD, footerY, r.x + r.width - PAD, footerY);
 
 		this.addText(r.x + PAD, footerY + 10, POWER_LABELS[descPower], {
-			fontSize: "12px",
+			fontSize: "14px",
 			color: THEME.textGold,
-			fontFamily: THEME.font,
+			fontFamily: THEME.fontUrbanStone,
 			fontStyle: "bold",
 		});
 
 		this.addText(r.x + PAD, footerY + 28, POWER_DESC[descPower], {
 			fontSize: "10px",
 			color: THEME.text,
-			fontFamily: THEME.font,
+			fontFamily: THEME.fontUrbanStone,
 			wordWrap: { width: r.width - PAD * 2 },
 		});
 	}
@@ -495,12 +547,13 @@ export class PowerSidePanel {
 		text: string,
 		style: Phaser.Types.GameObjects.Text.TextStyle,
 		alpha = 1,
-	): void {
+	): Phaser.GameObjects.Text {
 		const t = this.scene.add
 			.text(x, y, text, style)
 			.setDepth(this.depth + 1);
 		if (alpha < 1) t.setAlpha(alpha);
 		this.texts.push(t);
+		return t;
 	}
 
 	private clear(): void {

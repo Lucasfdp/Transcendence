@@ -43,11 +43,11 @@ const POWER_DESC: Record<PowerType, string> = {
 	[PowerType.BOMB]: "Explodes on first hit",
 	[PowerType.SPLITTER]: "Splits into 3 on collision",
 	[PowerType.GHOST]: "Phases through opponents",
-	[PowerType.MAGNET]: "Pulls nearby enemy stones",
+	[PowerType.MAGNET]: "Pulls nearby enemy shells",
 	[PowerType.SPINNING]: "Unpredictable curved path",
 	[PowerType.BOUNCER]: "Extra bounce off bumpers",
 	[PowerType.SHIELD]: "Immune to power effects",
-	[PowerType.FREEZE]: "Freezes stones on contact",
+	[PowerType.FREEZE]: "Freezes shells on contact",
 	[PowerType.SLICK]: "Slides far, low friction",
 };
 

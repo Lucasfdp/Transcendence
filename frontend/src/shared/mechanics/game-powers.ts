@@ -1,9 +1,8 @@
 /**
  * shared/mechanics/game-powers.ts
  *
- * Defines the full set of shell powers available in the pre-game ShellPickerScene.
- * All 21 special powers are selectable in every minigame — the player chooses freely
- * regardless of whether the power has a bespoke physics hook in that game.
+ * Defines the active shell powers shown to players.
+ * Pending powers stay implemented in power-system.ts but are not exposed here.
  *
  * NONE is always implicitly available and must NOT appear in this list.
  */
@@ -16,33 +15,20 @@ export type GameId =
 	| "bell-clash"
 	| "kame-knock";
 
-/** All 21 special shell powers (excludes NONE, which is always free). */
+/** Active special shell powers (excludes NONE, which is always implicit). */
 export const ALL_SPECIAL_POWERS: PowerType[] = [
 	PowerType.HEAVY,
-	PowerType.BOMB,
 	PowerType.SPLITTER,
-	PowerType.GHOST,
-	PowerType.MAGNET,
 	PowerType.SPINNING,
-	PowerType.BOUNCER,
-	PowerType.SHIELD,
-	PowerType.FREEZE,
-	PowerType.SLICK,
 	PowerType.ROCKET,
 	PowerType.GIANT,
 	PowerType.TINY,
-	PowerType.BOOMERANG,
-	PowerType.REPEL,
-	PowerType.STICKY,
-	PowerType.LIGHTNING,
-	PowerType.VORTEX,
-	PowerType.CLONE,
-	PowerType.RICOCHET,
+	PowerType.MIRROR,
 	PowerType.PHANTOM,
 ];
 
 /**
- * Every game exposes the full power roster.
+ * Every game exposes the active power roster.
  * Kept as a Record<GameId, ...> so existing call-sites (scene fallback pools,
  * type-checks) continue to compile without changes.
  */

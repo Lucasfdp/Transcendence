@@ -20,9 +20,12 @@ const TARGET_TYPES = [
 	{ kind: "drum" as const, points: 150, radiusSrc: 32 },
 ] as const;
 
+type KameKnockTarget = KameKnockSnapshot["targets"][number];
+
 @Injectable()
 export class KameKnockEngine extends BaseEngine implements GameEngine {
 	readonly gameId = "kame-knock";
+	private readonly roundTargetSets = new Map<string, KameKnockTarget[][]>();
 
 	createInitialState(
 		context: GameEngineCreateContext,
@@ -52,7 +55,8 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		const state = room.state as KameKnockSnapshot;
 		room.status = "active";
 		state.phase = "active";
-		this.resetRoundTargets(state, room.players.length);
+		this.createRoundTargetSet(room.matchId, state.roundNumber);
+		this.resetTurnTargets(room.matchId, state);
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 	}
@@ -193,6 +197,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 			room.status = "finished";
 			state.phase = "finished";
 			state.winnerSide = this.getWinnerSide(state.score);
+			this.roundTargetSets.delete(room.matchId);
 			state.seq = ++room.seq;
 			this.refreshSnapshotPlayers(room);
 			return room;
@@ -202,21 +207,25 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 			Math.floor(state.turnNumber / room.players.length) + 1;
 		if (nextRound !== state.roundNumber) {
 			state.roundNumber = nextRound;
-			this.resetRoundTargets(state, room.players.length);
+			state.roundScores = Array.from(
+				{ length: room.players.length },
+				() => 0,
+			);
+			this.createRoundTargetSet(room.matchId, state.roundNumber);
 		}
 
 		state.currentTurn = state.turnNumber % room.players.length;
+		this.resetTurnTargets(room.matchId, state);
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;
 	}
 
-	private resetRoundTargets(
-		state: KameKnockSnapshot,
-		playerCount: number,
-	): void {
+	private createRoundTargetSet(matchId: string, roundNumber: number): void {
+		const targetSets = this.roundTargetSets.get(matchId) ?? [];
+		if (targetSets[roundNumber - 1]) return;
 		const config =
-			ROUND_CONFIGS[state.roundNumber - 1] ??
+			ROUND_CONFIGS[roundNumber - 1] ??
 			ROUND_CONFIGS[ROUND_CONFIGS.length - 1];
 		const flags = this.shuffle(
 			Array.from(
@@ -224,19 +233,32 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 				(_value, index) => index < config.breakableTargets,
 			),
 		);
-		state.roundScores = Array.from({ length: playerCount }, () => 0);
-		state.targets = [];
-		state.nextTargetId = 1;
-		for (const breakable of flags) this.spawnTarget(state, breakable);
+		const targets: KameKnockTarget[] = [];
+		for (const breakable of flags)
+			this.spawnTarget(targets, targets.length + 1, breakable);
+		targetSets[roundNumber - 1] = targets;
+		this.roundTargetSets.set(matchId, targetSets);
 	}
 
-	private spawnTarget(state: KameKnockSnapshot, breakable: boolean): void {
-		const spot = this.randomSpot(state.targets) ?? this.fallbackSpot();
+	private resetTurnTargets(matchId: string, state: KameKnockSnapshot): void {
+		this.createRoundTargetSet(matchId, state.roundNumber);
+		const targets =
+			this.roundTargetSets.get(matchId)?.[state.roundNumber - 1] ?? [];
+		state.targets = targets.map((target) => ({ ...target, ageMs: 0 }));
+		state.nextTargetId = targets.length + 1;
+	}
+
+	private spawnTarget(
+		targets: KameKnockTarget[],
+		id: number,
+		breakable: boolean,
+	): void {
+		const spot = this.randomSpot(targets) ?? this.fallbackSpot();
 		const type =
 			TARGET_TYPES[Math.floor(Math.random() * TARGET_TYPES.length)] ??
 			TARGET_TYPES[0];
-		state.targets.push({
-			id: state.nextTargetId++,
+		targets.push({
+			id,
 			kind: type.kind,
 			breakable,
 			nx: spot.nx,

@@ -14,7 +14,7 @@ import { ResponsiveScene } from "../../shared/responsive-scene";
 import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
 	ArenaPixels,
-	arenaToScreen,
+	arenaPlayableToScreenInRect,
 	drawSumoRing,
 } from "../../shared/arenas/arena";
 import {
@@ -53,6 +53,7 @@ import {
 	type GameSnapshot,
 	type OnlineMatchContext,
 } from "../../services/network/gameSocket";
+import { resolveGameHudLayout } from "../../shared/game-ui";
 
 type ZoneKind = "red" | "yellow" | "green";
 
@@ -65,12 +66,6 @@ interface ScoreZone {
 const SHOTS_TOTAL = 3;
 const MAX_DRAG_SRC = 380;
 
-const SIDE_PANEL_MIN_CANVAS_W = 1_180;
-const SIDE_PANEL_MIN_CANVAS_H = 560;
-const SIDE_PANEL_MIN_W = 168;
-const SIDE_PANEL_MAX_W = 230;
-const SIDE_PANEL_PAD = 16;
-const SIDE_PANEL_TOP = 74;
 const SCORE_LOG_LIMIT = 8;
 const LAUNCH_SPEED_SRC = 4_720;
 const BELL_RADIUS_SRC = 150;
@@ -218,11 +213,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.activePower = PowerType.NONE;
 		this.powerUsed = Array.from({ length: 5 }, () => new Set<PowerType>());
 
-		this.arena = arenaToScreen(
-			ARENA_01,
-			this.scale.width,
-			this.scale.height,
-		);
+		this.arena = this.resolveArena();
 
 		// Read shell selection from registry.
 		const sel = this.registry.get("shellSelection") as
@@ -662,8 +653,8 @@ export class BellClashScene extends ResponsiveScene {
 		this.onlineStatusText = this.add
 			.text(this.scale.width / 2, 48, "", {
 				fontSize: "13px",
-				color: "#d4a843",
-				fontFamily: "monospace",
+				color: THEME.textGold,
+				fontFamily: THEME.fontUrbanStone,
 				fontStyle: "bold",
 			})
 			.setOrigin(0.5, 0)
@@ -730,7 +721,7 @@ export class BellClashScene extends ResponsiveScene {
 			this.updateOnlineStatus("Waiting for opponents...");
 		else
 			this.updateOnlineStatus(
-				`Round ${snapshot.roundNumber}/${snapshot.totalRounds}  Shot ${this.onlineLocalShotNumber + 1}/${snapshot.shotsPerRound}`,
+				`Round ${snapshot.roundNumber}/${snapshot.totalRounds}  Shell ${this.onlineLocalShotNumber + 1}/${snapshot.shotsPerRound}`,
 			);
 	}
 
@@ -787,11 +778,11 @@ export class BellClashScene extends ResponsiveScene {
 			this.onlineBallWasMoving = true;
 			this.launchedThisShot = true;
 			this.updateOnlineStatus(
-				`Shot ${event.shotNumber}/${this.onlineShotsPerRound}`,
+				`Shell ${event.shotNumber}/${this.onlineShotsPerRound}`,
 			);
 		} else {
 			this.updateOnlineStatus(
-				`P${event.side + 1} shot ${event.shotNumber}/${this.onlineShotsPerRound}`,
+				`P${event.side + 1} shell ${event.shotNumber}/${this.onlineShotsPerRound}`,
 			);
 		}
 		this.drawBalls();
@@ -848,7 +839,7 @@ export class BellClashScene extends ResponsiveScene {
 			return;
 		}
 		this.updateOnlineStatus(
-			`Round ${this.onlineRoundNumber}/${this.onlineTotalRounds}  Shot ${this.onlineLocalShotNumber + 1}/${this.onlineShotsPerRound}`,
+			`Round ${this.onlineRoundNumber}/${this.onlineTotalRounds}  Shell ${this.onlineLocalShotNumber + 1}/${this.onlineShotsPerRound}`,
 		);
 		this.syncOnlineSlingshot();
 		this.showPowerPanel();
@@ -960,30 +951,30 @@ export class BellClashScene extends ResponsiveScene {
 		if (!this.powerSidePanel) {
 			this.powerSidePanel = new PowerSidePanel(
 				this,
-				(type) => {
-					this.activePower = type;
-				},
+				() => {},
 				DEPTH_HUD,
+				"BELL CLASH",
+				true,
 			);
 		}
 
 		const p = this.currentPlayerIndex();
+		const powers = this.playerPowers[p].filter(
+			(power) => power !== PowerType.NONE,
+		);
 		if (!layout.leftPanel) {
-			// No room to dock — collapse into an edge drop-down instead of vanishing.
 			this.powerSidePanel.showCollapsible(
 				"left",
-				this.playerPowers[p],
-				this.activePower,
-				this.powerUsed[p],
+				powers,
+				PowerType.NONE,
 			);
 			return;
 		}
 
 		this.powerSidePanel.show(
 			layout.leftPanel,
-			this.playerPowers[p],
-			this.activePower,
-			this.powerUsed[p],
+			powers,
+			PowerType.NONE,
 		);
 	}
 
@@ -1001,7 +992,8 @@ export class BellClashScene extends ResponsiveScene {
 				fontFamily: THEME.font,
 				fontStyle: "bold",
 			})
-			.setDepth(DEPTH_HUD);
+			.setDepth(DEPTH_HUD)
+			.setVisible(false);
 
 		this.lastHitText = this.add
 			.text(16, 44, "LAST HIT  -", {
@@ -1010,7 +1002,8 @@ export class BellClashScene extends ResponsiveScene {
 				fontFamily: THEME.font,
 				fontStyle: "bold",
 			})
-			.setDepth(DEPTH_HUD);
+			.setDepth(DEPTH_HUD)
+			.setVisible(false);
 
 		this.shotText = this.add
 			.text(this.scale.width / 2, 16, this.formatShotText(), {
@@ -1020,13 +1013,14 @@ export class BellClashScene extends ResponsiveScene {
 				fontStyle: "bold",
 			})
 			.setOrigin(0.5, 0)
-			.setDepth(DEPTH_HUD);
+			.setDepth(DEPTH_HUD)
+			.setVisible(false);
 	}
 
 	private formatShotText(): string {
 		if (this.onlineMatch)
-			return `ROUND ${this.onlineRoundNumber}/${this.onlineTotalRounds}  SHOT ${Math.min(this.onlineLocalShotNumber + 1, this.onlineShotsPerRound)}/${this.onlineShotsPerRound}  P${this.onlineMatch.side + 1}`;
-		return `SHOT ${this.currentShot + 1}/${SHOTS_TOTAL}`;
+			return `ROUND ${this.onlineRoundNumber}/${this.onlineTotalRounds}  SHELL ${Math.min(this.onlineLocalShotNumber + 1, this.onlineShotsPerRound)}/${this.onlineShotsPerRound}  P${this.onlineMatch.side + 1}`;
+		return `SHELL ${this.currentShot + 1}/${SHOTS_TOTAL}`;
 	}
 
 	private formatScoreText(): string {
@@ -1062,32 +1056,25 @@ export class BellClashScene extends ResponsiveScene {
 	// ── Side panels ─────────────────────────────────────────────────────────────
 
 	private resolveLayout(): { leftPanel?: PanelRect; rightPanel?: PanelRect } {
-		const { width, height } = this.scale;
-		if (width < SIDE_PANEL_MIN_CANVAS_W || height < SIDE_PANEL_MIN_CANVAS_H)
-			return {};
-
-		const arena = this.arena;
-		const leftFreeW = arena.cx - arena.rx - SIDE_PANEL_PAD * 2;
-		const rightFreeW = width - (arena.cx + arena.rx) - SIDE_PANEL_PAD * 2;
-		const panelW = Math.floor(
-			Math.min(SIDE_PANEL_MAX_W, leftFreeW, rightFreeW),
+		const { leftPanel, rightPanel } = resolveGameHudLayout(
+			this.scale.width,
+			this.scale.height,
 		);
-		if (panelW < SIDE_PANEL_MIN_W) return {};
-
-		const panelH = height - SIDE_PANEL_TOP - SIDE_PANEL_PAD;
-		const leftPanel = {
-			x: SIDE_PANEL_PAD,
-			y: SIDE_PANEL_TOP,
-			width: panelW,
-			height: panelH,
-		};
-		const rightPanel = {
-			x: width - SIDE_PANEL_PAD - panelW,
-			y: SIDE_PANEL_TOP,
-			width: panelW,
-			height: panelH,
-		};
 		return { leftPanel, rightPanel };
+	}
+
+	private resolveArena(): ArenaPixels {
+		const content = resolveGameHudLayout(
+			this.scale.width,
+			this.scale.height,
+		).contentRect;
+		return arenaPlayableToScreenInRect(
+			ARENA_01,
+			content.x,
+			content.y,
+			content.width,
+			content.height,
+		);
 	}
 
 	private updateSidePanels(): void {
@@ -1095,7 +1082,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
 
 		const content = {
-			title: "SHOT LOG",
+			title: "SHELL LOG",
 			rows: this.buildScoreLogRows(),
 			footerRows: this.buildScoreFooterRows(),
 		};
@@ -1124,6 +1111,7 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private buildScoreFooterRows(): SidePanelRow[] {
+		const lastHit = this.lastHitValue();
 		if (this.onlineMatch?.snapshot?.gameId === "bell-clash") {
 			return [
 				{
@@ -1135,12 +1123,20 @@ export class BellClashScene extends ResponsiveScene {
 					valueFontSize: "18px",
 				},
 				{
-					label: "SHOT",
+					label: "SHELL",
 					value: `${Math.min(this.onlineLocalShotNumber + 1, this.onlineShotsPerRound)}/${this.onlineShotsPerRound}`,
 					labelColor: THEME.text,
 					valueColor: THEME.text,
 					labelFontSize: "13px",
 					valueFontSize: "18px",
+				},
+				{
+					label: "LAST HIT",
+					value: lastHit,
+					labelColor: THEME.textJade,
+					valueColor: THEME.text,
+					labelFontSize: "13px",
+					valueFontSize: "16px",
 				},
 				{
 					label: "ROUND SCORE",
@@ -1154,12 +1150,20 @@ export class BellClashScene extends ResponsiveScene {
 		}
 		return [
 			{
-				label: "SHOT",
+				label: "SHELL",
 				value: `${this.currentShot + 1}/${SHOTS_TOTAL}`,
 				labelColor: THEME.text,
 				valueColor: THEME.text,
 				labelFontSize: "13px",
 				valueFontSize: "18px",
+			},
+			{
+				label: "LAST HIT",
+				value: lastHit,
+				labelColor: THEME.textJade,
+				valueColor: THEME.text,
+				labelFontSize: "13px",
+				valueFontSize: "16px",
 			},
 			{
 				label: "SCORE",
@@ -1170,6 +1174,10 @@ export class BellClashScene extends ResponsiveScene {
 				valueFontSize: "24px",
 			},
 		];
+	}
+
+	private lastHitValue(): string {
+		return (this.lastHitText?.text ?? "LAST HIT  -").replace("LAST HIT", "").trim();
 	}
 
 	private addScoreEvent(label: string, value: string): void {
@@ -1418,13 +1426,16 @@ export class BellClashScene extends ResponsiveScene {
 	private popScore(x: number, y: number, label: string, color: string): void {
 		const text = this.add
 			.text(x, y, label, {
-				fontSize: "22px",
+				fontSize: "27px",
 				color,
-				fontFamily: THEME.font,
+				fontFamily: THEME.fontBlowbrush,
 				fontStyle: "bold",
+				stroke: "#10150f",
+				strokeThickness: 4,
 			})
 			.setOrigin(0.5)
-			.setDepth(DEPTH_FX);
+			.setDepth(DEPTH_FX)
+			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
 		this.tweens.add({
 			targets: text,
 			y: y - 52,
@@ -1621,11 +1632,7 @@ export class BellClashScene extends ResponsiveScene {
 
 	protected relayout(): void {
 		const oldArena = this.arena;
-		this.arena = arenaToScreen(
-			ARENA_01,
-			this.scale.width,
-			this.scale.height,
-		);
+		this.arena = this.resolveArena();
 		const velocityScale = this.arena.scale / oldArena.scale;
 
 		this.slingshot?.cancel();

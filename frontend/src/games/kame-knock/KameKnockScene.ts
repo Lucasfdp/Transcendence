@@ -15,7 +15,7 @@ import { ResponsiveScene } from "../../shared/responsive-scene";
 import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
 	ArenaPixels,
-	arenaToScreen,
+	arenaPlayableToScreenInRect,
 	drawSumoRing,
 } from "../../shared/arenas/arena";
 import {
@@ -26,6 +26,8 @@ import {
 } from "../../shared/mechanics/ball";
 import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
+import { ScoreHud } from "../../shared/mechanics/score-hud";
+import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
 import {
 	PanelRect,
@@ -65,6 +67,11 @@ import {
 	type KameKnockThrowEvent,
 	type OnlineMatchContext,
 } from "../../services/network/gameSocket";
+import {
+	PLAYER_COLOUR_VALUES,
+	PLAYER_HEX_COLOURS,
+	resolveGameHudLayout,
+} from "../../shared/game-ui";
 
 interface BallRoundConfig {
 	readonly totalTargets: number;
@@ -88,12 +95,6 @@ const PERFECT_ACCURACY = 0.35;
 const PERFECT_BONUS = 500;
 const HIT_KNOCKBACK_SRC = 90;
 const SOLID_BOUNCE_DAMP = 0.92;
-const SIDE_PANEL_MIN_CANVAS_W = 1_180;
-const SIDE_PANEL_MIN_CANVAS_H = 560;
-const SIDE_PANEL_MIN_W = 100;
-const SIDE_PANEL_MAX_W = 230;
-const SIDE_PANEL_PAD = 16;
-const SIDE_PANEL_TOP = 74;
 const SCORE_LOG_LIMIT = 8;
 const FREEZE_DURATION_MS = 5_000;
 
@@ -151,12 +152,13 @@ const TARGET_COLOURS: Record<
 };
 
 const TARGET_TYPES: TimedTargetKind[] = ["daruma", "crate", "drum"];
-const PLAYER_COLOURS = [THEME.gold, THEME.red, 0x66aaff, 0x6ab04c, 0xb56cff];
+const PLAYER_COLOURS = PLAYER_HEX_COLOURS;
 
 /** Fallback power pool when no ShellPicker selection is present. */
+const KAME_AVAILABLE_POWERS = GAME_POWERS["kame-knock"].slice(0, 8);
 const FALLBACK_POWERS: PowerType[] = [
 	PowerType.NONE,
-	...GAME_POWERS["kame-knock"],
+	...KAME_AVAILABLE_POWERS,
 ];
 
 export class KameKnockScene extends ResponsiveScene {
@@ -174,8 +176,11 @@ export class KameKnockScene extends ResponsiveScene {
 	private targetSprites = new Map<number, Phaser.GameObjects.Image>();
 	private nextTargetId = 0;
 	private currentBallIndex = 0;
+	private localTurnNumber = 0;
+	private localRoundTargetSets: TimedTarget[][] = [];
 	private launchedThisBall = false;
 	private score = 0;
+	private localScores: number[] = [0];
 	private combo = 0;
 	private running = true;
 	private scoreEvents: string[] = [];
@@ -184,6 +189,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private ballText: Phaser.GameObjects.Text | null = null;
 	private countdownText?: Phaser.GameObjects.Text;
 	private scoreLogPanel: SidePanel | null = null;
+	private scoreHud: ScoreHud | null = null;
 	private overlay?: Phaser.GameObjects.Container;
 	private overlayHitZones: Phaser.GameObjects.Zone[] = [];
 
@@ -252,8 +258,11 @@ export class KameKnockScene extends ResponsiveScene {
 		this.targets = [];
 		this.nextTargetId = 0;
 		this.currentBallIndex = 0;
+		this.localTurnNumber = 0;
+		this.localRoundTargetSets = [];
 		this.launchedThisBall = false;
 		this.score = 0;
+		this.localScores = [0];
 		this.combo = 0;
 		this.running = !this.onlineMatch;
 		this.scoreEvents = [];
@@ -263,7 +272,6 @@ export class KameKnockScene extends ResponsiveScene {
 		this.scoreLogPanel = null;
 		this.targetFreezeMs = 0;
 		this.activePower = PowerType.NONE;
-		this.localPlayerCount = 1;
 		this.powerUsed = Array.from({ length: 5 }, () => new Set<PowerType>());
 
 		this.arena = this.resolveArena();
@@ -284,15 +292,29 @@ export class KameKnockScene extends ResponsiveScene {
 				.filter(
 					(s) =>
 						(Object.values(PowerType) as string[]).includes(s) &&
-						s !== PowerType.NONE,
+						s !== PowerType.NONE &&
+						KAME_AVAILABLE_POWERS.includes(s),
 				);
 			const pool = [PowerType.NONE, ...new Set(specials)];
 			return pool.length > 1 ? pool : FALLBACK_POWERS;
 		};
 
+		const localMode = this.registry.get("localMode") as
+			| "solo"
+			| "versus"
+			| undefined;
+		const requestedLocalPlayerCount = Number(
+			this.registry.get("localPlayerCount") ?? 1,
+		);
 		this.localPlayerCount = this.onlineMatch
 			? (this.onlineMatch.snapshot?.players.length ?? 2)
-			: 1;
+			: localMode === "versus"
+				? Phaser.Math.Clamp(Math.floor(requestedLocalPlayerCount), 2, 5)
+				: 1;
+		this.localScores = Array.from(
+			{ length: this.localPlayerCount },
+			() => 0,
+		);
 		this.playerPowers = Array.from({ length: 5 }, (_, index) =>
 			buildPool(sel?.[`player${index}`]),
 		);
@@ -356,6 +378,8 @@ export class KameKnockScene extends ResponsiveScene {
 		this.countdownText?.destroy();
 		this.countdownText = undefined;
 		this.destroySidePanels();
+		this.scoreHud?.destroy();
+		this.scoreHud = null;
 		this.ballText = null;
 		if (this.onlineMatch) {
 			const socket = getGameSocket();
@@ -438,6 +462,7 @@ export class KameKnockScene extends ResponsiveScene {
 			this.activePower = PowerType.NONE;
 			this.powerSidePanel?.hide();
 			this.slingshot?.destroy();
+			this.updateScoreHud();
 			this.updateOnlineStatus("Launching...");
 			getGameSocket().emit("game:input", {
 				matchId: this.onlineMatch.matchId,
@@ -471,6 +496,7 @@ export class KameKnockScene extends ResponsiveScene {
 
 		this.activePower = PowerType.NONE;
 		this.powerSidePanel?.hide();
+		this.updateScoreHud();
 	}
 
 	// ── Stop-flag resolvers ───────────────────────────────────────────────────────
@@ -525,7 +551,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private currentPlayerIndex(): number {
 		if (this.onlineMatch?.snapshot?.gameId === "kame-knock")
 			return this.onlineMatch.snapshot.currentTurn;
-		return this.currentBallIndex % this.localPlayerCount;
+		return this.localTurnNumber % this.localPlayerCount;
 	}
 
 	private setupBallRound(): void {
@@ -533,14 +559,15 @@ export class KameKnockScene extends ResponsiveScene {
 		this.launchedThisBall = false;
 		this.combo = 0;
 		this.resetBall();
+		this.score = this.localScores[this.currentPlayerIndex()] ?? 0;
 
 		const config = BALL_ROUNDS[this.currentBallIndex];
 		if (!config) return;
 
-		const breakableFlags = this.shuffledBreakableFlags(config);
-		for (const breakable of breakableFlags) this.spawnTarget(breakable);
+		this.resetTargetsFromLocalRound(config);
 
 		if (this.ballText?.active) this.ballText.setText(this.formatBallText());
+		this.updateScoreHud();
 		if (this.scoreLogPanel) this.updateSidePanels();
 	}
 
@@ -552,13 +579,33 @@ export class KameKnockScene extends ResponsiveScene {
 		return Phaser.Utils.Array.Shuffle(flags);
 	}
 
-	private spawnTarget(breakable: boolean): void {
+	private resetTargetsFromLocalRound(config: BallRoundConfig): void {
+		this.localRoundTargetSets[this.currentBallIndex] ??=
+			this.createLocalRoundTargets(config);
+		const targetSet = this.localRoundTargetSets[this.currentBallIndex] ?? [];
+		this.targets = targetSet.map((target) => ({ ...target, ageMs: 0 }));
+		this.nextTargetId = targetSet.length;
+	}
+
+	private createLocalRoundTargets(config: BallRoundConfig): TimedTarget[] {
+		const targets: TimedTarget[] = [];
+		const breakableFlags = this.shuffledBreakableFlags(config);
+		for (const breakable of breakableFlags)
+			this.spawnTarget(targets, targets.length, breakable);
+		return targets;
+	}
+
+	private spawnTarget(
+		targets: TimedTarget[],
+		id: number,
+		breakable: boolean,
+	): void {
 		const spot =
-			randomTimedTargetSpot(this.targets) ?? this.fallbackTargetSpot();
+			randomTimedTargetSpot(targets) ?? this.fallbackTargetSpot();
 		const kind = Phaser.Math.RND.pick(TARGET_TYPES);
 		const def = TARGET_COLOURS[kind];
-		this.targets.push({
-			id: this.nextTargetId++,
+		targets.push({
+			id,
 			kind,
 			breakable,
 			nx: spot.nx,
@@ -622,9 +669,14 @@ export class KameKnockScene extends ResponsiveScene {
 			}
 			const gained =
 				target.points * this.combo + (perfect ? PERFECT_BONUS : 0);
-			this.score += gained;
+			const playerIndex = this.currentPlayerIndex();
+			this.localScores[playerIndex] =
+				(this.localScores[playerIndex] ?? 0) + gained;
+			this.score = this.localScores[playerIndex] ?? 0;
 			this.addScoreEvent(
-				`${TARGET_COLOURS[target.kind].label}  +${gained}`,
+				`${this.localPlayerCount > 1 ? `P${playerIndex + 1} ` : ""}${
+					TARGET_COLOURS[target.kind].label
+				}  +${gained}`,
 				perfect ? "PERFECT" : `x${this.combo}`,
 			);
 
@@ -678,6 +730,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.combo = 0;
 		this.powerSidePanel?.hide();
 		this.updateSidePanels();
+		this.updateScoreHud();
 		this.submitResult();
 		this.showEndScreen();
 	}
@@ -756,10 +809,10 @@ export class KameKnockScene extends ResponsiveScene {
 
 	private createOnlineStatusText(): void {
 		this.onlineStatusText = this.add
-			.text(this.scale.width / 2, 48, "", {
+			.text(this.scale.width / 2, 78, "", {
 				fontSize: "13px",
-				color: "#d4a843",
-				fontFamily: "monospace",
+				color: THEME.textGold,
+				fontFamily: THEME.fontUrbanStone,
 				fontStyle: "bold",
 			})
 			.setOrigin(0.5, 0)
@@ -805,6 +858,7 @@ export class KameKnockScene extends ResponsiveScene {
 		if (!this.launchedThisBall)
 			this.resetBallForPlayer(snapshot.currentTurn);
 		this.ballText?.setText(this.formatBallText());
+		this.updateScoreHud();
 		this.drawTargets();
 		this.drawBall();
 		this.updateSidePanels();
@@ -860,6 +914,7 @@ export class KameKnockScene extends ResponsiveScene {
 		applyBallPower(power, ball, this.arena);
 		if ((ball as BallExtState).phantomHidden) this.ballGfx.setAlpha(0.05);
 		this.powerSidePanel?.hide();
+		this.updateScoreHud();
 		this.updateOnlineStatus(
 			event.side === this.onlineMatch.side
 				? "Your throw..."
@@ -940,10 +995,18 @@ export class KameKnockScene extends ResponsiveScene {
 		this.overlay = container;
 
 		const bg = this.add.graphics();
-		bg.fillStyle(0x000000, 0.74);
+		bg.fillStyle(THEME.stoneDeep, 0.9);
 		bg.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
-		bg.lineStyle(2, THEME.gold, 0.85);
+		bg.lineStyle(2, THEME.stoneLight, 0.82);
 		bg.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
+		bg.lineStyle(1, THEME.gold, 0.58);
+		bg.strokeRoundedRect(
+			-panelW / 2 + 4,
+			-panelH / 2 + 4,
+			panelW - 8,
+			panelH - 8,
+			12,
+		);
 		container.add(bg);
 
 		const title =
@@ -955,20 +1018,23 @@ export class KameKnockScene extends ResponsiveScene {
 		container.add(
 			this.add
 				.text(0, -panelH / 2 + 38, title, {
-					fontSize: "30px",
-					color: THEME.textGold,
-					fontFamily: THEME.font,
+					fontSize: "42px",
+					color: THEME.textJade,
+					fontFamily: THEME.fontBlowbrush,
 					fontStyle: "bold",
+					stroke: "#10150f",
+					strokeThickness: 5,
 				})
-				.setOrigin(0.5),
+				.setOrigin(0.5)
+				.setShadow(0, 3, "rgba(8, 18, 11, 0.9)", 3),
 		);
 
 		container.add(
 			this.add
 				.text(0, -panelH / 2 + 78, "FINAL SCORES", {
-					fontSize: "14px",
-					color: THEME.text,
-					fontFamily: THEME.font,
+					fontSize: "18px",
+					color: THEME.textGold,
+					fontFamily: THEME.fontUrbanStone,
 				})
 				.setOrigin(0.5),
 		);
@@ -986,9 +1052,9 @@ export class KameKnockScene extends ResponsiveScene {
 			container.add(
 				this.add
 					.text(-panelW / 2 + 48, y, name, {
-						fontSize: "18px",
+						fontSize: "20px",
 						color,
-						fontFamily: THEME.font,
+						fontFamily: THEME.fontUrbanStone,
 						fontStyle: "bold",
 					})
 					.setOrigin(0, 0.5),
@@ -1000,9 +1066,9 @@ export class KameKnockScene extends ResponsiveScene {
 						y,
 						String(snapshot.score[player.side] ?? 0),
 						{
-							fontSize: "18px",
+							fontSize: "22px",
 							color,
-							fontFamily: THEME.font,
+							fontFamily: THEME.fontUrbanStone,
 							fontStyle: "bold",
 						},
 					)
@@ -1062,17 +1128,33 @@ export class KameKnockScene extends ResponsiveScene {
 
 		this.launchedThisBall = false;
 		this.combo = 0;
-		this.currentBallIndex += 1;
+		this.localTurnNumber += 1;
 
-		if (this.currentBallIndex >= BALL_ROUNDS.length) {
+		if (this.localTurnNumber >= this.localPlayerCount * BALL_ROUNDS.length) {
 			this.endRound();
 			return;
 		}
 
-		this.setupBallRound();
+		const nextBallIndex = Math.floor(
+			this.localTurnNumber / this.localPlayerCount,
+		);
+		if (nextBallIndex !== this.currentBallIndex) {
+			this.currentBallIndex = nextBallIndex;
+			this.setupBallRound();
+		} else {
+			const config = BALL_ROUNDS[this.currentBallIndex];
+			this.resetBall();
+			if (config) this.resetTargetsFromLocalRound(config);
+			this.score = this.localScores[this.currentPlayerIndex()] ?? 0;
+			if (this.ballText?.active) this.ballText.setText(this.formatBallText());
+			this.updateScoreHud();
+			this.updateSidePanels();
+		}
 		this.drawTargets();
 		this.drawBall();
+		this.updateScoreHud();
 		this.showPowerPanel();
+		this.syncSlingshotForTurn();
 	}
 
 	// ── Power panel ──────────────────────────────────────────────────────────────
@@ -1093,30 +1175,30 @@ export class KameKnockScene extends ResponsiveScene {
 		if (!this.powerSidePanel) {
 			this.powerSidePanel = new PowerSidePanel(
 				this,
-				(type) => {
-					this.activePower = type;
-				},
+				() => {},
 				DEPTH_HUD,
+				"KAME KNOCK",
+				true,
 			);
 		}
 
 		const p = this.currentPlayerIndex();
+		const powers = (this.playerPowers[p] ?? FALLBACK_POWERS).filter(
+			(power) => power !== PowerType.NONE,
+		);
 		if (!layout.leftPanel) {
-			// No room to dock — collapse into an edge drop-down instead of vanishing.
 			this.powerSidePanel.showCollapsible(
 				"left",
-				this.playerPowers[p] ?? FALLBACK_POWERS,
-				this.activePower,
-				this.powerUsed[p] ?? this.powerUsed[0],
+				powers,
+				PowerType.NONE,
 			);
 			return;
 		}
 
 		this.powerSidePanel.show(
 			layout.leftPanel,
-			this.playerPowers[p] ?? FALLBACK_POWERS,
-			this.activePower,
-			this.powerUsed[p] ?? this.powerUsed[0],
+			powers,
+			PowerType.NONE,
 		);
 	}
 
@@ -1126,52 +1208,44 @@ export class KameKnockScene extends ResponsiveScene {
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
 			this.markOnlineAway(),
 		);
-		this.ballText = this.add
-			.text(this.scale.width / 2, 16, this.formatBallText(), {
-				fontSize: "26px",
-				color: THEME.text,
-				fontFamily: THEME.font,
-				fontStyle: "bold",
-			})
-			.setOrigin(0.5, 0)
-			.setDepth(DEPTH_HUD);
+		this.scoreHud = new ScoreHud(this, DEPTH_HUD, {
+			roundLabel: "SHELL",
+			totalRounds: BALL_ROUNDS.length,
+			showBackground: false,
+			showRoundInfo: false,
+			playerColours: PLAYER_COLOUR_VALUES,
+			playerHexColours: PLAYER_COLOURS,
+			phaseLabels: {
+				aiming: "AIMING",
+				sweeping: "IN PLAY",
+				settling: "WAITING",
+				scoring: "SCORE",
+				gameover: "GAME OVER",
+			},
+			playerLabel: (player) => `P${player + 1}`,
+		});
+		this.updateScoreHud();
 	}
 
 	private resolveArena(): ArenaPixels {
-		return arenaToScreen(ARENA_01, this.scale.width, this.scale.height);
+		const content = resolveGameHudLayout(
+			this.scale.width,
+			this.scale.height,
+		).contentRect;
+		return arenaPlayableToScreenInRect(
+			ARENA_01,
+			content.x,
+			content.y,
+			content.width,
+			content.height,
+		);
 	}
 
 	private resolveLayout(): KameKnockLayout {
-		const { width, height } = this.scale;
-		if (width < SIDE_PANEL_MIN_CANVAS_W || height < SIDE_PANEL_MIN_CANVAS_H)
-			return {};
-
-		const arena = this.arena ?? this.resolveArena();
-		const leftFreeW = arena.cx - arena.rx - SIDE_PANEL_PAD * 2;
-		const rightFreeW = width - (arena.cx + arena.rx) - SIDE_PANEL_PAD * 2;
-		const leftPanelW = Math.floor(Math.min(SIDE_PANEL_MAX_W, leftFreeW));
-		const rightPanelW = Math.floor(Math.min(SIDE_PANEL_MAX_W, rightFreeW));
-		const panelH = height - SIDE_PANEL_TOP - SIDE_PANEL_PAD;
-
-		const leftPanel =
-			leftPanelW >= SIDE_PANEL_MIN_W
-				? {
-						x: SIDE_PANEL_PAD,
-						y: SIDE_PANEL_TOP,
-						width: leftPanelW,
-						height: panelH,
-					}
-				: undefined;
-		const rightPanel =
-			rightPanelW >= SIDE_PANEL_MIN_W
-				? {
-						x: width - SIDE_PANEL_PAD - rightPanelW,
-						y: SIDE_PANEL_TOP,
-						width: rightPanelW,
-						height: panelH,
-					}
-				: undefined;
-		if (!leftPanel && !rightPanel) return {};
+		const { leftPanel, rightPanel } = resolveGameHudLayout(
+			this.scale.width,
+			this.scale.height,
+		);
 		return { leftPanel, rightPanel };
 	}
 
@@ -1209,7 +1283,23 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	private buildScoreStatusRows(): SidePanelRow[] {
-		return [
+		const rows: SidePanelRow[] = [
+			{
+				label: "SHELL",
+				value: `${Math.min(this.currentBallIndex + 1, BALL_ROUNDS.length)}/${BALL_ROUNDS.length}`,
+				labelColor: THEME.textGold,
+				valueColor: THEME.textGold,
+				labelFontSize: "14px",
+				valueFontSize: "18px",
+			},
+			{
+				label: "STATUS",
+				value: this.currentStatusLabel(),
+				labelColor: THEME.textJade,
+				valueColor: THEME.text,
+				labelFontSize: "13px",
+				valueFontSize: "16px",
+			},
 			{
 				label: "COMBO",
 				value: `x${Math.max(1, this.combo)}`,
@@ -1218,21 +1308,97 @@ export class KameKnockScene extends ResponsiveScene {
 				labelFontSize: "13px",
 				valueFontSize: "18px",
 			},
-			{
-				label: "SCORE",
-				value: String(this.score),
-				labelColor: THEME.textGold,
-				valueColor: THEME.textGold,
-				labelFontSize: "14px",
-				valueFontSize: "24px",
-			},
 		];
+
+		this.currentScores().forEach((score, index) => {
+			rows.push({
+				label: `P${index + 1}`,
+				value: String(score),
+				labelColor: this.playerHexColour(index),
+				valueColor: this.playerHexColour(index),
+				labelFontSize: "13px",
+				valueFontSize: "22px",
+			});
+		});
+
+		return rows;
 	}
 
 	private addScoreEvent(label: string, value: string): void {
 		this.scoreEvents.unshift(`${label}\t${value}`);
 		this.scoreEvents = this.scoreEvents.slice(0, SCORE_LOG_LIMIT);
 		this.updateSidePanels();
+		this.updateScoreHud();
+	}
+
+	private updateScoreHud(): void {
+		this.scoreHud?.update(this.buildScoreHudState());
+	}
+
+	private buildScoreHudState(): TurnState {
+		const score = this.onlineMatch?.snapshot?.gameId === "kame-knock"
+			? this.onlineMatch.snapshot.score
+			: this.localScores;
+		const playerCount = Math.max(1, score.length, this.localPlayerCount);
+		return {
+			currentTeam: Phaser.Math.Clamp(
+				this.currentPlayerIndex(),
+				0,
+				playerCount - 1,
+			),
+			currentEnd: this.currentBallIndex,
+			stonesLeft: this.buildTurnDots(playerCount),
+			score,
+			phase: this.currentTurnPhase(),
+			hasHammer: false,
+		};
+	}
+
+	private buildTurnDots(playerCount: number): number[] {
+		const dots = Array.from({ length: playerCount }, () => 0);
+		if (this.onlineMatch?.snapshot?.gameId === "kame-knock") {
+			dots[this.onlineMatch.snapshot.currentTurn] = this.launchedThisBall
+				? 0
+				: 1;
+			return dots;
+		}
+
+		const firstTurnInBall = this.currentBallIndex * playerCount;
+		const turnInBall = Math.max(0, this.localTurnNumber - firstTurnInBall);
+		for (let player = turnInBall; player < playerCount; player++) {
+			dots[player] =
+				player === turnInBall && this.launchedThisBall ? 0 : 1;
+		}
+		return dots;
+	}
+
+	private currentTurnPhase(): TurnPhase {
+		if (!this.running && this.overlay) return "gameover";
+		if (this.onlineMatch && (!this.running || this.onlineReleasePending))
+			return "settling";
+		return this.launchedThisBall ? "sweeping" : "aiming";
+	}
+
+	private currentStatusLabel(): string {
+		return (
+			{
+				aiming: "AIMING",
+				sweeping: "IN PLAY",
+				settling: "WAITING",
+				scoring: "SCORE",
+				gameover: "GAME OVER",
+			} satisfies Record<TurnPhase, string>
+		)[this.currentTurnPhase()];
+	}
+
+	private currentScores(): readonly number[] {
+		if (this.onlineMatch?.snapshot?.gameId === "kame-knock")
+			return this.onlineMatch.snapshot.score;
+		return this.localScores;
+	}
+
+	private playerHexColour(player: number): string {
+		return PLAYER_COLOURS[player % PLAYER_COLOURS.length] ?? THEME.textGold;
 	}
 
 	private formatBallText(): string {
@@ -1243,9 +1409,15 @@ export class KameKnockScene extends ResponsiveScene {
 			const scoreLine = this.onlineMatch.snapshot.score
 				.map((score, index) => `P${index + 1} ${score}`)
 				.join("  ");
-			return `ROUND ${this.currentBallIndex + 1}/${BALL_ROUNDS.length}  P${p + 1} TURN  ${scoreLine}`;
+			return `SHELL ${this.currentBallIndex + 1}/${BALL_ROUNDS.length}  P${p + 1} TURN  ${scoreLine}`;
 		}
-		return `BALL ${this.currentBallIndex + 1}/${BALL_ROUNDS.length}  P${p + 1}  ${config.breakableTargets} BREAK`;
+		if (this.localPlayerCount > 1) {
+			const scoreLine = this.localScores
+				.map((score, index) => `P${index + 1} ${score}`)
+				.join("  ");
+			return `SHELL ${this.currentBallIndex + 1}/${BALL_ROUNDS.length}  P${p + 1} TURN  ${scoreLine}`;
+		}
+		return `SHELL ${this.currentBallIndex + 1}/${BALL_ROUNDS.length}  P${p + 1}  ${config.breakableTargets} BREAK`;
 	}
 
 	private resetBall(): void {
@@ -1379,7 +1551,7 @@ export class KameKnockScene extends ResponsiveScene {
 		)
 			drawShellBall(this.ballGfx, ball, false);
 		const colour =
-			PLAYER_COLOURS[side % PLAYER_COLOURS.length] ?? THEME.gold;
+			PLAYER_COLOUR_VALUES[side % PLAYER_COLOUR_VALUES.length] ?? THEME.gold;
 		this.ballGfx.lineStyle(Math.max(2, ball.r * 0.14), colour, 0.95);
 		this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.08);
 	}
@@ -1502,13 +1674,16 @@ export class KameKnockScene extends ResponsiveScene {
 		const label = perfect ? `PERFECT +${points}` : `+${points}  x${combo}`;
 		const text = this.add
 			.text(x, y, label, {
-				fontSize: perfect ? "24px" : "20px",
-				color: perfect ? THEME.textGold : THEME.text,
-				fontFamily: THEME.font,
+				fontSize: perfect ? "30px" : "25px",
+				color: perfect ? THEME.textGold : THEME.textJade,
+				fontFamily: THEME.fontBlowbrush,
 				fontStyle: "bold",
+				stroke: "#10150f",
+				strokeThickness: 4,
 			})
 			.setOrigin(0.5)
-			.setDepth(DEPTH_FX);
+			.setDepth(DEPTH_FX)
+			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
 		this.tweens.add({
 			targets: text,
 			y: y - 48,
@@ -1530,31 +1705,47 @@ export class KameKnockScene extends ResponsiveScene {
 		this.overlay = container;
 
 		const bg = this.add.graphics();
-		bg.fillStyle(0x000000, 0.72);
+		bg.fillStyle(THEME.stoneDeep, 0.9);
 		bg.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
-		bg.lineStyle(2, THEME.gold, 0.85);
+		bg.lineStyle(2, THEME.stoneLight, 0.82);
 		bg.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
+		bg.lineStyle(1, THEME.gold, 0.58);
+		bg.strokeRoundedRect(
+			-panelW / 2 + 4,
+			-panelH / 2 + 4,
+			panelW - 8,
+			panelH - 8,
+			12,
+		);
 		container.add(bg);
 
 		const title = this.add
 			.text(0, -panelH / 2 + 42, "KAME KNOCK", {
-				fontSize: "30px",
-				color: THEME.textGold,
-				fontFamily: THEME.font,
+				fontSize: "42px",
+				color: THEME.textJade,
+				fontFamily: THEME.fontBlowbrush,
 				fontStyle: "bold",
+				stroke: "#10150f",
+				strokeThickness: 5,
 			})
-			.setOrigin(0.5);
+			.setOrigin(0.5)
+			.setShadow(0, 3, "rgba(8, 18, 11, 0.9)", 3);
 		container.add(title);
 
+		const finalScoreText =
+			this.localPlayerCount > 1
+				? this.formatLocalFinalScores()
+				: `FINAL SCORE\n${this.score}`;
 		const score = this.add
-			.text(0, -18, `FINAL SCORE\n${this.score}`, {
-				fontSize: "24px",
+			.text(0, -18, finalScoreText, {
+				fontSize: "27px",
 				color: THEME.text,
-				fontFamily: THEME.font,
+				fontFamily: THEME.fontUrbanStone,
 				fontStyle: "bold",
 				align: "center",
 			})
-			.setOrigin(0.5);
+			.setOrigin(0.5)
+			.setShadow(0, 2, "rgba(8, 18, 11, 0.82)", 2);
 		container.add(score);
 
 		this.addOverlayButton(
@@ -1573,6 +1764,21 @@ export class KameKnockScene extends ResponsiveScene {
 		});
 	}
 
+	private formatLocalFinalScores(): string {
+		const maxScore = Math.max(...this.localScores);
+		const winners = this.localScores
+			.map((score, index) => ({ score, index }))
+			.filter((entry) => entry.score === maxScore);
+		const title =
+			winners.length === 1
+				? `P${winners[0].index + 1} WINS`
+				: "DRAW";
+		const scores = this.localScores
+			.map((score, index) => `P${index + 1}: ${score}`)
+			.join("\n");
+		return `${title}\n${scores}`;
+	}
+
 	private addOverlayButton(
 		container: Phaser.GameObjects.Container,
 		x: number,
@@ -1583,7 +1789,7 @@ export class KameKnockScene extends ResponsiveScene {
 		const buttonW = 180,
 			buttonH = 42;
 		const bg = this.add.graphics();
-		bg.fillStyle(THEME.background, 0.95);
+		bg.fillStyle(THEME.stoneInk, 0.5);
 		bg.fillRoundedRect(
 			x - buttonW / 2,
 			y - buttonH / 2,
@@ -1591,7 +1797,7 @@ export class KameKnockScene extends ResponsiveScene {
 			buttonH,
 			8,
 		);
-		bg.lineStyle(1.5, THEME.gold, 0.85);
+		bg.lineStyle(1.5, THEME.stoneLight, 0.72);
 		bg.strokeRoundedRect(
 			x - buttonW / 2,
 			y - buttonH / 2,
@@ -1603,12 +1809,13 @@ export class KameKnockScene extends ResponsiveScene {
 
 		const text = this.add
 			.text(x, y, label, {
-				fontSize: "15px",
+				fontSize: "18px",
 				color: THEME.textGold,
-				fontFamily: THEME.font,
+				fontFamily: THEME.fontUrbanStone,
 				fontStyle: "bold",
 			})
-			.setOrigin(0.5);
+			.setOrigin(0.5)
+			.setShadow(0, 2, "rgba(8, 18, 11, 0.8)", 2);
 		container.add(text);
 
 		const zone = this.add
@@ -1674,8 +1881,8 @@ export class KameKnockScene extends ResponsiveScene {
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
 			this.markOnlineAway(),
 		);
-		this.ballText?.setPosition(this.scale.width / 2, 16);
-		this.onlineStatusText?.setPosition(this.scale.width / 2, 48);
+		this.updateScoreHud();
+		this.onlineStatusText?.setPosition(this.scale.width / 2, 78);
 		this.countdownText?.setPosition(
 			this.scale.width / 2,
 			this.scale.height / 2,

@@ -155,21 +155,24 @@ export class SidePanel {
 
 	private drawFrame(rect: PanelRect): void {
 		this.gfx.clear();
-		this.gfx.fillStyle(0x0a1208, 0.88);
+		this.gfx.fillStyle(THEME.stoneDeep, 0.88);
 		this.gfx.fillRoundedRect(rect.x, rect.y, rect.width, rect.height, 12);
-		this.gfx.lineStyle(1.5, THEME.gold, 0.65);
+		this.gfx.lineStyle(2, THEME.stoneLight, 0.64);
 		this.gfx.strokeRoundedRect(rect.x, rect.y, rect.width, rect.height, 12);
+		this.gfx.lineStyle(1, THEME.gold, 0.52);
+		this.gfx.strokeRoundedRect(rect.x + 3, rect.y + 3, rect.width - 6, rect.height - 6, 10);
 	}
 
 	private drawTitle(title: string, rect: PanelRect): void {
 		const text = this.scene.add
 			.text(rect.x + PAD, rect.y + PAD - 2, title, {
-				fontSize: "14px",
-				color: THEME.textGold,
-				fontFamily: THEME.font,
+				fontSize: "20px",
+				color: THEME.textJade,
+				fontFamily: THEME.fontBlowbrush,
 				fontStyle: "bold",
 			})
-			.setDepth(this.depth + 1);
+			.setDepth(this.depth + 1)
+			.setShadow(0, 2, "rgba(5, 28, 18, 0.78)", 2);
 		this.texts.push(text);
 
 		// Collapsible header: chevron + a click-zone over the title strip that
@@ -181,9 +184,9 @@ export class SidePanel {
 					rect.y + PAD - 2,
 					this.collapsed ? "▾" : "▴",
 					{
-						fontSize: "14px",
+						fontSize: "16px",
 						color: THEME.textGold,
-						fontFamily: THEME.font,
+						fontFamily: THEME.fontUrbanStone,
 						fontStyle: "bold",
 					},
 				)
@@ -208,7 +211,7 @@ export class SidePanel {
 			if (this.collapsed) return;
 		}
 
-		this.gfx.lineStyle(1, THEME.gold, 0.25);
+		this.gfx.lineStyle(1, THEME.stoneLight, 0.36);
 		this.gfx.lineBetween(
 			rect.x + PAD,
 			rect.y + PAD + TITLE_H,
@@ -252,13 +255,13 @@ export class SidePanel {
 			const barTop = startY - 4;
 			const barH = visibleRows * ROW_H;
 			const barX = rect.x + rect.width - 7;
-			this.gfx.fillStyle(0xffffff, 0.07);
+			this.gfx.fillStyle(THEME.cream, 0.08);
 			this.gfx.fillRoundedRect(barX, barTop, 3, barH, 1.5);
 			const thumbH = Math.max(16, barH * (visibleRows / rows.length));
 			const thumbY =
 				barTop +
 				(barH - thumbH) * (this.scrollRow / this.maxScrollRows);
-			this.gfx.fillStyle(THEME.gold, 0.55);
+			this.gfx.fillStyle(THEME.jade, 0.62);
 			this.gfx.fillRoundedRect(barX, thumbY, 3, thumbH, 1.5);
 		}
 
@@ -266,7 +269,7 @@ export class SidePanel {
 
 		const footerStartY =
 			rect.y + rect.height - PAD - footerRows.length * ROW_H;
-		this.gfx.lineStyle(1, THEME.gold, 0.25);
+		this.gfx.lineStyle(1, THEME.stoneLight, 0.32);
 		this.gfx.lineBetween(
 			rect.x + PAD,
 			footerStartY - 12,
@@ -294,21 +297,22 @@ export class SidePanel {
 
 		const label = this.scene.add
 			.text(textX, y + 2, row.label, {
-				fontSize: row.labelFontSize ?? "12px",
+				fontSize: row.labelFontSize ?? "14px",
 				color: labelColor,
-				fontFamily: THEME.font,
+				fontFamily: THEME.fontUrbanStone,
 				fontStyle: "bold",
 			})
-			.setDepth(this.depth + 1);
+			.setDepth(this.depth + 1)
+			.setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
 		this.texts.push(label);
 
 		// Two-line layout: subtitle replaces right-side value
 		if (row.subtitle) {
 			const sub = this.scene.add
 				.text(textX, y + 17, row.subtitle, {
-					fontSize: "10px",
+					fontSize: "11px",
 					color: THEME.textMutedHex,
-					fontFamily: THEME.font,
+					fontFamily: THEME.fontUrbanStone,
 				})
 				.setDepth(this.depth + 1);
 			this.texts.push(sub);
@@ -319,13 +323,14 @@ export class SidePanel {
 
 		const value = this.scene.add
 			.text(valueX, y + 2, row.value, {
-				fontSize: row.valueFontSize ?? "12px",
+				fontSize: row.valueFontSize ?? "14px",
 				color: valueColor,
-				fontFamily: THEME.font,
+				fontFamily: THEME.fontUrbanStone,
 				fontStyle: "bold",
 			})
 			.setOrigin(1, 0)
-			.setDepth(this.depth + 1);
+			.setDepth(this.depth + 1)
+			.setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
 		this.texts.push(value);
 	}
 

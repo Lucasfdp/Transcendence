@@ -16,7 +16,7 @@ import { ResponsiveScene } from "../../shared/responsive-scene";
 import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
 	ArenaPixels,
-	arenaToScreen,
+	arenaPlayableToScreenInRect,
 	drawSumoRing,
 } from "../../shared/arenas/arena";
 import {
@@ -68,6 +68,7 @@ import {
 	type GameSnapshot,
 	type OnlineMatchContext,
 } from "../../services/network/gameSocket";
+import { resolveGameHudLayout } from "../../shared/game-ui";
 
 // Slingshot tuning in arena source px (scaled by the letterbox factor so the
 // game feels identical at 1080p, 4K, or a tiny window)
@@ -95,13 +96,6 @@ const BAMBOO_ASSETS: Record<number, string> = {
 	3: "/assets/bamboo-bash/bamboo3.png",
 };
 
-// Side-panel layout
-const SIDE_PANEL_MIN_CANVAS_W = 1_180;
-const SIDE_PANEL_MIN_CANVAS_H = 560;
-const SIDE_PANEL_MIN_W = 168;
-const SIDE_PANEL_MAX_W = 230;
-const SIDE_PANEL_PAD = 16;
-const SIDE_PANEL_TOP = 74;
 const SCORE_LOG_LIMIT = 8;
 
 interface LocalParticipant {
@@ -238,11 +232,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.powerUsed = new Set();
 		this.activePower = PowerType.NONE;
 
-		this.arena = arenaToScreen(
-			ARENA_01,
-			this.scale.width,
-			this.scale.height,
-		);
+		this.arena = this.resolveArena();
 		this.resetBall();
 
 		// Read shell selection from registry (set by ShellPickerScene).
@@ -446,7 +436,11 @@ export class BambooBashScene extends ResponsiveScene {
 		// games end together even if clients loaded the scene at slightly different times.
 		if (!this.syncOnlineTimeLeft())
 			this.timeLeftMs = Math.max(0, this.timeLeftMs - delta);
-		this.timerText.setText(this.formatTime());
+		const timeLabel = this.formatTime();
+		if (this.timerText.text !== timeLabel) {
+			this.timerText.setText(timeLabel);
+			this.powerSidePanel?.refresh();
+		}
 		if (this.timeLeftMs <= 0) {
 			this.endRound();
 			return;
@@ -857,8 +851,8 @@ export class BambooBashScene extends ResponsiveScene {
 		this.onlineStatusText = this.add
 			.text(this.scale.width / 2, 48, "", {
 				fontSize: "13px",
-				color: "#d4a843",
-				fontFamily: "monospace",
+				color: THEME.textGold,
+				fontFamily: THEME.fontUrbanStone,
 				fontStyle: "bold",
 			})
 			.setOrigin(0.5, 0)
@@ -941,13 +935,16 @@ export class BambooBashScene extends ResponsiveScene {
 	private popScore(x: number, y: number, points: number): void {
 		const t = this.add
 			.text(x, y, `+${points}`, {
-				fontSize: "22px",
+				fontSize: "27px",
 				color: THEME.textGold,
-				fontFamily: THEME.font,
+				fontFamily: THEME.fontBlowbrush,
 				fontStyle: "bold",
+				stroke: "#10150f",
+				strokeThickness: 4,
 			})
 			.setOrigin(0.5)
-			.setDepth(4);
+			.setDepth(4)
+			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
 
 		this.tweens.add({
 			targets: t,
@@ -1192,7 +1189,8 @@ export class BambooBashScene extends ResponsiveScene {
 				fontFamily: THEME.font,
 				fontStyle: "bold",
 			})
-			.setDepth(DEPTH_HUD);
+			.setDepth(DEPTH_HUD)
+			.setVisible(false);
 
 		this.timerText = this.add
 			.text(this.scale.width / 2, 16, this.formatTime(), {
@@ -1202,7 +1200,8 @@ export class BambooBashScene extends ResponsiveScene {
 				fontStyle: "bold",
 			})
 			.setOrigin(0.5, 0)
-			.setDepth(DEPTH_HUD);
+			.setDepth(DEPTH_HUD)
+			.setVisible(false);
 	}
 
 	private formatTime(): string {
@@ -1618,11 +1617,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 	protected relayout(): void {
 		const oldArena = this.arena;
-		this.arena = arenaToScreen(
-			ARENA_01,
-			this.scale.width,
-			this.scale.height,
-		);
+		this.arena = this.resolveArena();
 
 		this.slingshot.cancel();
 		this.slingshot.maxDrag = MAX_DRAG_SRC * this.arena.scale;
@@ -1712,32 +1707,25 @@ export class BambooBashScene extends ResponsiveScene {
 	// ── Power panel ──────────────────────────────────────────────────────────────
 
 	private resolveLayout(): { leftPanel?: PanelRect; rightPanel?: PanelRect } {
-		const { width, height } = this.scale;
-		if (width < SIDE_PANEL_MIN_CANVAS_W || height < SIDE_PANEL_MIN_CANVAS_H)
-			return {};
-
-		const arena = this.arena;
-		const leftFreeW = arena.cx - arena.rx - SIDE_PANEL_PAD * 2;
-		const rightFreeW = width - (arena.cx + arena.rx) - SIDE_PANEL_PAD * 2;
-		const panelW = Math.floor(
-			Math.min(SIDE_PANEL_MAX_W, leftFreeW, rightFreeW),
+		const { leftPanel, rightPanel } = resolveGameHudLayout(
+			this.scale.width,
+			this.scale.height,
 		);
-		if (panelW < SIDE_PANEL_MIN_W) return {};
-
-		const panelH = height - SIDE_PANEL_TOP - SIDE_PANEL_PAD;
-		const leftPanel = {
-			x: SIDE_PANEL_PAD,
-			y: SIDE_PANEL_TOP,
-			width: panelW,
-			height: panelH,
-		};
-		const rightPanel = {
-			x: width - SIDE_PANEL_PAD - panelW,
-			y: SIDE_PANEL_TOP,
-			width: panelW,
-			height: panelH,
-		};
 		return { leftPanel, rightPanel };
+	}
+
+	private resolveArena(): ArenaPixels {
+		const content = resolveGameHudLayout(
+			this.scale.width,
+			this.scale.height,
+		).contentRect;
+		return arenaPlayableToScreenInRect(
+			ARENA_01,
+			content.x,
+			content.y,
+			content.width,
+			content.height,
+		);
 	}
 
 	/** Show or refresh the power panel in the left column before each shot. */
@@ -1745,42 +1733,65 @@ export class BambooBashScene extends ResponsiveScene {
 		const layout = this.resolveLayout();
 		const localParticipant =
 			this.localParticipants[this.activeLocalParticipantIndex];
-		const powers = localParticipant?.powers ?? this.playerPowers;
-		const activePower = localParticipant?.activePower ?? this.activePower;
-		const powerUsed = localParticipant?.powerUsed ?? this.powerUsed;
+		const powers = (localParticipant?.powers ?? this.playerPowers).filter(
+			(power) => power !== PowerType.NONE,
+		);
 
 		if (!this.powerSidePanel) {
 			this.powerSidePanel = new PowerSidePanel(
 				this,
-				(type) => {
-					const activeLocal =
-						this.localParticipants[
-							this.activeLocalParticipantIndex
-						];
-					if (activeLocal) activeLocal.activePower = type;
-					else this.activePower = type;
-				},
+				() => {},
 				DEPTH_HUD,
+				"BAMBOO BASH",
+				true,
+				() => this.buildPowerPanelInfoRows(),
 			);
 		}
 
 		if (!layout.leftPanel) {
-			// No room to dock — collapse into an edge drop-down instead of vanishing.
 			this.powerSidePanel.showCollapsible(
 				"left",
 				powers,
-				activePower,
-				powerUsed,
+				PowerType.NONE,
 			);
 			return;
 		}
 
-		this.powerSidePanel.show(
-			layout.leftPanel,
-			powers,
-			activePower,
-			powerUsed,
-		);
+		this.powerSidePanel.show(layout.leftPanel, powers, PowerType.NONE);
+	}
+
+	private buildPowerPanelInfoRows(): {
+		label: string;
+		value: string;
+		labelColor?: string;
+		valueColor?: string;
+	}[] {
+		const rows = [{ label: "TIME", value: this.formatTime() }];
+		if (this.onlineMatch) {
+			rows.push({
+				label: "ROUND",
+				value: `${this.onlineRoundNumber}/${this.onlineTotalRounds}`,
+			});
+			rows.push({ label: "SCORE", value: String(this.score) });
+			return rows;
+		}
+
+		if (this.localParticipants.length > 0) {
+			rows.push({
+				label: "TURN",
+				value: `P${this.activeLocalParticipantIndex + 1}`,
+			});
+			rows.push({
+				label: "SCORE",
+				value: String(
+					this.localParticipants[this.activeLocalParticipantIndex]?.score ?? 0,
+				),
+			});
+			return rows;
+		}
+
+		rows.push({ label: "SCORE", value: String(this.score) });
+		return rows;
 	}
 
 	// ── Side panels ─────────────────────────────────────────────────────────────

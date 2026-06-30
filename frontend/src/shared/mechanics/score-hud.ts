@@ -13,6 +13,7 @@
 import Phaser from "phaser";
 import type { TurnState } from "./turn-manager";
 import { THEME } from "../theme";
+import { PLAYER_COLOUR_VALUES, PLAYER_HEX_COLOURS } from "../game-ui";
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -20,17 +21,9 @@ const BAR_HEIGHT = 52; // px
 const STONES_ROW_H = 18; // px below main bar
 const STONE_DOT_R = 5; // radius of each stone-remaining dot
 const STONE_DOT_GAP = 14; // centre-to-centre gap between dots
-const PLAYER_COLOURS = [
-	0x2255cc, 0xcc2222, 0x22aa55, 0xbb55dd, 0xd4a843,
-] as const;
-const PLAYER_HEX = [
-	"#2255cc",
-	"#cc2222",
-	"#22aa55",
-	"#bb55dd",
-	"#d4a843",
-] as const;
-const TEAM_LABELS = ["KAME BLUE", "KAME RED"] as const;
+const PLAYER_COLOURS = PLAYER_COLOUR_VALUES;
+const PLAYER_HEX = PLAYER_HEX_COLOURS;
+const TEAM_LABELS = ["P1", "P2"] as const;
 
 const PHASE_LABELS: Record<string, string> = {
 	aiming: "AIMING",
@@ -39,6 +32,17 @@ const PHASE_LABELS: Record<string, string> = {
 	scoring: "SCORE",
 	gameover: "GAME OVER",
 };
+
+interface ScoreHudOptions {
+	readonly roundLabel?: string;
+	readonly totalRounds?: number;
+	readonly phaseLabels?: Partial<Record<string, string>>;
+	readonly playerLabel?: (player: number, playerCount: number) => string;
+	readonly showBackground?: boolean;
+	readonly showRoundInfo?: boolean;
+	readonly playerColours?: readonly number[];
+	readonly playerHexColours?: readonly string[];
+}
 
 // ── ScoreHud ──────────────────────────────────────────────────────────────────
 
@@ -50,6 +54,7 @@ export class ScoreHud {
 	constructor(
 		private readonly scene: Phaser.Scene,
 		depth = 20,
+		private readonly options: ScoreHudOptions = {},
 	) {
 		this.gfx = scene.add.graphics().setDepth(depth);
 		this.container = scene.add.container(0, 0).setDepth(depth);
@@ -131,11 +136,12 @@ export class ScoreHud {
 
 		this.gfx.clear();
 
-		// Background bar
-		this.gfx.fillStyle(0x0a1208, 0.95);
-		this.gfx.fillRect(0, 0, w, totH);
-		this.gfx.lineStyle(1, 0xd4a843, 0.3);
-		this.gfx.lineBetween(0, totH, w, totH);
+		if (this.options.showBackground !== false) {
+			this.gfx.fillStyle(0x0a1208, 0.95);
+			this.gfx.fillRect(0, 0, w, totH);
+			this.gfx.lineStyle(1, 0xd4a843, 0.3);
+			this.gfx.lineBetween(0, totH, w, totH);
+		}
 
 		// Active team underline
 		const playerCount = Math.max(2, state.score.length);
@@ -143,7 +149,7 @@ export class ScoreHud {
 		const underW = Math.min(w * 0.2, slotW * 0.7);
 		const underY = BAR_HEIGHT - 3;
 		const underX0 = slotW * state.currentTeam + (slotW - underW) / 2;
-		this.gfx.fillStyle(0xd4a843, 0.85);
+		this.gfx.fillStyle(this.playerColour(state.currentTeam), 0.85);
 		this.gfx.fillRect(underX0, underY, underW, 2);
 
 		// Stones-remaining dots
@@ -156,18 +162,32 @@ export class ScoreHud {
 			this.texts
 				.get(`score${player}`)
 				?.setVisible(visible)
+				.setColor(this.playerHexColour(player))
 				.setText(String(state.score[player] ?? 0));
 			this.texts
 				.get(`label${player}`)
 				?.setVisible(visible)
+				.setColor(this.playerHexColour(player))
 				.setText(this.playerLabel(player, playerCount));
 		}
+		const showRoundInfo = this.options.showRoundInfo !== false;
 		this.texts
 			.get("end")
-			?.setText(`END ${Math.min(3, state.currentEnd + 1)} / 3`);
+			?.setVisible(showRoundInfo)
+			?.setText(
+				`${this.options.roundLabel ?? "END"} ${Math.min(
+					this.options.totalRounds ?? 3,
+					state.currentEnd + 1,
+				)} / ${this.options.totalRounds ?? 3}`,
+			);
 		this.texts
 			.get("phase")
-			?.setText(PHASE_LABELS[state.phase] ?? state.phase.toUpperCase());
+			?.setVisible(showRoundInfo)
+			?.setText(
+				this.options.phaseLabels?.[state.phase] ??
+					PHASE_LABELS[state.phase] ??
+					state.phase.toUpperCase(),
+			);
 	}
 
 	private drawStoneDots(state: TurnState, w: number): void {
@@ -178,7 +198,7 @@ export class ScoreHud {
 
 		for (let team = 0; team < playerCount; team++) {
 			const count = state.stonesLeft[team] ?? 0;
-			const colour = PLAYER_COLOURS[team % PLAYER_COLOURS.length];
+			const colour = this.playerColour(team);
 			const totalW = count * STONE_DOT_GAP;
 			const startX =
 				slotW * team + (slotW - totalW) / 2 + STONE_DOT_GAP / 2;
@@ -202,7 +222,19 @@ export class ScoreHud {
 	}
 
 	private playerLabel(player: number, playerCount: number): string {
+		const customLabel = this.options.playerLabel?.(player, playerCount);
+		if (customLabel) return customLabel;
 		if (playerCount === 2 && player < 2) return TEAM_LABELS[player];
 		return `PLAYER ${player + 1}`;
+	}
+
+	private playerColour(player: number): number {
+		const colours = this.options.playerColours ?? PLAYER_COLOURS;
+		return colours[player % colours.length] ?? PLAYER_COLOURS[0];
+	}
+
+	private playerHexColour(player: number): string {
+		const colours = this.options.playerHexColours ?? PLAYER_HEX;
+		return colours[player % colours.length] ?? PLAYER_HEX[0];
 	}
 }
