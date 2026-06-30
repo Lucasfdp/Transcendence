@@ -551,6 +551,13 @@ export interface ReplayFrame {
 	snapshot: Record<string, unknown>;
 }
 
+export interface ReplayEvent {
+	type: string;
+	seq: number;
+	recordedAt: string;
+	payload: Record<string, unknown>;
+}
+
 export interface ReplaySummary {
 	id: string;
 	matchId: string;
@@ -569,6 +576,7 @@ export interface ReplaySummary {
 
 export interface ReplayDetail extends ReplaySummary {
 	frames: ReplayFrame[];
+	events: ReplayEvent[];
 }
 
 export type LeaderboardScope = "global" | "friends";

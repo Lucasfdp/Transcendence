@@ -224,5 +224,11 @@ export interface MatchRoom {
 		recordedAt: string;
 		snapshot: Record<string, unknown>;
 	}>;
+	replayEvents: Array<{
+		type: string;
+		seq: number;
+		recordedAt: string;
+		payload: Record<string, unknown>;
+	}>;
 	replayLastCapturedSeq: number | null;
 }

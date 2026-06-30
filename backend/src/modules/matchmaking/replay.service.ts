@@ -8,7 +8,11 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository } from "typeorm";
-import { MatchReplay, MatchReplayFrame } from "./entities/match-replay.entity";
+import {
+	MatchReplay,
+	MatchReplayEvent,
+	MatchReplayFrame,
+} from "./entities/match-replay.entity";
 import { MatchReplaySave } from "./entities/match-replay-save.entity";
 import { MatchRoom } from "./matchmaking.types";
 
@@ -34,6 +38,7 @@ export interface ReplaySummaryView {
 
 export interface ReplayDetailView extends ReplaySummaryView {
 	frames: MatchReplayFrame[];
+	events: MatchReplayEvent[];
 }
 
 @Injectable()
@@ -73,6 +78,19 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 		room.replayLastCapturedSeq = room.state.seq;
 	}
 
+	recordEvent(
+		room: MatchRoom,
+		type: string,
+		payload: Record<string, unknown>,
+	): void {
+		room.replayEvents.push({
+			type,
+			seq: room.state.seq,
+			recordedAt: new Date().toISOString(),
+			payload: JSON.parse(JSON.stringify(payload)) as Record<string, unknown>,
+		});
+	}
+
 	async persistReplayForRoom(room: MatchRoom): Promise<void> {
 		this.captureFrame(room);
 		await this.replayRepo.save(
@@ -81,6 +99,7 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 				gameId: room.gameId,
 				mode: room.mode,
 				frames: room.replayFrames,
+				events: room.replayEvents,
 				frameCount: room.replayFrames.length,
 				expiresAt: new Date(Date.now() + REPLAY_TTL_MS),
 			}),
@@ -138,6 +157,7 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 		return {
 			...this.toSummary(replay, userId),
 			frames: replay.frames,
+			events: replay.events ?? [],
 		};
 	}
 

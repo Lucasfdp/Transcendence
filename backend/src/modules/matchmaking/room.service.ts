@@ -45,6 +45,7 @@ export class RoomService {
 				roomPlayers,
 			),
 			replayFrames: [],
+			replayEvents: [],
 			replayLastCapturedSeq: null,
 		};
 

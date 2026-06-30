@@ -17,6 +17,13 @@ export interface MatchReplayFrame {
 	snapshot: Record<string, unknown>;
 }
 
+export interface MatchReplayEvent {
+	type: string;
+	seq: number;
+	recordedAt: string;
+	payload: Record<string, unknown>;
+}
+
 @Entity("match_replays")
 export class MatchReplay {
 	@PrimaryGeneratedColumn("uuid")
@@ -37,6 +44,9 @@ export class MatchReplay {
 
 	@Column({ type: "jsonb", default: () => "'[]'" })
 	frames: MatchReplayFrame[];
+
+	@Column({ type: "jsonb", default: () => "'[]'" })
+	events: MatchReplayEvent[];
 
 	@Column({ default: 0 })
 	frameCount: number;

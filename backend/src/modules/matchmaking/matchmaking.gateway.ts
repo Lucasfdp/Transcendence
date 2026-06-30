@@ -302,6 +302,11 @@ export class MatchmakingGateway
 					vy: Number(payload.payload?.vy ?? 0),
 					power: object.power,
 				};
+				this.replays.recordEvent(
+					room,
+					"game:throw",
+					throwEvent as unknown as Record<string, unknown>,
+				);
 				this.server.to(room.matchId).emit("game:throw", throwEvent);
 			}
 			return;
@@ -324,6 +329,11 @@ export class MatchmakingGateway
 					vy: Number(payload.payload?.vy ?? 0),
 					power: String(payload.payload?.power ?? "none"),
 				};
+				this.replays.recordEvent(
+					room,
+					"game:bamboo-throw",
+					throwEvent as unknown as Record<string, unknown>,
+				);
 				this.server
 					.to(room.matchId)
 					.emit("game:bamboo-throw", throwEvent);
@@ -351,6 +361,11 @@ export class MatchmakingGateway
 					vy: Number(payload.payload?.vy ?? 0),
 					power: String(payload.payload?.power ?? "none"),
 				};
+				this.replays.recordEvent(
+					room,
+					"game:kame-throw",
+					throwEvent as unknown as Record<string, unknown>,
+				);
 				this.server
 					.to(room.matchId)
 					.emit("game:kame-throw", throwEvent);
@@ -377,6 +392,11 @@ export class MatchmakingGateway
 					vy: Number(payload.payload?.vy ?? 0),
 					power: String(payload.payload?.power ?? "none"),
 				};
+				this.replays.recordEvent(
+					room,
+					"game:bell-throw",
+					throwEvent as unknown as Record<string, unknown>,
+				);
 				this.server
 					.to(room.matchId)
 					.emit("game:bell-throw", throwEvent);
