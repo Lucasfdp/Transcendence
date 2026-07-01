@@ -33,6 +33,8 @@ export interface CurlingThrowEvent {
 	matchId: string;
 	id: number;
 	side: number;
+	x: number;
+	y: number;
 	vx: number;
 	vy: number;
 	power: string;
@@ -42,6 +44,8 @@ export interface BambooBashThrowEvent {
 	matchId: string;
 	roundNumber: number;
 	side: number;
+	x: number;
+	y: number;
 	vx: number;
 	vy: number;
 	power: string;
@@ -52,6 +56,8 @@ export interface KameKnockThrowEvent {
 	roundNumber: number;
 	turnNumber: number;
 	side: number;
+	x: number;
+	y: number;
 	vx: number;
 	vy: number;
 	power: string;
@@ -62,6 +68,8 @@ export interface BellClashThrowEvent {
 	roundNumber: number;
 	shotNumber: number;
 	side: number;
+	x: number;
+	y: number;
 	vx: number;
 	vy: number;
 	power: string;
@@ -87,22 +95,73 @@ export interface CurlingSnapshot {
 	score: number[];
 	endScores: Array<Array<number | null>>;
 	map: GameMap;
-	players: Array<{
-		side: number;
-		userId: number | null;
-		username: string;
-		connected: boolean;
-		ready: boolean;
-	}>;
+	players: SnapshotPlayer[];
 	objects: Array<{
 		id: number;
 		side: number;
+		type: "stone";
+		ownerSide: number;
 		x: number;
 		y: number;
+		vx?: number;
+		vy?: number;
+		rotation: number;
+		angularVelocity: number;
+		moving?: boolean;
+		scale: number;
+		visible: boolean;
+		alpha: number;
+		spriteKey: string;
+		stateFlags: string[];
+		createdAt: number;
+		updatedAt: number;
+		stopped: boolean;
 		power: string;
 		trail?: Array<{ x: number; y: number }>;
 	}>;
+	activeStoneId: number | null;
 	winnerSide: number | null;
+}
+
+export interface BallSnapshotData {
+	id: number;
+	type: "projectile";
+	side: number;
+	ownerSide: number;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	rotation: number;
+	angularVelocity: number;
+	scale: number;
+	visible: boolean;
+	alpha: number;
+	spriteKey: string;
+	stateFlags: string[];
+	createdAt: number;
+	updatedAt: number;
+	stopped: boolean;
+}
+
+export interface ReplayFrameSnapshotEntity {
+	id: number;
+	type: "projectile" | "stone";
+	ownerSide: number;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	rotation: number;
+	angularVelocity: number;
+	scale: number;
+	visible: boolean;
+	alpha: number;
+	spriteKey: string;
+	stateFlags: string[];
+	createdAt: number;
+	updatedAt: number;
+	stopped: boolean;
 }
 
 export interface SnapshotPlayer {
@@ -139,6 +198,10 @@ export interface BambooBashSnapshot {
 	spawnAccMs: number;
 	lastBambooUpdateAt: number | null;
 	players: SnapshotPlayer[];
+	balls: BallSnapshotData[];
+	activeBallIdBySide: Array<number | null>;
+	nextBallId: number;
+	entities: ReplayFrameSnapshotEntity[];
 	winnerSide: number | null;
 }
 
@@ -168,6 +231,10 @@ export interface KameKnockSnapshot {
 	}>;
 	nextTargetId: number;
 	players: SnapshotPlayer[];
+	balls: BallSnapshotData[];
+	activeBallIdBySide: Array<number | null>;
+	nextBallId: number;
+	entities: ReplayFrameSnapshotEntity[];
 	winnerSide: number | null;
 }
 
@@ -190,6 +257,10 @@ export interface BellClashSnapshot {
 		end: number;
 	}>;
 	players: SnapshotPlayer[];
+	balls: BallSnapshotData[];
+	activeBallIdBySide: Array<number | null>;
+	nextBallId: number;
+	entities: ReplayFrameSnapshotEntity[];
 	winnerSide: number | null;
 }
 
@@ -223,13 +294,21 @@ export interface MatchRoom {
 	replayFrames: Array<{
 		seq: number;
 		recordedAt: string;
+		recordedAtMs: number;
+		tickTs: number;
+		deltaMs: number;
 		snapshot: Record<string, unknown>;
 	}>;
 	replayEvents: Array<{
 		type: string;
 		seq: number;
 		recordedAt: string;
+		recordedAtMs: number;
+		tickTs: number;
 		payload: Record<string, unknown>;
 	}>;
 	replayLastCapturedSeq: number | null;
+	replayStartedAt: number | null;
+	replayLastRecordedAt: number | null;
+	replayLastSimulationAt: number | null;
 }

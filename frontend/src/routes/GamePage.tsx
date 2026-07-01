@@ -197,7 +197,7 @@ function PowerupMatchmakingPanel({
 		};
 		socket.off("match:status", handleMatchStatus);
 		socket.on("match:status", handleMatchStatus);
-		socket.emit("match:status", { away: true });
+		socket.emit("match:status");
 
 		return () => {
 			if (isSearchingOnlineRef.current) socket.emit("queue:leave");

@@ -1,3 +1,4 @@
+import Phaser from "phaser";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -13,7 +14,8 @@ import { ShellFlipModal } from "../components/casino/ShellFlipModal";
 import { ThreeShellMonteModal } from "../components/casino/ThreeShellMonteModal";
 import { ShrineSlotsModal } from "../components/casino/ShrineSlotsModal";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
-import { playerHexColour } from "../shared/game-ui";
+import { ReplayController } from "../games/shared/ReplayController";
+import { ReplayScene } from "../games/shared/ReplayScene";
 import {
 	hubBackgroundClass,
 	resolveHubBackgroundId,
@@ -33,7 +35,6 @@ import {
 	REPORT_CATEGORIES,
 	type ReportCategory,
 	ReplayDetail,
-	ReplayFrame,
 	ReplaySummary,
 	type LeaderboardScope,
 	type User,
@@ -153,413 +154,6 @@ function getReplayGameLabel(gameId: string): string {
 function formatReplayDate(value: string | null): string {
 	if (!value) return "Pending";
 	return new Date(value).toLocaleString();
-}
-
-interface ReplayBounds {
-	minX: number;
-	maxX: number;
-	minY: number;
-	maxY: number;
-}
-
-function getReplayBounds(replay: ReplayDetail | null): ReplayBounds {
-	if (!replay || replay.frames.length === 0) {
-		return { minX: 0, maxX: 100, minY: 0, maxY: 100 };
-	}
-
-	const xs: number[] = [];
-	const ys: number[] = [];
-
-	for (const frame of replay.frames) {
-		const snapshot = frame.snapshot;
-		if (replay.gameId === "temple-curling") {
-			const curling = snapshot as unknown as CurlingSnapshot;
-			for (const object of curling.objects ?? []) {
-				xs.push(object.x);
-				ys.push(object.y);
-			}
-			for (const bumper of curling.map?.gameId === "temple-curling"
-				? curling.map.bumpers
-				: []) {
-				xs.push(bumper.fx);
-				ys.push(bumper.fy);
-			}
-		}
-		if (replay.gameId === "bamboo-bash") {
-			const bamboo = snapshot as unknown as BambooBashSnapshot;
-			for (const stalk of bamboo.bamboos ?? []) {
-				xs.push(stalk.nx);
-				ys.push(stalk.ny);
-			}
-		}
-		if (replay.gameId === "kame-knock") {
-			const kame = snapshot as unknown as KameKnockSnapshot;
-			for (const target of kame.targets ?? []) {
-				xs.push(target.nx);
-				ys.push(target.ny);
-			}
-		}
-	}
-
-	if (xs.length === 0 || ys.length === 0) {
-		return { minX: 0, maxX: 100, minY: 0, maxY: 100 };
-	}
-
-	const minX = Math.min(...xs);
-	const maxX = Math.max(...xs);
-	const minY = Math.min(...ys);
-	const maxY = Math.max(...ys);
-	const padX = Math.max((maxX - minX) * 0.08, 1);
-	const padY = Math.max((maxY - minY) * 0.08, 1);
-
-	return {
-		minX: minX - padX,
-		maxX: maxX + padX,
-		minY: minY - padY,
-		maxY: maxY + padY,
-	};
-}
-
-function formatViewBoxPosition(
-	value: number,
-	min: number,
-	max: number,
-	size: number,
-): number {
-	if (max <= min) return size / 2;
-	return ((value - min) / (max - min)) * size;
-}
-
-interface ReplayMarker {
-	key: string;
-	cx: number;
-	cy: number;
-	r: number;
-	fill: string;
-	stroke?: string;
-	opacity?: number;
-}
-
-function clampReplayValue(value: number, min: number, max: number): number {
-	return Math.min(max, Math.max(min, value));
-}
-
-function getReplayPlaybackTime(
-	replay: ReplayDetail,
-	frameIndex: number,
-	progress: number,
-): number {
-	const safeIndex = Math.min(frameIndex, Math.max(replay.frames.length - 1, 0));
-	const current = replay.frames[safeIndex];
-	const next = replay.frames[Math.min(safeIndex + 1, replay.frames.length - 1)];
-	if (!current) return Date.now();
-	const currentTime = new Date(current.recordedAt).getTime();
-	const nextTime = next
-		? new Date(next.recordedAt).getTime()
-		: currentTime + 800;
-	return currentTime + (nextTime - currentTime) * clampReplayValue(progress, 0, 1);
-}
-
-function getActiveReplayEventMarkers(
-	replay: ReplayDetail,
-	playbackTime: number,
-): ReplayMarker[] {
-	const events = replay.events ?? [];
-	if (events.length === 0) return [];
-
-	return events
-		.map((event, index) => {
-			const eventTime = new Date(event.recordedAt).getTime();
-			const elapsedMs = playbackTime - eventTime;
-			if (elapsedMs < 0) return null;
-
-			const payload = event.payload as {
-				side?: number;
-				vx?: number;
-				vy?: number;
-			};
-			const side = Number(payload.side ?? 0);
-			const vx = Number(payload.vx ?? 0);
-			const vy = Number(payload.vy ?? 0);
-
-			if (event.type === "game:throw") {
-				if (elapsedMs > 2600) return null;
-				const t = elapsedMs / 1000;
-				const drag = 2.1;
-				const factor = (1 - Math.exp(-drag * t)) / drag;
-				const x = 50 + vx * 0.1 * factor;
-				const y = 88 + vy * 0.1 * factor;
-				return {
-					key: `${event.type}-${index}`,
-					cx: clampReplayValue(x, 10, 90),
-					cy: clampReplayValue(y, 8, 92),
-					r: 3.2,
-					fill: playerHexColour(side),
-					stroke: "#1b120a",
-				};
-			}
-
-			if (event.type === "game:bamboo-throw") {
-				if (elapsedMs > 2200) return null;
-				const t = elapsedMs / 1000;
-				const drag = 2.8;
-				const factor = (1 - Math.exp(-drag * t)) / drag;
-				const startX = side === 0 ? 28 : 72;
-				const startY = 50;
-				return {
-					key: `${event.type}-${index}`,
-					cx: clampReplayValue(startX + vx * 8 * factor, 12, 88),
-					cy: clampReplayValue(startY + vy * 8 * factor, 12, 88),
-					r: 2.8,
-					fill: playerHexColour(side),
-					stroke: "#13200f",
-				};
-			}
-
-			if (event.type === "game:kame-throw") {
-				if (elapsedMs > 1800) return null;
-				const t = elapsedMs / 1000;
-				const drag = 3.1;
-				const factor = (1 - Math.exp(-drag * t)) / drag;
-				return {
-					key: `${event.type}-${index}`,
-					cx: clampReplayValue(50 + vx * 7.2 * factor, 10, 90),
-					cy: clampReplayValue(50 + vy * 7.2 * factor, 10, 90),
-					r: 2.7,
-					fill: playerHexColour(side),
-					stroke: "#140d08",
-				};
-			}
-
-			if (event.type === "game:bell-throw") {
-				if (elapsedMs > 1800) return null;
-				const t = elapsedMs / 1000;
-				const drag = 3.2;
-				const factor = (1 - Math.exp(-drag * t)) / drag;
-				const totalPlayers = Math.max(replay.playerNames.length, 2);
-				const angle =
-					-Math.PI / 2 + (side / Math.max(1, totalPlayers)) * Math.PI * 2;
-				const startX = 50 + Math.cos(angle) * 38;
-				const startY = 50 + Math.sin(angle) * 38;
-				return {
-					key: `${event.type}-${index}`,
-					cx: clampReplayValue(startX + vx * 6.4 * factor, 8, 92),
-					cy: clampReplayValue(startY + vy * 6.4 * factor, 8, 92),
-					r: 2.8,
-					fill: playerHexColour(side),
-					stroke: "#17120d",
-				};
-			}
-
-			return null;
-		})
-		.filter((marker): marker is ReplayMarker => marker !== null);
-}
-
-function ReplayStage({
-	replay,
-	frame,
-	bounds,
-	playbackTime,
-}: {
-	replay: ReplayDetail;
-	frame: ReplayFrame;
-	bounds: ReplayBounds;
-	playbackTime: number;
-}): JSX.Element {
-	const markers = getActiveReplayEventMarkers(replay, playbackTime);
-
-	if (replay.gameId === "temple-curling") {
-		const snapshot = frame.snapshot as unknown as CurlingSnapshot;
-		const size = 100;
-		return (
-			<svg
-				className="hub-modal__replay-stage"
-				viewBox={`0 0 ${size} ${size}`}
-				role="img"
-				aria-label="Temple Curling replay"
-			>
-				<rect x="8" y="4" width="84" height="92" rx="18" fill="#eef4ff" />
-				<rect x="14" y="10" width="72" height="80" rx="16" fill="#dbe8f7" />
-				{snapshot.map?.gameId === "temple-curling"
-					? snapshot.map.bumpers.map((bumper, index) => (
-							<circle
-								key={`bumper-${index}`}
-								cx={formatViewBoxPosition(
-									bumper.fx,
-									bounds.minX,
-									bounds.maxX,
-									size,
-								)}
-								cy={formatViewBoxPosition(
-									bumper.fy,
-									bounds.minY,
-									bounds.maxY,
-									size,
-								)}
-								r="2.4"
-								fill="#465363"
-								opacity="0.5"
-							/>
-						))
-					: null}
-				{snapshot.objects.map((object) => (
-					<circle
-						key={object.id}
-						cx={formatViewBoxPosition(
-							object.x,
-							bounds.minX,
-							bounds.maxX,
-							size,
-						)}
-						cy={formatViewBoxPosition(
-							object.y,
-							bounds.minY,
-							bounds.maxY,
-							size,
-						)}
-						r="3.4"
-						fill={playerHexColour(object.side)}
-						stroke="#1b120a"
-						strokeWidth="0.9"
-					/>
-				))}
-				{markers.map((marker) => (
-					<circle
-						key={marker.key}
-						cx={marker.cx}
-						cy={marker.cy}
-						r={marker.r}
-						fill={marker.fill}
-						stroke={marker.stroke}
-						strokeWidth="0.9"
-						opacity={marker.opacity ?? 0.82}
-					/>
-				))}
-			</svg>
-		);
-	}
-
-	if (replay.gameId === "bamboo-bash") {
-		const snapshot = frame.snapshot as unknown as BambooBashSnapshot;
-		return (
-			<svg
-				className="hub-modal__replay-stage"
-				viewBox="0 0 100 100"
-				role="img"
-				aria-label="Bamboo Bash replay"
-			>
-				<rect x="4" y="4" width="92" height="92" rx="12" fill="#112114" />
-				<circle cx="50" cy="50" r="36" fill="#203d21" stroke="#c1e287" strokeWidth="1.4" />
-				{snapshot.bamboos.map((bamboo) => (
-					<circle
-						key={bamboo.id}
-						cx={formatViewBoxPosition(bamboo.nx, bounds.minX, bounds.maxX, 100)}
-						cy={formatViewBoxPosition(bamboo.ny, bounds.minY, bounds.maxY, 100)}
-						r={Math.max(1.8, 2.2 + bamboo.stage * 0.45)}
-						fill="#8fd46f"
-						stroke="#203314"
-						strokeWidth="0.7"
-					/>
-				))}
-				{markers.map((marker) => (
-					<circle
-						key={marker.key}
-						cx={marker.cx}
-						cy={marker.cy}
-						r={marker.r}
-						fill={marker.fill}
-						stroke={marker.stroke}
-						strokeWidth="0.8"
-						opacity={marker.opacity ?? 0.88}
-					/>
-				))}
-			</svg>
-		);
-	}
-
-	if (replay.gameId === "kame-knock") {
-		const snapshot = frame.snapshot as unknown as KameKnockSnapshot;
-		return (
-			<svg
-				className="hub-modal__replay-stage"
-				viewBox="0 0 100 100"
-				role="img"
-				aria-label="Kame Knock replay"
-			>
-				<rect x="4" y="4" width="92" height="92" rx="12" fill="#2a1f16" />
-				{snapshot.targets.map((target) => (
-					<circle
-						key={target.id}
-						cx={formatViewBoxPosition(target.nx, bounds.minX, bounds.maxX, 100)}
-						cy={formatViewBoxPosition(target.ny, bounds.minY, bounds.maxY, 100)}
-						r={Math.max(2.4, target.radiusSrc / 16)}
-						fill={
-							target.kind === "daruma"
-								? "#d45a4a"
-								: target.kind === "crate"
-									? "#b89057"
-									: "#e5d46a"
-						}
-						stroke="#140d08"
-						strokeWidth="0.8"
-					/>
-				))}
-				{markers.map((marker) => (
-					<circle
-						key={marker.key}
-						cx={marker.cx}
-						cy={marker.cy}
-						r={marker.r}
-						fill={marker.fill}
-						stroke={marker.stroke}
-						strokeWidth="0.8"
-						opacity={marker.opacity ?? 0.9}
-					/>
-				))}
-			</svg>
-		);
-	}
-
-	const snapshot = frame.snapshot as unknown as BellClashSnapshot;
-	return (
-		<svg
-			className="hub-modal__replay-stage"
-			viewBox="0 0 100 100"
-			role="img"
-			aria-label="Bell Clash replay"
-		>
-			<rect x="4" y="4" width="92" height="92" rx="12" fill="#17120d" />
-			<circle cx="50" cy="50" r="34" fill="#3b2a1c" />
-			<circle cx="50" cy="50" r="26" fill="#86762f" />
-			<circle cx="50" cy="50" r="16" fill="#436d42" />
-			<circle cx="50" cy="50" r="5" fill="#d8d9dc" />
-			{snapshot.shotCounts.map((count, index) => (
-				<text
-					key={`score-${index}`}
-					x="50"
-					y={16 + index * 10}
-					textAnchor="middle"
-					fontSize="6"
-					fill={playerHexColour(index)}
-				>
-					P{index + 1}: {count} shots
-				</text>
-			))}
-			{markers.map((marker) => (
-				<circle
-					key={marker.key}
-					cx={marker.cx}
-					cy={marker.cy}
-					r={marker.r}
-					fill={marker.fill}
-					stroke={marker.stroke}
-					strokeWidth="0.8"
-					opacity={marker.opacity ?? 0.9}
-				/>
-			))}
-		</svg>
-	);
 }
 
 const GAME_ROUTES: Record<
@@ -1000,6 +594,9 @@ function HomeMenu(): JSX.Element {
 			reportCategorySelectRef.current?.focus();
 		}
 	}, [reportTarget]);
+	const replayHostRef = useRef<HTMLDivElement | null>(null);
+	const replayGameRef = useRef<Phaser.Game | null>(null);
+	const replayControllerRef = useRef<ReplayController | null>(null);
 	const appliedBackgroundId = resolveHubBackgroundId(
 		player?.hubBackground,
 		player?.hubBackgroundAlter,
@@ -1196,44 +793,6 @@ function HomeMenu(): JSX.Element {
 	}, []);
 
 	useEffect(() => {
-		if (!isReplayPlaying || !selectedReplay) return;
-		if (selectedReplay.frames.length <= 1) {
-			setIsReplayPlaying(false);
-			return;
-		}
-		if (selectedReplayFrame >= selectedReplay.frames.length - 1) {
-			setIsReplayPlaying(false);
-			return;
-		}
-
-		const current = selectedReplay.frames[selectedReplayFrame];
-		const next = selectedReplay.frames[selectedReplayFrame + 1];
-		const rawDelay =
-			new Date(next.recordedAt).getTime() -
-			new Date(current.recordedAt).getTime();
-		const duration = Math.max(250, Math.min(1400, rawDelay || 350));
-		let animationFrameId = 0;
-		let startTime = 0;
-
-		const tick = (now: number) => {
-			if (startTime === 0) startTime = now - replayFrameProgress * duration;
-			const progress = clamp((now - startTime) / duration, 0, 1);
-			setReplayFrameProgress(progress);
-			if (progress >= 1) {
-				setReplayFrameProgress(0);
-				setSelectedReplayFrame((value) =>
-					Math.min(value + 1, selectedReplay.frames.length - 1),
-				);
-				return;
-			}
-			animationFrameId = window.requestAnimationFrame(tick);
-		};
-
-		animationFrameId = window.requestAnimationFrame(tick);
-		return () => window.cancelAnimationFrame(animationFrameId);
-	}, [isReplayPlaying, selectedReplay, selectedReplayFrame]);
-
-	useEffect(() => {
 		if (!showCycleBackdrop) {
 			setIsClockDebugOpen(false);
 			setManualMinutes(null);
@@ -1243,6 +802,81 @@ function HomeMenu(): JSX.Element {
 	useEffect(() => {
 		setReplayFrameProgress(0);
 	}, [selectedReplay?.matchId, selectedReplayFrame]);
+
+	useEffect(() => {
+		const host = replayHostRef.current;
+		if (!host || !selectedReplay) return;
+
+		const controller = new ReplayController(selectedReplay);
+		replayControllerRef.current = controller;
+		const unsubscribe = controller.subscribe((state) => {
+			setSelectedReplayFrame(state.frameIndex);
+			setReplayFrameProgress(state.progress);
+			setIsReplayPlaying(state.playing);
+		});
+
+		const game = new Phaser.Game({
+			type: Phaser.AUTO,
+			width: host.clientWidth || 720,
+			height: host.clientHeight || 720,
+			backgroundColor: "rgba(0,0,0,0)",
+			transparent: true,
+			parent: host,
+			scene: [],
+			scale: {
+				mode: Phaser.Scale.NONE,
+				autoCenter: Phaser.Scale.NO_CENTER,
+			},
+		});
+		replayGameRef.current = game;
+
+		game.scene.add(
+			"ReplayScene",
+			new ReplayScene(),
+			true,
+			{ replay: selectedReplay, controller, autoAdvance: false },
+		);
+
+		const resizeObserver = new ResizeObserver((entries) => {
+			const bounds = entries[0]?.contentRect;
+			if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
+			game.scale.resize(bounds.width, bounds.height);
+		});
+		resizeObserver.observe(host);
+
+		return () => {
+			unsubscribe();
+			resizeObserver.disconnect();
+			replayControllerRef.current = null;
+			replayGameRef.current = null;
+			game.destroy(true);
+			host.replaceChildren();
+		};
+	}, [selectedReplay]);
+
+	useEffect(() => {
+		replayControllerRef.current?.setPlayback(
+			selectedReplayFrame,
+			replayFrameProgress,
+			isReplayPlaying,
+		);
+	}, [isReplayPlaying, replayFrameProgress, selectedReplayFrame, selectedReplay]);
+
+	useEffect(() => {
+		if (!isReplayPlaying || !replayControllerRef.current) return;
+		let frameId = 0;
+		let lastTime = 0;
+
+		const tick = (now: number) => {
+			if (lastTime !== 0)
+				replayControllerRef.current?.update(Math.max(0, now - lastTime));
+			lastTime = now;
+			frameId = window.requestAnimationFrame(tick);
+		};
+
+		frameId = window.requestAnimationFrame(tick);
+		return () => window.cancelAnimationFrame(frameId);
+	}, [isReplayPlaying, selectedReplay?.matchId]);
 
 	const gameCards = useMemo(() => {
 		const apiGames = new Map(minigames.map((game) => [game.id, game]));
@@ -1508,9 +1142,7 @@ function HomeMenu(): JSX.Element {
 			const nextReplays = await api.getMyReplays();
 			setReplays(nextReplays);
 		} catch (err: unknown) {
-			setModalError(
-				err instanceof Error ? err.message : "Could not load replays.",
-			);
+			setModalError(err instanceof Error ? err.message : "Could not load replays.");
 			setReplays(null);
 		} finally {
 			setReplaysLoading(false);
@@ -2018,14 +1650,6 @@ function HomeMenu(): JSX.Element {
 		selectedReplay?.frames[
 			Math.min(selectedReplayFrame, Math.max(selectedReplay.frames.length - 1, 0))
 		] ?? null;
-	const replayBounds = getReplayBounds(selectedReplay);
-	const replayPlaybackTime = selectedReplay
-		? getReplayPlaybackTime(
-				selectedReplay,
-				selectedReplayFrame,
-				isReplayPlaying ? replayFrameProgress : 0,
-			)
-		: Date.now();
 
 	const displayedNow =
 		manualMinutes === null ? now : createManualTime(now, manualMinutes);
@@ -2910,7 +2534,7 @@ function HomeMenu(): JSX.Element {
 								</ul>
 							) : (
 								<p className="hub-panel__muted">
-									No replays yet. Finished matches will appear here until they expire.
+									No replays yet. Finished matches and singleplayer runs will appear here until they expire.
 								</p>
 							)}
 						</div>
@@ -2974,11 +2598,11 @@ function HomeMenu(): JSX.Element {
 											Next
 										</button>
 									</div>
-									<ReplayStage
-										replay={selectedReplay}
-										frame={replayFrame}
-										bounds={replayBounds}
-										playbackTime={replayPlaybackTime}
+									<div
+										ref={replayHostRef}
+										className="hub-modal__replay-phaser"
+										role="img"
+										aria-label={`${getReplayGameLabel(selectedReplay.gameId)} replay`}
 									/>
 									<input
 										className="hub-modal__replay-slider"
@@ -3010,7 +2634,7 @@ function HomeMenu(): JSX.Element {
 								</>
 							) : (
 								<p className="hub-panel__muted">
-									Select a replay to inspect its server-authoritative timeline.
+									Select a replay to inspect its timeline.
 								</p>
 							)}
 						</div>

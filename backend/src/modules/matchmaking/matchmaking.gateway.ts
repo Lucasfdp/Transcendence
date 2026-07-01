@@ -309,6 +309,8 @@ export class MatchmakingGateway
 					matchId: room.matchId,
 					id: object.id,
 					side: object.side,
+					x: object.x,
+					y: object.y,
 					vx: Number(payload.payload?.vx ?? 0),
 					vy: Number(payload.payload?.vy ?? 0),
 					power: object.power,
@@ -320,6 +322,7 @@ export class MatchmakingGateway
 				);
 				this.server.to(room.matchId).emit("game:throw", throwEvent);
 			}
+			this.emitState(room.matchId);
 			return;
 		}
 
@@ -332,10 +335,16 @@ export class MatchmakingGateway
 				(candidate) => candidate.user.id === socket.data.user.id,
 			);
 			if (player) {
+				const ball =
+					"balls" in room.state
+						? room.state.balls.find((candidate) => candidate.side === player.side)
+						: null;
 				const throwEvent: BambooBashThrowEvent = {
 					matchId: room.matchId,
 					roundNumber: room.state.roundNumber,
 					side: player.side,
+					x: ball?.x ?? 0,
+					y: ball?.y ?? 0,
 					vx: Number(payload.payload?.vx ?? 0),
 					vy: Number(payload.payload?.vy ?? 0),
 					power: String(payload.payload?.power ?? "none"),
@@ -363,11 +372,17 @@ export class MatchmakingGateway
 				(candidate) => candidate.user.id === socket.data.user.id,
 			);
 			if (player) {
+				const ball =
+					"balls" in room.state
+						? room.state.balls.find((candidate) => candidate.side === player.side)
+						: null;
 				const throwEvent: KameKnockThrowEvent = {
 					matchId: room.matchId,
 					roundNumber: room.state.roundNumber,
 					turnNumber: room.state.turnNumber,
 					side: player.side,
+					x: ball?.x ?? 0,
+					y: ball?.y ?? 0,
 					vx: Number(payload.payload?.vx ?? 0),
 					vy: Number(payload.payload?.vy ?? 0),
 					power: String(payload.payload?.power ?? "none"),
@@ -381,6 +396,7 @@ export class MatchmakingGateway
 					.to(room.matchId)
 					.emit("game:kame-throw", throwEvent);
 			}
+			this.emitState(room.matchId);
 			return;
 		}
 
@@ -394,11 +410,17 @@ export class MatchmakingGateway
 				(candidate) => candidate.user.id === socket.data.user.id,
 			);
 			if (player) {
+				const ball =
+					"balls" in room.state
+						? room.state.balls.find((candidate) => candidate.side === player.side)
+						: null;
 				const throwEvent: BellClashThrowEvent = {
 					matchId: room.matchId,
 					roundNumber: room.state.roundNumber,
 					shotNumber: room.state.shotCounts[player.side] ?? 0,
 					side: player.side,
+					x: ball?.x ?? 0,
+					y: ball?.y ?? 0,
 					vx: Number(payload.payload?.vx ?? 0),
 					vy: Number(payload.payload?.vy ?? 0),
 					power: String(payload.payload?.power ?? "none"),

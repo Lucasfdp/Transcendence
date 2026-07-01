@@ -10,7 +10,7 @@
  */
 
 import Phaser from "phaser";
-import { api } from "../../features/hub/api";
+import { api, type ReplayDetail, type ReplayImportRequest } from "../../features/hub/api";
 import { ResponsiveScene } from "../../shared/responsive-scene";
 import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
@@ -73,6 +73,7 @@ import {
 	type GameSnapshot,
 	type KameKnockSnapshot,
 	type KameKnockThrowEvent,
+	type SnapshotPlayer,
 	type OnlineMatchContext,
 } from "../../services/network/gameSocket";
 import {
@@ -224,6 +225,17 @@ export class KameKnockScene extends ResponsiveScene {
 	private onlineBalls = new Map<number, BallState>();
 	private ballTrails: PlayerTrailStore = new Map();
 	private localMode: "solo" | "versus" = "solo";
+	private localReplayId: string | null = null;
+	private localReplayFrames: Array<{
+		seq: number;
+		recordedAt: string;
+		deltaMs?: number;
+		snapshot: Record<string, unknown>;
+	}> = [];
+	private localReplayStartedAtIso = "";
+	private localReplayElapsedMs = 0;
+	private localReplayLastCaptureMs = 0;
+	private localReplayCaptureAccMs = 0;
 
 	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
 		if (snapshot.gameId === "kame-knock")
@@ -360,6 +372,7 @@ export class KameKnockScene extends ResponsiveScene {
 		if (initialOnlineSnapshot)
 			this.applyOnlineSnapshot(initialOnlineSnapshot, true);
 		else this.setupBallRound();
+		if (!this.onlineMatch) this.initLocalReplayRecording();
 
 		this.drawBackground();
 		this.drawTargets();
@@ -409,6 +422,10 @@ export class KameKnockScene extends ResponsiveScene {
 
 	update(_time: number, delta: number): void {
 		if (!this.running) return;
+		if (!this.onlineMatch) {
+			this.localReplayElapsedMs += delta;
+			this.localReplayCaptureAccMs += delta;
+		}
 
 		// Advance target age (paused during FREEZE)
 		this.targetFreezeMs = Math.max(0, this.targetFreezeMs - delta);
@@ -462,6 +479,10 @@ export class KameKnockScene extends ResponsiveScene {
 		this.drawTargets();
 		this.drawBallTrails();
 		this.drawBall();
+		if (!this.onlineMatch && this.localReplayCaptureAccMs >= 33) {
+			this.captureLocalReplayFrame();
+			this.localReplayCaptureAccMs = 0;
+		}
 	}
 
 	// ── Launch handler ────────────────────────────────────────────────────────────
@@ -488,6 +509,8 @@ export class KameKnockScene extends ResponsiveScene {
 				payload: {
 					roundNumber: this.onlineRoundNumber(),
 					turnNumber: this.onlineTurnNumber(),
+					x: (this.ball.x - this.arena.cx) / this.arena.rx,
+					y: (this.ball.y - this.arena.cy) / this.arena.ry,
 					vx: sourceVx,
 					vy: sourceVy,
 					power,
@@ -515,6 +538,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.activePower = PowerType.NONE;
 		this.powerSidePanel?.hide();
 		this.updateScoreHud();
+		this.captureLocalReplayFrame(true);
 	}
 
 	// ── Stop-flag resolvers ───────────────────────────────────────────────────────
@@ -587,6 +611,7 @@ export class KameKnockScene extends ResponsiveScene {
 		if (this.ballText?.active) this.ballText.setText(this.formatBallText());
 		this.updateScoreHud();
 		if (this.scoreLogPanel) this.updateSidePanels();
+		this.captureLocalReplayFrame(true);
 	}
 
 	private shuffledBreakableFlags(config: BallRoundConfig): boolean[] {
@@ -749,6 +774,8 @@ export class KameKnockScene extends ResponsiveScene {
 		this.powerSidePanel?.hide();
 		this.updateSidePanels();
 		this.updateScoreHud();
+		this.captureLocalReplayFrame(true, "finished");
+		this.persistLocalReplay();
 		this.submitResult();
 		this.showEndScreen();
 	}
@@ -1116,6 +1143,149 @@ export class KameKnockScene extends ResponsiveScene {
 			});
 	}
 
+	private initLocalReplayRecording(): void {
+		this.localReplayId = `local:kame-knock:${Date.now()}`;
+		this.localReplayFrames = [];
+		this.localReplayStartedAtIso = new Date().toISOString();
+		this.localReplayElapsedMs = 0;
+		this.localReplayLastCaptureMs = 0;
+		this.localReplayCaptureAccMs = 0;
+		this.captureLocalReplayFrame(true);
+	}
+
+	private captureLocalReplayFrame(
+		force = false,
+		phaseOverride?: KameKnockSnapshot["phase"],
+	): void {
+		if (this.onlineMatch || !this.localReplayId) return;
+		const nowMs = Math.round(this.localReplayElapsedMs);
+		if (!force && nowMs === this.localReplayLastCaptureMs) return;
+		const deltaMs =
+			this.localReplayFrames.length === 0
+				? undefined
+				: Math.max(0, nowMs - this.localReplayLastCaptureMs);
+		this.localReplayLastCaptureMs = nowMs;
+		this.localReplayFrames.push({
+			seq: this.localReplayFrames.length,
+			recordedAt: new Date().toISOString(),
+			...(deltaMs !== undefined ? { deltaMs } : {}),
+			snapshot: this.buildLocalReplaySnapshot(phaseOverride),
+		});
+	}
+
+	private buildLocalReplaySnapshot(
+		phaseOverride?: KameKnockSnapshot["phase"],
+	): KameKnockSnapshot {
+		return {
+			matchId: this.localReplayId ?? "local:kame-knock:unknown",
+			seq: this.localReplayFrames.length,
+			gameId: "kame-knock",
+			mode: "casual",
+			phase: phaseOverride ?? "active",
+			currentTurn: this.currentPlayerIndex(),
+			turnNumber: this.localTurnNumber,
+			roundNumber: this.currentBallIndex + 1,
+			totalRounds: BALL_ROUNDS.length,
+			activeTurnNumber: this.launchedThisBall ? this.localTurnNumber : null,
+			score: [...this.localScores],
+			roundScores: [...this.localScores],
+			targets: this.targets.map((target) => ({ ...target })),
+			nextTargetId: this.nextTargetId,
+			players: this.buildLocalReplayPlayers(),
+			balls: [
+				{
+					id: "local-shell",
+					side: this.currentPlayerIndex(),
+					x: (this.ball.x - this.arena.cx) / this.arena.rx,
+					y: (this.ball.y - this.arena.cy) / this.arena.ry,
+					vx: this.ball.vx / this.arena.scale,
+					vy: this.ball.vy / this.arena.scale,
+					moving: this.isBallMoving(this.ball),
+					visible: true,
+				},
+			],
+			winnerSide:
+				phaseOverride === "finished" ? this.resolveLocalWinnerSide() : null,
+		};
+	}
+
+	private buildLocalReplayPlayers(): SnapshotPlayer[] {
+		const user = this.registry.get("user") as
+			| { id?: number; username?: string; turtleName?: string | null }
+			| undefined;
+		return Array.from({ length: this.localPlayerCount }, (_value, index) => ({
+			side: index,
+			userId: index === 0 ? (user?.id ?? null) : null,
+			username:
+				index === 0
+					? (user?.turtleName ?? user?.username ?? "Player 1")
+					: `Player ${index + 1}`,
+			connected: true,
+			ready: true,
+			reconnectExpiresAt: null,
+		}));
+	}
+
+	private resolveLocalWinnerSide(): number | null {
+		if (this.localScores.length <= 1) return null;
+		const maxScore = Math.max(...this.localScores);
+		const winnerCount = this.localScores.filter((score) => score === maxScore).length;
+		if (winnerCount !== 1) return null;
+		return this.localScores.findIndex((score) => score === maxScore);
+	}
+
+	private persistLocalReplay(): void {
+		if (!this.localReplayId || this.localReplayFrames.length === 0) return;
+		const user = this.registry.get("user") as
+			| { id?: number; username?: string; turtleName?: string | null; isGuest?: boolean }
+			| undefined;
+		if (user?.isGuest) return;
+		const finishedAt = new Date().toISOString();
+		const replayDetail: ReplayDetail = {
+			id: this.localReplayId,
+			matchId: this.localReplayId,
+			gameId: "kame-knock",
+			mode: this.localMode === "versus" ? "local-versus" : "singleplayer",
+			status: "finished",
+			frameCount: this.localReplayFrames.length,
+			createdAt: this.localReplayStartedAtIso || finishedAt,
+			finishedAt,
+			expiresAt: null,
+			winnerSide: this.resolveLocalWinnerSide(),
+			playerUserIds: [
+				user?.id ?? 0,
+				...Array.from({ length: Math.max(0, this.localPlayerCount - 1) }, () => 0),
+			],
+			playerNames: this.buildLocalReplayPlayers().map((player) => player.username),
+			isSavedByCurrentUser: true,
+			frames: this.localReplayFrames.map((frame) => ({
+				seq: frame.seq,
+				recordedAt: frame.recordedAt,
+				deltaMs: frame.deltaMs,
+				snapshot: frame.snapshot,
+			})),
+			events: [],
+		};
+		const importPayload: ReplayImportRequest = {
+			gameId: replayDetail.gameId,
+			mode: replayDetail.mode,
+			status: "finished",
+			createdAt: replayDetail.createdAt,
+			finishedAt: replayDetail.finishedAt,
+			winnerSide: replayDetail.winnerSide,
+			playerUserIds: replayDetail.playerUserIds,
+			playerNames: replayDetail.playerNames,
+			frames: replayDetail.frames,
+			events: replayDetail.events,
+		};
+		void api
+			.getCsrfToken()
+			.then(() => api.importReplay(importPayload))
+			.catch((err: unknown) => {
+				console.warn("[KameKnock] failed to persist replay to backend:", err);
+			});
+	}
+
 	private finishBallRound(): void {
 		if (this.onlineMatch) {
 			const ball = this.activeBall();
@@ -1137,6 +1307,8 @@ export class KameKnockScene extends ResponsiveScene {
 						turnNumber:
 							this.onlineReplayTurnNumber ??
 							this.onlineTurnNumber(),
+						x: (ball.x - this.arena.cx) / this.arena.rx,
+						y: (ball.y - this.arena.cy) / this.arena.ry,
 					},
 				});
 				this.updateOnlineStatus("Waiting for next turn...");
@@ -1173,6 +1345,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.updateScoreHud();
 		this.showPowerPanel();
 		this.syncSlingshotForTurn();
+		this.captureLocalReplayFrame(true);
 	}
 
 	// ── Power panel ──────────────────────────────────────────────────────────────

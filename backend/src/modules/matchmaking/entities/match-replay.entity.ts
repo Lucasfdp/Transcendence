@@ -14,6 +14,9 @@ import { MatchReplaySave } from "./match-replay-save.entity";
 export interface MatchReplayFrame {
 	seq: number;
 	recordedAt: string;
+	recordedAtMs: number;
+	tickTs: number;
+	deltaMs: number;
 	snapshot: Record<string, unknown>;
 }
 
@@ -21,6 +24,8 @@ export interface MatchReplayEvent {
 	type: string;
 	seq: number;
 	recordedAt: string;
+	recordedAtMs: number;
+	tickTs: number;
 	payload: Record<string, unknown>;
 }
 

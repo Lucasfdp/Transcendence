@@ -8,6 +8,8 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository } from "typeorm";
+import { Match, MatchStatus } from "./entities/match.entity";
+import { MatchPlayer, MatchOutcome } from "./entities/match-player.entity";
 import {
 	MatchReplay,
 	MatchReplayEvent,
@@ -19,6 +21,26 @@ import { MatchRoom } from "./matchmaking.types";
 const REPLAY_TTL_MS = 72 * 60 * 60 * 1000;
 const REPLAY_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const MAX_SAVED_REPLAYS_PER_USER = 20;
+const MAX_IMPORTED_REPLAY_FRAMES = 3_600;
+
+export interface ReplayImportPlayerInput {
+	side: number;
+	userId: number | null;
+	username: string;
+}
+
+export interface ReplayImportInput {
+	gameId: string;
+	mode: string;
+	status: "finished" | "abandoned";
+	createdAt?: string;
+	finishedAt?: string | null;
+	winnerSide?: number | null;
+	playerNames?: string[];
+	playerUserIds?: Array<number | null>;
+	frames: MatchReplayFrame[];
+	events?: MatchReplayEvent[];
+}
 
 export interface ReplaySummaryView {
 	id: string;
@@ -65,17 +87,29 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 		if (this.cleanupTimer) clearInterval(this.cleanupTimer);
 	}
 
-	captureFrame(room: MatchRoom): void {
-		if (room.replayLastCapturedSeq === room.state.seq) return;
+	captureFrame(room: MatchRoom, force = false): void {
+		const now = Date.now();
+		const hasSeqChange = room.replayLastCapturedSeq !== room.state.seq;
+		if (!force && !hasSeqChange) return;
+		if (room.replayStartedAt === null) room.replayStartedAt = now;
+		const deltaMs =
+			room.replayLastRecordedAt === null
+				? 0
+				: Math.max(0, now - room.replayLastRecordedAt);
+		const tickTs = Math.max(0, now - room.replayStartedAt);
 		room.replayFrames.push({
 			seq: room.state.seq,
-			recordedAt: new Date().toISOString(),
+			recordedAt: new Date(now).toISOString(),
+			recordedAtMs: now,
+			tickTs,
+			deltaMs,
 			snapshot: JSON.parse(JSON.stringify(room.state)) as Record<
 				string,
 				unknown
 			>,
 		});
 		room.replayLastCapturedSeq = room.state.seq;
+		room.replayLastRecordedAt = now;
 	}
 
 	recordEvent(
@@ -83,16 +117,20 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 		type: string,
 		payload: Record<string, unknown>,
 	): void {
+		const now = Date.now();
+		if (room.replayStartedAt === null) room.replayStartedAt = now;
 		room.replayEvents.push({
 			type,
 			seq: room.state.seq,
-			recordedAt: new Date().toISOString(),
+			recordedAt: new Date(now).toISOString(),
+			recordedAtMs: now,
+			tickTs: Math.max(0, now - room.replayStartedAt),
 			payload: JSON.parse(JSON.stringify(payload)) as Record<string, unknown>,
 		});
 	}
 
 	async persistReplayForRoom(room: MatchRoom): Promise<void> {
-		this.captureFrame(room);
+		this.captureFrame(room, true);
 		await this.replayRepo.save(
 			this.replayRepo.create({
 				matchId: room.matchId,
@@ -205,6 +243,76 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 		});
 	}
 
+	async importSingleplayerReplayForUser(
+		user: { id: number },
+		input: ReplayImportInput,
+	): Promise<ReplaySummaryView> {
+		await this.cleanupExpiredReplays();
+		this.validateImportedReplay(input);
+
+		return this.dataSource.transaction(async (manager) => {
+			const replayRepo = manager.getRepository(MatchReplay);
+			const matchRepo = manager.getRepository(Match);
+			const playerRepo = manager.getRepository(MatchPlayer);
+
+			const createdAt = this.parseReplayDate(input.createdAt) ?? new Date();
+			const finishedAt =
+				this.parseReplayDate(input.finishedAt ?? undefined) ?? createdAt;
+			const status = input.status as MatchStatus;
+
+			const match = await matchRepo.save(
+				matchRepo.create({
+					gameId: input.gameId,
+					mode: "casual",
+					status,
+					winnerUserId:
+						input.winnerSide === 0 && status === "finished" ? user.id : null,
+					winnerSide:
+						typeof input.winnerSide === "number" ? input.winnerSide : null,
+					startedAt: createdAt,
+					finishedAt,
+				}),
+			);
+
+			const participants = this.buildImportedReplayPlayers(user.id, input);
+			await playerRepo.save(
+				participants.map((player) =>
+					playerRepo.create({
+						matchId: match.id,
+						match,
+						userId: player.userId,
+						side: player.side,
+						outcome: this.resolveImportedOutcome(
+							player.side,
+							input.winnerSide ?? null,
+							status,
+						),
+						shellSelection: [],
+					}),
+				),
+			);
+
+			const replay = await replayRepo.save(
+				replayRepo.create({
+					matchId: match.id,
+					match,
+					gameId: input.gameId,
+					mode: input.mode,
+					frames: input.frames,
+					events: input.events ?? [],
+					frameCount: input.frames.length,
+					expiresAt: new Date(Date.now() + REPLAY_TTL_MS),
+				}),
+			);
+
+			const refreshed = await replayRepo.findOneOrFail({
+				where: { id: replay.id },
+				relations: ["match", "match.players", "match.players.user", "saves", "saves.user"],
+			});
+			return this.toSummary(refreshed, user.id);
+		});
+	}
+
 	async unsaveForUser(matchId: string, userId: number): Promise<ReplaySummaryView> {
 		await this.cleanupExpiredReplays();
 		return this.dataSource.transaction(async (manager) => {
@@ -263,6 +371,58 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 				}`,
 			);
 		}
+	}
+
+	private validateImportedReplay(input: ReplayImportInput): void {
+		if (input.gameId !== "kame-knock") {
+			throw new BadRequestException("Only kame-knock replay import is supported");
+		}
+		if (input.status !== "finished" && input.status !== "abandoned") {
+			throw new BadRequestException("Replay status must be finished or abandoned");
+		}
+		if (!Array.isArray(input.frames) || input.frames.length === 0) {
+			throw new BadRequestException("Replay frames are required");
+		}
+		if (input.frames.length > MAX_IMPORTED_REPLAY_FRAMES) {
+			throw new BadRequestException(
+				`Replay exceeds frame limit (${MAX_IMPORTED_REPLAY_FRAMES})`,
+			);
+		}
+	}
+
+	private parseReplayDate(value?: string): Date | null {
+		if (!value) return null;
+		const parsed = new Date(value);
+		return Number.isNaN(parsed.getTime()) ? null : parsed;
+	}
+
+	private buildImportedReplayPlayers(
+		userId: number,
+		input: ReplayImportInput,
+	): ReplayImportPlayerInput[] {
+		const playerCount = Math.max(
+			1,
+			input.playerNames?.length ?? 0,
+			input.playerUserIds?.length ?? 0,
+			Array.isArray(input.frames[0]?.snapshot?.["players"])
+				? (input.frames[0]?.snapshot?.["players"] as unknown[]).length
+				: 0,
+		);
+		return Array.from({ length: playerCount }, (_value, index) => ({
+			side: index,
+			userId: index === 0 ? userId : input.playerUserIds?.[index] ?? null,
+			username: input.playerNames?.[index] ?? `Player ${index + 1}`,
+		}));
+	}
+
+	private resolveImportedOutcome(
+		side: number,
+		winnerSide: number | null,
+		status: MatchStatus,
+	): MatchOutcome {
+		if (status === "abandoned") return "abandoned";
+		if (winnerSide === null) return "draw";
+		return winnerSide === side ? "win" : "loss";
 	}
 
 	private canAccessReplay(replay: MatchReplay, userId: number): boolean {

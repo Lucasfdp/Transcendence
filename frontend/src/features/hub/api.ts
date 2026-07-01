@@ -620,6 +620,7 @@ export interface OverallLeaderboardEntry {
 export interface ReplayFrame {
 	seq: number;
 	recordedAt: string;
+	deltaMs?: number;
 	snapshot: Record<string, unknown>;
 }
 
@@ -649,6 +650,19 @@ export interface ReplaySummary {
 export interface ReplayDetail extends ReplaySummary {
 	frames: ReplayFrame[];
 	events: ReplayEvent[];
+}
+
+export interface ReplayImportRequest {
+	gameId: string;
+	mode: string;
+	status: "finished" | "abandoned";
+	createdAt?: string;
+	finishedAt?: string | null;
+	winnerSide?: number | null;
+	playerNames?: string[];
+	playerUserIds?: Array<number | null>;
+	frames: ReplayFrame[];
+	events?: ReplayEvent[];
 }
 
 export type LeaderboardScope = "global" | "friends";
@@ -960,6 +974,12 @@ export const api = {
 
 	getReplay: (matchId: string): Promise<ReplayDetail> =>
 		apiFetch<ReplayDetail>(`/matches/${encodeURIComponent(matchId)}/replay`),
+
+	importReplay: (payload: ReplayImportRequest): Promise<ReplaySummary> =>
+		apiFetch<ReplaySummary>("/matches/replays/import", {
+			method: "POST",
+			body: JSON.stringify(payload),
+		}),
 
 	saveReplay: (matchId: string): Promise<ReplaySummary> =>
 		apiFetch<ReplaySummary>(`/matches/${encodeURIComponent(matchId)}/replay/save`, {

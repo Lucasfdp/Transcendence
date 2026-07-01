@@ -5,6 +5,11 @@ import {
 	MatchRoom,
 	RoomPlayer,
 } from "../matchmaking.types";
+import {
+	initializeArenaReplayBall,
+	resetArenaReplayBalls,
+	syncArenaReplayBallFromPayload,
+} from "../replay-state.helpers";
 import { BaseEngine } from "./base.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
@@ -41,6 +46,10 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 			shotCounts: Array.from({ length: roomPlayers.length }, () => 0),
 			zones: [],
 			players: roomPlayers.map((player) => this.toSnapshotPlayer(player)),
+			balls: [],
+			activeBallIdBySide: [],
+			nextBallId: 1,
+			entities: [],
 			winnerSide: null,
 		};
 	}
@@ -50,6 +59,7 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 		room.status = "active";
 		state.phase = "active";
 		this.resetRound(state, room.players.length);
+		resetArenaReplayBalls(state, { clearEntities: true });
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 	}
@@ -108,6 +118,7 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 
 		state.shotCounts[player.side] =
 			(state.shotCounts[player.side] ?? 0) + 1;
+		initializeArenaReplayBall(state, player.side, vx, vy);
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;
@@ -135,6 +146,7 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 			return null;
 		if ((state.shotCounts[player.side] ?? 0) <= 0) return null;
 
+		syncArenaReplayBallFromPayload(state, player.side, payload);
 		state.liveRoundScores[player.side] =
 			(state.liveRoundScores[player.side] ?? 0) + points;
 		state.seq = ++room.seq;
@@ -182,6 +194,7 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 
 		state.roundNumber += 1;
 		this.resetRound(state, room.players.length);
+		resetArenaReplayBalls(state, { clearEntities: true });
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;

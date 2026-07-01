@@ -1,4 +1,5 @@
 import {
+	Body,
 	Controller,
 	Delete,
 	Get,
@@ -13,6 +14,7 @@ import { Repository } from "typeorm";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Match } from "./entities/match.entity";
 import {
+	ReplayImportInput,
 	ReplayDetailView,
 	ReplayService,
 	ReplaySummaryView,
@@ -59,6 +61,14 @@ export class MatchesController {
 		@Request() req: { user: { id: number } },
 	): Promise<ReplayDetailView> {
 		return this.replayService.getForUser(id, req.user.id);
+	}
+
+	@Post("replays/import")
+	importReplay(
+		@Body() body: ReplayImportInput,
+		@Request() req: { user: { id: number } },
+	): Promise<ReplaySummaryView> {
+		return this.replayService.importSingleplayerReplayForUser(req.user, body);
 	}
 
 	@Post(":id/replay/save")

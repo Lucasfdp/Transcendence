@@ -35,10 +35,50 @@ export interface CurlingSnapshot {
 		side: number;
 		x: number;
 		y: number;
+		vx?: number;
+		vy?: number;
+		moving?: boolean;
 		power: string;
 		trail?: Array<{ x: number; y: number }>;
 	}>;
 	winnerSide: number | null;
+}
+
+export interface BallSnapshotData {
+	id?: number | string;
+	side: number;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	moving?: boolean;
+	visible?: boolean;
+	power?: string;
+	scale?: number;
+	trail?: Array<{ x: number; y: number }>;
+}
+
+export interface ReplayFrameSnapshotEntity {
+	id?: number | string;
+	type: "projectile" | "stone";
+	side?: number;
+	ownerSide: number;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	rotation?: number;
+	angularVelocity?: number;
+	scale?: number;
+	visible?: boolean;
+	alpha?: number;
+	spriteKey?: string;
+	stateFlags?: string[];
+	createdAt?: number;
+	updatedAt?: number;
+	stopped?: boolean;
+	trail?: Array<{ x: number; y: number }>;
+	power?: string;
 }
 
 export interface SnapshotPlayer {
@@ -75,6 +115,8 @@ export interface BambooBashSnapshot {
 	spawnAccMs: number;
 	lastBambooUpdateAt: number | null;
 	players: SnapshotPlayer[];
+	balls: BallSnapshotData[];
+	entities?: ReplayFrameSnapshotEntity[];
 	winnerSide: number | null;
 }
 
@@ -104,6 +146,8 @@ export interface KameKnockSnapshot {
 	}>;
 	nextTargetId: number;
 	players: SnapshotPlayer[];
+	balls: BallSnapshotData[];
+	entities?: ReplayFrameSnapshotEntity[];
 	winnerSide: number | null;
 }
 
@@ -126,6 +170,8 @@ export interface BellClashSnapshot {
 		end: number;
 	}>;
 	players: SnapshotPlayer[];
+	balls: BallSnapshotData[];
+	entities?: ReplayFrameSnapshotEntity[];
 	winnerSide: number | null;
 }
 
@@ -139,6 +185,8 @@ export interface CurlingThrowEvent {
 	matchId: string;
 	id: number;
 	side: number;
+	x: number;
+	y: number;
 	vx: number;
 	vy: number;
 	power: string;
@@ -148,6 +196,8 @@ export interface BambooBashThrowEvent {
 	matchId: string;
 	roundNumber: number;
 	side: number;
+	x: number;
+	y: number;
 	vx: number;
 	vy: number;
 	power: string;
@@ -158,6 +208,8 @@ export interface KameKnockThrowEvent {
 	roundNumber: number;
 	turnNumber: number;
 	side: number;
+	x: number;
+	y: number;
 	vx: number;
 	vy: number;
 	power: string;
@@ -168,6 +220,8 @@ export interface BellClashThrowEvent {
 	roundNumber: number;
 	shotNumber: number;
 	side: number;
+	x: number;
+	y: number;
 	vx: number;
 	vy: number;
 	power: string;

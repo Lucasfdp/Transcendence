@@ -5,6 +5,12 @@ import {
 	MatchRoom,
 	RoomPlayer,
 } from "../matchmaking.types";
+import {
+	initializeArenaReplayBall,
+	resetArenaReplayBalls,
+	settleArenaReplayBall,
+	syncArenaReplayBallFromPayload,
+} from "../replay-state.helpers";
 import { BaseEngine } from "./base.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
@@ -47,6 +53,10 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 			targets: [],
 			nextTargetId: 1,
 			players: roomPlayers.map((player) => this.toSnapshotPlayer(player)),
+			balls: [],
+			activeBallIdBySide: [],
+			nextBallId: 1,
+			entities: [],
 			winnerSide: null,
 		};
 	}
@@ -57,6 +67,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		state.phase = "active";
 		this.createRoundTargetSet(room.matchId, state.roundNumber);
 		this.resetTurnTargets(room.matchId, state);
+		resetArenaReplayBalls(state, { clearEntities: true });
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 	}
@@ -118,6 +129,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
 
 		state.activeTurnNumber = state.turnNumber;
+		initializeArenaReplayBall(state, player.side, vx, vy);
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;
@@ -159,6 +171,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		const target = state.targets[index];
 		if (!target.breakable) return room;
 
+		syncArenaReplayBallFromPayload(state, player.side, payload);
 		state.targets.splice(index, 1);
 		const gained = target.points * combo + (perfect ? 500 : 0);
 		state.score[player.side] = (state.score[player.side] ?? 0) + gained;
@@ -191,6 +204,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		)
 			return null;
 
+		settleArenaReplayBall(state, player.side, payload);
 		state.activeTurnNumber = null;
 		state.turnNumber += 1;
 		if (state.turnNumber >= room.players.length * state.totalRounds) {
@@ -205,7 +219,8 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 
 		const nextRound =
 			Math.floor(state.turnNumber / room.players.length) + 1;
-		if (nextRound !== state.roundNumber) {
+		const isNewRound = nextRound !== state.roundNumber;
+		if (isNewRound) {
 			state.roundNumber = nextRound;
 			state.roundScores = Array.from(
 				{ length: room.players.length },
@@ -216,6 +231,9 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 
 		state.currentTurn = state.turnNumber % room.players.length;
 		this.resetTurnTargets(room.matchId, state);
+		resetArenaReplayBalls(state, {
+			clearEntities: isNewRound,
+		});
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;

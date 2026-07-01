@@ -58,8 +58,15 @@ function makeRoom(overrides: Partial<MatchRoom> = {}): MatchRoom {
 			map: { gameId: "temple-curling" },
 			players: [],
 			objects: [],
+			activeStoneId: null,
 			winnerSide: 0,
 		},
+		replayFrames: [],
+		replayEvents: [],
+		replayLastCapturedSeq: null,
+		replayStartedAt: null,
+		replayLastRecordedAt: null,
+		replayLastSimulationAt: null,
 		...overrides,
 	};
 }
@@ -129,6 +136,7 @@ describe("GameSessionService", () => {
 			engines,
 			usersService,
 			gameResultsService,
+			replayService as never,
 			replayService as never,
 			dataSource as never,
 			matchRepo as never,

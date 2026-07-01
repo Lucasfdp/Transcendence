@@ -5,6 +5,11 @@ import {
 	MatchRoom,
 	RoomPlayer,
 } from "../matchmaking.types";
+import {
+	initializeArenaReplayBall,
+	resetArenaReplayBalls,
+	syncArenaReplayBallFromPayload,
+} from "../replay-state.helpers";
 import { BaseEngine } from "./base.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
@@ -47,6 +52,10 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 			spawnAccMs: 0,
 			lastBambooUpdateAt: null,
 			players: roomPlayers.map((player) => this.toSnapshotPlayer(player)),
+			balls: [],
+			activeBallIdBySide: [],
+			nextBallId: 1,
+			entities: [],
 			winnerSide: null,
 		};
 	}
@@ -55,6 +64,7 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 		const state = room.state as BambooBashSnapshot;
 		this.startRoundClock(state);
 		this.resetSharedBamboos(state, room.players.length);
+		resetArenaReplayBalls(state, { clearEntities: true });
 		room.status = "active";
 		state.phase = "active";
 		state.seq = ++room.seq;
@@ -71,7 +81,7 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 		if (input.action === "bamboo:hit")
 			return this.applyBambooHit(room, userId, input.payload ?? {});
 		if (input.action === "bamboo:sync")
-			return this.applyBambooSync(room, userId);
+			return this.applyBambooSync(room, userId, input.payload ?? {});
 		if (input.action !== "round:score") return room;
 		const state = room.state as BambooBashSnapshot;
 		this.updateSharedBamboos(state);
@@ -117,6 +127,7 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 		);
 		this.startRoundClock(state);
 		this.resetSharedBamboos(state, room.players.length);
+		resetArenaReplayBalls(state, { clearEntities: true });
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;
@@ -141,6 +152,7 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 		const vy = Number(payload.vy);
 		if (roundNumber !== state.roundNumber) return null;
 		if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
+		initializeArenaReplayBall(state, player.side, vx, vy);
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;
@@ -164,6 +176,7 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 		const bambooId = Math.floor(Number(payload.bambooId));
 		if (roundNumber !== state.roundNumber || !Number.isFinite(bambooId))
 			return null;
+		syncArenaReplayBallFromPayload(state, player.side, payload);
 
 		const index = state.bamboos.findIndex(
 			(bamboo) => bamboo.id === bambooId,
@@ -180,7 +193,11 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 		return room;
 	}
 
-	private applyBambooSync(room: MatchRoom, userId: number): MatchRoom | null {
+	private applyBambooSync(
+		room: MatchRoom,
+		userId: number,
+		payload: Record<string, unknown> = {},
+	): MatchRoom | null {
 		const state = room.state as BambooBashSnapshot;
 		const player = room.players.find(
 			(candidate) => candidate.user.id === userId,
@@ -189,6 +206,7 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 			return null;
 		if (state.roundScores[player.side] !== null) return null;
 		this.updateSharedBamboos(state);
+		syncArenaReplayBallFromPayload(state, player.side, payload);
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;

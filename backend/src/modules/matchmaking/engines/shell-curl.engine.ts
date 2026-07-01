@@ -6,6 +6,10 @@ import {
 	MatchRoom,
 	RoomPlayer,
 } from "../matchmaking.types";
+import {
+	initializeCurlingReplayStone,
+	syncCurlingReplayStateFromPayload,
+} from "../replay-state.helpers";
 import { BaseEngine } from "./base.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
@@ -25,6 +29,9 @@ interface SettledObject {
 	side: number;
 	x: number;
 	y: number;
+	vx?: number;
+	vy?: number;
+	moving?: boolean;
 	power: string;
 	trail?: Array<{ x: number; y: number }>;
 }
@@ -61,6 +68,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			map: createShellCurlMap(),
 			players: roomPlayers.map((player) => this.toSnapshotPlayer(player)),
 			objects: [],
+			activeStoneId: null,
 			winnerSide: null,
 		};
 	}
@@ -100,13 +108,14 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		if (state.objects.some((object) => object.id === state.turnNumber))
 			return null;
 
-		state.objects.push({
-			id: state.turnNumber,
-			side: player.side,
-			x: 0,
-			y: 0.5,
-			power: String(payload.power ?? "none"),
-		});
+		initializeCurlingReplayStone(
+			state,
+			state.turnNumber,
+			player.side,
+			Number(payload.vx ?? 0),
+			Number(payload.vy ?? 0),
+			String(payload.power ?? "none"),
+		);
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;
@@ -125,33 +134,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		const objects = Array.isArray(payload.objects) ? payload.objects : null;
 		if (!objects) return null;
 
-		state.objects = objects
-			.map((object): SettledObject | null => {
-				if (!object || typeof object !== "object") return null;
-				const raw = object as Record<string, unknown>;
-				const id = Number(raw.id);
-				const side = Number(raw.side);
-				const x = Number(raw.x);
-				const y = Number(raw.y);
-				if (
-					!Number.isFinite(id) ||
-					!Number.isFinite(side) ||
-					!Number.isFinite(x) ||
-					!Number.isFinite(y)
-				)
-					return null;
-				return {
-					id,
-					side,
-					x: Math.max(0, Math.min(1, x)),
-					y: Math.max(0, Math.min(1, y)),
-					power: String(raw.power ?? "none"),
-					trail: Array.isArray(raw.trail)
-						? (raw.trail as Array<{ x: number; y: number }>)
-						: undefined,
-				};
-			})
-			.filter((object): object is SettledObject => object !== null);
+		syncCurlingReplayStateFromPayload(state, payload);
 
 		state.turnNumber += 1;
 		state.throwsInEnd += 1;
@@ -170,6 +153,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			state.currentEnd += 1;
 			state.throwsInEnd = 0;
 			state.objects = [];
+			state.activeStoneId = null;
 			if (state.currentEnd < state.totalEnds) state.map = createShellCurlMap();
 		}
 

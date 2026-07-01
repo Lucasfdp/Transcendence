@@ -589,7 +589,25 @@ export class ShellCurlScene extends ResponsiveScene {
 			getGameSocket().emit("game:input", {
 				matchId: this.onlineMatch.matchId,
 				action: "release",
-				payload: { vx: sourceVx, vy: sourceVy, power },
+				payload: {
+					x: Math.max(
+						0,
+						Math.min(
+							1,
+							(this.activeStone.x - this.arena.sheetX) / this.arena.sheetW,
+						),
+					),
+					y: Math.max(
+						0,
+						Math.min(
+							1,
+							(this.activeStone.y - this.arena.sheetY) / this.arena.sheetH,
+						),
+					),
+					vx: sourceVx,
+					vy: sourceVy,
+					power,
+				},
 			});
 			this.powerSidePanel?.hide();
 			this.slingshot.destroy();
@@ -1356,13 +1374,16 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private finishOnlineReplay(): void {
-		if (
+		const shouldSubmitSettled =
 			this.onlineMatch &&
 			!this.onlineMatch.spectator &&
-			this.onlineReplayThrower === this.onlineMatch.side
-		) {
+			this.onlineReplayThrower === this.onlineMatch.side;
+
+		if (shouldSubmitSettled) {
+			const onlineMatch = this.onlineMatch;
+			if (!onlineMatch) return;
 			getGameSocket().emit("game:input", {
-				matchId: this.onlineMatch.matchId,
+				matchId: onlineMatch.matchId,
 				action: "settled",
 				payload: { objects: this.serializeOnlineObjects() },
 			});
@@ -1555,6 +1576,9 @@ export class ShellCurlScene extends ResponsiveScene {
 				0,
 				Math.min(1, (stone.y - this.arena.sheetY) / this.arena.sheetH),
 			),
+			vx: stone.vx / this.arena.scale,
+			vy: stone.vy / this.arena.scale,
+			moving: !stone.stopped,
 			power: stone.power,
 			trail: this.stoneTrails.get(stone.id)?.map((point) => ({
 				x: Math.max(

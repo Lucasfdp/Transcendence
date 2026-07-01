@@ -422,6 +422,8 @@ export class BellClashScene extends ResponsiveScene {
 				action: "release",
 				payload: {
 					roundNumber: this.onlineRoundNumber,
+					x: (this.ball.x - this.arena.cx) / this.arena.rx,
+					y: (this.ball.y - this.arena.cy) / this.arena.ry,
 					vx: sourceVx,
 					vy: sourceVy,
 					power,
