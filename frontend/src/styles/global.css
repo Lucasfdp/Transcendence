@@ -2076,6 +2076,15 @@ input {
 	overflow: hidden;
 }
 
+.hub-modal__panel--wide {
+	width: min(80vw, 96rem);
+	max-height: 74vh;
+}
+
+.hub-modal__panel--wide .hub-modal__body {
+	overflow: hidden;
+}
+
 .hub-modal__panel header {
 	display: flex;
 	align-items: center;
@@ -3877,6 +3886,52 @@ input {
 	gap: 0.75rem;
 }
 
+.hub-modal__replay-list {
+	gap: 1rem;
+}
+
+.hub-modal__replay-tabs {
+	display: flex;
+	gap: 0.55rem;
+	flex-wrap: wrap;
+}
+
+.hub-modal__replay-tab {
+	font-family: var(--urban-stone-font);
+	font-size: 0.9rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	color: var(--text);
+	background: rgba(26, 16, 5, 0.52);
+	border: 1px solid rgba(241, 211, 145, 0.22);
+	border-radius: 999px;
+	padding: 0.55rem 0.95rem;
+	cursor: pointer;
+}
+
+.hub-modal__replay-tab--active {
+	color: #fff3c6;
+	background: rgba(241, 211, 145, 0.14);
+	border-color: rgba(241, 211, 145, 0.5);
+}
+
+.hub-modal__replay-section {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.hub-modal__replay-section h3,
+.hub-modal__replay-viewer h3 {
+	margin: 0;
+	font-family: var(--urban-stone-font);
+	font-size: 1rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--accent);
+}
+
 .hub-modal__replay-items {
 	list-style: none;
 	margin: 0;
@@ -3889,6 +3944,7 @@ input {
 .hub-modal__replay-item {
 	display: flex;
 	justify-content: space-between;
+	align-items: center;
 	gap: 0.75rem;
 	padding: 0.8rem;
 	border: 1px solid rgba(245, 214, 119, 0.18);
@@ -3901,6 +3957,17 @@ input {
 	flex-direction: column;
 	gap: 0.25rem;
 	min-width: 0;
+}
+
+.hub-modal__replay-copy strong {
+	font-family: var(--urban-stone-font);
+	font-size: 0.98rem;
+	letter-spacing: 0.03em;
+}
+
+.hub-modal__replay-copy small {
+	color: var(--muted);
+	font-family: var(--body-font);
 }
 
 .hub-modal__replay-actions {
@@ -3949,10 +4016,20 @@ input {
 	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
+.hub-modal__replay-phaser--expanded {
+	aspect-ratio: auto;
+	min-height: min(50vh, 640px);
+}
+
 .hub-modal__replay-phaser canvas {
 	display: block;
 	width: 100%;
 	height: 100%;
+}
+
+.hub-modal__replay-viewer--expanded {
+	height: 100%;
+	overflow: hidden;
 }
 
 .hub-modal__replay-scoreboard {

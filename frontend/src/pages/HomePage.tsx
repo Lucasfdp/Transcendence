@@ -544,6 +544,8 @@ function HomeMenu(): JSX.Element {
 		null,
 	);
 	const [isReplayPlaying, setIsReplayPlaying] = useState(false);
+	const [isReplayExpanded, setIsReplayExpanded] = useState(false);
+	const [replayTab, setReplayTab] = useState<"match" | "saved">("match");
 	const [showcasePickerSlot, setShowcasePickerSlot] = useState<number | null>(null);
 	const [friends, setFriends] = useState<FriendView[] | null>(null);
 	const [pendingRequests, setPendingRequests] = useState<PendingView[] | null>(null);
@@ -594,9 +596,6 @@ function HomeMenu(): JSX.Element {
 			reportCategorySelectRef.current?.focus();
 		}
 	}, [reportTarget]);
-	const replayHostRef = useRef<HTMLDivElement | null>(null);
-	const replayGameRef = useRef<Phaser.Game | null>(null);
-	const replayControllerRef = useRef<ReplayController | null>(null);
 	const appliedBackgroundId = resolveHubBackgroundId(
 		player?.hubBackground,
 		player?.hubBackgroundAlter,
@@ -803,80 +802,14 @@ function HomeMenu(): JSX.Element {
 		setReplayFrameProgress(0);
 	}, [selectedReplay?.matchId, selectedReplayFrame]);
 
-	useEffect(() => {
-		const host = replayHostRef.current;
-		if (!host || !selectedReplay) return;
-
-		const controller = new ReplayController(selectedReplay);
-		replayControllerRef.current = controller;
-		const unsubscribe = controller.subscribe((state) => {
-			setSelectedReplayFrame(state.frameIndex);
-			setReplayFrameProgress(state.progress);
-			setIsReplayPlaying(state.playing);
-		});
-
-		const game = new Phaser.Game({
-			type: Phaser.AUTO,
-			width: host.clientWidth || 720,
-			height: host.clientHeight || 720,
-			backgroundColor: "rgba(0,0,0,0)",
-			transparent: true,
-			parent: host,
-			scene: [],
-			scale: {
-				mode: Phaser.Scale.NONE,
-				autoCenter: Phaser.Scale.NO_CENTER,
-			},
-		});
-		replayGameRef.current = game;
-
-		game.scene.add(
-			"ReplayScene",
-			new ReplayScene(),
-			true,
-			{ replay: selectedReplay, controller, autoAdvance: false },
-		);
-
-		const resizeObserver = new ResizeObserver((entries) => {
-			const bounds = entries[0]?.contentRect;
-			if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
-			game.scale.resize(bounds.width, bounds.height);
-		});
-		resizeObserver.observe(host);
-
-		return () => {
-			unsubscribe();
-			resizeObserver.disconnect();
-			replayControllerRef.current = null;
-			replayGameRef.current = null;
-			game.destroy(true);
-			host.replaceChildren();
-		};
-	}, [selectedReplay]);
-
-	useEffect(() => {
-		replayControllerRef.current?.setPlayback(
-			selectedReplayFrame,
-			replayFrameProgress,
-			isReplayPlaying,
-		);
-	}, [isReplayPlaying, replayFrameProgress, selectedReplayFrame, selectedReplay]);
-
-	useEffect(() => {
-		if (!isReplayPlaying || !replayControllerRef.current) return;
-		let frameId = 0;
-		let lastTime = 0;
-
-		const tick = (now: number) => {
-			if (lastTime !== 0)
-				replayControllerRef.current?.update(Math.max(0, now - lastTime));
-			lastTime = now;
-			frameId = window.requestAnimationFrame(tick);
-		};
-
-		frameId = window.requestAnimationFrame(tick);
-		return () => window.cancelAnimationFrame(frameId);
-	}, [isReplayPlaying, selectedReplay?.matchId]);
+	const matchReplays = useMemo(
+		() => replays?.filter((replay) => !replay.isSavedByCurrentUser) ?? [],
+		[replays],
+	);
+	const savedReplays = useMemo(
+		() => replays?.filter((replay) => replay.isSavedByCurrentUser) ?? [],
+		[replays],
+	);
 
 	const gameCards = useMemo(() => {
 		const apiGames = new Map(minigames.map((game) => [game.id, game]));
@@ -1138,6 +1071,8 @@ function HomeMenu(): JSX.Element {
 		setSelectedReplayFrame(0);
 		setReplayFrameProgress(0);
 		setIsReplayPlaying(false);
+		setIsReplayExpanded(false);
+		setReplayTab("match");
 		try {
 			const nextReplays = await api.getMyReplays();
 			setReplays(nextReplays);
@@ -1153,6 +1088,7 @@ function HomeMenu(): JSX.Element {
 		setReplayActionLoading(matchId);
 		setModalError("");
 		setIsReplayPlaying(false);
+		setIsReplayExpanded(false);
 		try {
 			const replay = await api.getReplay(matchId);
 			setSelectedReplay(replay);
@@ -1178,11 +1114,10 @@ function HomeMenu(): JSX.Element {
 			const updated = nextSavedState
 				? await api.saveReplay(matchId)
 				: await api.unsaveReplay(matchId);
-			setReplays((prev) =>
-				prev?.map((replay) =>
-					replay.matchId === matchId ? updated : replay,
-				) ?? null,
-			);
+			if (nextSavedState) setReplayTab("saved");
+			else if (replayTab === "saved") setReplayTab("match");
+			const refreshedReplays = await api.getMyReplays();
+			setReplays(refreshedReplays);
 			setSelectedReplay((prev) =>
 				prev && prev.matchId === matchId ? { ...prev, ...updated } : prev,
 			);
@@ -1646,10 +1581,6 @@ function HomeMenu(): JSX.Element {
 	const showcasedAchievements = showcasedIds
 		.map((id) => achievements?.find((a) => a.id === id) ?? null)
 		.filter((a): a is Achievement => a !== null);
-	const replayFrame =
-		selectedReplay?.frames[
-			Math.min(selectedReplayFrame, Math.max(selectedReplay.frames.length - 1, 0))
-		] ?? null;
 
 	const displayedNow =
 		manualMinutes === null ? now : createManualTime(now, manualMinutes);
@@ -2480,164 +2411,95 @@ function HomeMenu(): JSX.Element {
 						setSelectedReplayFrame(0);
 						setReplayFrameProgress(0);
 						setIsReplayPlaying(false);
+						setIsReplayExpanded(false);
 					}}
 				>
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					<div className="hub-modal__replays">
 						<div className="hub-modal__replay-list">
-							<h3>Available replays</h3>
 							{replaysLoading ? (
 								<p>Loading…</p>
-							) : replays && replays.length > 0 ? (
-								<ul className="hub-modal__replay-items">
-									{replays.map((replay) => (
-										<li key={replay.matchId} className="hub-modal__replay-item">
-											<div className="hub-modal__replay-copy">
-												<strong>{getReplayGameLabel(replay.gameId)}</strong>
-												<small>
-													{replay.playerNames.join(" vs ")} · {replay.frameCount} frames
-												</small>
-												<small>
-													Finished: {formatReplayDate(replay.finishedAt)}
-												</small>
-												<small>
-													{replay.isSavedByCurrentUser
-														? "Saved in profile"
-														: replay.expiresAt
-															? `Auto-delete: ${formatReplayDate(replay.expiresAt)}`
-															: "Temporary replay"}
-												</small>
-											</div>
-											<div className="hub-modal__replay-actions">
-												<button
-													type="button"
-													disabled={replayActionLoading === replay.matchId}
-													onClick={() => void handleLoadReplay(replay.matchId)}
-												>
-													{selectedReplay?.matchId === replay.matchId ? "Viewing" : "View"}
-												</button>
-												<button
-													type="button"
-													disabled={replayActionLoading === replay.matchId}
-													onClick={() =>
-														void handleSaveReplay(
-															replay.matchId,
-															!replay.isSavedByCurrentUser,
-														)
-													}
-												>
-													{replay.isSavedByCurrentUser ? "Remove" : "Save"}
-												</button>
-											</div>
-										</li>
-									))}
-								</ul>
 							) : (
-								<p className="hub-panel__muted">
-									No replays yet. Finished matches and singleplayer runs will appear here until they expire.
-								</p>
+								<>
+									<div className="hub-modal__replay-tabs" role="tablist" aria-label="Replay categories">
+										<button
+											type="button"
+											role="tab"
+											aria-selected={replayTab === "match"}
+											className={`hub-modal__replay-tab${replayTab === "match" ? " hub-modal__replay-tab--active" : ""}`}
+											onClick={() => setReplayTab("match")}
+										>
+											Match replays
+										</button>
+										<button
+											type="button"
+											role="tab"
+											aria-selected={replayTab === "saved"}
+											className={`hub-modal__replay-tab${replayTab === "saved" ? " hub-modal__replay-tab--active" : ""}`}
+											onClick={() => setReplayTab("saved")}
+										>
+											My replays
+										</button>
+									</div>
+									<ReplayListSection
+										title={replayTab === "match" ? "Match replays" : "My replays"}
+										replays={replayTab === "match" ? matchReplays : savedReplays}
+										selectedReplay={selectedReplay}
+										replayActionLoading={replayActionLoading}
+										onLoadReplay={(matchId) => void handleLoadReplay(matchId)}
+										onToggleSaved={(matchId, nextSavedState) =>
+											void handleSaveReplay(matchId, nextSavedState)
+										}
+										emptyMessage={
+											replayTab === "match"
+												? "No temporary match replays available."
+												: "You have no saved replays yet."
+										}
+									/>
+								</>
 							)}
 						</div>
 
 						<div className="hub-modal__replay-viewer">
 							<h3>Replay viewer</h3>
-							{selectedReplay && replayFrame ? (
-								<>
-									<p className="hub-modal__replay-meta">
-										<strong>{getReplayGameLabel(selectedReplay.gameId)}</strong>
-										<span>
-											Frame {selectedReplayFrame + 1} / {selectedReplay.frames.length}
-										</span>
-									</p>
-									<div className="hub-modal__replay-toolbar">
-										<button
-											type="button"
-											onClick={() => {
-												setIsReplayPlaying((value) => !value);
-											}}
-										>
-											{isReplayPlaying ? "Pause" : "Play"}
-										</button>
-										<button
-											type="button"
-											onClick={() => {
-												setIsReplayPlaying(false);
-												setReplayFrameProgress(0);
-												setSelectedReplayFrame(0);
-											}}
-										>
-											Reset
-										</button>
-										<button
-											type="button"
-											disabled={selectedReplayFrame <= 0}
-											onClick={() => {
-												setIsReplayPlaying(false);
-												setReplayFrameProgress(0);
-												setSelectedReplayFrame((value) => Math.max(0, value - 1));
-											}}
-										>
-											Prev
-										</button>
-										<button
-											type="button"
-											disabled={
-												selectedReplayFrame >= selectedReplay.frames.length - 1
-											}
-											onClick={() => {
-												setIsReplayPlaying(false);
-												setReplayFrameProgress(0);
-												setSelectedReplayFrame((value) =>
-													Math.min(
-														selectedReplay.frames.length - 1,
-														value + 1,
-													),
-												);
-											}}
-										>
-											Next
-										</button>
-									</div>
-									<div
-										ref={replayHostRef}
-										className="hub-modal__replay-phaser"
-										role="img"
-										aria-label={`${getReplayGameLabel(selectedReplay.gameId)} replay`}
-									/>
-									<input
-										className="hub-modal__replay-slider"
-										type="range"
-										min="0"
-										max={Math.max(selectedReplay.frames.length - 1, 0)}
-										step="1"
-										value={selectedReplayFrame}
-										onChange={(event) => {
-											setReplayFrameProgress(0);
-											setSelectedReplayFrame(Number(event.target.value));
-										}}
-									/>
-									<div className="hub-modal__replay-frame-meta">
-										<small>Recorded: {formatReplayDate(replayFrame.recordedAt)}</small>
-										<small>Seq: {replayFrame.seq}</small>
-									</div>
-									<div className="hub-modal__replay-scoreboard">
-										{Array.isArray((replayFrame.snapshot as { score?: number[] }).score)
-											? (replayFrame.snapshot as { score: number[] }).score.map(
-													(score, index) => (
-														<span key={`replay-score-${index}`}>
-															P{index + 1}: {score}
-														</span>
-													),
-												)
-											: null}
-									</div>
-								</>
+							{selectedReplay ? (
+								<ReplayViewer
+									replay={selectedReplay}
+									selectedReplayFrame={selectedReplayFrame}
+									replayFrameProgress={replayFrameProgress}
+									isReplayPlaying={isReplayPlaying}
+									onSelectedReplayFrameChange={setSelectedReplayFrame}
+									onReplayFrameProgressChange={setReplayFrameProgress}
+									onIsReplayPlayingChange={setIsReplayPlaying}
+									onExpand={() => setIsReplayExpanded(true)}
+								/>
 							) : (
 								<p className="hub-panel__muted">
 									Select a replay to inspect its timeline.
 								</p>
 							)}
 						</div>
+					</div>
+				</HubModal>
+			) : null}
+
+			{activeModal === "replays" && isReplayExpanded && selectedReplay ? (
+				<HubModal
+					title={`${getReplayGameLabel(selectedReplay.gameId)} Replay`}
+					variant="wide"
+					onClose={() => setIsReplayExpanded(false)}
+				>
+					<div className="hub-modal__replay-viewer hub-modal__replay-viewer--expanded">
+						<ReplayViewer
+							replay={selectedReplay}
+							selectedReplayFrame={selectedReplayFrame}
+							replayFrameProgress={replayFrameProgress}
+							isReplayPlaying={isReplayPlaying}
+							onSelectedReplayFrameChange={setSelectedReplayFrame}
+							onReplayFrameProgressChange={setReplayFrameProgress}
+							onIsReplayPlayingChange={setIsReplayPlaying}
+							expanded
+						/>
 					</div>
 				</HubModal>
 			) : null}
@@ -3170,10 +3032,12 @@ function HubModal({
 	title,
 	onClose,
 	children,
+	variant = "default",
 }: {
 	title: string;
 	onClose: () => void;
 	children: ReactNode;
+	variant?: "default" | "wide";
 }): JSX.Element {
 	const titleId = useId();
 	const panelRef = useRef<HTMLElement>(null);
@@ -3227,7 +3091,11 @@ function HubModal({
 				aria-label="Close modal"
 				onClick={onClose}
 			/>
-			<section className="hub-modal__panel" ref={panelRef} tabIndex={-1}>
+			<section
+				className={`hub-modal__panel${variant === "wide" ? " hub-modal__panel--wide" : ""}`}
+				ref={panelRef}
+				tabIndex={-1}
+			>
 				<header>
 					<h2 id={titleId}>{title}</h2>
 					<button type="button" onClick={onClose}>
@@ -3237,6 +3105,260 @@ function HubModal({
 				<div className="hub-modal__body">{children}</div>
 			</section>
 		</div>
+	);
+}
+
+function ReplayListSection({
+	title,
+	replays,
+	selectedReplay,
+	replayActionLoading,
+	onLoadReplay,
+	onToggleSaved,
+	emptyMessage,
+}: {
+	title: string;
+	replays: ReplaySummary[];
+	selectedReplay: ReplayDetail | null;
+	replayActionLoading: string | null;
+	onLoadReplay: (matchId: string) => void;
+	onToggleSaved: (matchId: string, nextSavedState: boolean) => void;
+	emptyMessage: string;
+}): JSX.Element {
+	return (
+		<section className="hub-modal__replay-section">
+			<h3>{title}</h3>
+			{replays.length > 0 ? (
+				<ul className="hub-modal__replay-items">
+					{replays.map((replay) => (
+						<li key={replay.matchId} className="hub-modal__replay-item">
+							<div className="hub-modal__replay-copy">
+								<strong>{getReplayGameLabel(replay.gameId)}</strong>
+								<small>{replay.playerNames.join(" vs ")}</small>
+								<small>{formatReplayDate(replay.finishedAt)}</small>
+							</div>
+							<div className="hub-modal__replay-actions">
+								<button
+									type="button"
+									disabled={replayActionLoading === replay.matchId}
+									onClick={() => onLoadReplay(replay.matchId)}
+								>
+									{selectedReplay?.matchId === replay.matchId ? "Viewing" : "View"}
+								</button>
+								<button
+									type="button"
+									disabled={replayActionLoading === replay.matchId}
+									onClick={() =>
+										onToggleSaved(replay.matchId, !replay.isSavedByCurrentUser)
+									}
+								>
+									{replay.isSavedByCurrentUser ? "Remove saved" : "Save"}
+								</button>
+							</div>
+						</li>
+					))}
+				</ul>
+			) : (
+				<p className="hub-panel__muted">{emptyMessage}</p>
+			)}
+		</section>
+	);
+}
+
+function ReplayViewer({
+	replay,
+	selectedReplayFrame,
+	replayFrameProgress,
+	isReplayPlaying,
+	onSelectedReplayFrameChange,
+	onReplayFrameProgressChange,
+	onIsReplayPlayingChange,
+	onExpand,
+	expanded = false,
+}: {
+	replay: ReplayDetail;
+	selectedReplayFrame: number;
+	replayFrameProgress: number;
+	isReplayPlaying: boolean;
+	onSelectedReplayFrameChange: (value: number) => void;
+	onReplayFrameProgressChange: (value: number) => void;
+	onIsReplayPlayingChange: (value: boolean | ((current: boolean) => boolean)) => void;
+	onExpand?: () => void;
+	expanded?: boolean;
+}): JSX.Element {
+	const replayHostRef = useRef<HTMLDivElement | null>(null);
+	const replayGameRef = useRef<Phaser.Game | null>(null);
+	const replayControllerRef = useRef<ReplayController | null>(null);
+	const replayFrame = replay.frames[selectedReplayFrame] ?? replay.frames[0] ?? null;
+
+	useEffect(() => {
+		const host = replayHostRef.current;
+		if (!host) return;
+
+		const controller = new ReplayController(replay);
+		replayControllerRef.current = controller;
+		const unsubscribe = controller.subscribe((state) => {
+			onSelectedReplayFrameChange(state.frameIndex);
+			onReplayFrameProgressChange(state.progress);
+			onIsReplayPlayingChange(state.playing);
+		});
+
+		const game = new Phaser.Game({
+			type: Phaser.AUTO,
+			width: host.clientWidth || 720,
+			height: host.clientHeight || 720,
+			backgroundColor: "rgba(0,0,0,0)",
+			transparent: true,
+			parent: host,
+			scene: [],
+			scale: {
+				mode: Phaser.Scale.NONE,
+				autoCenter: Phaser.Scale.NO_CENTER,
+			},
+		});
+		replayGameRef.current = game;
+		game.scene.add("ReplayScene", new ReplayScene(), true, {
+			replay,
+			controller,
+			autoAdvance: false,
+		});
+
+		const resizeObserver = new ResizeObserver((entries) => {
+			const bounds = entries[0]?.contentRect;
+			if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
+			game.scale.resize(bounds.width, bounds.height);
+		});
+		resizeObserver.observe(host);
+
+		return () => {
+			unsubscribe();
+			resizeObserver.disconnect();
+			replayControllerRef.current = null;
+			replayGameRef.current = null;
+			game.destroy(true);
+			host.replaceChildren();
+		};
+	}, [replay, onIsReplayPlayingChange, onReplayFrameProgressChange, onSelectedReplayFrameChange]);
+
+	useEffect(() => {
+		replayControllerRef.current?.setPlayback(
+			selectedReplayFrame,
+			replayFrameProgress,
+			isReplayPlaying,
+		);
+	}, [isReplayPlaying, replayFrameProgress, selectedReplayFrame, replay]);
+
+	useEffect(() => {
+		if (!isReplayPlaying || !replayControllerRef.current) return;
+		let frameId = 0;
+		let lastTime = 0;
+
+		const tick = (now: number) => {
+			if (lastTime !== 0)
+				replayControllerRef.current?.update(Math.max(0, now - lastTime));
+			lastTime = now;
+			frameId = window.requestAnimationFrame(tick);
+		};
+
+		frameId = window.requestAnimationFrame(tick);
+		return () => window.cancelAnimationFrame(frameId);
+	}, [isReplayPlaying, replay.matchId]);
+
+	return (
+		<>
+			<p className="hub-modal__replay-meta">
+				<strong>{getReplayGameLabel(replay.gameId)}</strong>
+				<span>
+					Frame {selectedReplayFrame + 1} / {replay.frames.length}
+				</span>
+			</p>
+			<div className="hub-modal__replay-toolbar">
+				<button
+					type="button"
+					onClick={() => {
+						onIsReplayPlayingChange((value) => !value);
+					}}
+				>
+					{isReplayPlaying ? "Pause" : "Play"}
+				</button>
+				<button
+					type="button"
+					onClick={() => {
+						onIsReplayPlayingChange(false);
+						onReplayFrameProgressChange(0);
+						onSelectedReplayFrameChange(0);
+					}}
+				>
+					Reset
+				</button>
+				<button
+					type="button"
+					disabled={selectedReplayFrame <= 0}
+					onClick={() => {
+						onIsReplayPlayingChange(false);
+						onReplayFrameProgressChange(0);
+						onSelectedReplayFrameChange(Math.max(0, selectedReplayFrame - 1));
+					}}
+				>
+					Prev
+				</button>
+				<button
+					type="button"
+					disabled={selectedReplayFrame >= replay.frames.length - 1}
+					onClick={() => {
+						onIsReplayPlayingChange(false);
+						onReplayFrameProgressChange(0);
+						onSelectedReplayFrameChange(
+							Math.min(replay.frames.length - 1, selectedReplayFrame + 1),
+						);
+					}}
+				>
+					Next
+				</button>
+				{onExpand ? (
+					<button type="button" onClick={onExpand}>
+						{expanded ? "Expanded" : "Expand"}
+					</button>
+				) : null}
+			</div>
+			<div
+				ref={replayHostRef}
+				className={`hub-modal__replay-phaser${expanded ? " hub-modal__replay-phaser--expanded" : ""}`}
+				role="img"
+				aria-label={`${getReplayGameLabel(replay.gameId)} replay`}
+			/>
+			<input
+				className="hub-modal__replay-slider"
+				type="range"
+				min="0"
+				max={Math.max(replay.frames.length - 1, 0)}
+				step="1"
+				value={selectedReplayFrame}
+				onChange={(event) => {
+					onReplayFrameProgressChange(0);
+					onSelectedReplayFrameChange(Number(event.target.value));
+				}}
+			/>
+			{replayFrame ? (
+				<>
+					<div className="hub-modal__replay-frame-meta">
+						<small>Recorded: {formatReplayDate(replayFrame.recordedAt)}</small>
+						<small>Seq: {replayFrame.seq}</small>
+					</div>
+					<div className="hub-modal__replay-scoreboard">
+						{Array.isArray((replayFrame.snapshot as { score?: number[] }).score)
+							? (replayFrame.snapshot as { score: number[] }).score.map(
+									(score, index) => (
+										<span key={`replay-score-${index}`}>
+											P{index + 1}: {score}
+										</span>
+									),
+								)
+							: null}
+					</div>
+				</>
+			) : null}
+		</>
 	);
 }
 

@@ -19,7 +19,6 @@ import {
 	drawSumoRing,
 } from "../../shared/arenas/arena";
 import { CURL_SHEET } from "../../shared/arenas/curl-sheet";
-import { drawBackground } from "../../shared/drawBackground";
 import {
 	type BallState,
 	BALL_SRC_R,
@@ -236,34 +235,16 @@ export class ReplayScene extends ResponsiveScene {
 		this.overlayGfx.clear();
 
 		if (!this.replay) return;
-		if (this.replay.gameId === "kame-knock") {
-			this.drawFlatBackground(0x4f6f16);
-		} else {
-			this.bgObjects = drawBackground(this, DEPTH_BG);
-		}
+		this.drawFlatBackground(0x4f6f16);
 
 		if (this.replay.gameId === "temple-curling" && this.curlArena) {
 			drawIceSheet(this.arenaGfx, this.curlArena);
-			this.drawCurlingBackdrop(this.curlArena);
 			return;
 		}
 
 		if (!this.arena) return;
 		drawSumoRing(this.arenaGfx, this.arena);
-
-		switch (this.replay.gameId) {
-			case "bamboo-bash":
-				this.drawArenaBackdrop(0x081108, 0x203d21);
-				break;
-			case "kame-knock":
-				this.drawKameBackdrop();
-				break;
-			case "bell-clash":
-				this.drawArenaBackdrop(0x120d08, 0x23180f);
-				break;
-			default:
-				break;
-		}
+		this.drawKameBackdrop();
 	}
 
 	private renderCurrentState(): void {

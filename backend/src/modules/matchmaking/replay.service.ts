@@ -160,11 +160,19 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 			.leftJoinAndSelect("replay.saves", "saves")
 			.leftJoinAndSelect("saves.user", "saveUser")
 			.where(
-				`EXISTS (
-					SELECT 1
-					FROM match_players mp
-					WHERE mp."matchId" = replay."matchId"
-					  AND mp."userId" = :userId
+				`(
+					EXISTS (
+						SELECT 1
+						FROM match_players mp
+						WHERE mp."matchId" = replay."matchId"
+						  AND mp."userId" = :userId
+					)
+					OR EXISTS (
+						SELECT 1
+						FROM match_replay_saves mrs
+						WHERE mrs."replayId" = replay.id
+						  AND mrs."userId" = :userId
+					)
 				)`,
 				{ userId },
 			)
@@ -236,11 +244,18 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 					);
 				}
 
-				await saveRepo.save(saveRepo.create({ replay, user }));
+				await manager
+					.createQueryBuilder()
+					.insert()
+					.into("match_replay_saves")
+					.values({
+						replayId: replay.id,
+						userId: user.id,
+					})
+					.execute();
 			}
 
-			replay.expiresAt = null;
-			await replayRepo.save(replay);
+			await replayRepo.update(replay.id, { expiresAt: null });
 			const refreshed = await replayRepo.findOneOrFail({
 				where: { id: replay.id },
 				relations: ["match", "match.players", "match.players.user", "saves", "saves.user"],
@@ -342,9 +357,10 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 				.where(`replay.id = :replayId`, { replayId: replay.id })
 				.getCount();
 
-			replay.expiresAt =
-				remaining > 0 ? null : new Date(Date.now() + REPLAY_TTL_MS);
-			await replayRepo.save(replay);
+			await replayRepo.update(replay.id, {
+				expiresAt:
+					remaining > 0 ? null : new Date(Date.now() + REPLAY_TTL_MS),
+			});
 
 			const refreshed = await replayRepo.findOneOrFail({
 				where: { id: replay.id },

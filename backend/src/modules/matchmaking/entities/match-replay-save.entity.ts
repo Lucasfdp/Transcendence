@@ -1,7 +1,9 @@
 import {
+	Column,
 	CreateDateColumn,
 	Entity,
 	Index,
+	JoinColumn,
 	ManyToOne,
 	PrimaryGeneratedColumn,
 } from "typeorm";
@@ -14,12 +16,20 @@ export class MatchReplaySave {
 	@PrimaryGeneratedColumn("uuid")
 	id: string;
 
+	@Column({ nullable: true })
+	replayId: string | null;
+
 	@ManyToOne(() => MatchReplay, (replay) => replay.saves, {
 		onDelete: "CASCADE",
 	})
+	@JoinColumn({ name: "replayId" })
 	replay: MatchReplay;
 
+	@Column({ nullable: true })
+	userId: number | null;
+
 	@ManyToOne(() => User, { onDelete: "CASCADE" })
+	@JoinColumn({ name: "userId" })
 	user: User;
 
 	@CreateDateColumn()
