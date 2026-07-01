@@ -4880,6 +4880,19 @@ input {
 	transform: rotateY(180deg);
 }
 
+/* Reserve a fixed 2-line box for the name so cards with a short one-line
+   name (e.g. "Giant Shell") render the same height as a two-line name
+   (e.g. "Bouncer Shell") instead of shrinking to fit — otherwise the reveal
+   row looks uneven, with longer-named cards appearing "bigger". */
+.hub-cards__reveal-face--front .hub-cards__name {
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	min-height: 2.3em;
+}
+
 /* Extra impact on a gold pull — a brief glow pulse once the flip lands. */
 .hub-cards__reveal-wrapper.is-flipped
 	.hub-cards__reveal-face--front.hub-cards__card--gold {
