@@ -133,9 +133,9 @@ rebuild-back: check-env certs
 	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --no-deps backend
 	@echo "$(GREEN)Backend rebuilt and restarted.$(RESET)"
 
-## refresh-app: Rebuild frontend and restart backend to validate app changes quickly
-refresh-app: rebuild-front restart-back
-	@echo "$(GREEN)Frontend rebuilt and backend restarted.$(RESET)"
+## refresh-app: Rebuild frontend and backend to validate app changes quickly
+refresh-app: rebuild-front rebuild-back
+	@echo "$(GREEN)Frontend and backend rebuilt and restarted.$(RESET)"
 
 ## build: Build or rebuild all images without starting containers
 build: check-env

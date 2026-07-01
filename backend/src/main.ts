@@ -2,13 +2,18 @@ import { NestFactory } from "@nestjs/core";
 import { Logger, ValidationPipe } from "@nestjs/common";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { json, urlencoded } from "express";
 import { AppModule } from "./app.module";
 import { MetricsInterceptor } from "./modules/metrics/metrics.interceptor";
 import { MetricsService } from "./modules/metrics/metrics.service";
 
 async function bootstrap() {
-	const app = await NestFactory.create<NestExpressApplication>(AppModule);
+	const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+		bodyParser: false,
+	});
 	app.set("trust proxy", 1);
+	app.use(json({ limit: "10mb" }));
+	app.use(urlencoded({ extended: true, limit: "10mb" }));
 
 	// Global validation pipe
 	app.useGlobalPipes(

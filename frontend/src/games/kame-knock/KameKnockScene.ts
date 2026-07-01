@@ -10,7 +10,7 @@
  */
 
 import Phaser from "phaser";
-import { api, type ReplayDetail, type ReplayImportRequest } from "../../features/hub/api";
+import { api, type ReplayImportRequest } from "../../features/hub/api";
 import { ResponsiveScene } from "../../shared/responsive-scene";
 import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
@@ -106,6 +106,8 @@ const HIT_KNOCKBACK_SRC = 90;
 const SOLID_BOUNCE_DAMP = 0.92;
 const SCORE_LOG_LIMIT = 8;
 const FREEZE_DURATION_MS = 5_000;
+const REPLAY_CAPTURE_STEP_MS = 100;
+const MAX_IMPORTED_REPLAY_FRAMES = 240;
 
 const TARGET_TEXTURES: Record<TimedTargetKind, string> = {
 	daruma: "kame-knock-daruma",
@@ -236,6 +238,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private localReplayElapsedMs = 0;
 	private localReplayLastCaptureMs = 0;
 	private localReplayCaptureAccMs = 0;
+	private pendingReplayPersist: Promise<void> | null = null;
 
 	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
 		if (snapshot.gameId === "kame-knock")
@@ -422,10 +425,7 @@ export class KameKnockScene extends ResponsiveScene {
 
 	update(_time: number, delta: number): void {
 		if (!this.running) return;
-		if (!this.onlineMatch) {
-			this.localReplayElapsedMs += delta;
-			this.localReplayCaptureAccMs += delta;
-		}
+		if (!this.onlineMatch) this.localReplayElapsedMs += delta;
 
 		// Advance target age (paused during FREEZE)
 		this.targetFreezeMs = Math.max(0, this.targetFreezeMs - delta);
@@ -479,7 +479,15 @@ export class KameKnockScene extends ResponsiveScene {
 		this.drawTargets();
 		this.drawBallTrails();
 		this.drawBall();
-		if (!this.onlineMatch && this.localReplayCaptureAccMs >= 33) {
+		const shouldCaptureReplayFrame =
+			!this.onlineMatch &&
+			(this.launchedThisBall || moving);
+		if (shouldCaptureReplayFrame) this.localReplayCaptureAccMs += delta;
+		else this.localReplayCaptureAccMs = 0;
+		if (
+			shouldCaptureReplayFrame &&
+			this.localReplayCaptureAccMs >= REPLAY_CAPTURE_STEP_MS
+		) {
 			this.captureLocalReplayFrame();
 			this.localReplayCaptureAccMs = 0;
 		}
@@ -775,7 +783,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.updateSidePanels();
 		this.updateScoreHud();
 		this.captureLocalReplayFrame(true, "finished");
-		this.persistLocalReplay();
+		this.pendingReplayPersist = this.persistLocalReplay();
 		this.submitResult();
 		this.showEndScreen();
 	}
@@ -1234,56 +1242,84 @@ export class KameKnockScene extends ResponsiveScene {
 		return this.localScores.findIndex((score) => score === maxScore);
 	}
 
-	private persistLocalReplay(): void {
+	private async persistLocalReplay(): Promise<void> {
 		if (!this.localReplayId || this.localReplayFrames.length === 0) return;
 		const user = this.registry.get("user") as
 			| { id?: number; username?: string; turtleName?: string | null; isGuest?: boolean }
 			| undefined;
 		if (user?.isGuest) return;
 		const finishedAt = new Date().toISOString();
-		const replayDetail: ReplayDetail = {
-			id: this.localReplayId,
-			matchId: this.localReplayId,
+		const importPayload: ReplayImportRequest = {
 			gameId: "kame-knock",
 			mode: this.localMode === "versus" ? "local-versus" : "singleplayer",
 			status: "finished",
-			frameCount: this.localReplayFrames.length,
 			createdAt: this.localReplayStartedAtIso || finishedAt,
 			finishedAt,
-			expiresAt: null,
 			winnerSide: this.resolveLocalWinnerSide(),
 			playerUserIds: [
-				user?.id ?? 0,
-				...Array.from({ length: Math.max(0, this.localPlayerCount - 1) }, () => 0),
+				user?.id ?? null,
+				...Array.from({ length: Math.max(0, this.localPlayerCount - 1) }, () => null),
 			],
 			playerNames: this.buildLocalReplayPlayers().map((player) => player.username),
-			isSavedByCurrentUser: true,
-			frames: this.localReplayFrames.map((frame) => ({
-				seq: frame.seq,
-				recordedAt: frame.recordedAt,
-				deltaMs: frame.deltaMs,
-				snapshot: frame.snapshot,
-			})),
+			frames: this.buildReplayImportFrames(),
 			events: [],
 		};
-		const importPayload: ReplayImportRequest = {
-			gameId: replayDetail.gameId,
-			mode: replayDetail.mode,
-			status: "finished",
-			createdAt: replayDetail.createdAt,
-			finishedAt: replayDetail.finishedAt,
-			winnerSide: replayDetail.winnerSide,
-			playerUserIds: replayDetail.playerUserIds,
-			playerNames: replayDetail.playerNames,
-			frames: replayDetail.frames,
-			events: replayDetail.events,
-		};
-		void api
-			.getCsrfToken()
-			.then(() => api.importReplay(importPayload))
-			.catch((err: unknown) => {
-				console.warn("[KameKnock] failed to persist replay to backend:", err);
+		try {
+			await api.importReplay(importPayload);
+			console.info("[KameKnock] replay persisted");
+		} catch (err: unknown) {
+			console.warn("[KameKnock] failed to persist replay to backend:", err);
+		}
+	}
+
+	private buildReplayImportFrames(): ReplayImportRequest["frames"] {
+		const normalizedFrames = this.localReplayFrames.map((frame, index) => ({
+			seq: index,
+			recordedAt: frame.recordedAt,
+			deltaMs:
+				index === 0
+					? frame.deltaMs
+					: Math.max(
+							0,
+							Date.parse(frame.recordedAt) -
+								Date.parse(this.localReplayFrames[index - 1]?.recordedAt ?? frame.recordedAt),
+						),
+			snapshot: frame.snapshot,
+		}));
+		if (normalizedFrames.length <= MAX_IMPORTED_REPLAY_FRAMES)
+			return normalizedFrames;
+
+		const keptIndices = new Set<number>([0, normalizedFrames.length - 1]);
+		const interiorTarget = MAX_IMPORTED_REPLAY_FRAMES - 2;
+		for (let slot = 0; slot < interiorTarget; slot += 1) {
+			const ratio = (slot + 1) / (interiorTarget + 1);
+			const index = Math.round(ratio * (normalizedFrames.length - 1));
+			keptIndices.add(index);
+		}
+
+		return [...keptIndices]
+			.sort((a, b) => a - b)
+			.map((sourceIndex, compactIndex, indices) => {
+				const frame = normalizedFrames[sourceIndex];
+				if (compactIndex === 0) return { ...frame, seq: 0 };
+				const previousFrame = normalizedFrames[indices[compactIndex - 1]];
+				return {
+					...frame,
+					seq: compactIndex,
+					deltaMs: Math.max(
+						0,
+						Date.parse(frame.recordedAt) - Date.parse(previousFrame.recordedAt),
+					),
+				};
 			});
+	}
+
+	private async waitForPendingReplayPersist(): Promise<void> {
+		try {
+			await this.pendingReplayPersist;
+		} finally {
+			this.pendingReplayPersist = null;
+		}
 	}
 
 	private finishBallRound(): void {
@@ -2018,13 +2054,17 @@ export class KameKnockScene extends ResponsiveScene {
 			panelH / 2 - 50,
 			"PLAY AGAIN",
 			() => {
+				void this.waitForPendingReplayPersist().finally(() => {
 				this.cleanupSceneResources();
 				this.scene.restart();
+				});
 			},
 		);
 		this.addOverlayButton(container, 110, panelH / 2 - 50, "RETURN", () => {
-			this.cleanupSceneResources();
-			this.scene.start("HubScene");
+			void this.waitForPendingReplayPersist().finally(() => {
+				this.cleanupSceneResources();
+				this.scene.start("HubScene");
+			});
 		});
 	}
 
