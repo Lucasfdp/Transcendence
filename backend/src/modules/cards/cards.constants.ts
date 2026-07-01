@@ -392,6 +392,46 @@ const CHARACTER_CARDS: readonly CardDefinition[] = [
 		sourceRef: "samurai-turtle",
 		imageUrl: "/assets/character/samurai-turtle.webp",
 	},
+	{
+		id: "char-santa",
+		family: "character",
+		rarity: "gold",
+		name: "Santa Kame, the Yuletide Shell",
+		flavor:
+			"Once a year he trades the dojo mat for a sack of stolen shells — and somehow, every rival forgives him by morning.",
+		sourceRef: "santa-turtle",
+		imageUrl: "/assets/character/santa-turtle.webp",
+	},
+	{
+		id: "char-assassin",
+		family: "character",
+		rarity: "gold",
+		name: "Kagemusha, the Assassin Shell",
+		flavor:
+			"No footstep, no shadow, no warning. Only the shell left spinning where a rival once stood.",
+		sourceRef: "assassin-turtle",
+		imageUrl: "/assets/character/assassin-turtle.webp",
+	},
+	{
+		id: "char-ghost",
+		family: "character",
+		rarity: "gold",
+		name: "Yurei, the Wandering Ghost Shell",
+		flavor:
+			"Still circling the sheet long after the match ended. Some say he's still waiting for a fair roll.",
+		sourceRef: "ghost-turtle",
+		imageUrl: "/assets/character/ghost-turtle.webp",
+	},
+	{
+		id: "char-sumo",
+		family: "character",
+		rarity: "gold",
+		name: "Sumo, the Immovable Shell",
+		flavor:
+			"Plants himself on the sheet and dares the field to try. Nothing has moved him yet.",
+		sourceRef: "sumo-turtle",
+		imageUrl: "/assets/character/sumo-turtle.webp",
+	},
 ];
 
 export const CARDS: readonly CardDefinition[] = [

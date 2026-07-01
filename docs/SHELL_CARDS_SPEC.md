@@ -55,7 +55,15 @@ Catalog families (`CardFamily`) and current counts:
   inaugural legendary **Shinigame, the Shell Reaper** (`char-reaper`, gold),
   which uses static art at `imageUrl: /assets/character/reaper-turtle.jpg`
   (JPG/PNG/WebP all fine; falls back to a procedural frame if the file is
-  absent). Total catalog: **29 cards**.
+  absent). Also includes **Santa Kame, the Yuletide Shell** (`char-santa`,
+  gold, `imageUrl: /assets/character/santa-turtle.webp`), **Kagemusha,
+  the Assassin Shell** (`char-assassin`, gold,
+  `imageUrl: /assets/character/assassin-turtle.webp`), **Yurei, the
+  Wandering Ghost Shell** (`char-ghost`, gold,
+  `imageUrl: /assets/character/ghost-turtle.webp`), and **Sumo, the
+  Immovable Shell** (`char-sumo`, gold,
+  `imageUrl: /assets/character/sumo-turtle.webp`). Total catalog:
+  **33 cards**.
 
 ### Rarity & foils
 

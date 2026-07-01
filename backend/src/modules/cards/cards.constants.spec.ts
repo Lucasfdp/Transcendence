@@ -82,6 +82,38 @@ describe("cards.constants", () => {
 			expect(pirate?.rarity).toBe("gold");
 			expect(pirate?.imageUrl).toBe("/assets/character/pirate-turtle.webp");
 		});
+
+		it("should include the Santa Kame character card with static art", () => {
+			const santa = findCard("char-santa");
+			expect(santa).toBeDefined();
+			expect(santa?.family).toBe("character");
+			expect(santa?.rarity).toBe("gold");
+			expect(santa?.imageUrl).toBe("/assets/character/santa-turtle.webp");
+		});
+
+		it("should include the Kagemusha assassin character card with static art", () => {
+			const assassin = findCard("char-assassin");
+			expect(assassin).toBeDefined();
+			expect(assassin?.family).toBe("character");
+			expect(assassin?.rarity).toBe("gold");
+			expect(assassin?.imageUrl).toBe("/assets/character/assassin-turtle.webp");
+		});
+
+		it("should include the Yurei ghost character card with static art", () => {
+			const ghost = findCard("char-ghost");
+			expect(ghost).toBeDefined();
+			expect(ghost?.family).toBe("character");
+			expect(ghost?.rarity).toBe("gold");
+			expect(ghost?.imageUrl).toBe("/assets/character/ghost-turtle.webp");
+		});
+
+		it("should include the Sumo character card with static art", () => {
+			const sumo = findCard("char-sumo");
+			expect(sumo).toBeDefined();
+			expect(sumo?.family).toBe("character");
+			expect(sumo?.rarity).toBe("gold");
+			expect(sumo?.imageUrl).toBe("/assets/character/sumo-turtle.webp");
+		});
 	});
 
 	describe("pack & duplicate economy constants", () => {

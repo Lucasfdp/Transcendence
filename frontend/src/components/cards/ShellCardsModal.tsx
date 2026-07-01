@@ -1,11 +1,86 @@
-import { useEffect, useState } from "react";
+import {
+	useEffect,
+	useRef,
+	useState,
+	type KeyboardEvent,
+	type MouseEvent,
+} from "react";
 import {
 	api,
 	type BinderView,
 	type CardFamily,
+	type CardRarity,
 	type CardView,
 	type PackPull,
 } from "../../features/hub/api";
+import { computeCardTilt } from "./cardTilt";
+import {
+	filterAndSortCards,
+	RARITY_ORDER,
+	type BinderSortOrder,
+} from "./binderFilters";
+
+/** Keys that activate a card slot, mirroring native button behavior. */
+const ACTIVATION_KEYS = new Set(["Enter", " "]);
+
+/** Selector for elements that can receive keyboard focus, used by the lightbox's focus trap. */
+const FOCUSABLE_SELECTOR =
+	'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Distinct shapes per rarity, layered on top of the existing border-color
+ * accent so rarity reads even without color perception (colorblind-safe).
+ */
+const RARITY_GLYPH: Record<CardRarity, string> = {
+	stone: "▪",
+	bronze: "◆",
+	jade: "⬡",
+	gold: "★",
+};
+
+/** Formats the "✦ foil" badge text, appending a ×N count above one copy. */
+function foilBadgeText(foilCount: number): string {
+	return foilCount > 1 ? `✦ foil ×${foilCount}` : "✦ foil";
+}
+
+/** Small shape badge reinforcing a card's rarity beyond its border color. */
+function CardRarityBadge({ rarity }: { rarity: CardRarity }): JSX.Element {
+	return (
+		<span className="hub-cards__rarity-badge" aria-hidden="true">
+			{RARITY_GLYPH[rarity]}
+		</span>
+	);
+}
+
+/** Resets a card element's tilt/shine custom properties to their rest state. */
+function resetCardTiltStyle(element: HTMLElement): void {
+	element.style.removeProperty("--tilt-x");
+	element.style.removeProperty("--tilt-y");
+	element.style.setProperty("--shine-x", "50%");
+	element.style.setProperty("--shine-y", "50%");
+}
+
+/** Updates a card element's tilt/shine custom properties from a pointer event. */
+function applyCardTiltStyle(event: MouseEvent<HTMLElement>): void {
+	if (
+		typeof window !== "undefined" &&
+		window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+	) {
+		return;
+	}
+	const element = event.currentTarget;
+	const rect = element.getBoundingClientRect();
+	if (rect.width === 0 || rect.height === 0) return;
+
+	const tilt = computeCardTilt(
+		(event.clientX - rect.left) / rect.width,
+		(event.clientY - rect.top) / rect.height,
+	);
+	element.style.setProperty("--tilt-x", `${tilt.rotateX}deg`);
+	element.style.setProperty("--tilt-y", `${tilt.rotateY}deg`);
+	element.style.setProperty("--shine-x", `${tilt.shineX}%`);
+	element.style.setProperty("--shine-y", `${tilt.shineY}%`);
+}
 
 /** Human-readable titles for each card set (family). */
 const FAMILY_LABELS: Record<CardFamily, string> = {
@@ -31,7 +106,14 @@ interface ShellCardsModalProps {
 }
 
 /** A single binder slot — owned card art or a locked silhouette. */
-function CardSlot({ card }: { card: CardView }): JSX.Element {
+export function CardSlot({
+	card,
+	onSelect,
+}: {
+	card: CardView;
+	/** Called with the card when an owned slot is activated (click or Enter/Space). */
+	onSelect: (card: CardView) => void;
+}): JSX.Element {
 	const classes = [
 		"hub-cards__card",
 		`hub-cards__card--${card.rarity}`,
@@ -41,8 +123,37 @@ function CardSlot({ card }: { card: CardView }): JSX.Element {
 		.filter(Boolean)
 		.join(" ");
 
+	const interactionProps = card.owned
+		? {
+				role: "button" as const,
+				tabIndex: 0,
+				"aria-label": [
+					card.name,
+					`${card.rarity} rarity`,
+					card.foilCount > 0 ? "foil" : "",
+					card.count > 1 ? `${card.count} owned` : "",
+				]
+					.filter(Boolean)
+					.join(", "),
+				onClick: () => onSelect(card),
+				onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+					if (!ACTIVATION_KEYS.has(event.key)) return;
+					event.preventDefault();
+					onSelect(card);
+				},
+				onMouseMove: applyCardTiltStyle,
+				onMouseLeave: (event: MouseEvent<HTMLElement>) =>
+					resetCardTiltStyle(event.currentTarget),
+			}
+		: {};
+
 	return (
-		<article className={classes} title={card.owned ? card.flavor : "Undiscovered"}>
+		<article
+			className={classes}
+			title={card.owned ? card.flavor : "Undiscovered"}
+			{...interactionProps}
+		>
+			<CardRarityBadge rarity={card.rarity} />
 			<div className="hub-cards__art" aria-hidden="true">
 				{card.owned ? (
 					card.imageUrl ? (
@@ -63,7 +174,9 @@ function CardSlot({ card }: { card: CardView }): JSX.Element {
 				<span className="hub-cards__count">×{card.count}</span>
 			) : null}
 			{card.foilCount > 0 ? (
-				<span className="hub-cards__foil-badge">✦ foil</span>
+				<span className="hub-cards__foil-badge">
+					{foilBadgeText(card.foilCount)}
+				</span>
 			) : null}
 		</article>
 	);
@@ -131,6 +244,7 @@ function RevealOverlay({
 										.join(" ")}
 									aria-hidden={!isFlipped}
 								>
+									<CardRarityBadge rarity={pull.card.rarity} />
 									<div className="hub-cards__art" aria-hidden="true">
 										{pull.card.imageUrl ? (
 											<img src={pull.card.imageUrl} alt="" />
@@ -162,6 +276,119 @@ function RevealOverlay({
 	);
 }
 
+/** Enlarged, single-card view shown when a binder slot is clicked. */
+export function CardLightbox({
+	card,
+	onClose,
+}: {
+	card: CardView;
+	onClose: () => void;
+}): JSX.Element {
+	const containerRef = useRef<HTMLDivElement>(null);
+	const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+	// Focus management: move focus to the Close button on open, trap Tab
+	// within the lightbox, close on Escape, and restore focus to whatever
+	// triggered the lightbox on close/unmount. Deps are `[]` (not `[onClose]`)
+	// so this doesn't re-run — and re-steal focus — every time ShellCardsModal
+	// re-renders and passes a new onClose closure; mirrors HubModal's
+	// focus-trap effect in HomePage.tsx.
+	useEffect(() => {
+		const previouslyFocused = document.activeElement as HTMLElement | null;
+		closeButtonRef.current?.focus();
+
+		const handleKeyDown = (event: globalThis.KeyboardEvent): void => {
+			if (event.key === "Escape") {
+				onClose();
+				return;
+			}
+			const container = containerRef.current;
+			if (event.key !== "Tab" || !container) return;
+
+			const focusable = Array.from(
+				container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+			);
+			if (focusable.length === 0) return;
+
+			const first = focusable[0];
+			const last = focusable[focusable.length - 1];
+			if (event.shiftKey && document.activeElement === first) {
+				event.preventDefault();
+				last.focus();
+			} else if (!event.shiftKey && document.activeElement === last) {
+				event.preventDefault();
+				first.focus();
+			}
+		};
+		document.addEventListener("keydown", handleKeyDown);
+		return () => {
+			document.removeEventListener("keydown", handleKeyDown);
+			previouslyFocused?.focus();
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on mount, mirrors HubModal's focus-trap effect
+	}, []);
+
+	const classes = [
+		"hub-cards__card",
+		"hub-cards__lightbox-card",
+		`hub-cards__card--${card.rarity}`,
+		"is-owned",
+		card.foilCount > 0 ? "is-foil" : "",
+	]
+		.filter(Boolean)
+		.join(" ");
+
+	return (
+		<div
+			ref={containerRef}
+			className="hub-cards__lightbox"
+			role="dialog"
+			aria-modal="true"
+			aria-label={`${card.name}, enlarged`}
+			onClick={onClose}
+		>
+			<div
+				className={classes}
+				onClick={(event) => event.stopPropagation()}
+				onMouseMove={applyCardTiltStyle}
+				onMouseLeave={(event) => resetCardTiltStyle(event.currentTarget)}
+			>
+				{card.rarity === "gold" && card.foilCount > 0 ? (
+					<span className="hub-cards__lightbox-holo" aria-hidden="true" />
+				) : null}
+				<CardRarityBadge rarity={card.rarity} />
+				<div className="hub-cards__art" aria-hidden="true">
+					{card.imageUrl ? (
+						<img src={card.imageUrl} alt="" />
+					) : (
+						<span className="hub-cards__art-initial">
+							{card.name.charAt(0)}
+						</span>
+					)}
+				</div>
+				<strong className="hub-cards__name">{card.name}</strong>
+				<p className="hub-cards__lightbox-flavor">{card.flavor}</p>
+				<span className="hub-cards__lightbox-meta">
+					{card.rarity}
+					{card.foilCount > 0 ? ` · ${foilBadgeText(card.foilCount)}` : ""}
+					{card.count > 1 ? ` · ×${card.count}` : ""}
+				</span>
+			</div>
+			<button
+				type="button"
+				ref={closeButtonRef}
+				className="hub-cards__lightbox-close"
+				onClick={(event) => {
+					event.stopPropagation();
+					onClose();
+				}}
+			>
+				Close
+			</button>
+		</div>
+	);
+}
+
 export function ShellCardsModal({
 	coins,
 	onCoinsChange,
@@ -171,6 +398,10 @@ export function ShellCardsModal({
 	const [error, setError] = useState("");
 	const [opening, setOpening] = useState(false);
 	const [reveal, setReveal] = useState<PackPull[] | null>(null);
+	const [selectedCard, setSelectedCard] = useState<CardView | null>(null);
+	const [rarityFilter, setRarityFilter] = useState<CardRarity | "all">("all");
+	const [missingOnly, setMissingOnly] = useState(false);
+	const [sortOrder, setSortOrder] = useState<BinderSortOrder>("collection");
 
 	useEffect(() => {
 		let cancelled = false;
@@ -214,6 +445,11 @@ export function ShellCardsModal({
 	if (!binder) return <p className="hub-modal__error">{error || "No binder."}</p>;
 
 	const setsByFamily = new Map(binder.sets.map((s) => [s.family, s]));
+	const visibleCards = filterAndSortCards(binder.cards, {
+		rarity: rarityFilter,
+		missingOnly,
+		sort: sortOrder,
+	});
 
 	return (
 		<div className="hub-cards">
@@ -243,8 +479,79 @@ export function ShellCardsModal({
 				</p>
 			) : null}
 
+			<div className="hub-cards__toolbar">
+				<div
+					className="hub-cards__rarity-chips"
+					role="group"
+					aria-label="Filter by rarity"
+				>
+					<button
+						type="button"
+						className={[
+							"hub-cards__chip",
+							rarityFilter === "all" ? "is-active" : "",
+						]
+							.filter(Boolean)
+							.join(" ")}
+						aria-pressed={rarityFilter === "all"}
+						onClick={() => setRarityFilter("all")}
+					>
+						All
+					</button>
+					{RARITY_ORDER.map((rarity) => (
+						<button
+							key={rarity}
+							type="button"
+							className={[
+								"hub-cards__chip",
+								rarityFilter === rarity ? "is-active" : "",
+							]
+								.filter(Boolean)
+								.join(" ")}
+							aria-pressed={rarityFilter === rarity}
+							onClick={() => setRarityFilter(rarity)}
+						>
+							{rarity.charAt(0).toUpperCase() + rarity.slice(1)}
+						</button>
+					))}
+				</div>
+
+				<button
+					type="button"
+					className={[
+						"hub-cards__chip",
+						"hub-cards__missing-toggle",
+						missingOnly ? "is-active" : "",
+					]
+						.filter(Boolean)
+						.join(" ")}
+					aria-pressed={missingOnly}
+					onClick={() => setMissingOnly((prev) => !prev)}
+				>
+					Missing only
+				</button>
+
+				<label className="hub-cards__sort">
+					Sort
+					<select
+						value={sortOrder}
+						onChange={(event) =>
+							setSortOrder(event.target.value as BinderSortOrder)
+						}
+					>
+						<option value="collection">Collection order</option>
+						<option value="rarity-asc">Rarity: low to high</option>
+						<option value="rarity-desc">Rarity: high to low</option>
+					</select>
+				</label>
+			</div>
+
+			{visibleCards.length === 0 ? (
+				<p className="hub-cards__hint">No cards match your filters.</p>
+			) : null}
+
 			{FAMILY_ORDER.map((family) => {
-				const familyCards = binder.cards.filter(
+				const familyCards = visibleCards.filter(
 					(card) => card.family === family,
 				);
 				if (familyCards.length === 0) return null;
@@ -262,7 +569,11 @@ export function ShellCardsModal({
 						</header>
 						<div className="hub-cards__grid">
 							{familyCards.map((card) => (
-								<CardSlot key={card.id} card={card} />
+								<CardSlot
+									key={card.id}
+									card={card}
+									onSelect={setSelectedCard}
+								/>
 							))}
 						</div>
 					</section>
@@ -271,6 +582,13 @@ export function ShellCardsModal({
 
 			{reveal ? (
 				<RevealOverlay pulls={reveal} onDismiss={() => setReveal(null)} />
+			) : null}
+
+			{selectedCard ? (
+				<CardLightbox
+					card={selectedCard}
+					onClose={() => setSelectedCard(null)}
+				/>
 			) : null}
 		</div>
 	);
