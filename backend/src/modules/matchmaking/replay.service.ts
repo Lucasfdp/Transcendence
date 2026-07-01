@@ -22,6 +22,12 @@ const REPLAY_TTL_MS = 72 * 60 * 60 * 1000;
 const REPLAY_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const MAX_SAVED_REPLAYS_PER_USER = 20;
 const MAX_IMPORTED_REPLAY_FRAMES = 3_600;
+const IMPORTABLE_REPLAY_GAME_IDS = new Set([
+	"temple-curling",
+	"bamboo-bash",
+	"kame-knock",
+	"bell-clash",
+]);
 
 export interface ReplayImportPlayerInput {
 	side: number;
@@ -374,8 +380,8 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	private validateImportedReplay(input: ReplayImportInput): void {
-		if (input.gameId !== "kame-knock") {
-			throw new BadRequestException("Only kame-knock replay import is supported");
+		if (!IMPORTABLE_REPLAY_GAME_IDS.has(input.gameId)) {
+			throw new BadRequestException("Replay import is not supported for this game");
 		}
 		if (input.status !== "finished" && input.status !== "abandoned") {
 			throw new BadRequestException("Replay status must be finished or abandoned");

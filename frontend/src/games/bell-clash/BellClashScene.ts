@@ -9,7 +9,7 @@
  */
 
 import Phaser from "phaser";
-import { api } from "../../features/hub/api";
+import { api, type ReplayImportRequest } from "../../features/hub/api";
 import { ResponsiveScene } from "../../shared/responsive-scene";
 import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
@@ -62,12 +62,19 @@ import {
 	type BellClashThrowEvent,
 	type GameSnapshot,
 	type OnlineMatchContext,
+	type SnapshotPlayer,
 } from "../../services/network/gameSocket";
 import {
 	PLAYER_COLOUR_VALUES,
 	PLAYER_HEX_COLOURS,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
+import {
+	buildLocalReplayPlayerUserIds,
+	buildLocalReplayPlayers,
+	createLocalReplayId,
+	normalizeReplayImportFrames,
+} from "../shared/localReplay";
 
 type ZoneKind = "red" | "yellow" | "green";
 
@@ -88,6 +95,7 @@ const BASE_HIT_SCORE = 100;
 const ZONE_SPAN = Math.PI * 2 * 0.15;
 const BELL_BOUNCE_DAMP = 0.88;
 const HIT_COOLDOWN_MS = 180;
+const REPLAY_CAPTURE_STEP_MS = 100;
 
 const DEPTH_BG = 0;
 const DEPTH_ZONES = 1;
@@ -160,6 +168,18 @@ export class BellClashScene extends ResponsiveScene {
 	private onlineRoundSubmitted = false;
 	private onlineBallWasMoving = false;
 	private onlineAppliedRound = 0;
+	private localReplayId: string | null = null;
+	private localReplayFrames: Array<{
+		seq: number;
+		recordedAt: string;
+		deltaMs?: number;
+		snapshot: Record<string, unknown>;
+	}> = [];
+	private localReplayStartedAtIso = "";
+	private localReplayElapsedMs = 0;
+	private localReplayLastCaptureMs = 0;
+	private localReplayCaptureAccMs = 0;
+	private pendingReplayPersist: Promise<void> | null = null;
 
 	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
 		if (snapshot.gameId === "bell-clash")
@@ -213,6 +233,13 @@ export class BellClashScene extends ResponsiveScene {
 		this.onlineRoundSubmitted = false;
 		this.onlineBallWasMoving = false;
 		this.onlineAppliedRound = 0;
+		this.localReplayId = null;
+		this.localReplayFrames = [];
+		this.localReplayStartedAtIso = "";
+		this.localReplayElapsedMs = 0;
+		this.localReplayLastCaptureMs = 0;
+		this.localReplayCaptureAccMs = 0;
+		this.pendingReplayPersist = null;
 
 		this.zones = [];
 		this.currentShot = 0;
@@ -308,6 +335,7 @@ export class BellClashScene extends ResponsiveScene {
 		if (initialOnlineSnapshot)
 			this.applyOnlineSnapshot(initialOnlineSnapshot, true);
 		if (this.onlineMatch) this.initOnlineMatch();
+		else this.initLocalReplayRecording();
 
 		this.enableResponsive(); // relayout on resize/zoom (see ResponsiveScene)
 	}
@@ -339,6 +367,7 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	update(_time: number, delta: number): void {
+		if (!this.onlineMatch) this.localReplayElapsedMs += delta;
 		if (!this.running) return;
 
 		if (this.onlineMatch) {
@@ -389,6 +418,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.drawBell();
 		this.drawBallTrails();
 		this.drawBalls();
+		this.captureReplayTick(delta);
 	}
 
 	// ── Launch handler ────────────────────────────────────────────────────────────
@@ -450,6 +480,7 @@ export class BellClashScene extends ResponsiveScene {
 
 		this.activePower = PowerType.NONE;
 		this.powerSidePanel?.hide();
+		this.captureLocalReplayFrame(true);
 	}
 
 	// ── Shot helpers ──────────────────────────────────────────────────────────────
@@ -487,6 +518,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.drawBell();
 		drawShellBall(this.ballGfx, this.ball);
 		this.showPowerPanel();
+		this.captureLocalReplayFrame(true);
 	}
 
 	private generateZones(): ScoreZone[] {
@@ -645,8 +677,142 @@ export class BellClashScene extends ResponsiveScene {
 		this.ball.vy = 0;
 		this.powerSidePanel?.hide();
 		this.updateSidePanels();
+		this.captureLocalReplayFrame(true, "finished");
+		this.pendingReplayPersist = this.persistLocalReplay();
 		this.submitResult();
 		this.showEndScreen();
+	}
+
+	private initLocalReplayRecording(): void {
+		this.localReplayId = createLocalReplayId("bell-clash");
+		this.localReplayFrames = [];
+		this.localReplayStartedAtIso = new Date().toISOString();
+		this.localReplayElapsedMs = 0;
+		this.localReplayLastCaptureMs = 0;
+		this.localReplayCaptureAccMs = 0;
+		this.captureLocalReplayFrame(true);
+	}
+
+	private captureReplayTick(delta: number): void {
+		if (this.onlineMatch || !this.localReplayId) return;
+		this.localReplayCaptureAccMs += delta;
+		if (this.localReplayCaptureAccMs < REPLAY_CAPTURE_STEP_MS) return;
+		this.localReplayCaptureAccMs = 0;
+		this.captureLocalReplayFrame();
+	}
+
+	private captureLocalReplayFrame(
+		force = false,
+		phaseOverride?: BellClashSnapshot["phase"],
+	): void {
+		if (this.onlineMatch || !this.localReplayId) return;
+		const nowMs = Math.round(this.localReplayElapsedMs);
+		if (!force && nowMs === this.localReplayLastCaptureMs) return;
+		const deltaMs =
+			this.localReplayFrames.length === 0
+				? undefined
+				: Math.max(0, nowMs - this.localReplayLastCaptureMs);
+		this.localReplayLastCaptureMs = nowMs;
+		this.localReplayFrames.push({
+			seq: this.localReplayFrames.length,
+			recordedAt: new Date().toISOString(),
+			...(deltaMs !== undefined ? { deltaMs } : {}),
+			snapshot: this.buildLocalReplaySnapshot(phaseOverride),
+		});
+	}
+
+	private buildLocalReplaySnapshot(
+		phaseOverride?: BellClashSnapshot["phase"],
+	): BellClashSnapshot {
+		const phase = phaseOverride ?? "active";
+		const shotsTaken = Math.min(
+			SHOTS_TOTAL,
+			this.currentShot + (this.launchedThisShot ? 1 : 0),
+		);
+		return {
+			matchId: this.localReplayId ?? "local:bell-clash:unknown",
+			seq: this.localReplayFrames.length,
+			gameId: "bell-clash",
+			mode: "casual",
+			phase,
+			roundNumber: 1,
+			totalRounds: 1,
+			shotsPerRound: SHOTS_TOTAL,
+			score: [this.score],
+			liveRoundScores: [this.score],
+			roundScores: [phase === "finished" ? this.score : null],
+			shotCounts: [shotsTaken],
+			zones: this.zones.map((zone) => ({ ...zone })),
+			players: this.buildLocalReplayPlayers(),
+			balls: [
+				{
+					id: 0,
+					side: 0,
+					x: (this.ball.x - this.arena.cx) / this.arena.rx,
+					y: (this.ball.y - this.arena.cy) / this.arena.ry,
+					vx: this.ball.vx / this.arena.scale,
+					vy: this.ball.vy / this.arena.scale,
+					moving: this.launchedThisShot && Math.hypot(this.ball.vx, this.ball.vy) > 0.01,
+					visible: true,
+					power: "none",
+					scale: 1,
+					...(this.readArenaTrail("local").length
+						? { trail: this.readArenaTrail("local") }
+						: {}),
+				},
+			],
+			activeBallIdBySide: [this.launchedThisShot ? 0 : null],
+			nextBallId: 1,
+			entities: [],
+			winnerSide: null,
+		};
+	}
+
+	private buildLocalReplayPlayers(): SnapshotPlayer[] {
+		const user = this.registry.get("user") as
+			| { id?: number; username?: string; turtleName?: string | null }
+			| undefined;
+		return buildLocalReplayPlayers(user, 1);
+	}
+
+	private readArenaTrail(key: string | number): Array<{ x: number; y: number }> {
+		const trail = this.ballTrails.get(key);
+		if (!trail?.length) return [];
+		return trail.map((point) => ({
+			x: (point.x - this.arena.cx) / this.arena.rx,
+			y: (point.y - this.arena.cy) / this.arena.ry,
+		}));
+	}
+
+	private async persistLocalReplay(): Promise<void> {
+		if (!this.localReplayId || this.localReplayFrames.length === 0) return;
+		const user = this.registry.get("user") as
+			| { id?: number; username?: string; turtleName?: string | null; isGuest?: boolean }
+			| undefined;
+		if (user?.isGuest) return;
+		const finishedAt = new Date().toISOString();
+		const importPayload: ReplayImportRequest = {
+			gameId: "bell-clash",
+			mode: "singleplayer",
+			status: "finished",
+			createdAt: this.localReplayStartedAtIso || finishedAt,
+			finishedAt,
+			winnerSide: null,
+			playerUserIds: buildLocalReplayPlayerUserIds(user?.id ?? null, 1),
+			playerNames: this.buildLocalReplayPlayers().map((player) => player.username),
+			frames: this.buildReplayImportFrames(),
+			events: [],
+		};
+		try {
+			await api.importReplay(importPayload);
+			console.info("[BellClash] replay persisted");
+		} catch (err: unknown) {
+			console.warn("[BellClash] failed to persist replay to backend:", err);
+		}
+	}
+
+	private buildReplayImportFrames(): ReplayImportRequest["frames"] {
+		return normalizeReplayImportFrames(this.localReplayFrames);
 	}
 
 	private submitResult(): void {

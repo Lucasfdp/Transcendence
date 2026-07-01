@@ -81,6 +81,13 @@ import {
 	PLAYER_HEX_COLOURS,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
+import {
+	buildLocalReplayPlayerUserIds,
+	buildLocalReplayPlayers,
+	createLocalReplayId,
+	normalizeReplayImportFrames,
+	resolveReplayWinnerSide,
+} from "../shared/localReplay";
 
 interface BallRoundConfig {
 	readonly totalTargets: number;
@@ -107,8 +114,6 @@ const SOLID_BOUNCE_DAMP = 0.92;
 const SCORE_LOG_LIMIT = 8;
 const FREEZE_DURATION_MS = 5_000;
 const REPLAY_CAPTURE_STEP_MS = 100;
-const MAX_IMPORTED_REPLAY_FRAMES = 240;
-
 const TARGET_TEXTURES: Record<TimedTargetKind, string> = {
 	daruma: "kame-knock-daruma",
 	crate: "kame-knock-box",
@@ -1152,7 +1157,7 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	private initLocalReplayRecording(): void {
-		this.localReplayId = `local:kame-knock:${Date.now()}`;
+		this.localReplayId = createLocalReplayId("kame-knock");
 		this.localReplayFrames = [];
 		this.localReplayStartedAtIso = new Date().toISOString();
 		this.localReplayElapsedMs = 0;
@@ -1221,25 +1226,11 @@ export class KameKnockScene extends ResponsiveScene {
 		const user = this.registry.get("user") as
 			| { id?: number; username?: string; turtleName?: string | null }
 			| undefined;
-		return Array.from({ length: this.localPlayerCount }, (_value, index) => ({
-			side: index,
-			userId: index === 0 ? (user?.id ?? null) : null,
-			username:
-				index === 0
-					? (user?.turtleName ?? user?.username ?? "Player 1")
-					: `Player ${index + 1}`,
-			connected: true,
-			ready: true,
-			reconnectExpiresAt: null,
-		}));
+		return buildLocalReplayPlayers(user, this.localPlayerCount);
 	}
 
 	private resolveLocalWinnerSide(): number | null {
-		if (this.localScores.length <= 1) return null;
-		const maxScore = Math.max(...this.localScores);
-		const winnerCount = this.localScores.filter((score) => score === maxScore).length;
-		if (winnerCount !== 1) return null;
-		return this.localScores.findIndex((score) => score === maxScore);
+		return resolveReplayWinnerSide(this.localScores);
 	}
 
 	private async persistLocalReplay(): Promise<void> {
@@ -1256,10 +1247,10 @@ export class KameKnockScene extends ResponsiveScene {
 			createdAt: this.localReplayStartedAtIso || finishedAt,
 			finishedAt,
 			winnerSide: this.resolveLocalWinnerSide(),
-			playerUserIds: [
+			playerUserIds: buildLocalReplayPlayerUserIds(
 				user?.id ?? null,
-				...Array.from({ length: Math.max(0, this.localPlayerCount - 1) }, () => null),
-			],
+				this.localPlayerCount,
+			),
 			playerNames: this.buildLocalReplayPlayers().map((player) => player.username),
 			frames: this.buildReplayImportFrames(),
 			events: [],
@@ -1273,45 +1264,7 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	private buildReplayImportFrames(): ReplayImportRequest["frames"] {
-		const normalizedFrames = this.localReplayFrames.map((frame, index) => ({
-			seq: index,
-			recordedAt: frame.recordedAt,
-			deltaMs:
-				index === 0
-					? frame.deltaMs
-					: Math.max(
-							0,
-							Date.parse(frame.recordedAt) -
-								Date.parse(this.localReplayFrames[index - 1]?.recordedAt ?? frame.recordedAt),
-						),
-			snapshot: frame.snapshot,
-		}));
-		if (normalizedFrames.length <= MAX_IMPORTED_REPLAY_FRAMES)
-			return normalizedFrames;
-
-		const keptIndices = new Set<number>([0, normalizedFrames.length - 1]);
-		const interiorTarget = MAX_IMPORTED_REPLAY_FRAMES - 2;
-		for (let slot = 0; slot < interiorTarget; slot += 1) {
-			const ratio = (slot + 1) / (interiorTarget + 1);
-			const index = Math.round(ratio * (normalizedFrames.length - 1));
-			keptIndices.add(index);
-		}
-
-		return [...keptIndices]
-			.sort((a, b) => a - b)
-			.map((sourceIndex, compactIndex, indices) => {
-				const frame = normalizedFrames[sourceIndex];
-				if (compactIndex === 0) return { ...frame, seq: 0 };
-				const previousFrame = normalizedFrames[indices[compactIndex - 1]];
-				return {
-					...frame,
-					seq: compactIndex,
-					deltaMs: Math.max(
-						0,
-						Date.parse(frame.recordedAt) - Date.parse(previousFrame.recordedAt),
-					),
-				};
-			});
+		return normalizeReplayImportFrames(this.localReplayFrames);
 	}
 
 	private async waitForPendingReplayPersist(): Promise<void> {
