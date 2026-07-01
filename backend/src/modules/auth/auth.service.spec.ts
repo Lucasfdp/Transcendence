@@ -28,6 +28,12 @@ const mockResponse = {
 	clearCookie: jest.fn(),
 } as unknown as import("express").Response;
 
+// issueAuthCookie derives cookie `secure` from the request's forwarded-proto
+// header; an empty headers object is enough for the non-production path.
+const mockRequest = {
+	headers: {},
+} as unknown as import("express").Request;
+
 describe("AuthService", () => {
 	let service: AuthService;
 	let usersService: jest.Mocked<UsersService>;
@@ -66,7 +72,7 @@ describe("AuthService", () => {
 
 	describe("issueAuthCookie", () => {
 		it("signs a JWT and sets an httpOnly cookie", () => {
-			service.issueAuthCookie(mockResponse, mockUser);
+			service.issueAuthCookie(mockRequest, mockResponse, mockUser);
 			expect(jwtService.sign).toHaveBeenCalledWith(
 				expect.objectContaining({ sub: 1, username: "testuser" }),
 				expect.objectContaining({ expiresIn: "24h" }),
@@ -79,7 +85,7 @@ describe("AuthService", () => {
 		});
 
 		it("uses a 2-hour TTL for guest sessions", () => {
-			service.issueAuthCookie(mockResponse, mockUser, true);
+			service.issueAuthCookie(mockRequest, mockResponse, mockUser, true);
 			expect(mockResponse.cookie).toHaveBeenCalledWith(
 				"auth_token",
 				"signed.jwt",
@@ -92,7 +98,7 @@ describe("AuthService", () => {
 				throw new Error("sign error");
 			});
 			expect(() =>
-				service.issueAuthCookie(mockResponse, mockUser),
+				service.issueAuthCookie(mockRequest, mockResponse, mockUser),
 			).toThrow(InternalServerErrorException);
 		});
 	});

@@ -1,4 +1,5 @@
 import {
+	Check,
 	Column,
 	CreateDateColumn,
 	Entity,
@@ -27,6 +28,7 @@ export type ReportCategory =
  */
 @Entity("reports")
 @Index(["reportedId"]) // fast lookup for future moderation tooling
+@Check('"reporterId" <> "reportedId"') // mirrors chk_no_self_report in the migration
 export class Report {
 	@PrimaryGeneratedColumn()
 	id: number;

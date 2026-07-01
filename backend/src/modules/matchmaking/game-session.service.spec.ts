@@ -6,6 +6,7 @@ import { UserRating } from "./entities/user-rating.entity";
 import { GameEngineRegistry } from "./engines/game-engine.registry";
 import { GameSessionService } from "./game-session.service";
 import { MatchRoom, RoomPlayer } from "./matchmaking.types";
+import { ReplayService } from "./replay.service";
 import { RoomService } from "./room.service";
 
 function makePlayer(
@@ -37,6 +38,9 @@ function makeRoom(overrides: Partial<MatchRoom> = {}): MatchRoom {
 		players,
 		spectators: new Map(),
 		seq: 1,
+		replayFrames: [],
+		replayEvents: [],
+		replayLastCapturedSeq: null,
 		state: {
 			matchId: "match-1",
 			seq: 1,
@@ -66,6 +70,7 @@ describe("GameSessionService", () => {
 	let engines: jest.Mocked<GameEngineRegistry>;
 	let usersService: jest.Mocked<UsersService>;
 	let gameResultsService: jest.Mocked<GameResultsService>;
+	let replayService: { persistReplayForRoom: jest.Mock };
 	let matchRepo: { update: jest.Mock };
 	let matchPlayerRepo: { update: jest.Mock };
 	let ratingRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
@@ -91,6 +96,7 @@ describe("GameSessionService", () => {
 		gameResultsService = {
 			submitResult: jest.fn(),
 		} as unknown as jest.Mocked<GameResultsService>;
+		replayService = { persistReplayForRoom: jest.fn() };
 		matchRepo = { update: jest.fn() };
 		matchPlayerRepo = { update: jest.fn() };
 		ratingRepo = {
@@ -123,6 +129,7 @@ describe("GameSessionService", () => {
 			engines,
 			usersService,
 			gameResultsService,
+			replayService as never,
 			dataSource as never,
 			matchRepo as never,
 			matchPlayerRepo as never,

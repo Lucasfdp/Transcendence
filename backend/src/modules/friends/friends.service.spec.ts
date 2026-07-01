@@ -391,6 +391,25 @@ describe("FriendsService", () => {
 			expect(result[0].userId).toBe(3);
 		});
 
+		it("should apply a stable ordering and the limit at the query level", async () => {
+			friendshipRepo.find
+				.mockResolvedValueOnce([{ requesterId: 1, addresseeId: 2 }])
+				.mockResolvedValueOnce([{ requesterId: 2, addresseeId: 3 }])
+				.mockResolvedValueOnce([]);
+			const findMock = jest.fn().mockResolvedValue([]);
+			userRepo.find = findMock;
+
+			await service.getSuggestions(1, 5);
+
+			expect(findMock).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: expect.objectContaining({ isGuest: false }),
+					order: { level: "DESC", username: "ASC" },
+					take: 5,
+				}),
+			);
+		});
+
 		it("should throw InternalServerErrorException when the friendIds lookup fails", async () => {
 			friendshipRepo.find.mockRejectedValue(new Error("db down"));
 

@@ -8,10 +8,20 @@ import { FriendsService } from "../friends/friends.service";
 import { Report } from "./entities/report.entity";
 import { ReportsService } from "./reports.service";
 
-const mockReportRepo = () => ({
-	create: jest.fn((v) => v),
-	save: jest.fn(async (v) => ({ id: 1, ...v })),
-});
+const mockReportRepo = () => {
+	const repo: Record<string, jest.Mock> & { manager?: unknown } = {
+		create: jest.fn((v) => v),
+		save: jest.fn(async (v) => ({ id: 1, ...v })),
+	};
+	// Route transaction callbacks back through the same repo mock so existing
+	// save/create assertions keep working.
+	repo.manager = {
+		transaction: jest.fn(async (cb: (em: unknown) => Promise<unknown>) =>
+			cb({ getRepository: () => repo }),
+		),
+	};
+	return repo;
+};
 
 const mockFriendsService = () => ({
 	block: jest.fn().mockResolvedValue(undefined),
@@ -66,10 +76,15 @@ describe("ReportsService", () => {
 			);
 		});
 
-		it("should auto-block the reported user after persisting the report", async () => {
+		it("should auto-block the reported user within the report transaction", async () => {
 			await service.create(1, 2, "cheating");
 
-			expect(friendsService.block).toHaveBeenCalledWith(1, 2);
+			// Third arg is the transaction EntityManager the block runs inside.
+			expect(friendsService.block).toHaveBeenCalledWith(
+				1,
+				2,
+				expect.anything(),
+			);
 		});
 
 		it("should throw InternalServerErrorException when persisting the report fails", async () => {

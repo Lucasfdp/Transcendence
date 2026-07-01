@@ -6,7 +6,7 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { In, Repository } from "typeorm";
+import { EntityManager, In, Repository } from "typeorm";
 import {
 	PresenceService,
 	type PresenceStatus,
@@ -176,20 +176,31 @@ export class FriendsService {
 	 * Block a user.  Uses an upsert so blocking works whether or not a row
 	 * already exists.  The blocking user always becomes the requester so the
 	 * blocked user cannot see the row from their side.
+	 *
+	 * Pass `manager` to run inside an existing transaction (e.g. report+block
+	 * as one atomic unit); otherwise the default repository is used.
 	 */
-	async block(blockerId: number, blockedId: number): Promise<void> {
+	async block(
+		blockerId: number,
+		blockedId: number,
+		manager?: EntityManager,
+	): Promise<void> {
 		try {
 			if (blockerId === blockedId) {
 				throw new BadRequestException("You cannot block yourself");
 			}
 
+			const repo = manager
+				? manager.getRepository(Friendship)
+				: this.friendshipRepo;
+
 			// Remove any existing row in either direction first, then insert block
-			await this.friendshipRepo.delete([
+			await repo.delete([
 				{ requesterId: blockerId, addresseeId: blockedId },
 				{ requesterId: blockedId, addresseeId: blockerId },
 			]);
-			await this.friendshipRepo.save(
-				this.friendshipRepo.create({
+			await repo.save(
+				repo.create({
 					requesterId: blockerId,
 					addresseeId: blockedId,
 					status: "blocked",
@@ -337,10 +348,15 @@ export class FriendsService {
 			if (finalIds.length === 0) return [];
 
 			const users = await this.userRepo.find({
-				where: { id: In(finalIds) },
+				// Guests are ephemeral — never surface them as suggestions.
+				where: { id: In(finalIds), isGuest: false },
+				// Stable, meaningful ordering so the limit is deterministic:
+				// strongest players first, alphabetical as a tiebreaker.
+				order: { level: "DESC", username: "ASC" },
+				take: limit,
 			});
 
-			return users.slice(0, limit).map((u) => ({
+			return users.map((u) => ({
 				userId: u.id,
 				username: u.username,
 				turtleName: u.turtleName ?? null,

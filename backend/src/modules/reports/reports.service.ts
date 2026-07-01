@@ -32,19 +32,30 @@ export class ReportsService {
 		}
 
 		try {
-			await this.reportRepo.save(
-				this.reportRepo.create({
-					reporterId,
-					reportedId,
-					category,
-					message: message ?? null,
-				}),
-			);
-		} catch {
+			// Report insert + auto-block run in one transaction so we never end up
+			// with a report row but no block (or vice versa).
+			await this.reportRepo.manager.transaction(async (em) => {
+				const repo = em.getRepository(Report);
+				await repo.save(
+					repo.create({
+						reporterId,
+						reportedId,
+						category,
+						message: message ?? null,
+					}),
+				);
+				await this.friendsService.block(reporterId, reportedId, em);
+			});
+		} catch (err) {
+			// Preserve typed exceptions (e.g. block's InternalServerError); wrap
+			// anything else as a generic report failure.
+			if (
+				err instanceof BadRequestException ||
+				err instanceof InternalServerErrorException
+			) {
+				throw err;
+			}
 			throw new InternalServerErrorException("Failed to submit report");
 		}
-
-		// Let FriendsService.block's own typed exceptions propagate as-is.
-		await this.friendsService.block(reporterId, reportedId);
 	}
 }

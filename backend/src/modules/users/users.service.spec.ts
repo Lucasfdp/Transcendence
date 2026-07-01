@@ -6,6 +6,7 @@ import { UsersService } from "./users.service";
 import { User } from "./entities/user.entity";
 import { Profile } from "../profiles/entities/profile.entity";
 import { ShellsService } from "../shells/shells.service";
+import { UserCosmetic } from "../customization/entities/user-cosmetic.entity";
 
 const mockProfile = {
 	id: 1,
@@ -37,11 +38,13 @@ describe("UsersService", () => {
 	let service: UsersService;
 	let usersRepo: MockRepo<User>;
 	let profilesRepo: MockRepo<Profile>;
+	let userCosmeticsRepo: MockRepo<UserCosmetic>;
 	let shellsService: jest.Mocked<Pick<ShellsService, "seedInventory">>;
 
 	beforeEach(async () => {
 		usersRepo = createMockRepo<User>();
 		profilesRepo = createMockRepo<Profile>();
+		userCosmeticsRepo = createMockRepo<UserCosmetic>();
 		shellsService = {
 			seedInventory: jest.fn().mockResolvedValue(undefined),
 		};
@@ -53,6 +56,10 @@ describe("UsersService", () => {
 				{
 					provide: getRepositoryToken(Profile),
 					useValue: profilesRepo,
+				},
+				{
+					provide: getRepositoryToken(UserCosmetic),
+					useValue: userCosmeticsRepo,
 				},
 				{ provide: ShellsService, useValue: shellsService },
 			],
