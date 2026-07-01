@@ -38,6 +38,22 @@ export class FriendsController {
 		return this.friendsService.listPending(req.user.id);
 	}
 
+	/** GET /api/friends/outgoing — list outgoing pending requests. */
+	@Get("outgoing")
+	listOutgoing(
+		@Request() req: { user: { id: number } },
+	): Promise<PendingView[]> {
+		return this.friendsService.listOutgoing(req.user.id);
+	}
+
+	/** GET /api/friends/suggestions — "People you may know" (friends-of-friends). */
+	@Get("suggestions")
+	getSuggestions(
+		@Request() req: { user: { id: number } },
+	): Promise<PendingView[]> {
+		return this.friendsService.getSuggestions(req.user.id);
+	}
+
 	/** POST /api/friends/request — send a friend request by username. */
 	@Post("request")
 	@HttpCode(200)

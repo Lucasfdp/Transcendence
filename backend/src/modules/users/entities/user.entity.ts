@@ -77,6 +77,14 @@ export class User {
 	@Column({ default: false })
 	isDevAccount: boolean;
 
+	/**
+	 * When the user was last seen online (their last socket disconnect).
+	 * Null until they have connected and disconnected at least once.
+	 * Used to render "last online" for offline friends.
+	 */
+	@Column({ type: "timestamptz", nullable: true, default: null })
+	lastSeenAt: Date | null;
+
 	@CreateDateColumn()
 	createdAt: Date;
 

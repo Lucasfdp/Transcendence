@@ -363,7 +363,7 @@ export interface WheelView {
 }
 
 /** Which gambling-den game a spin belongs to. */
-export type CasinoGame = "wheel" | "flip" | "monte" | "slots";
+export type CasinoGame = "wheel" | "flip" | "monte" | "slots" | "dice" | "drop";
 
 /** Provably-fair data the player can recompute to verify a spin. */
 export interface SpinFairness {
@@ -423,6 +423,23 @@ export interface MonteConfig {
 	coins: number;
 }
 
+// ── Koi Dice ─────────────────────────────────────────────────────────────────
+
+/** A called betting direction. */
+export type DiceDirection = "under" | "over";
+
+/** Koi Dice layout: range, per-direction target bounds, wager bounds and balance. */
+export interface DiceConfig {
+	range: number;
+	minTargetUnder: number;
+	maxTargetUnder: number;
+	minTargetOver: number;
+	maxTargetOver: number;
+	minWager: number;
+	maxWager: number;
+	coins: number;
+}
+
 // ── Shrine Slots ─────────────────────────────────────────────────────────────
 
 /** One reel symbol with its odds and three-of-a-kind payout. */
@@ -441,6 +458,36 @@ export interface SlotsView {
 	symbols: SlotSymbolView[];
 	reelCount: number;
 	rtp: number;
+	minWager: number;
+	maxWager: number;
+	coins: number;
+}
+
+// ── Shell Drop (Plinko) ──────────────────────────────────────────────────────
+
+/** One bucket of a Shell Drop board with its odds and payout. */
+export interface PlinkoBucketView {
+	/** Bucket index — count of right moves (0..rows). */
+	index: number;
+	/** Net-neutral payout multiplier (< 1 in the center, > 1 at the edges). */
+	multiplier: number;
+	/** Probability of landing here. */
+	probability: number;
+}
+
+/** One row-count's full paytable. */
+export interface PlinkoTierView {
+	rows: number;
+	buckets: PlinkoBucketView[];
+	/** Weighted-average return-to-player for this tier (1.0 = net-neutral). */
+	rtp: number;
+}
+
+/** Shell Drop layout: row tiers, paytables, wager bounds and balance. */
+export interface PlinkoView {
+	rowOptions: number[];
+	defaultRows: number;
+	tiers: PlinkoTierView[];
 	minWager: number;
 	maxWager: number;
 	coins: number;
@@ -499,6 +546,9 @@ export interface ShellSelectionResult {
 	shellTypes: string[];
 }
 
+/** Coarse presence state for a player. Mirrors the backend PresenceStatus. */
+export type PresenceStatus = "offline" | "online" | "in-game";
+
 export interface FriendView {
 	userId: number;
 	username: string;
@@ -506,9 +556,31 @@ export interface FriendView {
 	shellSkin: string;
 	avatar: string | null;
 	level: number;
+	/** True when status is anything other than "offline". */
 	isOnline: boolean;
+	status: PresenceStatus;
+	/** The game the friend is currently playing, or null. */
+	gameId: string | null;
+	/** ISO timestamp of when the friend was last online, or null if unknown. */
+	lastSeenAt: string | null;
 	requesterId: number;
 }
+
+/** Mirrors the backend ReportCategory union. */
+export type ReportCategory =
+	| "harassment"
+	| "cheating"
+	| "inappropriate_name"
+	| "spam"
+	| "other";
+
+export const REPORT_CATEGORIES: { id: ReportCategory; label: string }[] = [
+	{ id: "harassment", label: "Harassment" },
+	{ id: "cheating", label: "Cheating" },
+	{ id: "inappropriate_name", label: "Inappropriate name" },
+	{ id: "spam", label: "Spam" },
+	{ id: "other", label: "Other" },
+];
 
 export interface PendingView {
 	userId: number;
@@ -739,6 +811,35 @@ export const api = {
 			body: JSON.stringify({ stake, clientSeed }),
 		}),
 
+	/** Fetch the Koi Dice layout: range, target bounds, wager bounds and balance. */
+	getDice: (): Promise<DiceConfig> => apiFetch<DiceConfig>("/casino/dice"),
+
+	/** Bet a direction/target and stake coins. Returns the outcome and new balance. */
+	dice: (
+		stake: number,
+		direction: DiceDirection,
+		target: number,
+		clientSeed?: string,
+	): Promise<SpinResolution> =>
+		apiFetch<SpinResolution>("/casino/dice", {
+			method: "POST",
+			body: JSON.stringify({ stake, direction, target, clientSeed }),
+		}),
+
+	/** Fetch the Shell Drop layout: row tiers, paytables, bounds and balance. */
+	getPlinko: (): Promise<PlinkoView> => apiFetch<PlinkoView>("/casino/plinko"),
+
+	/** Pick a risk tier and stake coins. Returns the outcome and new balance. */
+	dropPlinko: (
+		stake: number,
+		rows?: number,
+		clientSeed?: string,
+	): Promise<SpinResolution> =>
+		apiFetch<SpinResolution>("/casino/plinko", {
+			method: "POST",
+			body: JSON.stringify({ stake, rows, clientSeed }),
+		}),
+
 	/**
 	 * Record the outcome of a completed game session.
 	 * Returns XP / coin / level-up deltas for progression feedback animation.
@@ -784,6 +885,14 @@ export const api = {
 	getPendingRequests: (): Promise<PendingView[]> =>
 		apiFetch<PendingView[]>("/friends/pending"),
 
+	/** Return outgoing pending friend requests sent by the current user. */
+	getOutgoingRequests: (): Promise<PendingView[]> =>
+		apiFetch<PendingView[]>("/friends/outgoing"),
+
+	/** "People you may know" — friends-of-friends suggestions. */
+	getFriendSuggestions: (): Promise<PendingView[]> =>
+		apiFetch<PendingView[]>("/friends/suggestions"),
+
 	/** Send a friend request by username. */
 	sendFriendRequest: (username: string): Promise<void> =>
 		apiFetch<void>("/friends/request", {
@@ -807,6 +916,19 @@ export const api = {
 		apiFetch<void>("/friends/block", {
 			method: "POST",
 			body: JSON.stringify({ userId }),
+		}),
+
+	// ── Reports ────────────────────────────────────────────────────────────────
+
+	/** Report a user by userId. Auto-blocks the reported user server-side. */
+	reportUser: (
+		reportedId: number,
+		category: ReportCategory,
+		message?: string,
+	): Promise<void> =>
+		apiFetch<void>("/reports", {
+			method: "POST",
+			body: JSON.stringify({ reportedId, category, message }),
 		}),
 
 	// ── Leaderboard ────────────────────────────────────────────────────────────

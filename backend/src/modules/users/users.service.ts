@@ -29,6 +29,21 @@ export class UsersService {
 		private readonly shellsService: ShellsService,
 	) {}
 
+	/**
+	 * Record that the user was last seen at `when` (defaults to now).
+	 * Called when a user's last socket disconnects so offline friends can show
+	 * a "last online" time. Uses a targeted UPDATE — no full entity load.
+	 */
+	async markSeen(userId: number, when: Date = new Date()): Promise<void> {
+		try {
+			await this.usersRepo.update({ id: userId }, { lastSeenAt: when });
+		} catch {
+			throw new InternalServerErrorException(
+				"Failed to update last-seen timestamp",
+			);
+		}
+	}
+
 	async findById(id: number): Promise<User | null> {
 		try {
 			return await this.usersRepo.findOne({

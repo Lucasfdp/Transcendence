@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
@@ -7,6 +7,8 @@ import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { WorkInProgressNotice } from "../components/common/WorkInProgressNotice";
 import { ShellCardsModal } from "../components/cards/ShellCardsModal";
 import { FortuneWheelModal } from "../components/casino/FortuneWheelModal";
+import { KoiDiceModal } from "../components/casino/KoiDiceModal";
+import { ShellDropModal } from "../components/casino/ShellDropModal";
 import { ShellFlipModal } from "../components/casino/ShellFlipModal";
 import { ThreeShellMonteModal } from "../components/casino/ThreeShellMonteModal";
 import { ShrineSlotsModal } from "../components/casino/ShrineSlotsModal";
@@ -28,6 +30,8 @@ import {
 	OverallLeaderboardEntry,
 	PendingView,
 	RANKED_GAMES,
+	REPORT_CATEGORIES,
+	type ReportCategory,
 	ReplayDetail,
 	ReplayFrame,
 	ReplaySummary,
@@ -42,6 +46,32 @@ import {
 	type CurlingSnapshot,
 	type KameKnockSnapshot,
 } from "../services/network/gameSocket";
+import {
+	friendCounts,
+	removeById,
+	upsertById,
+} from "../features/social/friendsOps";
+import { buildFriendCode } from "../features/social/friendCode";
+import { filterFriends } from "../features/social/friendFilter";
+import { createProfileCardCache } from "../features/social/profileCard/cache";
+import { debounce } from "../features/social/profileCard/debounce";
+import { ProfileCard } from "../features/social/profileCard/ProfileCard";
+import {
+	notificationIdsFrom,
+	removeNotificationsFrom,
+} from "../features/social/notificationDedup";
+import {
+	formatRelativeTime,
+	groupFriendsByPresence,
+} from "../features/social/presence";
+import { useToast } from "../features/social/toast/ToastContext";
+
+/** How long a removed friend can be restored via the Undo toast before the
+ *  deletion is committed to the server. */
+const FRIEND_REMOVAL_UNDO_MS = 5000;
+
+/** Delay before a hover/focus on a friend's name triggers a profile fetch. */
+const PROFILE_HOVER_DEBOUNCE_MS = 300;
 
 type HubView = "choose" | "normal" | "gambit";
 type InfoModal = { title: string; description: string } | null;
@@ -894,6 +924,8 @@ function HomeMenu(): JSX.Element {
 		| "flip"
 		| "monte"
 		| "slots"
+		| "dice"
+		| "drop"
 		| null
 	>(null);
 	const [profileSaving, setProfileSaving] = useState(false);
@@ -912,9 +944,53 @@ function HomeMenu(): JSX.Element {
 	const [showcasePickerSlot, setShowcasePickerSlot] = useState<number | null>(null);
 	const [friends, setFriends] = useState<FriendView[] | null>(null);
 	const [pendingRequests, setPendingRequests] = useState<PendingView[] | null>(null);
+	const [outgoingRequests, setOutgoingRequests] = useState<PendingView[] | null>(
+		null,
+	);
+	const [suggestions, setSuggestions] = useState<PendingView[] | null>(null);
 	const [socialLoading, setSocialLoading] = useState(false);
+	const [friendSearchQuery, setFriendSearchQuery] = useState("");
 	const [friendUsername, setFriendUsername] = useState("");
 	const [friendActionLoading, setFriendActionLoading] = useState(false);
+	const { showToast } = useToast();
+	/** Pending friend-removal timers keyed by userId; cleared on Undo. */
+	const removalTimers = useRef(
+		new Map<number, ReturnType<typeof setTimeout>>(),
+	);
+	const [hoveredFriendUsername, setHoveredFriendUsername] = useState<
+		string | null
+	>(null);
+	const [hoveredProfile, setHoveredProfile] = useState<User | null>(null);
+	const [hoveredProfileLoading, setHoveredProfileLoading] = useState(false);
+	const profileCardCache = useRef(createProfileCardCache<User>()).current;
+	const [blockConfirmUserId, setBlockConfirmUserId] = useState<number | null>(
+		null,
+	);
+	/** Only one block-confirm row can be open at a time, so a single shared
+	 *  ref is enough to move focus onto whichever "Confirm" button appears —
+	 *  otherwise focus is lost when the triggering "Block" button unmounts. */
+	const blockConfirmButtonRef = useRef<HTMLButtonElement>(null);
+	useEffect(() => {
+		if (blockConfirmUserId !== null) {
+			blockConfirmButtonRef.current?.focus();
+		}
+	}, [blockConfirmUserId]);
+	const [reportTarget, setReportTarget] = useState<{
+		userId: number;
+		username: string;
+		turtleName: string | null;
+	} | null>(null);
+	const [reportCategory, setReportCategory] = useState<ReportCategory>(
+		REPORT_CATEGORIES[0].id,
+	);
+	const [reportMessage, setReportMessage] = useState("");
+	const [reportLoading, setReportLoading] = useState(false);
+	const reportCategorySelectRef = useRef<HTMLSelectElement>(null);
+	useEffect(() => {
+		if (reportTarget) {
+			reportCategorySelectRef.current?.focus();
+		}
+	}, [reportTarget]);
 	const appliedBackgroundId = resolveHubBackgroundId(
 		player?.hubBackground,
 		player?.hubBackgroundAlter,
@@ -1052,6 +1128,22 @@ function HomeMenu(): JSX.Element {
 	function handleMarkRead(id: number): void {
 		getGameSocket().emit("notification:read", { notificationId: id });
 		setNotifications((prev) => prev.filter((n) => n.id !== id));
+	}
+
+	/**
+	 * Resolve every "friend_request" notification from `fromUserId`, not just
+	 * the one that was clicked. Prevents a duplicate notification (e.g. from a
+	 * retried request) from being actioned independently — accepting one and
+	 * then declining the duplicate would otherwise net to added-then-removed.
+	 */
+	function handleResolveFriendRequestNotifs(fromUserId: number): void {
+		const ids = notificationIdsFrom(notifications, fromUserId, "friend_request");
+		for (const id of ids) {
+			getGameSocket().emit("notification:read", { notificationId: id });
+		}
+		setNotifications((prev) =>
+			removeNotificationsFrom(prev, fromUserId, "friend_request"),
+		);
 	}
 
 	function handleCreateLobby(friendUserId: number, gameId: string): void {
@@ -1370,14 +1462,24 @@ function HomeMenu(): JSX.Element {
 		setModalError("");
 		setFriends(null);
 		setPendingRequests(null);
+		setOutgoingRequests(null);
+		setSuggestions(null);
+		setFriendSearchQuery("");
+		setBlockConfirmUserId(null);
+		setReportTarget(null);
 		setSocialLoading(true);
 		try {
-			const [nextFriends, nextPending] = await Promise.all([
-				api.getFriends(),
-				api.getPendingRequests(),
-			]);
+			const [nextFriends, nextPending, nextOutgoing, nextSuggestions] =
+				await Promise.all([
+					api.getFriends(),
+					api.getPendingRequests(),
+					api.getOutgoingRequests(),
+					api.getFriendSuggestions(),
+				]);
 			setFriends(nextFriends);
 			setPendingRequests(nextPending);
+			setOutgoingRequests(nextOutgoing);
+			setSuggestions(nextSuggestions);
 		} catch {
 			setModalError("Could not load social data. Try again later.");
 		} finally {
@@ -1452,53 +1554,447 @@ function HomeMenu(): JSX.Element {
 		}
 	};
 
+	/** Re-fetch friends + pending + outgoing from the server (used to reconcile
+	 *  after an optimistic update fails). Non-fatal on its own failure. */
+	const refreshSocial = async (): Promise<void> => {
+		try {
+			const [nextFriends, nextPending, nextOutgoing, nextSuggestions] =
+				await Promise.all([
+					api.getFriends(),
+					api.getPendingRequests(),
+					api.getOutgoingRequests(),
+					api.getFriendSuggestions(),
+				]);
+			setFriends(nextFriends);
+			setPendingRequests(nextPending);
+			setOutgoingRequests(nextOutgoing);
+			setSuggestions(nextSuggestions);
+		} catch {
+			// Leave the current optimistic state in place; the user can reopen.
+		}
+	};
+
+	const handleCopyFriendCode = async () => {
+		if (!player?.username) return;
+		const code = buildFriendCode(player.username);
+		try {
+			if (!globalThis.navigator?.clipboard?.writeText) {
+				throw new Error("Clipboard unavailable");
+			}
+			await globalThis.navigator.clipboard.writeText(code);
+			showToast({ message: "Friend code copied", variant: "success" });
+		} catch {
+			showToast({
+				message: `Could not copy — your friend code is ${code}`,
+				variant: "error",
+			});
+		}
+	};
+
 	const handleSendFriendRequest = async () => {
 		const trimmed = friendUsername.trim();
 		if (!trimmed || friendActionLoading) return;
 		setFriendActionLoading(true);
-		setModalError("");
 		try {
 			await api.getCsrfToken();
 			await api.sendFriendRequest(trimmed);
 			setFriendUsername("");
+			showToast({
+				message: `Friend request sent to ${trimmed}`,
+				variant: "success",
+			});
+			void refreshSocial();
 		} catch (err: unknown) {
-			setModalError(err instanceof Error ? err.message : "Could not send request.");
+			showToast({
+				message:
+					err instanceof Error ? err.message : "Could not send request.",
+				variant: "error",
+			});
 		} finally {
 			setFriendActionLoading(false);
 		}
 	};
 
-	const handleAcceptRequest = async (userId: number) => {
-		setModalError("");
+	const handleAddSuggestion = async (
+		suggestion: PendingView,
+	): Promise<void> => {
+		// Optimistically drop from suggestions so the button can't be double-clicked.
+		setSuggestions((prev) =>
+			prev ? removeById(prev, suggestion.userId) : prev,
+		);
 		try {
 			await api.getCsrfToken();
-			await api.acceptFriendRequest(userId);
-			const [nextFriends, nextPending] = await Promise.all([
-				api.getFriends(),
-				api.getPendingRequests(),
-			]);
-			setFriends(nextFriends);
-			setPendingRequests(nextPending);
+			await api.sendFriendRequest(suggestion.username);
+			showToast({
+				message: `Friend request sent to ${suggestion.turtleName ?? suggestion.username}`,
+				variant: "success",
+			});
+			void refreshSocial();
 		} catch (err: unknown) {
-			setModalError(err instanceof Error ? err.message : "Could not accept request.");
+			showToast({
+				message:
+					err instanceof Error ? err.message : "Could not send request.",
+				variant: "error",
+			});
+			void refreshSocial();
 		}
 	};
 
-	const handleRemoveFriend = async (userId: number) => {
-		setModalError("");
+	const handleAcceptRequest = async (req: PendingView) => {
+		// Optimistically move the requester from pending → friends.
+		const optimisticFriend: FriendView = {
+			userId: req.userId,
+			username: req.username,
+			turtleName: req.turtleName,
+			shellSkin: req.shellSkin,
+			avatar: req.avatar,
+			level: req.level,
+			isOnline: req.isOnline,
+			status: req.isOnline ? "online" : "offline",
+			gameId: null,
+			lastSeenAt: null,
+			requesterId: req.userId,
+		};
+		setPendingRequests((prev) => (prev ? removeById(prev, req.userId) : prev));
+		setFriends((prev) => upsertById(prev ?? [], optimisticFriend));
+		try {
+			await api.getCsrfToken();
+			await api.acceptFriendRequest(req.userId);
+			showToast({
+				message: `You're now friends with ${req.turtleName ?? req.username}`,
+				variant: "success",
+			});
+		} catch (err: unknown) {
+			showToast({
+				message:
+					err instanceof Error ? err.message : "Could not accept request.",
+				variant: "error",
+			});
+		} finally {
+			// Reconcile with the server either way so the UI matches reality.
+			void refreshSocial();
+		}
+	};
+
+	/** Commit a deferred friend removal once the Undo window has elapsed. */
+	const commitRemoveFriend = async (userId: number): Promise<void> => {
+		removalTimers.current.delete(userId);
 		try {
 			await api.getCsrfToken();
 			await api.removeFriend(userId);
-			setFriends((prev) => prev?.filter((f) => f.userId !== userId) ?? null);
-			setPendingRequests((prev) => prev?.filter((p) => p.userId !== userId) ?? null);
-		} catch (err: unknown) {
-			setModalError(err instanceof Error ? err.message : "Could not remove.");
+		} catch {
+			showToast({
+				message: "Couldn't remove friend — restoring.",
+				variant: "error",
+			});
+			void refreshSocial();
 		}
+	};
+
+	const handleRemoveFriend = (friend: FriendView) => {
+		// Optimistically drop the friend, leaving a window to undo before commit.
+		setFriends((prev) => (prev ? removeById(prev, friend.userId) : prev));
+		const timer = setTimeout(
+			() => void commitRemoveFriend(friend.userId),
+			FRIEND_REMOVAL_UNDO_MS,
+		);
+		removalTimers.current.set(friend.userId, timer);
+		showToast({
+			message: `Removed ${friend.turtleName ?? friend.username}`,
+			variant: "info",
+			durationMs: FRIEND_REMOVAL_UNDO_MS,
+			action: {
+				label: "Undo",
+				onAction: () => {
+					const pending = removalTimers.current.get(friend.userId);
+					if (pending) {
+						clearTimeout(pending);
+						removalTimers.current.delete(friend.userId);
+					}
+					setFriends((prev) => upsertById(prev ?? [], friend));
+				},
+			},
+		});
+	};
+
+	/**
+	 * Block is immediate (no undo) — a deliberately confirmed, more severe
+	 * action than remove/decline. Optimistically drops the user from every
+	 * social list they might currently appear in.
+	 */
+	const handleBlockUser = async (friend: {
+		userId: number;
+		username: string;
+		turtleName: string | null;
+	}): Promise<void> => {
+		setBlockConfirmUserId(null);
+		setFriends((prev) => (prev ? removeById(prev, friend.userId) : prev));
+		setPendingRequests((prev) =>
+			prev ? removeById(prev, friend.userId) : prev,
+		);
+		setOutgoingRequests((prev) =>
+			prev ? removeById(prev, friend.userId) : prev,
+		);
+		try {
+			await api.getCsrfToken();
+			await api.blockUser(friend.userId);
+			showToast({
+				message: `Blocked ${friend.turtleName ?? friend.username}`,
+				variant: "info",
+			});
+		} catch (err: unknown) {
+			showToast({
+				message: err instanceof Error ? err.message : "Could not block user.",
+				variant: "error",
+			});
+			void refreshSocial();
+		}
+	};
+
+	/**
+	 * Reporting always auto-blocks (locked product decision — no separate
+	 * block step). Optimistically drops the reported user from every social
+	 * list, same as handleBlockUser.
+	 */
+	const handleSubmitReport = async (): Promise<void> => {
+		if (!reportTarget) return;
+		setReportLoading(true);
+		try {
+			await api.getCsrfToken();
+			await api.reportUser(
+				reportTarget.userId,
+				reportCategory,
+				reportMessage.trim() || undefined,
+			);
+			setFriends((prev) =>
+				prev ? removeById(prev, reportTarget.userId) : prev,
+			);
+			setPendingRequests((prev) =>
+				prev ? removeById(prev, reportTarget.userId) : prev,
+			);
+			setOutgoingRequests((prev) =>
+				prev ? removeById(prev, reportTarget.userId) : prev,
+			);
+			showToast({
+				message: `Reported and blocked ${reportTarget.turtleName ?? reportTarget.username}`,
+				variant: "info",
+			});
+			setReportTarget(null);
+			setReportMessage("");
+			setReportCategory(REPORT_CATEGORIES[0].id);
+		} catch (err: unknown) {
+			showToast({
+				message:
+					err instanceof Error ? err.message : "Could not submit report.",
+				variant: "error",
+			});
+		} finally {
+			setReportLoading(false);
+		}
+	};
+
+	const handleDeclineRequest = async (req: PendingView) => {
+		// Declines are immediate (no undo): drop from pending, delete server-side.
+		setPendingRequests((prev) => (prev ? removeById(prev, req.userId) : prev));
+		try {
+			await api.getCsrfToken();
+			await api.removeFriend(req.userId);
+			showToast({
+				message: `Declined ${req.turtleName ?? req.username}`,
+				variant: "info",
+			});
+		} catch (err: unknown) {
+			showToast({
+				message:
+					err instanceof Error ? err.message : "Could not decline request.",
+				variant: "error",
+			});
+			void refreshSocial();
+		}
+	};
+
+	const handleCancelOutgoingRequest = async (req: PendingView) => {
+		// Cancelling is immediate (no undo), same as declining an incoming request.
+		setOutgoingRequests((prev) =>
+			prev ? removeById(prev, req.userId) : prev,
+		);
+		try {
+			await api.getCsrfToken();
+			await api.removeFriend(req.userId);
+			showToast({
+				message: `Cancelled request to ${req.turtleName ?? req.username}`,
+				variant: "info",
+			});
+		} catch (err: unknown) {
+			showToast({
+				message:
+					err instanceof Error ? err.message : "Could not cancel request.",
+				variant: "error",
+			});
+			void refreshSocial();
+		}
+	};
+
+	/** Fetch (or reuse the cached) profile for the hover/focus card. */
+	const loadHoveredProfile = async (username: string): Promise<void> => {
+		const cached = profileCardCache.get(username);
+		if (cached) {
+			setHoveredProfile(cached);
+			setHoveredProfileLoading(false);
+			return;
+		}
+		setHoveredProfileLoading(true);
+		try {
+			const fetched = await api.getUser(username);
+			profileCardCache.set(username, fetched);
+			setHoveredProfile(fetched);
+		} catch {
+			setHoveredProfile(null);
+		} finally {
+			setHoveredProfileLoading(false);
+		}
+	};
+
+	const profileHoverDebounce = useRef(
+		debounce(
+			(username: string) => void loadHoveredProfile(username),
+			PROFILE_HOVER_DEBOUNCE_MS,
+		),
+	).current;
+
+	const handleFriendHoverStart = (friend: FriendView): void => {
+		setHoveredFriendUsername(friend.username);
+		const cached = profileCardCache.get(friend.username);
+		if (cached) {
+			setHoveredProfile(cached);
+			setHoveredProfileLoading(false);
+			return;
+		}
+		setHoveredProfile(null);
+		setHoveredProfileLoading(true);
+		profileHoverDebounce.run(friend.username);
+	};
+
+	const handleFriendHoverEnd = (): void => {
+		profileHoverDebounce.cancel();
+		setHoveredFriendUsername(null);
+		setHoveredProfile(null);
+		setHoveredProfileLoading(false);
 	};
 
 	if (isLoading) return <RouteLoading />;
 
 	const playerName = player?.turtleName ?? player?.username ?? "Player";
+	const friendStats = friendCounts(friends);
+	const filteredFriends = friends
+		? filterFriends(friends, friendSearchQuery)
+		: null;
+	const friendGroups = filteredFriends
+		? groupFriendsByPresence(filteredFriends)
+		: null;
+
+	/** Render a single friend row (shared across presence groups). */
+	const friendRow = (friend: FriendView): JSX.Element => (
+		<li key={friend.userId} className="hub-modal__social-row">
+			<span
+				className="hub-modal__social-name"
+				tabIndex={0}
+				aria-label={`View profile card for ${friend.turtleName ?? friend.username}`}
+				onMouseEnter={() => handleFriendHoverStart(friend)}
+				onMouseLeave={handleFriendHoverEnd}
+				onFocus={() => handleFriendHoverStart(friend)}
+				onBlur={handleFriendHoverEnd}
+			>
+				{friend.turtleName ?? friend.username}
+				<small> @{friend.username}</small>
+				{friend.status === "in-game" ? (
+					<span className="hub-modal__social-status hub-modal__social-status--ingame">
+						{RANKED_GAMES.find((g) => g.id === friend.gameId)?.label ??
+							"In a match"}
+					</span>
+				) : friend.status === "online" ? (
+					<span
+						className="hub-modal__social-online"
+						role="img"
+						aria-label="Online"
+					/>
+				) : (
+					<span className="hub-modal__social-status hub-modal__social-status--offline">
+						Last online {formatRelativeTime(friend.lastSeenAt)}
+					</span>
+				)}
+				{hoveredFriendUsername === friend.username ? (
+					<ProfileCard user={hoveredProfile} loading={hoveredProfileLoading} />
+				) : null}
+			</span>
+			<div className="hub-modal__social-actions">
+				{blockConfirmUserId === friend.userId ? (
+					<>
+						<span className="hub-modal__social-confirm-label">
+							Block {friend.turtleName ?? friend.username}?
+						</span>
+						<button
+							type="button"
+							ref={blockConfirmButtonRef}
+							className="hub-modal__social-confirm-btn"
+							onClick={() => void handleBlockUser(friend)}
+						>
+							Confirm
+						</button>
+						<button
+							type="button"
+							onClick={() => setBlockConfirmUserId(null)}
+						>
+							Cancel
+						</button>
+					</>
+				) : (
+					<>
+						{friend.isOnline && !activeLobby && (
+							<button
+								type="button"
+								className="hub-modal__social-invite-btn"
+								onClick={() =>
+									setInviteTarget({
+										userId: friend.userId,
+										name: friend.turtleName ?? friend.username,
+									})
+								}
+							>
+								Invite
+							</button>
+						)}
+						<button
+							type="button"
+							onClick={() => void handleRemoveFriend(friend)}
+						>
+							Remove
+						</button>
+						<button
+							type="button"
+							className="hub-modal__social-block-btn"
+							onClick={() => setBlockConfirmUserId(friend.userId)}
+						>
+							Block
+						</button>
+						<button
+							type="button"
+							className="hub-modal__social-block-btn"
+							onClick={() =>
+								setReportTarget({
+									userId: friend.userId,
+									username: friend.username,
+									turtleName: friend.turtleName,
+								})
+							}
+						>
+							Report
+						</button>
+					</>
+				)}
+			</div>
+		</li>
+	);
 
 	const profileTagId = player?.profile?.tag ?? null;
 	const currentTag = profileTagId
@@ -1779,6 +2275,22 @@ function HomeMenu(): JSX.Element {
 												<span>Shrine Slots</span>
 												<small>Spin three reels for the jackpot</small>
 											</button>
+											<button
+												className="hub-game-card"
+												type="button"
+												onClick={() => setActiveModal("dice")}
+											>
+												<span>Koi Dice</span>
+												<small>Set your own odds, under or over</small>
+											</button>
+											<button
+												className="hub-game-card"
+												type="button"
+												onClick={() => setActiveModal("drop")}
+											>
+												<span>Shell Drop</span>
+												<small>Drop a shell through the pegs</small>
+											</button>
 										</>
 									) : (
 										gameCards.map((game) =>
@@ -1980,7 +2492,7 @@ function HomeMenu(): JSX.Element {
 													onClick={async () => {
 														try {
 															await api.acceptFriendRequest(notif.fromUserId);
-															handleMarkRead(notif.id);
+															handleResolveFriendRequestNotifs(notif.fromUserId);
 														} catch {
 															// Non-fatal — button remains active if it fails
 														}
@@ -1994,7 +2506,7 @@ function HomeMenu(): JSX.Element {
 													onClick={async () => {
 														try {
 															await api.removeFriend(notif.fromUserId);
-															handleMarkRead(notif.id);
+															handleResolveFriendRequestNotifs(notif.fromUserId);
 														} catch {
 															// Non-fatal
 														}
@@ -2465,6 +2977,21 @@ function HomeMenu(): JSX.Element {
 				<HubModal title="Social" onClose={() => { setActiveModal(null); setFriendUsername(""); }}>
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 
+					{player?.username ? (
+						<div className="hub-modal__social-code">
+							<span>
+								Your friend code: <code>{buildFriendCode(player.username)}</code>
+							</span>
+							<button
+								className="hub-modal__save-button"
+								type="button"
+								onClick={() => void handleCopyFriendCode()}
+							>
+								Copy
+							</button>
+						</div>
+					) : null}
+
 					<div className="hub-modal__social-add">
 						<input
 							className="hub-modal__field-input"
@@ -2498,8 +3025,52 @@ function HomeMenu(): JSX.Element {
 													<small> @{req.username}</small>
 												</span>
 												<div className="hub-modal__social-actions">
-													<button type="button" onClick={() => void handleAcceptRequest(req.userId)}>Accept</button>
-													<button type="button" onClick={() => void handleRemoveFriend(req.userId)}>Decline</button>
+													{blockConfirmUserId === req.userId ? (
+														<>
+															<span className="hub-modal__social-confirm-label">
+																Block {req.turtleName ?? req.username}?
+															</span>
+															<button
+																type="button"
+																ref={blockConfirmButtonRef}
+																className="hub-modal__social-confirm-btn"
+																onClick={() => void handleBlockUser(req)}
+															>
+																Confirm
+															</button>
+															<button
+																type="button"
+																onClick={() => setBlockConfirmUserId(null)}
+															>
+																Cancel
+															</button>
+														</>
+													) : (
+														<>
+															<button type="button" onClick={() => void handleAcceptRequest(req)}>Accept</button>
+															<button type="button" onClick={() => void handleDeclineRequest(req)}>Decline</button>
+															<button
+																type="button"
+																className="hub-modal__social-block-btn"
+																onClick={() => setBlockConfirmUserId(req.userId)}
+															>
+																Block
+															</button>
+															<button
+																type="button"
+																className="hub-modal__social-block-btn"
+																onClick={() =>
+																	setReportTarget({
+																		userId: req.userId,
+																		username: req.username,
+																		turtleName: req.turtleName,
+																	})
+																}
+															>
+																Report
+															</button>
+														</>
+													)}
 												</div>
 											</li>
 										))}
@@ -2507,32 +3078,87 @@ function HomeMenu(): JSX.Element {
 								</section>
 							) : null}
 
-							<section className="hub-modal__social-section">
-								<h3>Friends</h3>
-								{friends && friends.length > 0 ? (
+							{outgoingRequests && outgoingRequests.length > 0 ? (
+								<section className="hub-modal__social-section">
+									<h3>Outgoing requests</h3>
 									<ul className="hub-modal__social-list">
-										{friends.map((friend) => (
-											<li key={friend.userId} className="hub-modal__social-row">
+										{outgoingRequests.map((req) => (
+											<li key={req.userId} className="hub-modal__social-row">
 												<span className="hub-modal__social-name">
-													{friend.turtleName ?? friend.username}
-													<small> @{friend.username}</small>
-													{friend.isOnline ? <span className="hub-modal__social-online" aria-label="Online" /> : null}
+													{req.turtleName ?? req.username}
+													<small> @{req.username}</small>
 												</span>
 												<div className="hub-modal__social-actions">
-													{friend.isOnline && !activeLobby && (
-														<button
-															type="button"
-															className="hub-modal__social-invite-btn"
-															onClick={() => setInviteTarget({ userId: friend.userId, name: friend.turtleName ?? friend.username })}
-														>
-															Invite
-														</button>
-													)}
-													<button type="button" onClick={() => void handleRemoveFriend(friend.userId)}>Remove</button>
+													<button
+														type="button"
+														onClick={() => void handleCancelOutgoingRequest(req)}
+													>
+														Cancel
+													</button>
 												</div>
 											</li>
 										))}
 									</ul>
+								</section>
+							) : null}
+
+							{/*
+							 * No list virtualization here (e.g. react-window): this is a niche
+							 * 4-player mini-game hub, not a large social network — friend counts
+							 * are expected to stay in the tens, not hundreds. Suggestions are
+							 * already capped server-side (SUGGESTIONS_LIMIT = 20), and pending/
+							 * outgoing requests are inherently self-limiting. Revisit if this
+							 * list is ever observed to exceed ~50 rows in practice; a new dep
+							 * would also need `npm install` on the user's machine first.
+							 */}
+							<section className="hub-modal__social-section">
+								<h3>
+									Friends
+									{friendStats.total > 0 ? (
+										<span className="hub-modal__social-count">
+											{friendStats.online}/{friendStats.total} online
+										</span>
+									) : null}
+								</h3>
+								{friends && friends.length > 0 ? (
+									<input
+										className="hub-modal__field-input hub-modal__social-search"
+										type="text"
+										placeholder="Search friends…"
+										value={friendSearchQuery}
+										onChange={(e) => setFriendSearchQuery(e.target.value)}
+										aria-label="Search friends"
+									/>
+								) : null}
+								{friendGroups && filteredFriends && filteredFriends.length > 0 ? (
+									<>
+										{friendGroups.inGame.length > 0 ? (
+											<div className="hub-modal__social-group">
+												<h4 className="hub-modal__social-group-label">In game</h4>
+												<ul className="hub-modal__social-list">
+													{friendGroups.inGame.map(friendRow)}
+												</ul>
+											</div>
+										) : null}
+										{friendGroups.online.length > 0 ? (
+											<div className="hub-modal__social-group">
+												<h4 className="hub-modal__social-group-label">Online</h4>
+												<ul className="hub-modal__social-list">
+													{friendGroups.online.map(friendRow)}
+												</ul>
+											</div>
+										) : null}
+										{friendGroups.offline.length > 0 ? (
+											<div className="hub-modal__social-group">
+												<h4 className="hub-modal__social-group-label">Offline</h4>
+												<ul className="hub-modal__social-list">
+													{friendGroups.offline.map(friendRow)}
+												</ul>
+											</div>
+										) : null}
+									</>
+								) : friends && friends.length > 0 ? (
+									<p className="hub-panel__muted">No friends match your search.</p>
 								) : (
 									<p className="hub-panel__muted">No friends yet. Add someone above.</p>
 								)}
@@ -2569,7 +3195,87 @@ function HomeMenu(): JSX.Element {
 										</div>
 									</div>
 								)}
+
+								{/* Report panel — shown after clicking Report on a friend or pending request */}
+								{reportTarget && (
+									<div className="hub-lobby-picker">
+										<p>
+											Report <strong>{reportTarget.turtleName ?? reportTarget.username}</strong>?
+											This will also block them.
+										</p>
+										<select
+											ref={reportCategorySelectRef}
+											className="hub-leaderboard-select"
+											value={reportCategory}
+											onChange={(e) =>
+												setReportCategory(e.target.value as ReportCategory)
+											}
+											aria-label="Report reason"
+										>
+											{REPORT_CATEGORIES.map((c) => (
+												<option key={c.id} value={c.id}>
+													{c.label}
+												</option>
+											))}
+										</select>
+										<textarea
+											className="hub-modal__field-input"
+											placeholder="Additional details (optional)"
+											maxLength={500}
+											value={reportMessage}
+											onChange={(e) => setReportMessage(e.target.value)}
+										/>
+										<div className="hub-lobby-picker__actions">
+											<button
+												type="button"
+												className="hub-lobby-picker__confirm"
+												disabled={reportLoading}
+												onClick={() => void handleSubmitReport()}
+											>
+												{reportLoading ? "Submitting…" : "Submit report"}
+											</button>
+											<button
+												type="button"
+												className="hub-lobby-picker__cancel"
+												disabled={reportLoading}
+												onClick={() => {
+													setReportTarget(null);
+													setReportMessage("");
+												}}
+											>
+												Cancel
+											</button>
+										</div>
+									</div>
+								)}
 							</section>
+
+							{suggestions && suggestions.length > 0 ? (
+								<section className="hub-modal__social-section">
+									<h3>People you may know</h3>
+									<ul className="hub-modal__social-list">
+										{suggestions.map((suggestion) => (
+											<li
+												key={suggestion.userId}
+												className="hub-modal__social-row"
+											>
+												<span className="hub-modal__social-name">
+													{suggestion.turtleName ?? suggestion.username}
+													<small> @{suggestion.username}</small>
+												</span>
+												<div className="hub-modal__social-actions">
+													<button
+														type="button"
+														onClick={() => void handleAddSuggestion(suggestion)}
+													>
+														Add
+													</button>
+												</div>
+											</li>
+										))}
+									</ul>
+								</section>
+							) : null}
 						</>
 					)}
 				</HubModal>
@@ -2761,9 +3467,35 @@ function HomeMenu(): JSX.Element {
 					/>
 				</HubModal>
 			) : null}
+
+			{activeModal === "dice" ? (
+				<HubModal title="Koi Dice" onClose={() => setActiveModal(null)}>
+					<KoiDiceModal
+						coins={player?.coins ?? 0}
+						onCoinsChange={(coins) =>
+							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+						}
+					/>
+				</HubModal>
+			) : null}
+
+			{activeModal === "drop" ? (
+				<HubModal title="Shell Drop" onClose={() => setActiveModal(null)}>
+					<ShellDropModal
+						coins={player?.coins ?? 0}
+						onCoinsChange={(coins) =>
+							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+						}
+					/>
+				</HubModal>
+			) : null}
 		</main>
 	);
 }
+
+/** Selector for elements that can receive keyboard focus, used by the modal's focus trap. */
+const FOCUSABLE_SELECTOR =
+	'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function HubModal({
 	title,
@@ -2774,17 +3506,61 @@ function HubModal({
 	onClose: () => void;
 	children: ReactNode;
 }): JSX.Element {
+	const titleId = useId();
+	const panelRef = useRef<HTMLElement>(null);
+
+	// Focus management: move focus into the modal on open, trap Tab within it,
+	// close on Escape, and restore focus to whatever triggered the modal on close.
+	useEffect(() => {
+		const previouslyFocused = document.activeElement as HTMLElement | null;
+		const panel = panelRef.current;
+		const firstFocusable = panel?.querySelector<HTMLElement>(
+			FOCUSABLE_SELECTOR,
+		);
+		(firstFocusable ?? panel)?.focus();
+
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				onClose();
+				return;
+			}
+			if (e.key !== "Tab" || !panel) return;
+
+			const focusable = Array.from(
+				panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+			);
+			if (focusable.length === 0) return;
+
+			const first = focusable[0];
+			const last = focusable[focusable.length - 1];
+			if (e.shiftKey && document.activeElement === first) {
+				e.preventDefault();
+				last.focus();
+			} else if (!e.shiftKey && document.activeElement === last) {
+				e.preventDefault();
+				first.focus();
+			}
+		};
+
+		document.addEventListener("keydown", onKeyDown);
+		return () => {
+			document.removeEventListener("keydown", onKeyDown);
+			previouslyFocused?.focus();
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run per modal open, not per onClose identity change
+	}, []);
+
 	return (
-		<div className="hub-modal" role="dialog" aria-modal="true">
+		<div className="hub-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
 			<button
 				className="hub-modal__backdrop"
 				type="button"
 				aria-label="Close modal"
 				onClick={onClose}
 			/>
-			<section className="hub-modal__panel">
+			<section className="hub-modal__panel" ref={panelRef} tabIndex={-1}>
 				<header>
-					<h2>{title}</h2>
+					<h2 id={titleId}>{title}</h2>
 					<button type="button" onClick={onClose}>
 						Close
 					</button>

@@ -22,14 +22,20 @@ import {
 	type WheelView,
 } from "./casino.constants";
 import { CasinoService } from "./casino.service";
+import { type DiceConfig } from "./dice.constants";
+import { DiceService } from "./dice.service";
 import { type FlipConfig } from "./flip.constants";
 import { FlipService } from "./flip.service";
 import { type MonteConfig } from "./monte.constants";
 import { MonteService } from "./monte.service";
+import { type PlinkoView } from "./plinko.constants";
+import { PlinkoService } from "./plinko.service";
 import { type SlotsView } from "./slots.constants";
 import { SlotsService } from "./slots.service";
+import { DiceDto } from "./dto/dice.dto";
 import { FlipDto } from "./dto/flip.dto";
 import { MonteDto } from "./dto/monte.dto";
+import { PlinkoDto } from "./dto/plinko.dto";
 import { SlotsSpinDto } from "./dto/slots.dto";
 import { FreeSpinDto, SpinDto } from "./dto/spin.dto";
 
@@ -55,6 +61,8 @@ export class CasinoController {
 		private readonly flipService: FlipService,
 		private readonly monteService: MonteService,
 		private readonly slotsService: SlotsService,
+		private readonly diceService: DiceService,
+		private readonly plinkoService: PlinkoService,
 		private readonly usersService: UsersService,
 		private readonly rateLimiter: RateLimiterService,
 	) {}
@@ -156,6 +164,50 @@ export class CasinoController {
 		this.enforceSpinRate(req);
 		const user = await this.requireUser(req);
 		return this.slotsService.slots(user, dto.stake, {
+			clientSeed: dto.clientSeed,
+		});
+	}
+
+	/** GET /casino/dice — Koi Dice range, target bounds, wager bounds and balance. */
+	@Get("dice")
+	async diceConfig(@Request() req: AuthedRequest): Promise<DiceConfig> {
+		const user = await this.requireUser(req);
+		return this.diceService.getDiceConfig(user);
+	}
+
+	/** POST /casino/dice — call a direction/target and stake coins (CSRF-protected). */
+	@Post("dice")
+	@HttpCode(200)
+	@UseGuards(CsrfGuard)
+	async dice(
+		@Request() req: AuthedRequest,
+		@Body() dto: DiceDto,
+	): Promise<SpinResolution> {
+		this.enforceSpinRate(req);
+		const user = await this.requireUser(req);
+		return this.diceService.dice(user, dto.direction, dto.target, dto.stake, {
+			clientSeed: dto.clientSeed,
+		});
+	}
+
+	/** GET /casino/plinko — Shell Drop row tiers, paytables, bounds and balance. */
+	@Get("plinko")
+	async plinkoView(@Request() req: AuthedRequest): Promise<PlinkoView> {
+		const user = await this.requireUser(req);
+		return this.plinkoService.getPlinkoView(user);
+	}
+
+	/** POST /casino/plinko — pick a risk tier and stake coins (CSRF-protected). */
+	@Post("plinko")
+	@HttpCode(200)
+	@UseGuards(CsrfGuard)
+	async plinko(
+		@Request() req: AuthedRequest,
+		@Body() dto: PlinkoDto,
+	): Promise<SpinResolution> {
+		this.enforceSpinRate(req);
+		const user = await this.requireUser(req);
+		return this.plinkoService.drop(user, dto.rows, dto.stake, {
 			clientSeed: dto.clientSeed,
 		});
 	}

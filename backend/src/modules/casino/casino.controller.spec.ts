@@ -5,8 +5,10 @@ import { User } from "../users/entities/user.entity";
 import { UsersService } from "../users/users.service";
 import { CasinoController } from "./casino.controller";
 import { CasinoService } from "./casino.service";
+import { DiceService } from "./dice.service";
 import { FlipService } from "./flip.service";
 import { MonteService } from "./monte.service";
+import { PlinkoService } from "./plinko.service";
 import { SlotsService } from "./slots.service";
 
 function makeUser(): User {
@@ -41,6 +43,8 @@ describe("CasinoController", () => {
 	let flipService: { getFlipConfig: jest.Mock; flip: jest.Mock };
 	let monteService: { getMonteConfig: jest.Mock; monte: jest.Mock };
 	let slotsService: { getSlotsView: jest.Mock; slots: jest.Mock };
+	let diceService: { getDiceConfig: jest.Mock; dice: jest.Mock };
+	let plinkoService: { getPlinkoView: jest.Mock; drop: jest.Mock };
 	let usersService: { findById: jest.Mock };
 	let rateLimiter: { allow: jest.Mock };
 
@@ -68,6 +72,14 @@ describe("CasinoController", () => {
 				.fn()
 				.mockResolvedValue({ game: "slots", outcomeId: "bell|bell|bell" }),
 		};
+		diceService = {
+			getDiceConfig: jest.fn().mockReturnValue({ coins: 500, range: 100 }),
+			dice: jest.fn().mockResolvedValue({ game: "dice", outcomeId: "roll-10" }),
+		};
+		plinkoService = {
+			getPlinkoView: jest.fn().mockReturnValue({ coins: 500, defaultRows: 8 }),
+			drop: jest.fn().mockResolvedValue({ game: "drop", outcomeId: "bucket-4" }),
+		};
 		usersService = { findById: jest.fn().mockResolvedValue(makeUser()) };
 		rateLimiter = { allow: jest.fn().mockReturnValue(true) };
 
@@ -78,6 +90,8 @@ describe("CasinoController", () => {
 				{ provide: FlipService, useValue: flipService },
 				{ provide: MonteService, useValue: monteService },
 				{ provide: SlotsService, useValue: slotsService },
+				{ provide: DiceService, useValue: diceService },
+				{ provide: PlinkoService, useValue: plinkoService },
 				{ provide: UsersService, useValue: usersService },
 				{ provide: RateLimiterService, useValue: rateLimiter },
 			],
@@ -265,6 +279,83 @@ describe("CasinoController", () => {
 
 			await expectStatus(controller.slots(req, { stake: 100 }), 429);
 			expect(slotsService.slots).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("GET /casino/dice", () => {
+		it("should return the dice config for the authenticated player", async () => {
+			const config = await controller.diceConfig(req);
+
+			expect(diceService.getDiceConfig).toHaveBeenCalledWith(
+				expect.any(User),
+			);
+			expect(config).toEqual({ coins: 500, range: 100 });
+		});
+	});
+
+	describe("POST /casino/dice", () => {
+		it("should delegate to dice with the direction, target, stake and client seed", async () => {
+			const result = await controller.dice(req, {
+				stake: 100,
+				direction: "under",
+				target: 50,
+				clientSeed: "x",
+			});
+
+			expect(diceService.dice).toHaveBeenCalledWith(
+				expect.any(User),
+				"under",
+				50,
+				100,
+				{ clientSeed: "x" },
+			);
+			expect(result).toEqual({ game: "dice", outcomeId: "roll-10" });
+		});
+
+		it("should reject with HTTP 429 when rate-limited", async () => {
+			rateLimiter.allow.mockReturnValue(false);
+
+			await expectStatus(
+				controller.dice(req, { stake: 100, direction: "under", target: 50 }),
+				429,
+			);
+			expect(diceService.dice).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("GET /casino/plinko", () => {
+		it("should return the plinko view for the authenticated player", async () => {
+			const view = await controller.plinkoView(req);
+
+			expect(plinkoService.getPlinkoView).toHaveBeenCalledWith(
+				expect.any(User),
+			);
+			expect(view).toEqual({ coins: 500, defaultRows: 8 });
+		});
+	});
+
+	describe("POST /casino/plinko", () => {
+		it("should delegate to drop with the rows, stake and client seed", async () => {
+			const result = await controller.plinko(req, {
+				stake: 100,
+				rows: 8,
+				clientSeed: "x",
+			});
+
+			expect(plinkoService.drop).toHaveBeenCalledWith(
+				expect.any(User),
+				8,
+				100,
+				{ clientSeed: "x" },
+			);
+			expect(result).toEqual({ game: "drop", outcomeId: "bucket-4" });
+		});
+
+		it("should reject with HTTP 429 when rate-limited", async () => {
+			rateLimiter.allow.mockReturnValue(false);
+
+			await expectStatus(controller.plinko(req, { stake: 100 }), 429);
+			expect(plinkoService.drop).not.toHaveBeenCalled();
 		});
 	});
 });

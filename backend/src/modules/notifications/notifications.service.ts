@@ -48,6 +48,15 @@ export class NotificationsService {
 		payload: Record<string, unknown> = {},
 	): Promise<void> {
 		try {
+			// Dedup: skip creating a second unread notification for the same
+			// (type, fromUserId, toUserId) triple. Prevents duplicates such as two
+			// "friend_request" rows from acting independently — one accepted, the
+			// other declined — which nets to added-then-removed friendship state.
+			const duplicate = await this.notificationRepo.findOne({
+				where: { type, fromUserId, toUserId, readAt: IsNull() },
+			});
+			if (duplicate) return;
+
 			const notification = await this.notificationRepo.save(
 				this.notificationRepo.create({
 					type,

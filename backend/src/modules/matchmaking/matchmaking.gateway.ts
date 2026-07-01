@@ -169,7 +169,18 @@ export class MatchmakingGateway
 			}
 		}
 
-		this.presence.disconnect(socket.id);
+		const disconnectedUser = this.presence.disconnect(socket.id);
+		// Once a non-guest user's last socket drops, record their last-seen time
+		// so offline friends can render "last online". Non-fatal on failure.
+		if (
+			disconnectedUser &&
+			!disconnectedUser.isGuest &&
+			!this.presence.isOnline(disconnectedUser.id)
+		) {
+			void this.usersService
+				.markSeen(disconnectedUser.id)
+				.catch(() => undefined);
+		}
 	}
 
 	@SubscribeMessage("queue:join")
@@ -408,6 +419,7 @@ export class MatchmakingGateway
 		this.emitState(room.matchId);
 		await this.sessions.finishIfEnded(room);
 		if (room.status === "finished" || room.status === "abandoned") {
+			this.syncRoomPresence(room);
 			this.server.to(room.matchId).emit("game:end", room.state);
 		}
 	}
@@ -546,6 +558,7 @@ export class MatchmakingGateway
 			}
 
 			const { matchId, room } = result;
+			this.syncRoomPresence(room);
 			for (const player of room.players) {
 				for (const sid of this.presence.getSocketIds(player.user.id)) {
 					const s = this.server.sockets.sockets.get(sid);
@@ -622,8 +635,25 @@ export class MatchmakingGateway
 	private emitState(matchId: string): void {
 		const room = this.rooms.getRoom(matchId);
 		if (room) {
+			this.syncRoomPresence(room);
 			this.replays.captureFrame(room);
 			this.server.to(matchId).emit("game:state", room.state);
+		}
+	}
+
+	/**
+	 * Keep PresenceService's in-game markers in sync with a room's lifecycle.
+	 * Players in an active/pending room are marked in-game; once the room is
+	 * finished or abandoned the marker is cleared so they show as plain "online".
+	 */
+	private syncRoomPresence(room: MatchRoom): void {
+		const active = room.status === "active" || room.status === "pending";
+		for (const player of room.players) {
+			if (active) {
+				this.presence.setInGame(player.user.id, room.gameId);
+			} else {
+				this.presence.clearInGame(player.user.id);
+			}
 		}
 	}
 

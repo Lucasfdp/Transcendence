@@ -6,8 +6,10 @@ import { UsersModule } from "../users/users.module";
 import { CasinoController } from "./casino.controller";
 import { CasinoEngine } from "./casino.engine";
 import { CasinoService } from "./casino.service";
+import { DiceService } from "./dice.service";
 import { FlipService } from "./flip.service";
 import { MonteService } from "./monte.service";
+import { PlinkoService } from "./plinko.service";
 import { SlotsService } from "./slots.service";
 import { Wager } from "./entities/wager.entity";
 
@@ -26,6 +28,8 @@ import { Wager } from "./entities/wager.entity";
 		FlipService,
 		MonteService,
 		SlotsService,
+		DiceService,
+		PlinkoService,
 	],
 	exports: [CasinoService],
 })

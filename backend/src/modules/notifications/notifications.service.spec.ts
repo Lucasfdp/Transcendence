@@ -4,6 +4,7 @@ import {
 } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
+import { IsNull } from "typeorm";
 import { PresenceService } from "../presence/presence.service";
 import { Notification } from "./entities/notification.entity";
 import { NotificationsService } from "./notifications.service";
@@ -113,6 +114,53 @@ describe("NotificationsService", () => {
 
 		it("should throw InternalServerErrorException when repo.save throws", async () => {
 			repo.save.mockRejectedValue(new Error("DB error"));
+
+			await expect(
+				service.create("friend_request", 10, 20, {}),
+			).rejects.toThrow(InternalServerErrorException);
+		});
+
+		it("should not persist a duplicate unread notification for the same type/from/to", async () => {
+			repo.findOne.mockResolvedValue(makeNotification());
+
+			await service.create("friend_request", 10, 20, { username: "kame" });
+
+			expect(repo.findOne).toHaveBeenCalledWith({
+				where: {
+					type: "friend_request",
+					fromUserId: 10,
+					toUserId: 20,
+					readAt: IsNull(),
+				},
+			});
+			expect(repo.save).not.toHaveBeenCalled();
+		});
+
+		it("should not push a real-time event when a duplicate is skipped", async () => {
+			const mockEmit = jest.fn();
+			const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
+			service.setServer({ to: mockTo } as never);
+			repo.findOne.mockResolvedValue(makeNotification());
+
+			await service.create("friend_request", 10, 20, {});
+
+			expect(presence.getSocketIds).not.toHaveBeenCalled();
+			expect(mockTo).not.toHaveBeenCalled();
+		});
+
+		it("should persist a new notification when no unread duplicate exists", async () => {
+			repo.findOne.mockResolvedValue(null);
+			repo.save.mockResolvedValue(makeNotification());
+
+			await service.create("friend_request", 10, 20, { username: "kame" });
+
+			expect(repo.save).toHaveBeenCalledWith(
+				expect.objectContaining({ type: "friend_request", fromUserId: 10, toUserId: 20 }),
+			);
+		});
+
+		it("should throw InternalServerErrorException when the dedup lookup fails", async () => {
+			repo.findOne.mockRejectedValue(new Error("DB down"));
 
 			await expect(
 				service.create("friend_request", 10, 20, {}),

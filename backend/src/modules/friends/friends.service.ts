@@ -6,11 +6,17 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Or, Repository } from "typeorm";
-import { PresenceService } from "../presence/presence.service";
+import { In, Repository } from "typeorm";
+import {
+	PresenceService,
+	type PresenceStatus,
+} from "../presence/presence.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { User } from "../users/entities/user.entity";
 import { Friendship } from "./entities/friendship.entity";
+
+/** Default cap on "People you may know" suggestions returned per request. */
+const SUGGESTIONS_LIMIT = 20;
 
 export interface FriendView {
 	userId: number;
@@ -19,7 +25,14 @@ export interface FriendView {
 	shellSkin: string;
 	avatar: string | null;
 	level: number;
+	/** True when status is anything other than "offline". Kept for back-compat. */
 	isOnline: boolean;
+	/** Coarse presence: "offline" | "online" | "in-game". */
+	status: PresenceStatus;
+	/** The game the friend is currently playing, or null. */
+	gameId: string | null;
+	/** ISO timestamp of when the friend was last online, or null if unknown. */
+	lastSeenAt: string | null;
 	requesterId: number;
 }
 
@@ -202,6 +215,7 @@ export class FriendsService {
 			return rows.map((row) => {
 				const other =
 					row.requesterId === userId ? row.addressee : row.requester;
+				const status = this.presence.getStatus(other.id);
 				return {
 					userId: other.id,
 					username: other.username,
@@ -209,7 +223,12 @@ export class FriendsService {
 					shellSkin: other.shellSkin,
 					avatar: other.avatar ?? null,
 					level: other.level,
-					isOnline: this.presence.isOnline(other.id),
+					isOnline: status !== "offline",
+					status,
+					gameId: this.presence.getGameId(other.id),
+					lastSeenAt: other.lastSeenAt
+						? other.lastSeenAt.toISOString()
+						: null,
 					requesterId: row.requesterId,
 				};
 			});
@@ -238,6 +257,102 @@ export class FriendsService {
 		} catch {
 			throw new InternalServerErrorException(
 				"Failed to list pending requests",
+			);
+		}
+	}
+
+	/** Return pending requests where userId is the requester (outgoing requests). */
+	async listOutgoing(userId: number): Promise<PendingView[]> {
+		try {
+			const rows = await this.friendshipRepo.find({
+				where: { requesterId: userId, status: "pending" },
+				relations: ["addressee"],
+			});
+
+			return rows.map((row) => ({
+				userId: row.addressee.id,
+				username: row.addressee.username,
+				turtleName: row.addressee.turtleName ?? null,
+				shellSkin: row.addressee.shellSkin,
+				avatar: row.addressee.avatar ?? null,
+				level: row.addressee.level,
+				isOnline: this.presence.isOnline(row.addressee.id),
+			}));
+		} catch {
+			throw new InternalServerErrorException(
+				"Failed to list outgoing requests",
+			);
+		}
+	}
+
+	/**
+	 * "People you may know" — friends-of-friends, excluding: the requester
+	 * themselves, existing friends, anyone with a pending request in either
+	 * direction, and anyone blocked in either direction.
+	 */
+	async getSuggestions(
+		userId: number,
+		limit: number = SUGGESTIONS_LIMIT,
+	): Promise<PendingView[]> {
+		try {
+			const friendIds = await this.getFriendIds(userId);
+			if (friendIds.length === 0) return [];
+
+			// Friends of my friends (accepted friendships involving any of them).
+			const fofRows = await this.friendshipRepo.find({
+				where: [
+					{ requesterId: In(friendIds), status: "accepted" },
+					{ addresseeId: In(friendIds), status: "accepted" },
+				],
+			});
+
+			const candidateIds = new Set<number>();
+			for (const row of fofRows) {
+				const otherId = friendIds.includes(row.requesterId)
+					? row.addresseeId
+					: row.requesterId;
+				if (otherId !== userId && !friendIds.includes(otherId)) {
+					candidateIds.add(otherId);
+				}
+			}
+			if (candidateIds.size === 0) return [];
+
+			// Exclude anyone who already has ANY row with the requester
+			// (pending in either direction, or blocked in either direction —
+			// accepted friends are already excluded above).
+			const candidateIdList = [...candidateIds];
+			const existingRows = await this.friendshipRepo.find({
+				where: [
+					{ requesterId: userId, addresseeId: In(candidateIdList) },
+					{ requesterId: In(candidateIdList), addresseeId: userId },
+				],
+			});
+			const excludeIds = new Set(
+				existingRows.map((row) =>
+					row.requesterId === userId ? row.addresseeId : row.requesterId,
+				),
+			);
+
+			const finalIds = candidateIdList.filter((id) => !excludeIds.has(id));
+			if (finalIds.length === 0) return [];
+
+			const users = await this.userRepo.find({
+				where: { id: In(finalIds) },
+			});
+
+			return users.slice(0, limit).map((u) => ({
+				userId: u.id,
+				username: u.username,
+				turtleName: u.turtleName ?? null,
+				shellSkin: u.shellSkin,
+				avatar: u.avatar ?? null,
+				level: u.level,
+				isOnline: this.presence.isOnline(u.id),
+			}));
+		} catch (err) {
+			if (err instanceof InternalServerErrorException) throw err;
+			throw new InternalServerErrorException(
+				"Failed to get friend suggestions",
 			);
 		}
 	}

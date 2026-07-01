@@ -26,7 +26,7 @@ export type SpinMode = "free" | "wagered";
  * audit row so a single `wagers` table backs all games. "wheel" is the legacy
  * default for rows written before the discriminator existed.
  */
-export type CasinoGame = "wheel" | "flip" | "monte" | "slots";
+export type CasinoGame = "wheel" | "flip" | "monte" | "slots" | "dice" | "drop";
 
 /** One wedge on the Fortune Wheel. */
 export interface WheelSegment {

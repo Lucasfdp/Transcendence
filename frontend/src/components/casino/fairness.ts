@@ -7,13 +7,16 @@
  * HMAC-SHA256 → top 32 bits → /2^32 for the roll.
  */
 import type {
+	DiceDirection,
 	SlotSymbolView,
 	SpinResolution,
 	SpinResult,
 	WheelSegmentView,
 } from "../../features/hub/api";
+import { diceOutcomeId, diceValue } from "./dice";
 import { flipSide } from "./flip";
 import { monteOutcomeId, winningShell } from "./monte";
+import { bucketIndexFromRolls, plinkoOutcomeId } from "./plinko";
 import { selectSymbolFrom, slotsOutcomeId } from "./slots";
 import { selectSegmentFrom } from "./wheel";
 
@@ -185,6 +188,37 @@ export function verifyMonte(
 ): Promise<OutcomeFairnessCheck> {
 	return verifyResolution(result, (computedRolls) =>
 		monteOutcomeId(winningShell(computedRolls[0], shells)),
+	);
+}
+
+/**
+ * Verify a Koi Dice resolution by recomputing the rolled value. `direction`
+ * and `target` aren't needed to re-derive the outcome id (only the rolled
+ * value is — the server's win/loss decision follows deterministically from
+ * it), but are accepted for call-site symmetry with `verifyMonte`/`verifySlots`
+ * and so a future panel can also re-verify the win/loss call client-side.
+ */
+export function verifyDice(
+	result: SpinResolution,
+	_direction: DiceDirection,
+	_target: number,
+): Promise<OutcomeFairnessCheck> {
+	return verifyResolution(result, (computedRolls) =>
+		diceOutcomeId(diceValue(computedRolls[0])),
+	);
+}
+
+/**
+ * Verify a Shell Drop resolution by recomputing the landed bucket from the
+ * revealed per-row rolls. `rows` isn't carried on the result, so the caller
+ * supplies the row-count it played with (needed so `verifyResolution` draws
+ * the right number of rolls via `computeRollsBrowser`).
+ */
+export function verifyPlinko(
+	result: SpinResolution,
+): Promise<OutcomeFairnessCheck> {
+	return verifyResolution(result, (computedRolls) =>
+		plinkoOutcomeId(bucketIndexFromRolls(computedRolls)),
 	);
 }
 
