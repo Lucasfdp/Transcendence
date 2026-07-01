@@ -5,18 +5,20 @@
 - Si un cambio modifica reglas de trabajo, flujos o convenciones reflejadas aqui, actualiza `AGENTS.md` en la misma tarea.
 - Todo documento nuevo del proyecto debe guardarse en `docs/`.
 - Antes de redactar o investigar, prioriza `docs/`. El enunciado principal esta en `docs/en.subject.md` y su version PDF en `docs/en.subject.pdf`.
+- `docs/deprecated/` y `docs/old_docs/` son archivo historico. No deben usarse como fuente principal para entender el proyecto ni para tomar decisiones actuales, salvo peticion explicita del usuario.
 - El alcance funcional del proyecto queda acotado por `docs/modules-progress.md`. No anadas modulos o funcionalidades fuera de ese marco salvo peticion explicita del usuario.
 
 ## Indice Operativo
 - Contexto general del producto: `docs/project-overview.md`
 - Enunciado y alcance: `docs/en.subject.md`
 - Docker y despliegue: `docker-compose.yml`, `docker-compose.override.yml`, `docs/deployment.md`, `docs/docker-notes.md`
-- Arquitectura de servicios: `docs/architecture.md`, `docs/service-map.md`
+- Arquitectura de servicios: `docs/project-overview.md`, `docs/service-map.md`
 - Frontend: `frontend/src/`, `public/`
 - Backend: `backend/src/`
 - Comandos de trabajo: `Makefile`
 - Seguridad y OAuth: `docs/security.md`, `docs/oauth-setup.md`
 - Alcance y estado de modulos: `docs/modules-progress.md`
+- Archivo historico: `docs/deprecated/`, `docs/old_docs/`
 
 ## Estructura Del Proyecto
 `frontend/` contiene la SPA con Vite, React y Phaser. `backend/` contiene la API NestJS con TypeORM y migraciones en `backend/src/migrations/`. `infra/` agrupa Nginx, PostgreSQL, Redis, Vault, monitorizacion y configuracion auxiliar. `scripts/` contiene utilidades locales. `public/` guarda assets compartidos. `docs/` centraliza la documentacion viva del proyecto.
