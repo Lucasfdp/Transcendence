@@ -5,7 +5,7 @@ export interface ShellCurlMap {
 
 export type GameMap = ShellCurlMap | { gameId: string };
 
-function generateShellCurlBumpers(): ShellCurlMap["bumpers"] {
+export function generateShellCurlBumpers(): ShellCurlMap["bumpers"] {
 	const count = 5 + Math.floor(Math.random() * 4);
 	const minSep = 0.13;
 	const bumpers: ShellCurlMap["bumpers"] = [];
@@ -28,8 +28,11 @@ function generateShellCurlBumpers(): ShellCurlMap["bumpers"] {
 	return bumpers;
 }
 
+export function createShellCurlMap(): ShellCurlMap {
+	return { gameId: "temple-curling", bumpers: generateShellCurlBumpers() };
+}
+
 export function createGameMap(gameId: string): GameMap {
-	if (gameId === "temple-curling")
-		return { gameId, bumpers: generateShellCurlBumpers() };
+	if (gameId === "temple-curling") return createShellCurlMap();
 	return { gameId };
 }

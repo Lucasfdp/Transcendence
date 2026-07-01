@@ -1,12 +1,11 @@
 /**
- * shared/ui/panels/PowerSidePanel.ts — interactive power-selection side panel.
+ * shared/ui/panels/GameInfoSidePanel.ts — game information side panel.
  *
- * Renders all available powers as clickable rows in a right-side panel,
- * replacing the bottom PowerPicker bar. Hovering a row shows the power's
- * description in a footer area within the panel — no floating tooltip needed.
+ * Renders a compact game guide, available powers, and guaranteed match rewards.
+ * Hovering a power row shows the power's description in a footer area within the
+ * panel — no floating tooltip needed.
  *
- * Relocated from games/shell-curl/PowerSidePanel.ts so all three ball-physics
- * games (BambooBash, KameKnock, BellClash) can share the same component.
+ * Shared by all shell minigames.
  */
 
 import Phaser from "phaser";
@@ -17,11 +16,12 @@ import { PanelRect } from "./side-panel";
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 const PAD = 12;
-const TITLE_H = 30;
+const TITLE_H = 42;
 const SECTION_H = 26;
 const ROW_H = 28;
 const ICON_R = 7; // icon circle radius
-const DESC_H = 68; // description footer height (name + two wrapped lines)
+const DESC_H = 126; // power description + guaranteed rewards footer
+const SUMMARY_LINE_H = 30;
 
 // Collapsible drop-down geometry — used when the viewport is too small/zoomed to
 // dock the panel beside the arena. Anchored to a screen edge below the top HUD.
@@ -117,16 +117,22 @@ const ACCENT_COLOURS: Record<PowerType, number> = {
 	[PowerType.PHANTOM]: 0xbbbbbb,
 };
 
-export interface PowerPanelInfoRow {
+export interface GameInfoPanelRow {
 	label: string;
 	value: string;
 	labelColor?: string;
 	valueColor?: string;
 }
 
-// ── PowerSidePanel ────────────────────────────────────────────────────────────
+export interface GameInfoPanelDetails {
+	summaryTitle: string;
+	summaryLines: string[];
+	rewardRows: GameInfoPanelRow[];
+}
 
-export class PowerSidePanel {
+// ── GameInfoSidePanel ─────────────────────────────────────────────────────────
+
+export class GameInfoSidePanel {
 	private readonly gfx: Phaser.GameObjects.Graphics;
 	private readonly texts: Phaser.GameObjects.Text[] = [];
 	private readonly zones: Phaser.GameObjects.Zone[] = [];
@@ -154,7 +160,8 @@ export class PowerSidePanel {
 		private readonly depth = 20,
 		private readonly gameTitle = "GAME",
 		private readonly readOnly = false,
-		private readonly infoRows: () => PowerPanelInfoRow[] = () => [],
+		private readonly infoRows: () => GameInfoPanelRow[] = () => [],
+		private readonly details: () => GameInfoPanelDetails | null = () => null,
 	) {
 		this.gfx = scene.add.graphics().setDepth(depth);
 		this.scene.input.on("wheel", this.onWheel, this);
@@ -249,8 +256,20 @@ export class PowerSidePanel {
 			this.rect = { x, y: COLLAPSE_TOP, width: w, height: headerH };
 		} else {
 			const maxH = sh - COLLAPSE_TOP - EDGE_PAD;
+			const details = this.details();
+			const summaryH = details
+				? SECTION_H + details.summaryLines.length * SUMMARY_LINE_H + 6
+				: 0;
+			const infoH = this.infoRows().length * 22;
 			const need =
-				headerH + SECTION_H + 8 + this.powers.length * ROW_H + DESC_H + PAD;
+				headerH +
+				summaryH +
+				infoH +
+				SECTION_H +
+				8 +
+				this.powers.length * ROW_H +
+				DESC_H +
+				PAD;
 			this.rect = {
 				x,
 				y: COLLAPSE_TOP,
@@ -303,7 +322,7 @@ export class PowerSidePanel {
 
 		// Title
 		this.addText(r.x + PAD, r.y + PAD - 2, this.gameTitle, {
-			fontSize: "20px",
+			fontSize: "30px",
 			color: THEME.textJade,
 			fontFamily: THEME.fontBlowbrush,
 			fontStyle: "bold",
@@ -340,6 +359,28 @@ export class PowerSidePanel {
 		);
 
 		let sectionY = r.y + PAD + TITLE_H + 9;
+		const details = this.details();
+		if (details) {
+			this.addText(r.x + PAD, sectionY, details.summaryTitle, {
+				fontSize: "13px",
+				color: THEME.textGold,
+				fontFamily: THEME.fontUrbanStone,
+				fontStyle: "bold",
+			}).setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
+			sectionY += SECTION_H;
+
+			details.summaryLines.forEach((line) => {
+				this.addText(r.x + PAD, sectionY, line, {
+					fontSize: "10px",
+					color: THEME.text,
+					fontFamily: THEME.fontUrbanStone,
+					wordWrap: { width: r.width - PAD * 2 },
+				});
+				sectionY += SUMMARY_LINE_H;
+			});
+			sectionY += 6;
+		}
+
 		const infoRows = this.infoRows();
 		infoRows.forEach((row, index) => {
 			const y = sectionY + index * 22;
@@ -508,7 +549,7 @@ export class PowerSidePanel {
 			this.gfx.fillRoundedRect(barX, thumbY, 3, thumbH, 1.5);
 		}
 
-		// Description footer
+		// Description and guaranteed rewards footer
 		const footerY = r.y + r.height - DESC_H - PAD;
 		const descPower =
 			this.hovered ??
@@ -532,6 +573,40 @@ export class PowerSidePanel {
 			fontFamily: THEME.fontUrbanStone,
 			wordWrap: { width: r.width - PAD * 2 },
 		});
+
+		if (details && details.rewardRows.length > 0) {
+			const rewardY = footerY + 66;
+			this.gfx.lineStyle(1, THEME.gold, 0.18);
+			this.gfx.lineBetween(
+				r.x + PAD,
+				rewardY - 8,
+				r.x + r.width - PAD,
+				rewardY - 8,
+			);
+			this.addText(r.x + PAD, rewardY, "MATCH REWARDS", {
+				fontSize: "12px",
+				color: THEME.textGold,
+				fontFamily: THEME.fontUrbanStone,
+				fontStyle: "bold",
+			});
+
+			details.rewardRows.slice(0, 3).forEach((row, index) => {
+				const y = rewardY + 18 + index * 14;
+				this.addText(r.x + PAD, y, row.label, {
+					fontSize: "10px",
+					color: row.labelColor ?? THEME.textMutedHex,
+					fontFamily: THEME.fontUrbanStone,
+				});
+				this.addText(r.x + r.width - PAD, y, row.value, {
+					fontSize: "10px",
+					color: row.valueColor ?? THEME.textGold,
+					fontFamily: THEME.fontUrbanStone,
+					fontStyle: "bold",
+				})
+					.setOrigin(1, 0)
+					.setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
+			});
+		}
 	}
 
 	private addText(

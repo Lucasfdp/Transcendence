@@ -32,6 +32,7 @@ import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
 import { THEME } from "../../shared/theme";
+import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import { api } from "../../features/hub/api";
 import {
 	Bamboo,
@@ -46,7 +47,7 @@ import {
 	SidePanel,
 	SidePanelRow,
 } from "../../shared/ui/panels/side-panel";
-import { PowerSidePanel } from "../../shared/ui/panels/PowerSidePanel";
+import { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
 import { PowerType } from "../../shared/mechanics/power-system";
 import { GAME_POWERS } from "../../shared/mechanics/game-powers";
 import {
@@ -58,6 +59,13 @@ import {
 	drawIngamePlayerTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
+import {
+	drawPlayerTrails,
+	recordPlayerTrails,
+	resetPlayerTrail,
+	type PlayerTrailStore,
+} from "../../shared/mechanics/player-trails";
+import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
 import {
 	BOMB_RADIUS_SRC,
 	REPEL_RADIUS_SRC,
@@ -116,6 +124,7 @@ interface LocalParticipant {
 
 export class BambooBashScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
+	private trailGfx!: Phaser.GameObjects.Graphics;
 	private ballGfx!: Phaser.GameObjects.Graphics;
 	private bambooSprites = new Map<
 		Bamboo | number,
@@ -152,7 +161,7 @@ export class BambooBashScene extends ResponsiveScene {
 	private scoreEvents: string[] = [];
 
 	// ── Power panel ──────────────────────────────────────────────────────────────
-	private powerSidePanel: PowerSidePanel | null = null;
+	private powerSidePanel: GameInfoSidePanel | null = null;
 
 	/** Shell power pool for this player (read from registry in create()). */
 	private playerPowers: PowerType[] = [PowerType.NONE];
@@ -172,6 +181,7 @@ export class BambooBashScene extends ResponsiveScene {
 	private onlineTotalRounds = 3;
 	private onlineScores: number[] = [];
 	private onlineBalls = new Map<number, BallState>();
+	private ballTrails: PlayerTrailStore = new Map();
 	private pendingOnlineBambooHits = new Set<number>();
 	private onlineBambooSyncAccMs = 0;
 
@@ -282,7 +292,9 @@ export class BambooBashScene extends ResponsiveScene {
 		this.playerPowers = buildPool(sel?.player0);
 
 		this.bgGfx = this.add.graphics().setDepth(0);
+		this.trailGfx = this.add.graphics().setDepth(2.75);
 		this.ballGfx = this.add.graphics().setDepth(3);
+		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
 
 		this.slingshot = new Slingshot(
 			this,
@@ -318,6 +330,7 @@ export class BambooBashScene extends ResponsiveScene {
 					r: BALL_SRC_R * this.arena.scale,
 				};
 				this.resetLocalBall(ball, index);
+				resetPlayerTrail(this.ballTrails, `local-${index}`, ball.x, ball.y);
 				const slingshot = new Slingshot(
 					this,
 					ball,
@@ -450,6 +463,8 @@ export class BambooBashScene extends ResponsiveScene {
 		this.powerSidePanel = null;
 		this.scoreHud?.destroy();
 		this.scoreHud = null;
+		this.trailGfx?.destroy();
+		this.ballTrails.clear();
 		this.countdownText?.destroy();
 		this.turnAnnouncementText?.destroy();
 		this.destroySidePanels();
@@ -499,7 +514,9 @@ export class BambooBashScene extends ResponsiveScene {
 
 		if (this.localParticipants.length > 0) {
 			this.updateLocalParticipants(delta);
+			this.recordBallTrails();
 			this.drawBamboos();
+			this.drawBallTrails();
 			this.drawBalls();
 			return;
 		}
@@ -555,7 +572,9 @@ export class BambooBashScene extends ResponsiveScene {
 
 		if (this.onlineMatch) this.syncOnlineBamboos(delta);
 
+		this.recordBallTrails();
 		this.drawBamboos();
+		this.drawBallTrails();
 		this.drawBalls();
 	}
 
@@ -882,6 +901,14 @@ export class BambooBashScene extends ResponsiveScene {
 			`Round ${snapshot.roundNumber}/${snapshot.totalRounds}`,
 		);
 		this.startCountdown();
+		this.overlay = showRoundTransitionOverlay(this, this.overlay, {
+			message: `ROUND ${snapshot.roundNumber}/${snapshot.totalRounds}`,
+			depth: DEPTH_OVERLAY,
+			autoDismissMs: 900,
+			onAutoDismiss: () => {
+				this.overlay = undefined;
+			},
+		});
 	}
 
 	private createOnlineStatusText(): void {
@@ -1423,6 +1450,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.ball.vx = 0;
 		this.ball.vy = 0;
 		this.ball.r = BALL_SRC_R * this.arena.scale;
+		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
 	}
 
 	private syncOnlineBalls(snapshot: BambooBashSnapshot): void {
@@ -1440,8 +1468,10 @@ export class BambooBashScene extends ResponsiveScene {
 							vy: 0,
 							r: BALL_SRC_R * this.arena.scale,
 						});
-			if (!isBallMoving(existing))
+			if (!isBallMoving(existing)) {
 				this.resetOnlineBall(existing, index, players.length);
+				resetPlayerTrail(this.ballTrails, player.side, existing.x, existing.y);
+			}
 			next.set(player.side, existing);
 		});
 		this.onlineBalls = next;
@@ -1461,6 +1491,7 @@ export class BambooBashScene extends ResponsiveScene {
 							r: BALL_SRC_R * this.arena.scale,
 						});
 			this.resetOnlineBall(ball, index, players.length);
+			resetPlayerTrail(this.ballTrails, player.side, ball.x, ball.y);
 			this.onlineBalls.set(player.side, ball);
 		});
 	}
@@ -1504,6 +1535,64 @@ export class BambooBashScene extends ResponsiveScene {
 		ball.vx = 0;
 		ball.vy = 0;
 		ball.r = BALL_SRC_R * this.arena.scale;
+		resetPlayerTrail(this.ballTrails, `local-${index}`, ball.x, ball.y);
+	}
+
+	private recordBallTrails(): void {
+		if (this.onlineBalls.size > 0) {
+			recordPlayerTrails(
+				this.ballTrails,
+				[...this.onlineBalls.entries()].map(([side, ball]) => ({
+					id: side,
+					player: side,
+					x: ball.x,
+					y: ball.y,
+					moving: isBallMoving(ball),
+				})),
+				{ scale: this.arena.scale },
+			);
+			return;
+		}
+
+		if (this.localParticipants.length > 0) {
+			recordPlayerTrails(
+				this.ballTrails,
+				this.localParticipants.map((participant, index) => ({
+					id: `local-${index}`,
+					player: index,
+					x: participant.ball.x,
+					y: participant.ball.y,
+					moving: isBallMoving(participant.ball),
+				})),
+				{ scale: this.arena.scale },
+			);
+			return;
+		}
+
+		recordPlayerTrails(
+			this.ballTrails,
+			[
+				{
+					id: "local",
+					player: 0,
+					x: this.ball.x,
+					y: this.ball.y,
+					moving: isBallMoving(this.ball),
+				},
+			],
+			{ scale: this.arena.scale },
+		);
+	}
+
+	private drawBallTrails(): void {
+		const playersById = new Map<number | string, number>([["local", 0]]);
+		for (const [side] of this.onlineBalls) playersById.set(side, side);
+		this.localParticipants.forEach((_participant, index) =>
+			playersById.set(`local-${index}`, index),
+		);
+		drawPlayerTrails(this.trailGfx, this.ballTrails, playersById, {
+			scale: this.arena.scale,
+		});
 	}
 
 	private isLocalVersus(): boolean {
@@ -1922,13 +2011,14 @@ export class BambooBashScene extends ResponsiveScene {
 		);
 
 		if (!this.powerSidePanel) {
-			this.powerSidePanel = new PowerSidePanel(
+			this.powerSidePanel = new GameInfoSidePanel(
 				this,
 				() => {},
 				DEPTH_HUD,
 				"BAMBOO BASH",
 				true,
-				() => this.buildPowerPanelInfoRows(),
+				() => this.buildGameInfoPanelRows(),
+				() => GAME_INFO_PANEL_DETAILS["bamboo-bash"],
 			);
 		}
 
@@ -1944,7 +2034,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.powerSidePanel.show(layout.leftPanel, powers, PowerType.NONE);
 	}
 
-	private buildPowerPanelInfoRows(): {
+	private buildGameInfoPanelRows(): {
 		label: string;
 		value: string;
 		labelColor?: string;

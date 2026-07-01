@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { createGameMap } from "../game-map";
+import { createShellCurlMap } from "../game-map";
 import {
 	CurlingSnapshot,
 	GameInputPayload,
@@ -55,7 +55,10 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			stonesPerPlayer: STONES_PER_PLAYER,
 			totalEnds: TOTAL_ENDS,
 			score: Array.from({ length: playerCount }, () => 0),
-			map: createGameMap(context.gameId),
+			endScores: Array.from({ length: TOTAL_ENDS }, () =>
+				Array.from({ length: playerCount }, () => null),
+			),
+			map: createShellCurlMap(),
 			players: roomPlayers.map((player) => this.toSnapshotPlayer(player)),
 			objects: [],
 			winnerSide: null,
@@ -155,11 +158,19 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 
 		if (state.throwsInEnd >= room.players.length * state.stonesPerPlayer) {
 			const endScore = this.scoreEnd(state.objects);
-			if (endScore.scoringSide !== null)
+			const endScores = Array.from(
+				{ length: state.score.length },
+				() => 0,
+			);
+			if (endScore.scoringSide !== null) {
 				state.score[endScore.scoringSide] += endScore.points;
+				endScores[endScore.scoringSide] = endScore.points;
+			}
+			state.endScores[state.currentEnd] = endScores;
 			state.currentEnd += 1;
 			state.throwsInEnd = 0;
 			state.objects = [];
+			if (state.currentEnd < state.totalEnds) state.map = createShellCurlMap();
 		}
 
 		state.currentTurn = this.nextTurn(room);

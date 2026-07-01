@@ -21,7 +21,7 @@ export const THEME = {
 	textJade: "#8fb080",
 	textMutedHex: "#6f7965",
 
-	font: "UrbanStone",
+	font: "Rowdy",
 	fontBlowbrush: "Blowbrush",
-	fontUrbanStone: "UrbanStone",
+	fontUrbanStone: "Rowdy",
 };

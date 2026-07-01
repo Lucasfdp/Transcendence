@@ -607,6 +607,15 @@ const GAME_BUTTON_IMAGES: Record<string, string> = {
 	"temple-curling": "/assets/ui/gamesButtons/templeCurlingButton.png",
 };
 
+const GAMBIT_BUTTON_IMAGES: Record<string, string> = {
+	casino: "/assets/ui/gamesButtons/fortuneWheelButton.png",
+	dice: "/assets/ui/gamesButtons/koiDiceButton.png",
+	drop: "/assets/ui/gamesButtons/shellDropButton.png",
+	flip: "/assets/ui/gamesButtons/shellFlipButton.png",
+	monte: "/assets/ui/gamesButtons/threeShellMonteButton.png",
+	slots: "/assets/ui/gamesButtons/shrineSlotsButton.png",
+};
+
 type RgbColor = { r: number; g: number; b: number };
 type CycleStar = {
 	left: string;
@@ -2244,51 +2253,87 @@ function HomeMenu(): JSX.Element {
 									{view === "gambit" ? (
 										<>
 											<button
-												className="hub-game-card"
+												className="hub-game-card hub-game-card--fortune-wheel"
 												type="button"
 												onClick={() => setActiveModal("casino")}
 											>
-												<span>Fortune Wheel</span>
+												<img
+													className="hub-game-card__image"
+													src={GAMBIT_BUTTON_IMAGES.casino}
+													alt=""
+													aria-hidden="true"
+												/>
+												<span className="sr-only">Fortune Wheel</span>
 												<small>Wager coins at the gambling den</small>
 											</button>
 											<button
-												className="hub-game-card"
+												className="hub-game-card hub-game-card--shell-flip"
 												type="button"
 												onClick={() => setActiveModal("flip")}
 											>
-												<span>Shell Flip</span>
+												<img
+													className="hub-game-card__image"
+													src={GAMBIT_BUTTON_IMAGES.flip}
+													alt=""
+													aria-hidden="true"
+												/>
+												<span className="sr-only">Shell Flip</span>
 												<small>Call a shell, double or nothing</small>
 											</button>
 											<button
-												className="hub-game-card"
+												className="hub-game-card hub-game-card--three-shell-monte"
 												type="button"
 												onClick={() => setActiveModal("monte")}
 											>
-												<span>Three-Shell Monte</span>
+												<img
+													className="hub-game-card__image"
+													src={GAMBIT_BUTTON_IMAGES.monte}
+													alt=""
+													aria-hidden="true"
+												/>
+												<span className="sr-only">Three-Shell Monte</span>
 												<small>Find the pearl, pay up to 5×</small>
 											</button>
 											<button
-												className="hub-game-card"
+												className="hub-game-card hub-game-card--shrine-slots"
 												type="button"
 												onClick={() => setActiveModal("slots")}
 											>
-												<span>Shrine Slots</span>
+												<img
+													className="hub-game-card__image"
+													src={GAMBIT_BUTTON_IMAGES.slots}
+													alt=""
+													aria-hidden="true"
+												/>
+												<span className="sr-only">Shrine Slots</span>
 												<small>Spin three reels for the jackpot</small>
 											</button>
 											<button
-												className="hub-game-card"
+												className="hub-game-card hub-game-card--koi-dice"
 												type="button"
 												onClick={() => setActiveModal("dice")}
 											>
-												<span>Koi Dice</span>
+												<img
+													className="hub-game-card__image"
+													src={GAMBIT_BUTTON_IMAGES.dice}
+													alt=""
+													aria-hidden="true"
+												/>
+												<span className="sr-only">Koi Dice</span>
 												<small>Set your own odds, under or over</small>
 											</button>
 											<button
-												className="hub-game-card"
+												className="hub-game-card hub-game-card--shell-drop"
 												type="button"
 												onClick={() => setActiveModal("drop")}
 											>
-												<span>Shell Drop</span>
+												<img
+													className="hub-game-card__image"
+													src={GAMBIT_BUTTON_IMAGES.drop}
+													alt=""
+													aria-hidden="true"
+												/>
+												<span className="sr-only">Shell Drop</span>
 												<small>Drop a shell through the pegs</small>
 											</button>
 										</>

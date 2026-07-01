@@ -31,12 +31,13 @@ import { ScoreHud } from "../../shared/mechanics/score-hud";
 import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
 import { THEME } from "../../shared/theme";
+import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import {
 	PanelRect,
 	SidePanel,
 	SidePanelRow,
 } from "../../shared/ui/panels/side-panel";
-import { PowerSidePanel } from "../../shared/ui/panels/PowerSidePanel";
+import { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
 import { PowerType } from "../../shared/mechanics/power-system";
 import { GAME_POWERS } from "../../shared/mechanics/game-powers";
 import {
@@ -48,6 +49,13 @@ import {
 	drawIngamePlayerTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
+import {
+	drawPlayerTrails,
+	recordPlayerTrails,
+	resetPlayerTrail,
+	type PlayerTrailStore,
+} from "../../shared/mechanics/player-trails";
+import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
 import {
 	getGameSocket,
 	type BellClashSnapshot,
@@ -112,6 +120,7 @@ export class BellClashScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
 	private zoneGfx!: Phaser.GameObjects.Graphics;
 	private bellGfx!: Phaser.GameObjects.Graphics;
+	private trailGfx!: Phaser.GameObjects.Graphics;
 	private ballGfx!: Phaser.GameObjects.Graphics;
 
 	private arena!: ArenaPixels;
@@ -142,6 +151,7 @@ export class BellClashScene extends ResponsiveScene {
 	private lastOnlineSeq = -1;
 	private onlineStatusText: Phaser.GameObjects.Text | null = null;
 	private onlineBalls = new Map<number, BallState>();
+	private ballTrails: PlayerTrailStore = new Map();
 	private onlineRoundNumber = 1;
 	private onlineTotalRounds = 3;
 	private onlineShotsPerRound = 3;
@@ -161,7 +171,7 @@ export class BellClashScene extends ResponsiveScene {
 	};
 
 	// ── Power state ──────────────────────────────────────────────────────────────
-	private powerSidePanel: PowerSidePanel | null = null;
+	private powerSidePanel: GameInfoSidePanel | null = null;
 
 	/**
 	 * Per-player power pools. BellClash alternates players each shot:
@@ -268,7 +278,9 @@ export class BellClashScene extends ResponsiveScene {
 		this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
 		this.zoneGfx = this.add.graphics().setDepth(DEPTH_ZONES);
 		this.bellGfx = this.add.graphics().setDepth(DEPTH_BELL);
+		this.trailGfx = this.add.graphics().setDepth(DEPTH_BALL - 0.25);
 		this.ballGfx = this.add.graphics().setDepth(DEPTH_BALL);
+		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
 
 		this.slingshot = new Slingshot(
 			this,
@@ -321,6 +333,8 @@ export class BellClashScene extends ResponsiveScene {
 		this.onlineStatusText = null;
 		this.powerSidePanel?.destroy();
 		this.powerSidePanel = null;
+		this.trailGfx?.destroy();
+		this.ballTrails.clear();
 		this.destroySidePanels();
 	}
 
@@ -371,7 +385,9 @@ export class BellClashScene extends ResponsiveScene {
 
 		if (this.launchedThisShot && !moving) this.finishShot();
 
+		this.recordBallTrails();
 		this.drawBell();
+		this.drawBallTrails();
 		this.drawBalls();
 	}
 
@@ -757,6 +773,14 @@ export class BellClashScene extends ResponsiveScene {
 		this.shotText?.setText(this.formatShotText());
 		this.lastHitText?.setText("LAST HIT  -");
 		this.showPowerPanel();
+		this.overlay = showRoundTransitionOverlay(this, this.overlay, {
+			message: `ROUND ${snapshot.roundNumber}/${snapshot.totalRounds}`,
+			depth: DEPTH_OVERLAY,
+			autoDismissMs: 900,
+			onAutoDismiss: () => {
+				this.overlay = undefined;
+			},
+		});
 	}
 
 	private playOnlineThrow(event: BellClashThrowEvent): void {
@@ -828,7 +852,9 @@ export class BellClashScene extends ResponsiveScene {
 		if (!localMoving && this.onlineBallWasMoving) this.finishOnlineShot();
 		this.onlineBallWasMoving = localMoving;
 
+		this.recordBallTrails();
 		this.drawBell();
+		this.drawBallTrails();
 		this.drawBalls();
 	}
 
@@ -915,8 +941,10 @@ export class BellClashScene extends ResponsiveScene {
 							vy: 0,
 							r: BALL_SRC_R * this.arena.scale,
 						});
-			if (resetPositions)
+			if (resetPositions) {
 				this.resetOnlineBall(ball, index, players.length);
+				resetPlayerTrail(this.ballTrails, player.side, ball.x, ball.y);
+			}
 			next.set(player.side, ball);
 		});
 		this.onlineBalls = next;
@@ -958,12 +986,14 @@ export class BellClashScene extends ResponsiveScene {
 		const layout = this.resolveLayout();
 
 		if (!this.powerSidePanel) {
-			this.powerSidePanel = new PowerSidePanel(
+			this.powerSidePanel = new GameInfoSidePanel(
 				this,
 				() => {},
 				DEPTH_HUD,
 				"BELL CLASH",
 				true,
+				() => [],
+				() => GAME_INFO_PANEL_DETAILS["bell-clash"],
 			);
 		}
 
@@ -1065,6 +1095,48 @@ export class BellClashScene extends ResponsiveScene {
 		this.ball.vx = 0;
 		this.ball.vy = 0;
 		this.ball.r = BALL_SRC_R * this.arena.scale;
+		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
+	}
+
+	private recordBallTrails(): void {
+		if (this.onlineBalls.size > 0) {
+			recordPlayerTrails(
+				this.ballTrails,
+				[...this.onlineBalls.entries()].map(([side, ball]) => ({
+					id: side,
+					player: side,
+					x: ball.x,
+					y: ball.y,
+					moving: isBallMoving(ball),
+				})),
+				{ scale: this.arena.scale },
+			);
+			return;
+		}
+
+		recordPlayerTrails(
+			this.ballTrails,
+			[
+				{
+					id: "local",
+					player: this.currentPlayerIndex(),
+					x: this.ball.x,
+					y: this.ball.y,
+					moving: isBallMoving(this.ball),
+				},
+			],
+			{ scale: this.arena.scale },
+		);
+	}
+
+	private drawBallTrails(): void {
+		const playersById = new Map<number | string, number>([
+			["local", this.currentPlayerIndex()],
+		]);
+		for (const side of this.onlineBalls.keys()) playersById.set(side, side);
+		drawPlayerTrails(this.trailGfx, this.ballTrails, playersById, {
+			scale: this.arena.scale,
+		});
 	}
 
 	private bellRadius(): number {
@@ -1101,7 +1173,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.updateScoreHud();
 
 		const content = {
-			title: "SHELL LOG",
+			title: "SCORE LOG",
 			rows: this.buildScoreLogRows(),
 			footerRows: this.buildScoreFooterRows(),
 		};

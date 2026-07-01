@@ -20,6 +20,7 @@ export interface CurlingSnapshot {
 	stonesPerPlayer: number;
 	totalEnds: number;
 	score: number[];
+	endScores: Array<Array<number | null>>;
 	map: GameMap;
 	players: Array<{
 		side: number;

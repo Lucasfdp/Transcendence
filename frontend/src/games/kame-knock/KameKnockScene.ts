@@ -29,12 +29,13 @@ import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
+import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import {
 	PanelRect,
 	SidePanel,
 	SidePanelRow,
 } from "../../shared/ui/panels/side-panel";
-import { PowerSidePanel } from "../../shared/ui/panels/PowerSidePanel";
+import { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
 import {
 	TimedTarget,
 	TimedTargetKind,
@@ -56,6 +57,13 @@ import {
 	drawIngamePlayerTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
+import {
+	drawPlayerTrails,
+	recordPlayerTrails,
+	resetPlayerTrail,
+	type PlayerTrailStore,
+} from "../../shared/mechanics/player-trails";
+import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
 import {
 	BOMB_RADIUS_SRC,
 	REPEL_RADIUS_SRC,
@@ -165,6 +173,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
 	private targetGfx!: Phaser.GameObjects.Graphics;
 	private targetMarkerGfx!: Phaser.GameObjects.Graphics;
+	private trailGfx!: Phaser.GameObjects.Graphics;
 	private ballGfx!: Phaser.GameObjects.Graphics;
 
 	private arena!: ArenaPixels;
@@ -194,7 +203,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private overlayHitZones: Phaser.GameObjects.Zone[] = [];
 
 	// ── Power state ──────────────────────────────────────────────────────────────
-	private powerSidePanel: PowerSidePanel | null = null;
+	private powerSidePanel: GameInfoSidePanel | null = null;
 
 	/** Per-player power pools. Offline uses player 0; online maps by side. */
 	private playerPowers: PowerType[][] = [FALLBACK_POWERS];
@@ -213,6 +222,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private onlineReleasePending = false;
 	private visibleBallSide = 0;
 	private onlineBalls = new Map<number, BallState>();
+	private ballTrails: PlayerTrailStore = new Map();
 	private localMode: "solo" | "versus" = "solo";
 
 	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
@@ -328,7 +338,9 @@ export class KameKnockScene extends ResponsiveScene {
 		this.targetMarkerGfx = this.add
 			.graphics()
 			.setDepth(DEPTH_TARGETS + 0.2);
+		this.trailGfx = this.add.graphics().setDepth(DEPTH_BALL - 0.25);
 		this.ballGfx = this.add.graphics().setDepth(DEPTH_BALL);
+		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
 
 		this.slingshot = new Slingshot(
 			this,
@@ -382,6 +394,8 @@ export class KameKnockScene extends ResponsiveScene {
 		this.destroySidePanels();
 		this.scoreHud?.destroy();
 		this.scoreHud = null;
+		this.trailGfx?.destroy();
+		this.ballTrails.clear();
 		this.ballText = null;
 		if (this.onlineMatch) {
 			const socket = getGameSocket();
@@ -444,7 +458,9 @@ export class KameKnockScene extends ResponsiveScene {
 
 		if (this.launchedThisBall && !moving) this.finishBallRound();
 
+		this.recordBallTrails();
 		this.drawTargets();
+		this.drawBallTrails();
 		this.drawBall();
 	}
 
@@ -1142,7 +1158,7 @@ export class KameKnockScene extends ResponsiveScene {
 		);
 		if (nextBallIndex !== this.currentBallIndex) {
 			this.currentBallIndex = nextBallIndex;
-			this.setupBallRound();
+			this.showNextRoundOverlay(() => this.setupBallRound());
 		} else {
 			const config = BALL_ROUNDS[this.currentBallIndex];
 			this.resetBall();
@@ -1175,12 +1191,14 @@ export class KameKnockScene extends ResponsiveScene {
 		const layout = this.resolveLayout();
 
 		if (!this.powerSidePanel) {
-			this.powerSidePanel = new PowerSidePanel(
+			this.powerSidePanel = new GameInfoSidePanel(
 				this,
 				() => {},
 				DEPTH_HUD,
 				"KAME KNOCK",
 				true,
+				() => [],
+				() => GAME_INFO_PANEL_DETAILS["kame-knock"],
 			);
 		}
 
@@ -1440,6 +1458,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.ball.vx = 0;
 		this.ball.vy = 0;
 		this.ball.r = BALL_SRC_R * this.arena.scale;
+		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
 	}
 
 	private activeBall(): BallState {
@@ -1513,6 +1532,8 @@ export class KameKnockScene extends ResponsiveScene {
 			index,
 			players.length || 1,
 		);
+		const ball = this.ballForOnlineSide(playerSide);
+		resetPlayerTrail(this.ballTrails, playerSide, ball.x, ball.y);
 	}
 
 	private resetOnlineBall(
@@ -1570,6 +1591,48 @@ export class KameKnockScene extends ResponsiveScene {
 		this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.08);
 	}
 
+	private recordBallTrails(): void {
+		if (
+			!this.onlineMatch?.snapshot ||
+			this.onlineMatch.snapshot.gameId !== "kame-knock"
+		) {
+			recordPlayerTrails(
+				this.ballTrails,
+				[
+					{
+						id: "local",
+						player: this.currentPlayerIndex(),
+						x: this.ball.x,
+						y: this.ball.y,
+						moving: this.isBallMoving(this.ball),
+					},
+				],
+				{ scale: this.arena.scale },
+			);
+			return;
+		}
+
+		recordPlayerTrails(
+			this.ballTrails,
+			[...this.onlineBalls.entries()].map(([side, ball]) => ({
+				id: side,
+				player: side,
+				x: ball.x,
+				y: ball.y,
+				moving: this.isBallMoving(ball),
+			})),
+			{ scale: this.arena.scale },
+		);
+	}
+
+	private drawBallTrails(): void {
+		const playersById = new Map<number | string, number>([["local", this.currentPlayerIndex()]]);
+		for (const side of this.onlineBalls.keys()) playersById.set(side, side);
+		drawPlayerTrails(this.trailGfx, this.ballTrails, playersById, {
+			scale: this.arena.scale,
+		});
+	}
+
 	private drawBackground(): void {
 		const { width, height } = this.scale;
 		this.bgGfx.clear();
@@ -1600,6 +1663,20 @@ export class KameKnockScene extends ResponsiveScene {
 			sprite.destroy();
 			this.targetSprites.delete(id);
 		}
+	}
+
+	private showNextRoundOverlay(onNext: () => void): void {
+		this.running = false;
+		this.overlay = showRoundTransitionOverlay(this, this.overlay, {
+			message: `ROUND ${this.currentBallIndex + 1}\nGet ready for the next shell!`,
+			buttonLabel: "NEXT ROUND",
+			onButton: () => {
+				this.overlay = undefined;
+				this.running = true;
+				onNext();
+			},
+			depth: DEPTH_OVERLAY,
+		});
 	}
 
 	private drawTarget(target: TimedTarget): void {

@@ -41,7 +41,8 @@ import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
 import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
-import { PowerSidePanel } from "../../shared/ui/panels/PowerSidePanel";
+import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
+import { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
 import {
 	PanelRect,
 	SidePanel,
@@ -52,6 +53,13 @@ import {
 	drawIngamePlayerTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
+import {
+	drawPlayerTrails,
+	recordPlayerTrails,
+	resetPlayerTrail,
+	type PlayerTrailStore,
+} from "../../shared/mechanics/player-trails";
+import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
 import {
 	getGameSocket,
 	type CurlingSnapshot,
@@ -168,6 +176,7 @@ const BUMPER_BOOST = 1.1; // 10% speed boost on bumper hit (pinball feel)
 const PICKUP_RADIUS_SRC = 18;
 const PICKUP_SPAWN_ATTEMPTS = 80;
 const PICKUP_CLEARANCE_SRC = 12;
+const DELIVERY_CLEARANCE_SRC = 10;
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
 
@@ -197,8 +206,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private pickupGfx!: Phaser.GameObjects.Graphics;
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
-	private stoneTrails: Map<number, Array<{ x: number; y: number }>> =
-		new Map();
+	private stoneTrails: PlayerTrailStore = new Map();
 
 	// ── Bumpers ───────────────────────────────────────────────────────────────
 	private bumpers: Bumper[] = [];
@@ -210,8 +218,9 @@ export class ShellCurlScene extends ResponsiveScene {
 	private overlayContainer: Phaser.GameObjects.Container | null = null;
 
 	// ── Power side panel (replaces the bottom PowerPicker bar) ────────────────
-	private powerSidePanel: PowerSidePanel | null = null;
+	private powerSidePanel: GameInfoSidePanel | null = null;
 	private scoreLogPanel: SidePanel | null = null;
+	private localEndScores: Array<Array<number | null>> = [];
 
 	private onlineMatch: OnlineMatchContext | null = null;
 	private onlineStatusText: Phaser.GameObjects.Text | null = null;
@@ -272,6 +281,9 @@ export class ShellCurlScene extends ResponsiveScene {
 					? this.onlineMatch.snapshot.score.length
 					: localPlayerCount,
 		});
+		this.localEndScores = Array.from({ length: TOTAL_ENDS }, () =>
+			Array.from({ length: this.turnManager.state.score.length }, () => null),
+		);
 
 		// Read per-player shell selections from the registry (set by ShellPickerScene).
 		// Falls back to FALLBACK_POWERS if no selection is present (direct launch / dev).
@@ -546,6 +558,8 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		this.clearActiveRing();
 
+		this.resolveDeliverySpawnBlockers();
+
 		// Place active stone at delivery hack position
 		const stone = this.spawnActiveStone(state.currentTeam);
 		this.activeStone = stone;
@@ -653,6 +667,10 @@ export class ShellCurlScene extends ResponsiveScene {
 		);
 		if (inHouse.length === 0) {
 			// Blank end
+			this.localEndScores[this.turnManager.state.currentEnd] = Array.from(
+				{ length: this.turnManager.state.score.length },
+				() => 0,
+			);
 			this.turnManager.endEnd(null, 0);
 			this.updateSidePanels();
 			this.showEndScoreOverlay(null, 0);
@@ -685,6 +703,13 @@ export class ShellCurlScene extends ResponsiveScene {
 		// Highlight scoring stones
 		this.animateScoringStones(scoringTeam);
 
+		const endScores = Array.from(
+			{ length: this.turnManager.state.score.length },
+			() => 0,
+		);
+		endScores[scoringTeam] = points;
+		this.localEndScores[this.turnManager.state.currentEnd] = endScores;
+
 		this.turnManager.endEnd(scoringTeam, points);
 		this.updateSidePanels();
 		this.showEndScoreOverlay(scoringTeam, points);
@@ -709,9 +734,77 @@ export class ShellCurlScene extends ResponsiveScene {
 		const gfx = this.add.graphics().setDepth(DEPTH_STONES);
 		this.stoneGfx.set(stone.id, gfx);
 		this.allStones.push(stone);
-		this.stoneTrails.set(stone.id, [{ x: stone.x, y: stone.y }]);
+		resetPlayerTrail(this.stoneTrails, stone.id, stone.x, stone.y);
 		this.drawPlayerStone(gfx, stone, true);
 		return stone;
+	}
+
+	private resolveDeliverySpawnBlockers(): void {
+		let moved = 0;
+		const deliveryR = STONE_SRC_R * this.arena.scale;
+
+		for (const stone of this.allStones) {
+			if (stone === this.activeStone) continue;
+			const minDistance =
+				stone.r + deliveryR + DELIVERY_CLEARANCE_SRC * this.arena.scale;
+			if (
+				Math.hypot(
+					stone.x - this.arena.deliveryX,
+					stone.y - this.arena.deliveryY,
+				) >= minDistance
+			)
+				continue;
+
+			this.moveStoneToLowerLeft(stone, moved++);
+		}
+
+		if (moved <= 0) return;
+		this.showSpawnBlockedNotice(moved);
+		this.drawStoneTrails();
+		this.redrawAllStones();
+		this.updateSidePanels();
+	}
+
+	private moveStoneToLowerLeft(stone: StoneState, slot: number): void {
+		const pad = 18 * this.arena.scale;
+		const offset = slot * stone.r * 0.45;
+		stone.x = this.arena.sheetX + stone.r + pad + offset;
+		stone.y = this.arena.sheetY + this.arena.sheetH - stone.r - pad - offset;
+		stone.vx = 0;
+		stone.vy = 0;
+		stone.stopped = true;
+		resetPlayerTrail(this.stoneTrails, stone.id, stone.x, stone.y);
+	}
+
+	private showSpawnBlockedNotice(count: number): void {
+		const label = count === 1 ? "STONE MOVED" : `${count} STONES MOVED`;
+		const text = this.add
+			.text(
+				this.arena.deliveryX,
+				this.arena.deliveryY - 70 * this.arena.scale,
+				`SPAWN BLOCKED\n${label}`,
+				{
+					fontSize: `${Math.max(18, 26 * this.arena.scale)}px`,
+					color: THEME.textGold,
+					fontFamily: THEME.fontUrbanStone,
+					fontStyle: "bold",
+					align: "center",
+					stroke: "#171008",
+					strokeThickness: 4,
+				},
+			)
+			.setOrigin(0.5)
+			.setDepth(DEPTH_HUD + 5)
+			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
+
+		this.tweens.add({
+			targets: text,
+			y: text.y - 44 * this.arena.scale,
+			alpha: 0,
+			duration: 1300,
+			ease: "Cubic.easeOut",
+			onComplete: () => text.destroy(),
+		});
 	}
 
 	private spawnSplitStones(parent: StoneState): void {
@@ -985,44 +1078,27 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private recordMovingStoneTrails(): void {
-		for (const stone of this.allStones) {
-			if (stone.stopped) continue;
-			const trail = this.stoneTrails.get(stone.id) ?? [];
-			const last = trail[trail.length - 1];
-			if (
-				!last ||
-				Math.hypot(stone.x - last.x, stone.y - last.y) >=
-					8 * this.arena.scale
-			) {
-				trail.push({ x: stone.x, y: stone.y });
-				this.stoneTrails.set(stone.id, trail.slice(-80));
-			}
-		}
+		recordPlayerTrails(
+			this.stoneTrails,
+			this.allStones.map((stone) => ({
+				id: stone.id,
+				player: stone.teamId,
+				x: stone.x,
+				y: stone.y,
+				moving: !stone.stopped,
+			})),
+			{ scale: this.arena.scale },
+		);
 	}
 
 	private drawStoneTrails(): void {
-		this.trailGfx.clear();
-		for (const [stoneId, trail] of this.stoneTrails) {
-			if (trail.length < 2) continue;
-			const stone = this.allStones.find(
-				(candidate) => candidate.id === stoneId,
-			);
-			const colour = stone?.teamId === 1 ? 0xff6b6b : 0x66aaff;
-			for (let i = 1; i < trail.length; i++) {
-				const alpha = 0.1 + (i / trail.length) * 0.38;
-				this.trailGfx.lineStyle(
-					Math.max(2, 4 * this.arena.scale),
-					colour,
-					alpha,
-				);
-				this.trailGfx.lineBetween(
-					trail[i - 1].x,
-					trail[i - 1].y,
-					trail[i].x,
-					trail[i].y,
-				);
-			}
-		}
+		drawPlayerTrails(this.trailGfx, this.stoneTrails, this.stonePlayersById(), {
+			scale: this.arena.scale,
+		});
+	}
+
+	private stonePlayersById(): Map<number | string, number> {
+		return new Map(this.allStones.map((stone) => [stone.id, stone.teamId]));
 	}
 
 	private animateScoringStones(teamId: number): void {
@@ -1125,8 +1201,6 @@ export class ShellCurlScene extends ResponsiveScene {
 		if (!this.onlineMatch || event.matchId !== this.onlineMatch.matchId)
 			return;
 
-		this.buildBumpers();
-		this.drawBumpers();
 		this.powerSidePanel?.hide();
 		this.clearActiveRing();
 
@@ -1282,12 +1356,11 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private finishOnlineReplay(): void {
-		const shouldSubmitSettled =
+		if (
 			this.onlineMatch &&
 			!this.onlineMatch.spectator &&
-			this.onlineReplayThrower === this.onlineMatch.side;
-
-		if (shouldSubmitSettled) {
+			this.onlineReplayThrower === this.onlineMatch.side
+		) {
 			getGameSocket().emit("game:input", {
 				matchId: this.onlineMatch.matchId,
 				action: "settled",
@@ -1405,12 +1478,23 @@ export class ShellCurlScene extends ResponsiveScene {
 			this.updateOnlineStatus(
 				`${this.playerLabel(snapshot.currentTurn, snapshot.score.length)} turn`,
 			);
-			this.activeStone = null;
-			this.clearActiveRing();
+			this.showRemotePlacedStone(snapshot.currentTurn);
 			this.powerSidePanel?.hide();
 			this.slingshot.destroy();
 			this.slingshot = this.createSlingshot();
 		}
+	}
+
+	private showRemotePlacedStone(side: number): void {
+		if (this.activeStone && !this.onlineConfirmedStoneIds.has(this.activeStone.id))
+			this.removeStone(this.activeStone);
+		this.activeStone = null;
+		this.clearActiveRing();
+		this.resolveDeliverySpawnBlockers();
+		const stone = this.spawnActiveStone(side);
+		this.activeStone = stone;
+		this.addActiveRing(stone);
+		this.redrawAllStones();
 	}
 
 	private renderOnlineObjects(snapshot: CurlingSnapshot): void {
@@ -1425,6 +1509,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			snapshot.objects.map((object) => object.id),
 		);
 		this.clearAllStoneGfx();
+		this.activeStone = null;
 		for (const object of snapshot.objects) {
 			const existingStone = existingStones.get(object.id);
 			const stone: StoneState = {
@@ -1519,89 +1604,28 @@ export class ShellCurlScene extends ResponsiveScene {
 		buttonLabel: string | null,
 		onButton: (() => void) | null,
 	): void {
-		this.overlayContainer?.destroy(true);
-
-		const { width, height } = this.scale;
-		const panelW = Math.min(520, Math.max(320, width - 32));
-		const panelH = buttonLabel ? 220 : 150;
-		const messageY = buttonLabel ? -34 : 0;
-		const buttonY = panelH / 2 - 54;
-		const buttonW = Math.min(200, panelW - 80);
-		const buttonH = 42;
-		const c = this.add
-			.container(width / 2, height / 2)
-			.setDepth(DEPTH_OVERLAY);
-
-		const bg = this.add.graphics();
-		bg.fillStyle(0x000000, 0.65);
-		bg.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
-		bg.lineStyle(2, THEME.gold, 0.8);
-		bg.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
-		c.add(bg);
-
-		const txt = this.add
-			.text(0, messageY, message, {
-				fontSize: "20px",
-				color: THEME.text,
-				fontFamily: THEME.fontUrbanStone,
-				fontStyle: "bold",
-				align: "center",
-				wordWrap: { width: panelW - 56 },
-			})
-			.setOrigin(0.5);
-		c.add(txt);
-
-		if (buttonLabel && onButton) {
-			const btnBg = this.add.graphics();
-			btnBg.fillStyle(0x1a1005, 0.9);
-			btnBg.fillRoundedRect(
-				-buttonW / 2,
-				buttonY - buttonH / 2,
-				buttonW,
-				buttonH,
-				6,
-			);
-			btnBg.lineStyle(1.5, THEME.gold, 0.8);
-			btnBg.strokeRoundedRect(
-				-buttonW / 2,
-				buttonY - buttonH / 2,
-				buttonW,
-				buttonH,
-				6,
-			);
-			c.add(btnBg);
-
-			const btnTxt = this.add
-				.text(0, buttonY, buttonLabel, {
-					fontSize: "14px",
-					color: "#d4a843",
-					fontFamily: THEME.fontUrbanStone,
-					fontStyle: "bold",
-				})
-				.setOrigin(0.5);
-			c.add(btnTxt);
-
-			const zone = this.add
-				.zone(0, buttonY, buttonW, buttonH)
-				.setInteractive({ useHandCursor: true });
-			zone.on("pointerup", () => {
-				this.overlayContainer?.destroy(true);
-				this.overlayContainer = null;
-				onButton();
-			});
-			c.add(zone);
-		}
-
-		this.overlayContainer = c;
-
-		// Auto-dismiss if no button after 1.5 s
-		if (!buttonLabel) {
-			this.time.delayedCall(1500, () => {
-				this.overlayContainer?.destroy(true);
-				this.overlayContainer = null;
-				this.beginTurn();
-			});
-		}
+		this.overlayContainer = showRoundTransitionOverlay(
+			this,
+			this.overlayContainer,
+			{
+				message,
+				buttonLabel,
+				onButton: onButton
+					? () => {
+						this.overlayContainer = null;
+						onButton();
+					}
+					: null,
+				depth: DEPTH_OVERLAY,
+				autoDismissMs: buttonLabel ? undefined : 1500,
+				onAutoDismiss: buttonLabel
+					? null
+					: () => {
+						this.overlayContainer = null;
+						this.beginTurn();
+					},
+			},
+		);
 	}
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
@@ -1646,11 +1670,11 @@ export class ShellCurlScene extends ResponsiveScene {
 			gfx.fillCircle(stone.x, stone.y, stone.r * 1.15);
 		}
 		if (stone.power !== PowerType.NONE) {
-			gfx.fillStyle(0xffffff, 0.9);
-			gfx.fillCircle(
+			gfx.lineStyle(2, THEME.gold, 0.85);
+			gfx.strokeCircle(
 				stone.x + stone.r * 0.62,
 				stone.y - stone.r * 0.62,
-				Math.max(4, stone.r * 0.22),
+				Math.max(4, stone.r * 0.18),
 			);
 		}
 	}
@@ -1695,10 +1719,17 @@ export class ShellCurlScene extends ResponsiveScene {
 	/** Generate or consume bumper positions and map them to canvas pixels. */
 	private buildBumpers(regenerate = false): void {
 		const { sheetX, sheetY, sheetW, sheetH, scale } = this.arena;
-		const onlineMap = this.onlineMatch?.snapshot?.map;
-		const onlineBumpers =
-			onlineMap?.gameId === "temple-curling" && "bumpers" in onlineMap
-				? onlineMap.bumpers
+		const onlineSnapshot = this.onlineMatch?.snapshot;
+		const onlineMap =
+			onlineSnapshot?.gameId === "temple-curling"
+				? onlineSnapshot.map
+				: null;
+		const onlineBumpers: BumperDef[] | null =
+			onlineMap?.gameId === "temple-curling"
+				? (onlineMap as unknown as { bumpers: BumperDef[] }).bumpers.map((bumper) => ({
+						fx: bumper.fx,
+						fy: bumper.fy,
+					}))
 				: null;
 
 		// Online maps are generated once by the server so every participant shares gameplay geometry.
@@ -1994,12 +2025,14 @@ export class ShellCurlScene extends ResponsiveScene {
 	private showPowerPanel(): void {
 		const layout = this.resolveLayout();
 		if (!this.powerSidePanel) {
-			this.powerSidePanel = new PowerSidePanel(
+			this.powerSidePanel = new GameInfoSidePanel(
 				this,
 				() => {},
 				DEPTH_HUD,
 				"TEMPLE CURLING",
 				true,
+				() => [],
+				() => GAME_INFO_PANEL_DETAILS["temple-curling"],
 			);
 		}
 
@@ -2041,7 +2074,31 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private buildScoreLogRows(): SidePanelRow[] {
-		return [{ label: "No scores yet", muted: true }];
+		const state = this.turnManager.state;
+		const endScores =
+			this.onlineMatch?.snapshot?.gameId === "temple-curling"
+				? this.onlineMatch.snapshot.endScores
+				: this.localEndScores;
+
+		return Array.from({ length: TOTAL_ENDS }, (_unused, end) => {
+			const scores = endScores[end] ?? [];
+			return {
+				label: `ROUND ${end + 1}`,
+				value: state.score
+					.map((_score, player) => {
+						const value = scores[player];
+						return `P${player + 1}:${value ?? "-"}`;
+					})
+					.join("  "),
+				labelColor:
+					end === state.currentEnd && state.phase !== "gameover"
+						? THEME.textGold
+						: THEME.text,
+				valueColor: THEME.text,
+				labelFontSize: "12px",
+				valueFontSize: "15px",
+			};
+		});
 	}
 
 	private buildScoreFooterRows(): SidePanelRow[] {

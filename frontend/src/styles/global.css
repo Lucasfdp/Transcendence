@@ -17,9 +17,11 @@
 }
 
 @font-face {
-	font-family: "UrbanStone";
-	src: url("../assets/fonts/UrbanStone.otf") format("opentype");
+	font-family: "Rowdy";
+	src: url("../assets/fonts/Rowdy-Regular.ttf") format("truetype");
 	font-display: swap;
+	font-weight: 400;
+	font-style: normal;
 }
 
 :root {
@@ -33,10 +35,11 @@
 	--thirsty-caps-font: "ThirstyCaps", var(--display-font);
 	--dirty-brush-font: "DirtyBrush", var(--display-font);
 	--blowbrush-font: "Blowbrush", var(--display-font);
-	--urban-stone-font: "UrbanStone", var(--display-font);
+	--rowdy-font: "Rowdy", "Palatino Linotype", "Book Antiqua", Palatino, serif;
+	--urban-stone-font: var(--rowdy-font);
 	--choose-mode-font: var(--dirty-brush-font);
-	--display-font: "Palatino Linotype", "Book Antiqua", Palatino, serif;
-	--body-font: "Trebuchet MS", "Lucida Sans Unicode", sans-serif;
+	--display-font: var(--rowdy-font);
+	--body-font: var(--rowdy-font);
 	--mono-font: "IBM Plex Mono", "Cascadia Code", "Fira Code", Consolas,
 		"Courier New", monospace;
 }
