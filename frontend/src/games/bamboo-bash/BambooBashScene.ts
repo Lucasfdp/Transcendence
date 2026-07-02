@@ -49,7 +49,10 @@ import {
 } from "../../shared/ui/panels/side-panel";
 import { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
 import { PowerType } from "../../shared/mechanics/power-system";
-import { GAME_POWERS } from "../../shared/mechanics/game-powers";
+import {
+	GAME_POWERS,
+	preloadPowerUpAssets,
+} from "../../shared/mechanics/game-powers";
 import {
 	applyBallPower,
 	BallExtState,
@@ -61,11 +64,13 @@ import {
 } from "../../shared/mechanics/player-renderer";
 import {
 	drawPlayerTrails,
+	type PlayerTrailOptions,
 	recordPlayerTrails,
 	resetPlayerTrail,
 	type PlayerTrailStore,
 } from "../../shared/mechanics/player-trails";
 import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
+import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
 import {
 	BOMB_RADIUS_SRC,
 	REPEL_RADIUS_SRC,
@@ -120,6 +125,13 @@ const BAMBOO_ASSETS: Record<number, string> = {
 
 const SCORE_LOG_LIMIT = 8;
 const LOCAL_PLAYER_COLOURS = PLAYER_COLOUR_VALUES;
+const BALL_TRAIL_OPTIONS: PlayerTrailOptions = {
+	maxPoints: 96,
+	minDistance: 4,
+	lineWidth: 7,
+	baseAlpha: 0.22,
+	alphaRange: 0.58,
+};
 
 interface LocalParticipant {
 	ball: BallState;
@@ -144,6 +156,7 @@ export class BambooBashScene extends ResponsiveScene {
 	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
 	private slingshot!: Slingshot;
 	private localParticipants: LocalParticipant[] = [];
+	private playerShellSkins: string[] = ["kanagawa", "dragon", "bamboo", "purple", "kanagawa"];
 	private localTimeLeftMs: number[] = [];
 	private activeLocalParticipantIndex = 0;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
@@ -223,6 +236,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 	preload(): void {
 		preloadIngamePlayerTexture(this);
+		preloadPowerUpAssets(this);
 		for (const stage of [1, 2, 3])
 			this.load.image(BAMBOO_TEXTURES[stage], BAMBOO_ASSETS[stage]);
 	}
@@ -242,6 +256,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.onlineTotalRounds = 3;
 		this.onlineScores = [];
 		this.onlineBalls.clear();
+		this.ballTrails.clear();
 		this.pendingOnlineBambooHits.clear();
 		this.onlineBambooSyncAccMs = 0;
 		this.activeLocalParticipantIndex = 0;
@@ -289,6 +304,13 @@ export class BambooBashScene extends ResponsiveScene {
 		const sel = this.registry.get("shellSelection") as
 			| Record<string, string[] | undefined>
 			| undefined;
+		const shellSkins = this.registry.get("shellSkins") as
+			| Record<string, string | undefined>
+			| undefined;
+		this.playerShellSkins = Array.from(
+			{ length: 5 },
+			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "kanagawa",
+		);
 		const localMode = this.registry.get("localMode") as
 			| "solo"
 			| "versus"
@@ -576,10 +598,7 @@ export class BambooBashScene extends ResponsiveScene {
 			this.checkBambooHits();
 		} else {
 			// Ball just stopped — resolve pending power flags (idempotent: flags cleared on first check)
-			if (ext.phantomHidden) {
-				this.ballGfx.setAlpha(1);
-				ext.phantomHidden = false;
-			}
+			if (ext.phantomHidden) ext.phantomHidden = false;
 			if (ext.bombPending) {
 				this.resolveStopBomb();
 				ext.bombPending = false;
@@ -659,11 +678,6 @@ export class BambooBashScene extends ResponsiveScene {
 
 		applyBallPower(this.activePower, this.ball, this.arena);
 
-		// Phantom: hide ball while in motion
-		if ((this.ball as BallExtState).phantomHidden) {
-			this.ballGfx.setAlpha(0.05);
-		}
-
 		// Track used powers (NONE is always reusable)
 		if (this.activePower !== PowerType.NONE) {
 			this.powerUsed.add(this.activePower);
@@ -741,6 +755,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private checkBambooHits(): void {
 		const ext = this.ball as BallExtState;
+		if (ext.phantomHidden) return;
 		for (let i = this.bamboos.length - 1; i >= 0; i--) {
 			const b = this.bamboos[i];
 			if (
@@ -1060,86 +1075,43 @@ export class BambooBashScene extends ResponsiveScene {
 	// ── End screen ──────────────────────────────────────────────────────────────
 
 	private showEndScreen(): void {
-		const { width, height } = this.scale;
-		const c = this.add
-			.container(width / 2, height / 2)
-			.setDepth(DEPTH_OVERLAY);
-		this.overlay = c;
-
-		const W = 460,
-			H = 300;
-		const bg = this.add.graphics();
-		bg.fillStyle(0x000000, 0.72);
-		bg.fillRoundedRect(-W / 2, -H / 2, W, H, 14);
-		bg.lineStyle(2, THEME.gold, 0.85);
-		bg.strokeRoundedRect(-W / 2, -H / 2, W, H, 14);
-		c.add(bg);
-
-		const title = this.add
-			.text(0, -H / 2 + 38, "TIME'S UP!", {
-				fontSize: "30px",
-				color: THEME.textGold,
-				fontFamily: THEME.font,
-				fontStyle: "bold",
-			})
-			.setOrigin(0.5);
-		c.add(title);
-
-		const header = this.add
-			.text(0, -H / 2 + 78, "FINAL SCORES", {
-				fontSize: "14px",
-				color: THEME.text,
-				fontFamily: THEME.font,
-			})
-			.setOrigin(0.5);
-		c.add(header);
-
 		const rows =
 			this.localParticipants.length > 0
 				? this.localParticipants.map((participant, index) => ({
-						name: `Player ${index + 1}`,
+						label: `P${index + 1}`,
 						score: participant.score,
+						color: PLAYER_HEX_COLOURS[index % PLAYER_HEX_COLOURS.length],
 					}))
-				: [{ name: "You", score: this.score }];
-		let nameText: Phaser.GameObjects.Text | null = null;
-		rows.forEach((row, index) => {
-			const rowY = -H / 2 + 120 + index * 32;
-			const createdNameText = this.add
-				.text(-W / 2 + 40, rowY, row.name, {
-					fontSize: "20px",
-					color: THEME.text,
-					fontFamily: THEME.font,
-					fontStyle: "bold",
-				})
-				.setOrigin(0, 0.5);
-			const scoreText = this.add
-				.text(W / 2 - 40, rowY, String(row.score), {
-					fontSize: "20px",
-					color: THEME.textGold,
-					fontFamily: THEME.font,
-					fontStyle: "bold",
-				})
-				.setOrigin(1, 0.5);
-			if (index === 0) nameText = createdNameText;
-			c.add(createdNameText);
-			c.add(scoreText);
+				: [
+						{
+							label: "P1",
+							score: this.score,
+							color: PLAYER_HEX_COLOURS[0],
+						},
+					];
+		const winner = resolveReplayWinnerSide(rows.map((row) => row.score));
+
+		this.overlay = showGameEndModal(this, this.overlay, {
+			title: "BAMBOO BASH",
+			result:
+				rows.length > 1
+					? winner !== null
+						? `WINNER P${winner + 1}`
+						: "DRAW"
+					: "TIME'S UP",
+			players: rows,
+			actions: [
+				{
+					label: "PLAY AGAIN",
+					onClick: () => this.scene.restart(),
+				},
+				{
+					label: "RETURN",
+					onClick: () => this.scene.start("HubScene"),
+				},
+			],
+			depth: DEPTH_OVERLAY,
 		});
-
-		api.getMe()
-			.then((me: { displayName?: string; username?: string }) => {
-				if (this.overlay !== c || !nameText) return;
-				nameText.setText(me.displayName || me.username || "You");
-			})
-			.catch(() => {
-				/* keep the "You" fallback */
-			});
-
-		this.addOverlayButton(c, -110, H / 2 - 50, "PLAY AGAIN", () =>
-			this.scene.restart(),
-		);
-		this.addOverlayButton(c, 110, H / 2 - 50, "RETURN", () =>
-			this.scene.start("HubScene"),
-		);
 	}
 
 	private showOnlineEndScreen(snapshot: BambooBashSnapshot): void {
@@ -1148,132 +1120,37 @@ export class BambooBashScene extends ResponsiveScene {
 		this.powerSidePanel?.hide();
 		this.overlay?.destroy(true);
 
-		const { width, height } = this.scale;
-		const c = this.add
-			.container(width / 2, height / 2)
-			.setDepth(DEPTH_OVERLAY);
-		this.overlay = c;
-
-		const W = 520,
-			H = 340;
-		const bg = this.add.graphics();
-		bg.fillStyle(0x000000, 0.74);
-		bg.fillRoundedRect(-W / 2, -H / 2, W, H, 14);
-		bg.lineStyle(2, THEME.gold, 0.85);
-		bg.strokeRoundedRect(-W / 2, -H / 2, W, H, 14);
-		c.add(bg);
-
 		const title =
 			snapshot.winnerSide === null
 				? "DRAW"
 				: snapshot.winnerSide === this.onlineMatch?.side
 					? "YOU WIN!"
 					: "YOU LOSE";
-		c.add(
-			this.add
-				.text(0, -H / 2 + 38, title, {
-					fontSize: "30px",
-					color: THEME.textGold,
-					fontFamily: THEME.font,
-					fontStyle: "bold",
-				})
-				.setOrigin(0.5),
-		);
-
-		c.add(
-			this.add
-				.text(0, -H / 2 + 78, "FINAL SCORES", {
-					fontSize: "14px",
-					color: THEME.text,
-					fontFamily: THEME.font,
-				})
-				.setOrigin(0.5),
-		);
-
-		const rows = snapshot.players.map((player) => ({
-			name:
-				player.side === this.onlineMatch?.side
-					? `${player.username} (You)`
-					: player.username,
-			score: snapshot.score[player.side] ?? 0,
-			side: player.side,
-		}));
-
-		rows.forEach((row, index) => {
-			const y = -H / 2 + 120 + index * 30;
-			const color =
-				row.side === snapshot.winnerSide ? THEME.textGold : THEME.text;
-			c.add(
-				this.add
-					.text(-W / 2 + 48, y, row.name, {
-						fontSize: "18px",
-						color,
-						fontFamily: THEME.font,
-						fontStyle: "bold",
-					})
-					.setOrigin(0, 0.5),
-			);
-			c.add(
-				this.add
-					.text(W / 2 - 48, y, String(row.score), {
-						fontSize: "18px",
-						color,
-						fontFamily: THEME.font,
-						fontStyle: "bold",
-					})
-					.setOrigin(1, 0.5),
-			);
+		this.overlay = showGameEndModal(this, this.overlay, {
+			title: "BAMBOO BASH",
+			result: title,
+			players: [...snapshot.players]
+				.sort((a, b) => a.side - b.side)
+				.map((player) => ({
+					label: `P${player.side + 1}`,
+					detail:
+						player.side === this.onlineMatch?.side
+							? `${player.username} (You)`
+							: player.username,
+					score: snapshot.score[player.side] ?? 0,
+					color: PLAYER_HEX_COLOURS[player.side % PLAYER_HEX_COLOURS.length],
+				})),
+			actions: [
+				{
+					label: "RETURN",
+					onClick: () => {
+						this.registry.remove("onlineMatch");
+						this.scene.start("HubScene");
+					},
+				},
+			],
+			depth: DEPTH_OVERLAY,
 		});
-
-		this.addOverlayButton(c, 0, H / 2 - 50, "RETURN", () => {
-			this.registry.remove("onlineMatch");
-			this.scene.start("HubScene");
-		});
-	}
-
-	private addOverlayButton(
-		c: Phaser.GameObjects.Container,
-		x: number,
-		y: number,
-		label: string,
-		onClick: () => void,
-	): void {
-		const BW = 180,
-			BH = 42;
-		const g = this.add.graphics();
-		g.fillStyle(0x1a1005, 0.95);
-		g.fillRoundedRect(x - BW / 2, y - BH / 2, BW, BH, 8);
-		g.lineStyle(1.5, THEME.gold, 0.85);
-		g.strokeRoundedRect(x - BW / 2, y - BH / 2, BW, BH, 8);
-		c.add(g);
-
-		const t = this.add
-			.text(x, y, label, {
-				fontSize: "15px",
-				color: THEME.textGold,
-				fontFamily: THEME.font,
-				fontStyle: "bold",
-			})
-			.setOrigin(0.5);
-		c.add(t);
-
-		const zone = this.add
-			.zone(x, y, BW, BH)
-			.setInteractive({ useHandCursor: true });
-		zone.on(
-			"pointerup",
-			(
-				_pointer: Phaser.Input.Pointer,
-				_localX: number,
-				_localY: number,
-				event: Phaser.Types.Input.EventData,
-			) => {
-				event.stopPropagation();
-				zone.disableInteractive();
-				onClick();
-			},
-		);
-		c.add(zone);
 	}
 
 	// ── HUD ─────────────────────────────────────────────────────────────────────
@@ -1431,6 +1308,7 @@ export class BambooBashScene extends ResponsiveScene {
 						`bamboo-bash-player-${side}`,
 						ball,
 						DEPTH_HUD - 17,
+						this.playerShellSkins[side],
 					)
 				)
 					drawShellBall(this.ballGfx, ball, false);
@@ -1451,6 +1329,7 @@ export class BambooBashScene extends ResponsiveScene {
 					"bamboo-bash-player-local",
 					this.ball,
 					DEPTH_HUD - 17,
+					this.playerShellSkins[0],
 				)
 			)
 				drawShellBall(this.ballGfx, this.ball, false);
@@ -1465,6 +1344,7 @@ export class BambooBashScene extends ResponsiveScene {
 					`bamboo-bash-player-local-${index}`,
 					participant.ball,
 					DEPTH_HUD - 17,
+					this.playerShellSkins[index],
 				)
 			)
 				drawShellBall(this.ballGfx, participant.ball, false);
@@ -1601,7 +1481,7 @@ export class BambooBashScene extends ResponsiveScene {
 					y: ball.y,
 					moving: isBallMoving(ball),
 				})),
-				{ scale: this.arena.scale },
+				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 			);
 			return;
 		}
@@ -1616,7 +1496,7 @@ export class BambooBashScene extends ResponsiveScene {
 					y: participant.ball.y,
 					moving: isBallMoving(participant.ball),
 				})),
-				{ scale: this.arena.scale },
+				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 			);
 			return;
 		}
@@ -1632,7 +1512,7 @@ export class BambooBashScene extends ResponsiveScene {
 					moving: isBallMoving(this.ball),
 				},
 			],
-			{ scale: this.arena.scale },
+			{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 		);
 	}
 
@@ -1643,6 +1523,7 @@ export class BambooBashScene extends ResponsiveScene {
 			playersById.set(`local-${index}`, index),
 		);
 		drawPlayerTrails(this.trailGfx, this.ballTrails, playersById, {
+			...BALL_TRAIL_OPTIONS,
 			scale: this.arena.scale,
 		});
 	}
@@ -1988,6 +1869,11 @@ export class BambooBashScene extends ResponsiveScene {
 		const balls = [...new Set(this.onlineBalls.values())];
 		for (let i = 0; i < balls.length; i++) {
 			for (let j = i + 1; j < balls.length; j++) {
+				if (
+					(balls[i] as BallExtState).phantomHidden ||
+					(balls[j] as BallExtState).phantomHidden
+				)
+					continue;
 				resolveBallCollision(balls[i], balls[j]);
 			}
 		}
@@ -2034,6 +1920,11 @@ export class BambooBashScene extends ResponsiveScene {
 	private resolveLocalBallCollisions(): void {
 		for (let i = 0; i < this.localParticipants.length; i++) {
 			for (let j = i + 1; j < this.localParticipants.length; j++) {
+				if (
+					(this.localParticipants[i].ball as BallExtState).phantomHidden ||
+					(this.localParticipants[j].ball as BallExtState).phantomHidden
+				)
+					continue;
 				resolveBallCollision(
 					this.localParticipants[i].ball,
 					this.localParticipants[j].ball,
@@ -2047,6 +1938,7 @@ export class BambooBashScene extends ResponsiveScene {
 		participantIndex: number,
 	): void {
 		const ext = participant.ball as BallExtState;
+		if (ext.phantomHidden) return;
 		for (let i = this.bamboos.length - 1; i >= 0; i--) {
 			const b = this.bamboos[i];
 			if (

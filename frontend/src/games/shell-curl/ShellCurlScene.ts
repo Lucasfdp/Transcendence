@@ -1,8 +1,8 @@
 /**
  * game/shell-curl/ShellCurlScene.ts — Shell Curl minigame.
  *
- * A two-player hot-seat curling game. Turtle shells slide across an ice sheet
- * toward a target house; teams alternate delivering stones until all are played
+ * A local and online curling game. Turtle shells slide across an ice sheet
+ * toward a target house; players deliver stones until all are played
  * then score by counting stones in the house.
  */
 
@@ -30,8 +30,14 @@ import {
 	PowerType,
 	PowerRegistry,
 	ALL_POWERS,
+	SPLITTER_RADIUS,
+	SPLITTER_SPREAD,
 } from "../../shared/mechanics/power-system";
-import { GAME_POWERS } from "../../shared/mechanics/game-powers";
+import {
+	GAME_POWERS,
+	POWER_UP_TEXTURES,
+	preloadPowerUpAssets,
+} from "../../shared/mechanics/game-powers";
 import {
 	TurnManager,
 	type TurnPhase,
@@ -60,6 +66,7 @@ import {
 	type PlayerTrailStore,
 } from "../../shared/mechanics/player-trails";
 import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
+import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
 import {
 	getGameSocket,
 	type CurlingSnapshot,
@@ -200,6 +207,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private activeStone: StoneState | null = null;
 	private activeRingGfx: Phaser.GameObjects.Graphics | null = null;
 	private activeRingTween: Phaser.Tweens.Tween | null = null;
+	private playerShellSkins: string[] = ["kanagawa", "dragon", "bamboo", "purple", "kanagawa"];
 	private nextStoneId = 0;
 	private settlingTimer = 0;
 
@@ -213,6 +221,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private sheetGfx!: Phaser.GameObjects.Graphics;
 	private bumperGfx!: Phaser.GameObjects.Graphics;
 	private pickupGfx!: Phaser.GameObjects.Graphics;
+	private pickupImages: Phaser.GameObjects.Image[] = [];
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 	private stoneTrails: PlayerTrailStore = new Map();
@@ -230,6 +239,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private powerSidePanel: GameInfoSidePanel | null = null;
 	private scoreLogPanel: SidePanel | null = null;
 	private localEndScores: Array<Array<number | null>> = [];
+	private localMode: "solo" | "versus" = "versus";
 
 	private onlineMatch: OnlineMatchContext | null = null;
 	private onlineStatusText: Phaser.GameObjects.Text | null = null;
@@ -267,6 +277,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	preload(): void {
 		preloadIngamePlayerTexture(this);
+		preloadPowerUpAssets(this);
 	}
 
 	private readonly handleOnlineState = (snapshot: CurlingSnapshot): void => {
@@ -294,11 +305,21 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.pendingReplayPersist = null;
 		this.powerUsed = Array.from({ length: 5 }, () => new Set<PowerType>());
 		this.arena = this.resolveArena();
+		const registryLocalMode = this.registry.get("localMode") as
+			| "solo"
+			| "versus"
+			| undefined;
+		this.localMode = registryLocalMode === "solo" ? "solo" : "versus";
 		const localPlayerCount = Math.max(
-			2,
+			this.localMode === "solo" ? 1 : 2,
 			Math.min(
 				5,
-				Math.floor(Number(this.registry.get("localPlayerCount") ?? 2)),
+				Math.floor(
+					Number(
+						this.registry.get("localPlayerCount") ??
+							(this.localMode === "solo" ? 1 : 2),
+					),
+				),
 			),
 		);
 		this.turnManager = new TurnManager({
@@ -339,6 +360,13 @@ export class ShellCurlScene extends ResponsiveScene {
 			const pool = buildPool(sel?.[`player${index}`]);
 			return pool.length > 1 ? pool : FALLBACK_POWERS;
 		});
+		const shellSkins = this.registry.get("shellSkins") as
+			| Record<string, string | undefined>
+			| undefined;
+		this.playerShellSkins = Array.from(
+			{ length: 5 },
+			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "kanagawa",
+		);
 
 		// Power registry — register ALL powers so the registry can always resolve any type
 		this.powerRegistry = new PowerRegistry();
@@ -366,6 +394,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			playerColours: PLAYER_COLOUR_VALUES,
 			playerHexColours: PLAYER_COLOURS,
 			playerLabel: (player) => `P${player + 1}`,
+			minPlayerCount: this.turnManager.state.score.length,
 		});
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
 			this.markOnlineAway(),
@@ -424,6 +453,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.scoreLogPanel?.destroy();
 		this.scoreLogPanel = null;
 		this.clearAllStoneGfx();
+		this.clearPowerPickupImages();
 		this.bumperGfx.destroy();
 		this.pickupGfx.destroy();
 		this.trailGfx.destroy();
@@ -459,29 +489,35 @@ export class ShellCurlScene extends ResponsiveScene {
 				if (!s.stopped) stepStone(s, delta, this.arena);
 			}
 			this.collectPowerPickup(this.activeStone);
+			if (this.activeStone?.splitterPending) {
+				this.activeStone.splitterPending = false;
+				this.spawnSplitStones(this.activeStone);
+				this.activeStone = null;
+			}
 
-			// Apply active power update
-			const def = this.powerRegistry.get(this.activeStone.power);
-			def.onUpdate?.(this.activeStone, delta, this.arena);
+			if (this.activeStone) {
+				// Apply active power update
+				const def = this.powerRegistry.get(this.activeStone.power);
+				def.onUpdate?.(this.activeStone, delta, this.arena);
 
-			// Active-stone collisions: check overlap BEFORE resolving so onCollide
-			// fires on first contact (resolution pushes stones apart, breaking the check).
-			for (const other of this.allStones) {
-				if (!this.activeStone) break;
-				if (other.id === this.activeStone.id) continue;
-				const colliding = this.stonesOverlapping(
-					this.activeStone,
-					other,
-				);
-				resolveStoneCollision(this.activeStone, other);
-				if (colliding) {
-					def.onCollide?.(this.activeStone, other, this.arena);
-				}
-				if (this.activeStone?.splitterPending) {
-					this.activeStone.splitterPending = false;
-					this.spawnSplitStones(this.activeStone);
-					this.activeStone = null;
-					break;
+				// Active-stone collisions: check overlap BEFORE resolving so onCollide
+				// fires on first contact (resolution pushes stones apart, breaking the check).
+				for (const other of this.allStones) {
+					if (!this.activeStone) break;
+					if (other.id === this.activeStone.id) continue;
+					if (
+						(this.activeStone as { phantomHidden?: boolean }).phantomHidden ||
+						(other as { phantomHidden?: boolean }).phantomHidden
+					)
+						continue;
+					const colliding = this.stonesOverlapping(
+						this.activeStone,
+						other,
+					);
+					resolveStoneCollision(this.activeStone, other);
+					if (colliding) {
+						def.onCollide?.(this.activeStone, other, this.arena);
+					}
 				}
 			}
 			// Resolve collisions between all other stone pairs
@@ -493,6 +529,11 @@ export class ShellCurlScene extends ResponsiveScene {
 						this.activeStone &&
 						(si.id === this.activeStone.id ||
 							sj.id === this.activeStone.id)
+					)
+						continue;
+					if (
+						(si as { phantomHidden?: boolean }).phantomHidden ||
+						(sj as { phantomHidden?: boolean }).phantomHidden
 					)
 						continue;
 					resolveStoneCollision(si, sj);
@@ -708,8 +749,9 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		const state = this.turnManager.state;
 		// stonesLeft still reflects pre-throw counts. After consuming this throw,
-		// total remaining = (left[0] + left[1]) - 1. If > 0, more throws remain.
-		const totalRemaining = state.stonesLeft[0] + state.stonesLeft[1] - 1;
+		// total remaining is the sum across all local players minus this throw.
+		const totalRemaining =
+			state.stonesLeft.reduce((total, left) => total + left, 0) - 1;
 
 		if (totalRemaining > 0) {
 			this.turnManager.nextThrow();
@@ -868,21 +910,22 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private spawnSplitStones(parent: StoneState): void {
-		const angles = [-Math.PI / 12, 0, Math.PI / 12];
-		const parentSpeed = Math.sqrt(
-			parent.vx * parent.vx + parent.vy * parent.vy,
-		);
+		const angles = [-SPLITTER_SPREAD, 0, SPLITTER_SPREAD];
+		const parentSpeed = Math.hypot(parent.vx, parent.vy);
 		const parentAngle = Math.atan2(parent.vy, parent.vx);
+		const childRadius = parent.r * SPLITTER_RADIUS;
+		const spawnOffset = Math.max(1, childRadius * 0.45);
 
 		for (const offset of angles) {
+			const angle = parentAngle + offset;
 			const child: StoneState = {
 				id: this.nextStoneId++,
 				teamId: parent.teamId,
-				x: parent.x,
-				y: parent.y,
-				vx: Math.cos(parentAngle + offset) * parentSpeed * 0.7,
-				vy: Math.sin(parentAngle + offset) * parentSpeed * 0.7,
-				r: parent.r * 0.65,
+				x: parent.x + Math.cos(angle) * spawnOffset,
+				y: parent.y + Math.sin(angle) * spawnOffset,
+				vx: Math.cos(angle) * parentSpeed * 0.7,
+				vy: Math.sin(angle) * parentSpeed * 0.7,
+				r: childRadius,
 				power: PowerType.NONE,
 				stopped: false,
 				curlBias: parent.curlBias,
@@ -891,9 +934,37 @@ export class ShellCurlScene extends ResponsiveScene {
 			const gfx = this.add.graphics().setDepth(DEPTH_STONES);
 			this.stoneGfx.set(child.id, gfx);
 			this.allStones.push(child);
+			this.stoneTrails.set(child.id, [{ x: child.x, y: child.y }]);
 		}
 
+		this.showSplitterNotice(parent.x, parent.y);
 		this.removeStone(parent);
+		this.drawStoneTrails();
+		this.redrawAllStones();
+	}
+
+	private showSplitterNotice(x: number, y: number): void {
+		const text = this.add
+			.text(x, y - 42 * this.arena.scale, "SPLIT!", {
+				fontSize: `${Math.max(18, 30 * this.arena.scale)}px`,
+				color: "#fff7d6",
+				fontFamily: THEME.fontUrbanStone,
+				fontStyle: "bold",
+				stroke: "#171008",
+				strokeThickness: 4,
+			})
+			.setOrigin(0.5)
+			.setDepth(DEPTH_HUD + 5)
+			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
+
+		this.tweens.add({
+			targets: text,
+			y: text.y - 42 * this.arena.scale,
+			alpha: 0,
+			duration: 850,
+			ease: "Cubic.easeOut",
+			onComplete: () => text.destroy(),
+		});
 	}
 
 	private removeStone(stone: StoneState): void {
@@ -1209,9 +1280,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private showGameOverOverlay(): void {
-		const [s0, s1] = this.turnManager.state.score;
-		const winner = s0 > s1 ? "TEAM BLUE" : s1 > s0 ? "TEAM RED" : "DRAW";
-		const message = `${winner} WINS!\nBlue: ${s0}  Red: ${s1}`;
+		const scores = this.turnManager.state.score;
 		this.captureLocalReplayFrame(true, "finished");
 		this.pendingReplayPersist = this.persistLocalReplay();
 		this.submitResult();
@@ -1221,7 +1290,35 @@ export class ShellCurlScene extends ResponsiveScene {
 		// The null/null pattern triggers an auto-dismiss that calls beginTurn(),
 		// which sees phase==='gameover' and calls showGameOverOverlay() again —
 		// creating an infinite 1.5s timer loop that survives scene transitions.
-		this.showOverlay(message, "RETURN", () => this.scene.start("HubScene"));
+		const winner = resolveReplayWinnerSide(scores);
+		this.overlayContainer = showGameEndModal(
+			this,
+			this.overlayContainer,
+			{
+				title: "TEMPLE CURLING",
+				result:
+					this.localMode === "solo"
+						? "RUN COMPLETE"
+						: winner !== null
+							? `WINNER P${winner + 1}`
+							: "DRAW",
+				players: scores.map((score, index) => ({
+					label: `P${index + 1}`,
+					score,
+					color: this.playerHexColour(index),
+				})),
+				actions: [
+					{
+						label: "RETURN",
+						onClick: () => {
+							this.overlayContainer = null;
+							this.scene.start("HubScene");
+						},
+					},
+				],
+				depth: DEPTH_OVERLAY,
+			},
+		);
 	}
 
 	/**
@@ -1287,7 +1384,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		phaseOverride?: CurlingSnapshot["phase"],
 	): CurlingSnapshot {
 		const state = this.turnManager.state;
-		const playerCount = Math.max(2, state.score.length);
+		const playerCount = Math.max(1, state.score.length);
 		const deliveredTurns = this.localDeliveredTurns();
 		const phase =
 			phaseOverride ?? (state.phase === "gameover" ? "finished" : "active");
@@ -1341,7 +1438,9 @@ export class ShellCurlScene extends ResponsiveScene {
 			})),
 			activeStoneId: this.activeStone?.id ?? null,
 			winnerSide:
-				phase === "finished" ? resolveReplayWinnerSide([...state.score]) : null,
+				phase === "finished" && this.localMode !== "solo"
+					? resolveReplayWinnerSide([...state.score])
+					: null,
 		};
 	}
 
@@ -1349,7 +1448,10 @@ export class ShellCurlScene extends ResponsiveScene {
 		const user = this.registry.get("user") as
 			| { id?: number; username?: string; turtleName?: string | null }
 			| undefined;
-		return buildLocalReplayPlayers(user, Math.max(2, this.turnManager.state.score.length));
+		return buildLocalReplayPlayers(
+			user,
+			Math.max(1, this.turnManager.state.score.length),
+		);
 	}
 
 	private readStoneTrail(stoneId: number): Array<{ x: number; y: number }> {
@@ -1372,14 +1474,17 @@ export class ShellCurlScene extends ResponsiveScene {
 			| undefined;
 		if (user?.isGuest) return;
 		const finishedAt = new Date().toISOString();
-		const playerCount = Math.max(2, this.turnManager.state.score.length);
+		const playerCount = Math.max(1, this.turnManager.state.score.length);
 		const importPayload: ReplayImportRequest = {
 			gameId: "temple-curling",
-			mode: "local-versus",
+			mode: this.localMode === "solo" ? "singleplayer" : "local-versus",
 			status: "finished",
 			createdAt: this.localReplayStartedAtIso || finishedAt,
 			finishedAt,
-			winnerSide: resolveReplayWinnerSide([...this.turnManager.state.score]),
+			winnerSide:
+				this.localMode === "solo"
+					? null
+					: resolveReplayWinnerSide([...this.turnManager.state.score]),
 			playerUserIds: buildLocalReplayPlayerUserIds(user?.id ?? null, playerCount),
 			playerNames: this.buildLocalReplayPlayers().map((player) => player.username),
 			frames: this.buildReplayImportFrames(),
@@ -1665,14 +1770,36 @@ export class ShellCurlScene extends ResponsiveScene {
 				snapshot.winnerSide === null
 					? "DRAW"
 					: snapshot.winnerSide === this.onlineMatch.side
-						? "YOU WIN"
+						? "YOU WIN!"
 						: "YOU LOSE";
-			this.showOverlay(
-				`${winner}\n${this.scoreLine(snapshot.score)}`,
-				"RETURN",
-				() => {
-					this.registry.remove("onlineMatch");
-					this.scene.start("HubScene");
+			this.overlayContainer = showGameEndModal(
+				this,
+				this.overlayContainer,
+				{
+					title: "TEMPLE CURLING",
+					result: winner,
+					players: [...snapshot.players]
+						.sort((a, b) => a.side - b.side)
+						.map((player) => ({
+							label: `P${player.side + 1}`,
+							detail:
+								player.side === this.onlineMatch?.side
+									? `${player.username} (You)`
+									: player.username,
+							score: snapshot.score[player.side] ?? 0,
+							color: this.playerHexColour(player.side),
+						})),
+					actions: [
+						{
+							label: "RETURN",
+							onClick: () => {
+								this.overlayContainer = null;
+								this.registry.remove("onlineMatch");
+								this.scene.start("HubScene");
+							},
+						},
+					],
+					depth: DEPTH_OVERLAY,
 				},
 			);
 			return;
@@ -1805,15 +1932,6 @@ export class ShellCurlScene extends ResponsiveScene {
 		);
 	}
 
-	private scoreLine(score: readonly number[]): string {
-		return score
-			.map(
-				(value, side) =>
-					`${this.playerLabel(side, score.length)}: ${value}`,
-			)
-			.join("  ");
-	}
-
 	private playerLabel(side: number, playerCount: number): string {
 		if (playerCount === 2) return side === 0 ? "Blue" : "Red";
 		return `P${side + 1}`;
@@ -1874,6 +1992,7 @@ export class ShellCurlScene extends ResponsiveScene {
 				`shell-curl-player-${stone.id}`,
 				stone,
 				DEPTH_STONES,
+				this.playerShellSkins[stone.teamId],
 			)
 		) {
 			drawStone(gfx, stone, isActive);
@@ -2142,19 +2261,34 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	private drawPowerPickups(): void {
 		this.pickupGfx.clear();
+		this.clearPowerPickupImages();
 		if (!this.powerupsEnabled) return;
 
 		for (const pickup of this.pickups) {
 			const def = ALL_POWERS[pickup.type];
+			const texture = POWER_UP_TEXTURES[pickup.type];
 			const { x, y } = this.pickupPosition(pickup);
 			const r = pickup.rSrc * this.arena.scale;
 			this.pickupGfx.fillStyle(def.accentColour, 0.25);
 			this.pickupGfx.fillCircle(x, y, r * 1.65);
 			this.pickupGfx.lineStyle(Math.max(1, 2 * this.arena.scale), 0xffffff, 0.75);
 			this.pickupGfx.strokeCircle(x, y, r * 1.15);
-			this.pickupGfx.fillStyle(def.accentColour, 0.9);
-			this.pickupGfx.fillCircle(x, y, r);
+			if (texture && this.textures.exists(texture)) {
+				const image = this.add
+					.image(x, y, texture)
+					.setDepth(DEPTH_STONES - 0.45)
+					.setDisplaySize(r * 2.45, r * 2.45);
+				this.pickupImages.push(image);
+			} else {
+				this.pickupGfx.fillStyle(def.accentColour, 0.9);
+				this.pickupGfx.fillCircle(x, y, r);
+			}
 		}
+	}
+
+	private clearPowerPickupImages(): void {
+		for (const image of this.pickupImages) image.destroy();
+		this.pickupImages.length = 0;
 	}
 
 	// ── Resize ────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 /**
  * game/mechanics/turn-manager.ts — reusable turn state machine.
  *
- * Works for turn-based curling-style games with two or more players.
+ * Works for turn-based curling-style games with one or more players.
  * TurnState is plain-object serialisable so it can be sent over WebSocket
  * for a future network play implementation.
  *
@@ -46,7 +46,7 @@ export class TurnManager {
 	}) {
 		this.totalEnds = opts.totalEnds;
 		this.stonesPerTeam = opts.stonesPerTeam;
-		this.playerCount = Math.max(2, opts.playerCount ?? 2);
+		this.playerCount = Math.max(1, opts.playerCount ?? 2);
 
 		this._state = {
 			currentTeam: 0,
@@ -87,6 +87,8 @@ export class TurnManager {
 		const nextEnd = this._state.currentEnd + 1;
 		const isOver = nextEnd >= this.totalEnds;
 
+		const firstTeam = (this.hammerTeam + 1) % this.playerCount;
+
 		this._state = {
 			...this._state,
 			currentEnd: nextEnd,
@@ -95,7 +97,7 @@ export class TurnManager {
 				() => this.stonesPerTeam,
 			),
 			score,
-			currentTeam: this.hammerTeam === 0 ? 1 : 0, // hammer throws last → opponent first
+			currentTeam: firstTeam, // hammer throws last in the circular order
 			phase: isOver ? "gameover" : "aiming",
 			hasHammer: false,
 		};

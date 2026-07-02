@@ -41,7 +41,7 @@ const POWER_DESC: Record<PowerType, string> = {
 	[PowerType.NONE]: "Standard delivery",
 	[PowerType.HEAVY]: "More knockback on contact",
 	[PowerType.BOMB]: "Explodes on first hit",
-	[PowerType.SPLITTER]: "Splits into 3 on collision",
+	[PowerType.SPLITTER]: "Splits into 3 on pickup",
 	[PowerType.GHOST]: "Phases through opponents",
 	[PowerType.MAGNET]: "Pulls nearby enemy shells",
 	[PowerType.SPINNING]: "Unpredictable curved path",

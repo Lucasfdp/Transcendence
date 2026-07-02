@@ -34,7 +34,7 @@ export enum PowerType {
 	VORTEX = "vortex", // spirals inward when near the house centre
 	MIRROR = "mirror", // spawns a mirror-image stone on the opposite curl path
 	RICOCHET = "ricochet", // passes through first stone, hits second at full speed
-	PHANTOM = "phantom", // invisible while moving; reveals on stop
+	PHANTOM = "phantom", // ignored by collision checks while moving
 }
 
 // ── Power definition interface ────────────────────────────────────────────────
@@ -158,18 +158,12 @@ const SPLITTER_DEF: PowerDef = {
 	type: PowerType.SPLITTER,
 	label: "Splitter",
 	accentColour: 0xffee00,
-	description: "Splits into 3 smaller shells on first collision.",
-	onApply() {
-		/* nothing at launch */
+	description: "Splits into 3 smaller shells when picked up.",
+	onApply(stone) {
+		(stone as SplittableStone).splitterPending = true;
 	},
 	// Actual split logic is handled in ShellCurlScene which can create new stones.
 	// The flag is read by the scene; see stone.splitterPending.
-	onCollide(stone) {
-		if (!(stone as SplittableStone).hasSplit) {
-			(stone as SplittableStone).hasSplit = true;
-			(stone as SplittableStone).splitterPending = true;
-		}
-	},
 };
 
 const GHOST_DEF: PowerDef = {
@@ -291,7 +285,7 @@ const SLICK_DEF: PowerDef = {
 
 // ── New power implementations ─────────────────────────────────────────────────
 
-/** Internal flag on a stone that is currently PHANTOM (invisible in motion). */
+/** Internal flag on a stone that PHANTOM collision checks should ignore. */
 interface PhantomStone {
 	phantomHidden: boolean;
 }
@@ -530,14 +524,12 @@ const PHANTOM_DEF: PowerDef = {
 	label: "Phantom Shell",
 	accentColour: 0xdddddd,
 	description:
-		"Invisible while moving. Opponents cannot judge its path until it stops.",
+		"Invisible only to collisions while moving; visuals stay readable.",
 	onApply(stone) {
 		(stone as unknown as PhantomStone).phantomHidden = true;
-		// TODO(#phantom-visual): scene should set stone alpha to 0.05 while phantomHidden is true
 	},
 	onStop(stone) {
 		(stone as unknown as PhantomStone).phantomHidden = false;
-		// TODO(#phantom-visual): scene restores stone alpha to 1.0
 	},
 };
 

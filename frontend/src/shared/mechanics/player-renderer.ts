@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { INGAME_PLAYER_ASSET } from "../assets";
+import { INGAME_PLAYER_ASSET, SHELL_SKIN_ASSETS, resolveShellSkinAsset } from "../assets";
 
 interface PlayerVisualState {
 	x: number;
@@ -25,11 +25,9 @@ export function preloadIngamePlayerTexture(scene: Phaser.Scene): void {
 			INGAME_PLAYER_ASSET.bodyKey,
 			INGAME_PLAYER_ASSET.bodySource,
 		);
-	if (!scene.textures.exists(INGAME_PLAYER_ASSET.shellKey))
-		scene.load.image(
-			INGAME_PLAYER_ASSET.shellKey,
-			INGAME_PLAYER_ASSET.shellSource,
-		);
+	for (const asset of Object.values(SHELL_SKIN_ASSETS)) {
+		if (!scene.textures.exists(asset.key)) scene.load.image(asset.key, asset.source);
+	}
 }
 
 export function drawIngamePlayerTexture(
@@ -37,10 +35,12 @@ export function drawIngamePlayerTexture(
 	name: string,
 	state: PlayerVisualState,
 	depth: number,
+	shellSkin?: string | null,
 ): boolean {
+	const shellAsset = resolveShellSkinAsset(shellSkin);
 	if (
 		!scene.textures.exists(INGAME_PLAYER_ASSET.bodyKey) ||
-		!scene.textures.exists(INGAME_PLAYER_ASSET.shellKey)
+		!scene.textures.exists(shellAsset.key)
 	) {
 		hideIngamePlayerTexture(scene, name);
 		return false;
@@ -55,9 +55,10 @@ export function drawIngamePlayerTexture(
 	const shell = getOrCreatePlayerImage(
 		scene,
 		`${name}-shell`,
-		INGAME_PLAYER_ASSET.shellKey,
+		shellAsset.key,
 		state,
 	);
+	if (shell.texture.key !== shellAsset.key) shell.setTexture(shellAsset.key);
 	updateIngamePlayerRoll(shell, state);
 
 	const isRetracted = isPlayerMoving(state);

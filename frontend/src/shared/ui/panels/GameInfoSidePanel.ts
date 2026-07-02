@@ -9,6 +9,7 @@
  */
 
 import Phaser from "phaser";
+import { POWER_UP_TEXTURES } from "../../mechanics/game-powers";
 import { PowerType } from "../../mechanics/power-system";
 import { THEME } from "../../theme";
 import { PanelRect } from "./side-panel";
@@ -60,7 +61,7 @@ const POWER_DESC: Record<PowerType, string> = {
 	[PowerType.NONE]: "Standard delivery, no special effect",
 	[PowerType.HEAVY]: "Slower and heavier; harder to deflect",
 	[PowerType.BOMB]: "Explodes on first hit, scattering nearby shells",
-	[PowerType.SPLITTER]: "Splits into 3 smaller shells on first collision",
+	[PowerType.SPLITTER]: "Splits into 3 smaller shells when picked up",
 	[PowerType.GHOST]: "Passes through opponent shells without deflecting",
 	[PowerType.MAGNET]: "Pulls nearby enemy shells toward your delivery",
 	[PowerType.SPINNING]: "Follows an unpredictable curved path",
@@ -89,7 +90,7 @@ const POWER_DESC: Record<PowerType, string> = {
 	[PowerType.RICOCHET]:
 		"Bounces off any shell it hits at full speed — chain collisions",
 	[PowerType.PHANTOM]:
-		"Invisible while moving; only revealed when it comes to rest",
+		"Invisible only to collisions while moving; visuals stay readable",
 };
 
 const ACCENT_COLOURS: Record<PowerType, number> = {
@@ -135,6 +136,7 @@ export interface GameInfoPanelDetails {
 export class GameInfoSidePanel {
 	private readonly gfx: Phaser.GameObjects.Graphics;
 	private readonly texts: Phaser.GameObjects.Text[] = [];
+	private readonly images: Phaser.GameObjects.Image[] = [];
 	private readonly zones: Phaser.GameObjects.Zone[] = [];
 
 	private selected: PowerType = PowerType.NONE;
@@ -459,18 +461,29 @@ export class GameInfoSidePanel {
 					}
 				}
 
-				// Icon circle
+				// Icon badge
 				this.gfx.fillStyle(
 					colour,
-					(isSel && !isUsed ? 0.9 : 0.4) * dim,
+					(isSel && !isUsed ? 0.42 : 0.18) * dim,
 				);
-				this.gfx.fillCircle(iconX, cy, ICON_R);
+				this.gfx.fillCircle(iconX, cy, ICON_R * 1.28);
 				this.gfx.lineStyle(
 					isSel && !isUsed ? 1.5 : 1,
 					colour,
 					(isSel && !isUsed ? 1.0 : 0.55) * dim,
 				);
-				this.gfx.strokeCircle(iconX, cy, ICON_R);
+				this.gfx.strokeCircle(iconX, cy, ICON_R * 1.28);
+
+				const texture = POWER_UP_TEXTURES[power];
+				if (texture && this.scene.textures.exists(texture)) {
+					this.addImage(iconX, cy, texture, dim).setDisplaySize(
+						ICON_R * 2.7,
+						ICON_R * 2.7,
+					);
+				} else {
+					this.gfx.fillStyle(colour, (isSel && !isUsed ? 0.9 : 0.4) * dim);
+					this.gfx.fillCircle(iconX, cy, ICON_R);
+				}
 
 				// Strikethrough bar for used powers
 				if (isUsed) {
@@ -624,10 +637,26 @@ export class GameInfoSidePanel {
 		return t;
 	}
 
+	private addImage(
+		x: number,
+		y: number,
+		texture: string,
+		alpha = 1,
+	): Phaser.GameObjects.Image {
+		const image = this.scene.add
+			.image(x, y, texture)
+			.setDepth(this.depth + 1.1)
+			.setAlpha(alpha);
+		this.images.push(image);
+		return image;
+	}
+
 	private clear(): void {
 		this.gfx.clear();
 		for (const t of this.texts) t.destroy();
 		this.texts.length = 0;
+		for (const image of this.images) image.destroy();
+		this.images.length = 0;
 		for (const z of this.zones) z.destroy();
 		this.zones.length = 0;
 	}

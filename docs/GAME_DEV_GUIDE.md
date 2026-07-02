@@ -412,7 +412,7 @@ The power system lets each game offer a subset of the 11 built-in powers without
 | `PowerType.NONE` | Standard stone — no effect. |
 | `PowerType.HEAVY` | Larger stone, harder to deflect. |
 | `PowerType.BOMB` | Explodes on rest, pushing nearby stones outward. |
-| `PowerType.SPLITTER` | Splits into 3 child stones on first collision. |
+| `PowerType.SPLITTER` | Splits into 3 child stones when its pickup is collected. |
 | `PowerType.GHOST` | Passes through other stones without collision. |
 | `PowerType.MAGNET` | Attracts nearby enemy stones while in motion. |
 | `PowerType.SPINNING` | Strong curl bias — arcs dramatically across the sheet. |
@@ -427,7 +427,7 @@ The power system lets each game offer a subset of the 11 built-in powers without
 |---|---|---|
 | `onApply(stone, arena)` | Yes | Called immediately on launch. Mutate stone properties (`r`, `frictionOverride`, `curlBias`, etc.). |
 | `onUpdate?(stone, dt, arena)` | No | Called every frame while the stone is moving. Use for continuous effects (magnet pull, etc.). |
-| `onCollide?(stone, other, arena)` | No | Called on first contact with another stone (before resolution). Use for Splitter, Freeze, Ghost. |
+| `onCollide?(stone, other, arena)` | No | Called on first contact with another stone (before resolution). Use for Freeze, Ghost, and other collision-triggered powers. |
 | `onStop?(stone, arena, all)` | No | Called once when the stone comes to rest. Use for Bomb explosion, Shield activation. |
 
 ### 6.4 Using powers in your game

@@ -35,8 +35,8 @@ export const COSMETICS: CosmeticDefinition[] = [
 	{
 		id: "kanagawa",
 		type: "shell_skin",
-		name: "Kanagawa Shell",
-		description: "Classic blue shell pattern. The default dojo style.",
+		name: "Default Shell",
+		description: "The plain starter shell. No special color, no decoration, just the shell every player begins with.",
 		price: 0,
 		defaultUnlocked: true,
 		accentColor: 0x1a3a5c,
@@ -58,6 +58,14 @@ export const COSMETICS: CosmeticDefinition[] = [
 		price: 250,
 		unlockAchievementId: "matches-10-played",
 		accentColor: 0x2d5a1b,
+	},
+	{
+		id: "purple",
+		type: "shell_skin",
+		name: "Purple Shell",
+		description: "A purple shell for players who want a bolder dojo look.",
+		price: 200,
+		accentColor: 0x7a45b8,
 	},
 	{
 		id: "night_bg",

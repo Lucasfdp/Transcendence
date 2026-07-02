@@ -82,14 +82,22 @@ type CosmeticCategoryType = Extract<
 	"shell_skin" | "hub_background" | "dojo_tag"
 >;
 
-const COSMETIC_CATEGORIES: { type: CosmeticCategoryType; title: string }[] = [
-	{ type: "shell_skin", title: "Shells" },
-	{ type: "hub_background", title: "Backgrounds" },
-	{ type: "dojo_tag", title: "Dojo Tags" },
+type CosmeticTabType = "all" | CosmeticCategoryType | "soon-1" | "soon-2";
+
+const COSMETIC_TABS: { id: CosmeticTabType; title: string; disabled?: boolean }[] = [
+	{ id: "all", title: "All" },
+	{ id: "shell_skin", title: "Shells" },
+	{ id: "hub_background", title: "Backgrounds" },
+	{ id: "dojo_tag", title: "Dojo Tags" },
+	{ id: "soon-1", title: "Soon", disabled: true },
+	{ id: "soon-2", title: "Soon", disabled: true },
 ];
 
 const COSMETIC_PREVIEWS: Partial<Record<Cosmetic["id"], string>> = {
 	kanagawa: "/assets/character/shells/base.png",
+	dragon: "/assets/character/shells/dragonshell.png",
+	bamboo: "/assets/character/shells/bambooShell.png",
+	purple: "/assets/character/shells/purpleShell.png",
 	night_bg: "/assets/backgrounds/night_bg.png",
 	sunset_bg: "/assets/backgrounds/sunset_bg.png",
 	sunrise_bg: "/assets/backgrounds/sunrise_bg.png",
@@ -97,6 +105,11 @@ const COSMETIC_PREVIEWS: Partial<Record<Cosmetic["id"], string>> = {
 	sunset_cycle_bg: "/assets/backgrounds/sunset_bg.png",
 	sunrise_cycle_bg: "/assets/backgrounds/sunrise_bg.png",
 };
+
+const SHELL_PLACEHOLDERS = [
+	"mystery-shell-1",
+	"mystery-shell-2",
+];
 
 function cosmeticColor(color: number): string {
 	return `#${color.toString(16).padStart(6, "0")}`;
@@ -112,6 +125,40 @@ function getCosmeticPreviewStyle(cosmetic: Cosmetic): CSSProperties {
 		"--cosmetic-preview": previewColor,
 		...(previewSource ? { "--cosmetic-image": `url("${previewSource}")` } : {}),
 	} as CSSProperties;
+}
+
+function getCosmeticActionLabel(cosmetic: Cosmetic): string {
+	if (cosmetic.equipped) return "Equipped";
+	if (cosmetic.owned) return "Equip";
+	return `Buy · ${cosmetic.price} coins`;
+}
+
+function isCosmeticActionDisabled(cosmetic: Cosmetic): boolean {
+	return cosmetic.equipped || cosmetic.lockedReason === "achievement-locked";
+}
+
+function getCosmeticDisplayName(cosmetic: Cosmetic): string {
+	if (cosmetic.id === "kanagawa") return "Default Shell";
+	return cosmetic.name;
+}
+
+function getCosmeticDisplayDescription(cosmetic: Cosmetic): string {
+	if (cosmetic.id === "kanagawa") {
+		return "The plain starter shell. No special color, no decoration, just the shell every player begins with.";
+	}
+	return cosmetic.description;
+}
+
+function getShellSkinDisplayName(shellSkin: string | null | undefined): string {
+	if (!shellSkin || shellSkin === "kanagawa") return "Default Shell";
+	if (shellSkin === "dragon") return "Dragon Shell";
+	if (shellSkin === "bamboo") return "Bamboo Shell";
+	if (shellSkin === "purple") return "Purple Shell";
+	return shellSkin
+		.split(/[-_]/)
+		.filter(Boolean)
+		.map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+		.join(" ");
 }
 
 function getAchievementProgress(achievement: Achievement): {
@@ -514,6 +561,9 @@ function HomeMenu(): JSX.Element {
 	const [infoModal, setInfoModal] = useState<InfoModal>(null);
 	const [achievements, setAchievements] = useState<Achievement[] | null>(null);
 	const [cosmetics, setCosmetics] = useState<Cosmetic[] | null>(null);
+	const [activeCosmeticTab, setActiveCosmeticTab] = useState<CosmeticTabType>("all");
+	const [selectedShellCosmetic, setSelectedShellCosmetic] =
+		useState<Cosmetic | null>(null);
 	const [modalError, setModalError] = useState("");
 	const [activeModal, setActiveModal] = useState<
 		| "achievements"
@@ -842,7 +892,9 @@ function HomeMenu(): JSX.Element {
 
 	const cosmeticGroups = useMemo(() => {
 		const groups = new Map<CosmeticCategoryType, Cosmetic[]>();
-		for (const category of COSMETIC_CATEGORIES) groups.set(category.type, []);
+		groups.set("shell_skin", []);
+		groups.set("hub_background", []);
+		groups.set("dojo_tag", []);
 		for (const cosmetic of cosmetics ?? []) {
 			if (cosmetic.type === "hub_background_alter") continue;
 			groups.set(cosmetic.type, [...(groups.get(cosmetic.type) ?? []), cosmetic]);
@@ -865,6 +917,14 @@ function HomeMenu(): JSX.Element {
 		}
 		return alters;
 	}, [cosmetics]);
+
+	useEffect(() => {
+		if (!selectedShellCosmetic) return;
+		const nextSelectedShell = cosmetics?.find(
+			(cosmetic) => cosmetic.id === selectedShellCosmetic.id,
+		);
+		setSelectedShellCosmetic(nextSelectedShell ?? null);
+	}, [cosmetics, selectedShellCosmetic]);
 
 	const handleLogout = async () => {
 		if (isLoggingOut) return;
@@ -952,6 +1012,8 @@ function HomeMenu(): JSX.Element {
 
 	const openCustomization = async () => {
 		setActiveModal("customization");
+		setActiveCosmeticTab("all");
+		setSelectedShellCosmetic(null);
 		setModalError("");
 		setCosmetics(null);
 		try {
@@ -982,7 +1044,13 @@ function HomeMenu(): JSX.Element {
 				(item) => item.equipped && item.type === "dojo_tag",
 			);
 			if (player) {
-				setPlayer({
+				let refreshedPlayer: User | null = null;
+				try {
+					refreshedPlayer = await api.getMe();
+				} catch {
+					// Keep the local cosmetic update if the balance refresh fails.
+				}
+				setPlayer(refreshedPlayer ?? {
 					...player,
 					hubBackground: equippedBackground?.id ?? player.hubBackground,
 					hubBackgroundAlter: equippedBackgroundAlter?.id ?? null,
@@ -1609,7 +1677,7 @@ function HomeMenu(): JSX.Element {
 							) : null}
 						</span>
 						<span className="hub-page__player-meta">
-							Lvl {player?.level ?? 1} · Shell {player?.shellSkin ?? "kanagawa"} · ⬡ {player?.coins ?? 0}
+							Lvl {player?.level ?? 1} · Shell {getShellSkinDisplayName(player?.shellSkin)} · ⬡ {player?.coins ?? 0}
 						</span>
 						{player?.mostPlayedGame ? (
 							<span className="hub-page__most-played">
@@ -2821,127 +2889,244 @@ function HomeMenu(): JSX.Element {
 			) : null}
 
 			{activeModal === "customization" ? (
-				<HubModal title="Customization" onClose={() => setActiveModal(null)}>
+				<HubModal
+					title="Customization"
+					onClose={() => setActiveModal(null)}
+					variant="wide"
+					headerAddon={
+						<div className="hub-modal__cosmetic-balance" aria-label="Player coin balance">
+							<span>Balance</span>
+							<strong>{player?.coins ?? 0}</strong>
+							<small>coins</small>
+						</div>
+					}
+				>
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					{cosmetics ? (
 						<div className="hub-modal__cosmetics">
-							{COSMETIC_CATEGORIES.map((category) => {
-								const categoryCosmetics = cosmeticGroups.get(category.type) ?? [];
+							<div className="hub-modal__cosmetic-topbar">
+								<nav className="hub-modal__cosmetic-tabs" aria-label="Customization categories">
+									{COSMETIC_TABS.map((tab) => (
+										<button
+											key={tab.id}
+											type="button"
+											className={`hub-modal__cosmetic-tab${
+												activeCosmeticTab === tab.id
+													? " hub-modal__cosmetic-tab--active"
+													: ""
+											}${tab.disabled ? " hub-modal__cosmetic-tab--disabled" : ""}`}
+											disabled={tab.disabled}
+											onClick={() => setActiveCosmeticTab(tab.id)}
+										>
+											{tab.title}
+										</button>
+									))}
+								</nav>
+							</div>
 
-								return (
-									<section className="hub-modal__cosmetic-category" key={category.type}>
-										<h3>{category.title}</h3>
-										<div className="hub-modal__list hub-modal__cosmetic-grid">
-											{categoryCosmetics.map((cosmetic) => {
-												const hasImage = COSMETIC_PREVIEWS[cosmetic.id] !== undefined;
-												const alters =
-													cosmetic.type === "hub_background"
-														? backgroundAlters.get(cosmetic.id) ?? []
-														: [];
-												const previewClassName = [
-													"hub-modal__cosmetic-preview",
-													`hub-modal__cosmetic-preview--${cosmetic.type}`,
-													hasImage ? "has-image" : "",
-												]
-													.filter(Boolean)
-													.join(" ");
-
-										return (
-											<article key={cosmetic.id}>
-												<div
-													className={previewClassName}
+							{activeCosmeticTab === "all" || activeCosmeticTab === "shell_skin" ? (
+								<section className="hub-modal__cosmetic-category hub-modal__cosmetic-category--shells">
+									<h3>Shells</h3>
+									<div className="hub-modal__shell-grid">
+										{(cosmeticGroups.get("shell_skin") ?? []).map((cosmetic) => {
+											const hasImage = COSMETIC_PREVIEWS[cosmetic.id] !== undefined;
+											return (
+												<button
+													key={cosmetic.id}
+													type="button"
+													className={`hub-modal__shell-card${
+														cosmetic.equipped ? " hub-modal__shell-card--equipped" : ""
+													}`}
 													style={getCosmeticPreviewStyle(cosmetic)}
-													aria-hidden="true"
+													title={getCosmeticDisplayDescription(cosmetic)}
+													onClick={() => setSelectedShellCosmetic(cosmetic)}
 												>
-													{cosmetic.type === "dojo_tag" ? (
-														<span className="hub-modal__cosmetic-tag-emoji">
-															{cosmetic.tagEmoji}
-														</span>
-													) : null}
-												</div>
-														<strong>{cosmetic.name}</strong>
-														<p>{cosmetic.description}</p>
-														{alters.length > 0 ? (
-															<div className="hub-modal__cosmetic-alters">
-																<span className="hub-modal__cosmetic-alters-label">
-																	Alter art
-																</span>
-																{alters.map((alter) => (
-																	<div
-																		key={alter.id}
-																		className={`hub-modal__cosmetic-alter${
-																			alter.equipped
-																				? " hub-modal__cosmetic-alter--active"
-																				: ""
-																		}${
-																			!alter.owned
-																				? " hub-modal__cosmetic-alter--locked"
-																				: ""
-																		}`}
-																	>
-																		<div className="hub-modal__cosmetic-alter-main">
-																			<span className="hub-modal__cosmetic-alter-copy">
-																				<strong>{alter.name}</strong>
-																			</span>
-																			<button
-																				type="button"
-																				role="switch"
-																				aria-checked={alter.equipped}
-																				aria-label={`Toggle ${alter.name}`}
-																				className={`hub-modal__cosmetic-toggle${
-																					alter.equipped
-																						? " hub-modal__cosmetic-toggle--on"
-																						: ""
-																				}`}
-																				disabled={!alter.owned}
-																				onClick={() =>
-																					void handleBackgroundAlterAction(
-																						cosmetic,
-																						alter,
-																					)
-																				}
-																			>
-																				<span className="hub-modal__cosmetic-toggle-thumb" />
-																			</button>
-																		</div>
+													<span className="hub-modal__shell-frame" aria-hidden="true">
+														{hasImage ? (
+															<span className="hub-modal__shell-image" />
+														) : (
+															<span className="hub-modal__shell-placeholder">?</span>
+														)}
+													</span>
+													<strong>{getCosmeticDisplayName(cosmetic)}</strong>
+													{cosmetic.equipped ? <small>Equipped</small> : null}
+												</button>
+											);
+										})}
+										{SHELL_PLACEHOLDERS.map((placeholderId) => (
+											<button
+												key={placeholderId}
+												type="button"
+												className="hub-modal__shell-card hub-modal__shell-card--mystery"
+												disabled
+											>
+												<span className="hub-modal__shell-frame" aria-hidden="true">
+													<span className="hub-modal__shell-placeholder">?</span>
+												</span>
+												<strong>?</strong>
+											</button>
+										))}
+									</div>
+								</section>
+							) : null}
+
+							{activeCosmeticTab === "all" || activeCosmeticTab === "hub_background" ? (
+								<section className="hub-modal__cosmetic-category">
+									<h3>Backgrounds</h3>
+									<div className="hub-modal__list hub-modal__cosmetic-grid hub-modal__cosmetic-grid--backgrounds">
+										{(cosmeticGroups.get("hub_background") ?? []).map((cosmetic) => {
+											const alters = backgroundAlters.get(cosmetic.id) ?? [];
+											return (
+												<article key={cosmetic.id}>
+													<div
+														className="hub-modal__cosmetic-preview hub-modal__cosmetic-preview--hub_background has-image"
+														style={getCosmeticPreviewStyle(cosmetic)}
+														aria-hidden="true"
+													/>
+													<strong>{getCosmeticDisplayName(cosmetic)}</strong>
+													<p>{getCosmeticDisplayDescription(cosmetic)}</p>
+													<button
+														type="button"
+														disabled={isCosmeticActionDisabled(cosmetic)}
+														onClick={() => void handleCosmeticAction(cosmetic)}
+													>
+														{getCosmeticActionLabel(cosmetic)}
+													</button>
+													{alters.length > 0 ? (
+														<div className="hub-modal__cosmetic-alters">
+															<span className="hub-modal__cosmetic-alters-label">Alter art</span>
+															{alters.map((alter) => (
+																<div
+																	key={alter.id}
+																	className={`hub-modal__cosmetic-alter${
+																		alter.equipped
+																			? " hub-modal__cosmetic-alter--active"
+																			: ""
+																	}${!alter.owned ? " hub-modal__cosmetic-alter--locked" : ""}`}
+																>
+																	<div className="hub-modal__cosmetic-alter-main">
+																		<span className="hub-modal__cosmetic-alter-copy">
+																			<strong>{alter.name}</strong>
+																		</span>
 																		<button
 																			type="button"
-																			className="hub-modal__cosmetic-alter-buy"
-																			disabled={
-																				alter.owned ||
-																				alter.lockedReason ===
-																					"achievement-locked"
-																			}
+																			role="switch"
+																			aria-checked={alter.equipped}
+																			aria-label={`Toggle ${alter.name}`}
+																			className={`hub-modal__cosmetic-toggle${
+																				alter.equipped ? " hub-modal__cosmetic-toggle--on" : ""
+																			}`}
+																			disabled={!alter.owned}
 																			onClick={() =>
-																				void handleCosmeticAction(alter)
+																				void handleBackgroundAlterAction(cosmetic, alter)
 																			}
 																		>
-																			{alter.owned
-																				? "PURCHASED"
-																				: `Buy alter · ${alter.price} coins`}
+																			<span className="hub-modal__cosmetic-toggle-thumb" />
 																		</button>
 																	</div>
-																))}
-															</div>
-														) : null}
-														<button
-															type="button"
-															disabled={cosmetic.equipped || cosmetic.lockedReason === "achievement-locked"}
-															onClick={() => void handleCosmeticAction(cosmetic)}
-														>
-															{cosmetic.equipped
-																? "Equipped"
-																: cosmetic.owned
-																	? "Equip"
-																	: `Buy · ${cosmetic.price} coins`}
-														</button>
-													</article>
-												);
-											})}
+																	<button
+																		type="button"
+																		className="hub-modal__cosmetic-alter-buy"
+																		disabled={
+																			alter.owned ||
+																			alter.lockedReason === "achievement-locked"
+																		}
+																		onClick={() => void handleCosmeticAction(alter)}
+																	>
+																		{alter.owned ? "Purchased" : `Buy alter · ${alter.price} coins`}
+																	</button>
+																</div>
+															))}
+														</div>
+													) : null}
+												</article>
+											);
+										})}
+										<article className="hub-modal__background-card--mystery">
+											<div className="hub-modal__cosmetic-preview hub-modal__cosmetic-preview--hub_background hub-modal__cosmetic-preview--mystery" aria-hidden="true">
+												<span>?</span>
+											</div>
+											<strong>?</strong>
+											<p>?</p>
+											<button type="button" disabled>
+												Soon
+											</button>
+										</article>
+									</div>
+								</section>
+							) : null}
+
+							{activeCosmeticTab === "all" || activeCosmeticTab === "dojo_tag" ? (
+								<section className="hub-modal__cosmetic-category">
+									<h3>Dojo Tags</h3>
+									<div className="hub-modal__dojo-tags">
+										{(cosmeticGroups.get("dojo_tag") ?? []).map((cosmetic) => (
+											<article
+												key={cosmetic.id}
+												className={`hub-modal__dojo-tag-card${
+													cosmetic.equipped ? " hub-modal__dojo-tag-card--equipped" : ""
+												}`}
+												style={getCosmeticPreviewStyle(cosmetic)}
+											>
+												<span className="hub-modal__dojo-tag-icon" aria-hidden="true">
+													{cosmetic.tagEmoji}
+												</span>
+												<span className="hub-modal__dojo-tag-copy">
+													<strong>{getCosmeticDisplayName(cosmetic)}</strong>
+													<small>{getCosmeticDisplayDescription(cosmetic)}</small>
+												</span>
+												<button
+													type="button"
+													disabled={isCosmeticActionDisabled(cosmetic)}
+													onClick={() => void handleCosmeticAction(cosmetic)}
+												>
+													{getCosmeticActionLabel(cosmetic)}
+												</button>
+											</article>
+										))}
+									</div>
+								</section>
+							) : null}
+
+							{selectedShellCosmetic ? (
+								<div className="hub-modal__shell-detail" role="dialog" aria-modal="true">
+									<button
+										type="button"
+										className="hub-modal__shell-detail-backdrop"
+										aria-label="Close shell details"
+										onClick={() => setSelectedShellCosmetic(null)}
+									/>
+									<article className="hub-modal__shell-detail-card">
+										<button
+											type="button"
+											className="hub-modal__shell-detail-close"
+											onClick={() => setSelectedShellCosmetic(null)}
+										>
+											Close
+										</button>
+										<div
+											className="hub-modal__shell-detail-preview"
+											style={getCosmeticPreviewStyle(selectedShellCosmetic)}
+											aria-hidden="true"
+										>
+											{COSMETIC_PREVIEWS[selectedShellCosmetic.id] ? (
+												<span className="hub-modal__shell-image" />
+											) : (
+												<span className="hub-modal__shell-placeholder">?</span>
+											)}
 										</div>
-									</section>
-								);
-							})}
+										<strong>{getCosmeticDisplayName(selectedShellCosmetic)}</strong>
+										<p>{getCosmeticDisplayDescription(selectedShellCosmetic)}</p>
+										<button
+											type="button"
+											disabled={isCosmeticActionDisabled(selectedShellCosmetic)}
+											onClick={() => void handleCosmeticAction(selectedShellCosmetic)}
+										>
+											{getCosmeticActionLabel(selectedShellCosmetic)}
+										</button>
+									</article>
+								</div>
+							) : null}
 						</div>
 					) : (
 						<p>Loading customization...</p>
@@ -3040,11 +3225,13 @@ function HubModal({
 	title,
 	onClose,
 	children,
+	headerAddon,
 	variant = "default",
 }: {
 	title: string;
 	onClose: () => void;
 	children: ReactNode;
+	headerAddon?: ReactNode;
 	variant?: "default" | "wide";
 }): JSX.Element {
 	const titleId = useId();
@@ -3105,7 +3292,10 @@ function HubModal({
 				tabIndex={-1}
 			>
 				<header>
-					<h2 id={titleId}>{title}</h2>
+					<div className="hub-modal__title-row">
+						<h2 id={titleId}>{title}</h2>
+						{headerAddon}
+					</div>
 					<button type="button" onClick={onClose}>
 						Close
 					</button>

@@ -9,7 +9,7 @@
  *   // Must be called AFTER resetBall() so radius modifications start from base.
  *
  * Scene responsibilities after calling applyBallPower:
- *   - PHANTOM: if ball.phantomHidden, set ballGfx.setAlpha(0.05) until ball stops
+ *   - PHANTOM: while ball.phantomHidden, collision checks may ignore the ball
  *   - BOMB:    when ball stops, area-clear targets within BOMB_RADIUS_SRC * scale
  *   - REPEL:   when ball stops, push/clear targets within REPEL_RADIUS_SRC * scale
  *   - FREEZE:  when ball stops, pause spawn/timer mechanics for 5 000 ms
@@ -52,7 +52,7 @@ export interface BallExtState extends BallState {
 	 * undefined = power is not GHOST (skip ghost logic entirely).
 	 */
 	ghostUsed?: boolean;
-	/** PHANTOM: true while ball is in motion and should be invisible. Clear on stop. */
+	/** PHANTOM: true while collision checks should ignore the moving ball. Clear on stop. */
 	phantomHidden?: boolean;
 	/** REPEL: when ball stops, push/clear targets in REPEL_RADIUS_SRC * scale, then clear. */
 	repelPending?: boolean;
@@ -149,7 +149,6 @@ export function applyBallPower(
 			break;
 
 		case PowerType.PHANTOM:
-			// Scene sets ballGfx.setAlpha(0.05) immediately after calling applyBallPower
 			ext.phantomHidden = true;
 			break;
 

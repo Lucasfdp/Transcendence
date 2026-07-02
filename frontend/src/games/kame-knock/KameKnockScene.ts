@@ -47,7 +47,10 @@ import {
 } from "../../shared/mechanics/timed-targets";
 import { THEME } from "../../shared/theme";
 import { PowerType } from "../../shared/mechanics/power-system";
-import { GAME_POWERS } from "../../shared/mechanics/game-powers";
+import {
+	GAME_POWERS,
+	preloadPowerUpAssets,
+} from "../../shared/mechanics/game-powers";
 import {
 	applyBallPower,
 	BallExtState,
@@ -59,11 +62,13 @@ import {
 } from "../../shared/mechanics/player-renderer";
 import {
 	drawPlayerTrails,
+	type PlayerTrailOptions,
 	recordPlayerTrails,
 	resetPlayerTrail,
 	type PlayerTrailStore,
 } from "../../shared/mechanics/player-trails";
 import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
+import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
 import {
 	BOMB_RADIUS_SRC,
 	REPEL_RADIUS_SRC,
@@ -169,6 +174,13 @@ const TARGET_COLOURS: Record<
 
 const TARGET_TYPES: TimedTargetKind[] = ["daruma", "crate", "drum"];
 const PLAYER_COLOURS = PLAYER_HEX_COLOURS;
+const BALL_TRAIL_OPTIONS: PlayerTrailOptions = {
+	maxPoints: 96,
+	minDistance: 4,
+	lineWidth: 7,
+	baseAlpha: 0.22,
+	alphaRange: 0.58,
+};
 
 /** Fallback power pool when no ShellPicker selection is present. */
 const KAME_AVAILABLE_POWERS = GAME_POWERS["kame-knock"].slice(0, 8);
@@ -208,13 +220,13 @@ export class KameKnockScene extends ResponsiveScene {
 	private scoreLogPanel: SidePanel | null = null;
 	private scoreHud: ScoreHud | null = null;
 	private overlay?: Phaser.GameObjects.Container;
-	private overlayHitZones: Phaser.GameObjects.Zone[] = [];
 
 	// ── Power state ──────────────────────────────────────────────────────────────
 	private powerSidePanel: GameInfoSidePanel | null = null;
 
 	/** Per-player power pools. Offline uses player 0; online maps by side. */
 	private playerPowers: PowerType[][] = [FALLBACK_POWERS];
+	private playerShellSkins: string[] = ["kanagawa", "dragon", "bamboo", "purple", "kanagawa"];
 	private activePower: PowerType = PowerType.NONE;
 	/** Per-player used-power tracking (one-shot each per game, NONE always reusable). */
 	private powerUsed: Array<Set<PowerType>> = [new Set()];
@@ -231,6 +243,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private visibleBallSide = 0;
 	private onlineBalls = new Map<number, BallState>();
 	private ballTrails: PlayerTrailStore = new Map();
+	private completedTrailPlayers = new Map<number | string, number>();
 	private localMode: "solo" | "versus" = "solo";
 	private localReplayId: string | null = null;
 	private localReplayFrames: Array<{
@@ -260,6 +273,7 @@ export class KameKnockScene extends ResponsiveScene {
 
 	preload(): void {
 		preloadIngamePlayerTexture(this);
+		preloadPowerUpAssets(this);
 		for (const kind of TARGET_TYPES)
 			this.load.image(TARGET_TEXTURES[kind], TARGET_ASSETS[kind]);
 	}
@@ -285,6 +299,8 @@ export class KameKnockScene extends ResponsiveScene {
 		this.onlineReleasePending = false;
 		this.visibleBallSide = 0;
 		this.onlineBalls.clear();
+		this.ballTrails.clear();
+		this.completedTrailPlayers.clear();
 
 		this.targets = [];
 		this.nextTargetId = 0;
@@ -312,6 +328,13 @@ export class KameKnockScene extends ResponsiveScene {
 		const sel = this.registry.get("shellSelection") as
 			| Record<string, string[] | undefined>
 			| undefined;
+		const shellSkins = this.registry.get("shellSkins") as
+			| Record<string, string | undefined>
+			| undefined;
+		this.playerShellSkins = Array.from(
+			{ length: 5 },
+			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "kanagawa",
+		);
 		const localPowerupsEnabled = this.onlineMatch
 			? true
 			: this.registry.get("localPowerupsEnabled") !== false;
@@ -405,7 +428,6 @@ export class KameKnockScene extends ResponsiveScene {
 		this.slingshot?.destroy();
 		this.slingshot = null;
 		this.destroyTargetSprites();
-		this.clearOverlayHitZones();
 		this.overlay?.destroy(true);
 		this.overlay = undefined;
 		this.powerSidePanel?.destroy();
@@ -417,6 +439,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.scoreHud = null;
 		this.trailGfx?.destroy();
 		this.ballTrails.clear();
+		this.completedTrailPlayers.clear();
 		this.ballText = null;
 		if (this.onlineMatch) {
 			const socket = getGameSocket();
@@ -460,10 +483,7 @@ export class KameKnockScene extends ResponsiveScene {
 
 		// Resolve stop flags when ball comes to rest
 		if (!moving && this.launchedThisBall) {
-			if (ext.phantomHidden) {
-				this.ballGfx.setAlpha(1);
-				ext.phantomHidden = false;
-			}
+			if (ext.phantomHidden) ext.phantomHidden = false;
 			if (ext.bombPending) {
 				this.resolveStopBomb();
 				ext.bombPending = false;
@@ -537,10 +557,6 @@ export class KameKnockScene extends ResponsiveScene {
 
 		// Apply power to ball (velocity already set by Slingshot, radius reset in setupBallRound)
 		applyBallPower(this.activePower, this.ball, this.arena);
-
-		if ((this.ball as BallExtState).phantomHidden) {
-			this.ballGfx.setAlpha(0.05);
-		}
 
 		// Track used powers for the current player
 		const p = this.currentPlayerIndex();
@@ -682,6 +698,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private checkTargetHits(): void {
 		const ball = this.activeBall();
 		const ext = ball as BallExtState;
+		if (ext.phantomHidden) return;
 		for (let i = this.targets.length - 1; i >= 0; i--) {
 			const target = this.targets[i];
 			if (!hitsTimedTarget(target, this.arena, ball.x, ball.y, ball.r))
@@ -985,7 +1002,6 @@ export class KameKnockScene extends ResponsiveScene {
 			? (event.power as PowerType)
 			: PowerType.NONE;
 		applyBallPower(power, ball, this.arena);
-		if ((ball as BallExtState).phantomHidden) this.ballGfx.setAlpha(0.05);
 		this.powerSidePanel?.hide();
 		this.updateScoreHud();
 		this.updateOnlineStatus(
@@ -1057,30 +1073,6 @@ export class KameKnockScene extends ResponsiveScene {
 		this.slingshot?.destroy();
 		this.powerSidePanel?.hide();
 		this.overlay?.destroy(true);
-		this.clearOverlayHitZones();
-
-		const { width, height } = this.scale;
-		const panelW = 520,
-			panelH = 340;
-		const container = this.add
-			.container(width / 2, height / 2)
-			.setDepth(DEPTH_OVERLAY);
-		this.overlay = container;
-
-		const bg = this.add.graphics();
-		bg.fillStyle(THEME.stoneDeep, 0.9);
-		bg.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
-		bg.lineStyle(2, THEME.stoneLight, 0.82);
-		bg.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
-		bg.lineStyle(1, THEME.gold, 0.58);
-		bg.strokeRoundedRect(
-			-panelW / 2 + 4,
-			-panelH / 2 + 4,
-			panelW - 8,
-			panelH - 8,
-			12,
-		);
-		container.add(bg);
 
 		const title =
 			snapshot.winnerSide === null
@@ -1088,70 +1080,30 @@ export class KameKnockScene extends ResponsiveScene {
 				: snapshot.winnerSide === this.onlineMatch?.side
 					? "YOU WIN!"
 					: "YOU LOSE";
-		container.add(
-			this.add
-				.text(0, -panelH / 2 + 38, title, {
-					fontSize: "42px",
-					color: THEME.textJade,
-					fontFamily: THEME.fontBlowbrush,
-					fontStyle: "bold",
-					stroke: "#10150f",
-					strokeThickness: 5,
-				})
-				.setOrigin(0.5)
-				.setShadow(0, 3, "rgba(8, 18, 11, 0.9)", 3),
-		);
-
-		container.add(
-			this.add
-				.text(0, -panelH / 2 + 78, "FINAL SCORES", {
-					fontSize: "18px",
-					color: THEME.textGold,
-					fontFamily: THEME.fontUrbanStone,
-				})
-				.setOrigin(0.5),
-		);
-
-		snapshot.players.forEach((player, index) => {
-			const y = -panelH / 2 + 120 + index * 30;
-			const color =
-				player.side === snapshot.winnerSide
-					? THEME.textGold
-					: THEME.text;
-			const name =
-				player.side === this.onlineMatch?.side
-					? `${player.username} (You)`
-					: player.username;
-			container.add(
-				this.add
-					.text(-panelW / 2 + 48, y, name, {
-						fontSize: "20px",
-						color,
-						fontFamily: THEME.fontUrbanStone,
-						fontStyle: "bold",
-					})
-					.setOrigin(0, 0.5),
-			);
-			container.add(
-				this.add
-					.text(
-						panelW / 2 - 48,
-						y,
-						String(snapshot.score[player.side] ?? 0),
-						{
-							fontSize: "22px",
-							color,
-							fontFamily: THEME.fontUrbanStone,
-							fontStyle: "bold",
-						},
-					)
-					.setOrigin(1, 0.5),
-			);
-		});
-
-		this.addOverlayButton(container, 0, panelH / 2 - 50, "RETURN", () => {
-			this.registry.remove("onlineMatch");
-			this.scene.start("HubScene");
+		this.overlay = showGameEndModal(this, this.overlay, {
+			title: "KAME KNOCK",
+			result: title,
+			players: [...snapshot.players]
+				.sort((a, b) => a.side - b.side)
+				.map((player) => ({
+					label: `P${player.side + 1}`,
+					detail:
+						player.side === this.onlineMatch?.side
+							? `${player.username} (You)`
+							: player.username,
+					score: snapshot.score[player.side] ?? 0,
+					color: this.playerHexColour(player.side),
+				})),
+			actions: [
+				{
+					label: "RETURN",
+					onClick: () => {
+						this.registry.remove("onlineMatch");
+						this.scene.start("HubScene");
+					},
+				},
+			],
+			depth: DEPTH_OVERLAY,
 		});
 	}
 
@@ -1230,11 +1182,23 @@ export class KameKnockScene extends ResponsiveScene {
 					vy: this.ball.vy / this.arena.scale,
 					moving: this.isBallMoving(this.ball),
 					visible: true,
+					...(this.readArenaTrail("local").length
+						? { trail: this.readArenaTrail("local") }
+						: {}),
 				},
 			],
 			winnerSide:
 				phaseOverride === "finished" ? this.resolveLocalWinnerSide() : null,
 		};
+	}
+
+	private readArenaTrail(key: string | number): Array<{ x: number; y: number }> {
+		const trail = this.ballTrails.get(key);
+		if (!trail?.length) return [];
+		return trail.map((point) => ({
+			x: (point.x - this.arena.cx) / this.arena.rx,
+			y: (point.y - this.arena.cy) / this.arena.ry,
+		}));
 	}
 
 	private buildLocalReplayPlayers(): SnapshotPlayer[] {
@@ -1320,6 +1284,7 @@ export class KameKnockScene extends ResponsiveScene {
 			return;
 		}
 
+		this.archiveLocalTrail();
 		this.launchedThisBall = false;
 		this.combo = 0;
 		this.localTurnNumber += 1;
@@ -1743,6 +1708,7 @@ export class KameKnockScene extends ResponsiveScene {
 					"kame-knock-player-local",
 					this.ball,
 					DEPTH_BALL,
+					this.playerShellSkins[0],
 				)
 			)
 				drawShellBall(this.ballGfx, this.ball, false);
@@ -1759,6 +1725,7 @@ export class KameKnockScene extends ResponsiveScene {
 				`kame-knock-player-${side}`,
 				ball,
 				DEPTH_BALL,
+				this.playerShellSkins[side],
 			)
 		)
 			drawShellBall(this.ballGfx, ball, false);
@@ -1784,7 +1751,7 @@ export class KameKnockScene extends ResponsiveScene {
 						moving: this.isBallMoving(this.ball),
 					},
 				],
-				{ scale: this.arena.scale },
+				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 			);
 			return;
 		}
@@ -1798,16 +1765,29 @@ export class KameKnockScene extends ResponsiveScene {
 				y: ball.y,
 				moving: this.isBallMoving(ball),
 			})),
-			{ scale: this.arena.scale },
+			{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 		);
 	}
 
 	private drawBallTrails(): void {
-		const playersById = new Map<number | string, number>([["local", this.currentPlayerIndex()]]);
+		const playersById = new Map<number | string, number>([
+			["local", this.currentPlayerIndex()],
+		]);
+		for (const [id, player] of this.completedTrailPlayers)
+			playersById.set(id, player);
 		for (const side of this.onlineBalls.keys()) playersById.set(side, side);
 		drawPlayerTrails(this.trailGfx, this.ballTrails, playersById, {
+			...BALL_TRAIL_OPTIONS,
 			scale: this.arena.scale,
 		});
+	}
+
+	private archiveLocalTrail(): void {
+		const trail = this.ballTrails.get("local");
+		if (!trail || trail.length < 2) return;
+		const id = `local-history-${this.localTurnNumber}`;
+		this.ballTrails.set(id, trail.map((point) => ({ ...point })));
+		this.completedTrailPlayers.set(id, this.currentPlayerIndex());
 	}
 
 	private drawBackground(): void {
@@ -1963,156 +1943,51 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	private showEndScreen(): void {
-		this.clearOverlayHitZones();
-		const { width, height } = this.scale;
-		const panelW = 460,
-			panelH = 280;
-		const container = this.add
-			.container(width / 2, height / 2)
-			.setDepth(DEPTH_OVERLAY);
-		this.overlay = container;
-
-		const bg = this.add.graphics();
-		bg.fillStyle(THEME.stoneDeep, 0.9);
-		bg.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
-		bg.lineStyle(2, THEME.stoneLight, 0.82);
-		bg.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
-		bg.lineStyle(1, THEME.gold, 0.58);
-		bg.strokeRoundedRect(
-			-panelW / 2 + 4,
-			-panelH / 2 + 4,
-			panelW - 8,
-			panelH - 8,
-			12,
-		);
-		container.add(bg);
-
-		const title = this.add
-			.text(0, -panelH / 2 + 42, "KAME KNOCK", {
-				fontSize: "42px",
-				color: THEME.textJade,
-				fontFamily: THEME.fontBlowbrush,
-				fontStyle: "bold",
-				stroke: "#10150f",
-				strokeThickness: 5,
-			})
-			.setOrigin(0.5)
-			.setShadow(0, 3, "rgba(8, 18, 11, 0.9)", 3);
-		container.add(title);
-
-		const finalScoreText =
-			this.localPlayerCount > 1
-				? this.formatLocalFinalScores()
-				: `FINAL SCORE\n${this.score}`;
-		const score = this.add
-			.text(0, -18, finalScoreText, {
-				fontSize: "27px",
-				color: THEME.text,
-				fontFamily: THEME.fontUrbanStone,
-				fontStyle: "bold",
-				align: "center",
-			})
-			.setOrigin(0.5)
-			.setShadow(0, 2, "rgba(8, 18, 11, 0.82)", 2);
-		container.add(score);
-
-		this.addOverlayButton(
-			container,
-			-110,
-			panelH / 2 - 50,
-			"PLAY AGAIN",
-			() => {
-				void this.waitForPendingReplayPersist().finally(() => {
-				this.cleanupSceneResources();
-				this.scene.restart();
-				});
-			},
-		);
-		this.addOverlayButton(container, 110, panelH / 2 - 50, "RETURN", () => {
-			void this.waitForPendingReplayPersist().finally(() => {
-				this.cleanupSceneResources();
-				this.scene.start("HubScene");
-			});
+		const winner = this.resolveLocalWinnerSide();
+		this.overlay = showGameEndModal(this, this.overlay, {
+			title: "KAME KNOCK",
+			result:
+				this.localPlayerCount > 1
+					? winner !== null
+						? `WINNER P${winner + 1}`
+						: "DRAW"
+					: "FINAL SCORE",
+			players:
+				this.localPlayerCount > 1
+					? this.localScores.map((score, index) => ({
+							label: `P${index + 1}`,
+							score,
+							color: this.playerHexColour(index),
+						}))
+					: [
+							{
+								label: "P1",
+								score: this.score,
+								color: this.playerHexColour(0),
+							},
+						],
+			actions: [
+				{
+					label: "PLAY AGAIN",
+					onClick: () => {
+						void this.waitForPendingReplayPersist().finally(() => {
+							this.cleanupSceneResources();
+							this.scene.restart();
+						});
+					},
+				},
+				{
+					label: "RETURN",
+					onClick: () => {
+						void this.waitForPendingReplayPersist().finally(() => {
+							this.cleanupSceneResources();
+							this.scene.start("HubScene");
+						});
+					},
+				},
+			],
+			depth: DEPTH_OVERLAY,
 		});
-	}
-
-	private formatLocalFinalScores(): string {
-		const maxScore = Math.max(...this.localScores);
-		const winners = this.localScores
-			.map((score, index) => ({ score, index }))
-			.filter((entry) => entry.score === maxScore);
-		const title =
-			winners.length === 1
-				? `P${winners[0].index + 1} WINS`
-				: "DRAW";
-		const scores = this.localScores
-			.map((score, index) => `P${index + 1}: ${score}`)
-			.join("\n");
-		return `${title}\n${scores}`;
-	}
-
-	private addOverlayButton(
-		container: Phaser.GameObjects.Container,
-		x: number,
-		y: number,
-		label: string,
-		onClick: () => void,
-	): void {
-		const buttonW = 180,
-			buttonH = 42;
-		const bg = this.add.graphics();
-		bg.fillStyle(THEME.stoneInk, 0.5);
-		bg.fillRoundedRect(
-			x - buttonW / 2,
-			y - buttonH / 2,
-			buttonW,
-			buttonH,
-			8,
-		);
-		bg.lineStyle(1.5, THEME.stoneLight, 0.72);
-		bg.strokeRoundedRect(
-			x - buttonW / 2,
-			y - buttonH / 2,
-			buttonW,
-			buttonH,
-			8,
-		);
-		container.add(bg);
-
-		const text = this.add
-			.text(x, y, label, {
-				fontSize: "18px",
-				color: THEME.textGold,
-				fontFamily: THEME.fontUrbanStone,
-				fontStyle: "bold",
-			})
-			.setOrigin(0.5)
-			.setShadow(0, 2, "rgba(8, 18, 11, 0.8)", 2);
-		container.add(text);
-
-		const zone = this.add
-			.zone(container.x + x, container.y + y, buttonW, buttonH)
-			.setInteractive({ useHandCursor: true })
-			.setDepth(DEPTH_OVERLAY + 2);
-		zone.on(
-			"pointerup",
-			(
-				_pointer: Phaser.Input.Pointer,
-				_localX: number,
-				_localY: number,
-				event: Phaser.Types.Input.EventData,
-			) => {
-				event.stopPropagation();
-				zone.disableInteractive();
-				onClick();
-			},
-		);
-		this.overlayHitZones.push(zone);
-	}
-
-	private clearOverlayHitZones(): void {
-		for (const zone of this.overlayHitZones) zone.destroy();
-		this.overlayHitZones = [];
 	}
 
 	protected relayout(): void {

@@ -6,7 +6,11 @@ import { RETURN_TO_HUB_EVENT } from "../features/hub/ReturnToHubScene";
 import type { ShellSmashStartData } from "../lib/createShellSmashGame";
 import { createShellSmashGame } from "../lib/createShellSmashGame";
 import { hubBackgroundClass } from "../shared/backgrounds";
-import { GAME_POWERS, type GameId } from "../shared/mechanics/game-powers";
+import {
+	GAME_POWERS,
+	POWER_UP_ASSETS,
+	type GameId,
+} from "../shared/mechanics/game-powers";
 import { ALL_POWERS } from "../shared/mechanics/power-system";
 import {
 	getGameSocket,
@@ -15,6 +19,7 @@ import {
 } from "../services/network/gameSocket";
 
 const DISPLAYED_POWERUP_COUNT = 8;
+const LOCAL_TEST_SHELL_SKINS = ["dragon", "bamboo", "purple", "kanagawa"];
 type LocalGameMode = "solo" | "versus";
 
 interface GameSceneConfig {
@@ -57,13 +62,13 @@ const GAME_SCENES: Record<string, GameSceneConfig> = {
 	"temple-curling": {
 		targetScene: "ShellCurlScene",
 		playerCount: 2,
-		localModes: { solo: false, versus: true },
+		localModes: { solo: true, versus: true },
 		defaultLocalMode: "versus",
 	},
 	"bell-clash": {
 		targetScene: "BellClashScene",
 		playerCount: 1,
-		localModes: { solo: true, versus: false },
+		localModes: { solo: true, versus: true },
 		defaultLocalMode: "solo",
 	},
 };
@@ -74,6 +79,7 @@ export default function GamePage(): JSX.Element {
 	const { gameId } = useParams();
 	const [hubBackground, setHubBackground] = useState<string | null>(null);
 	const [hubBackgroundAlter, setHubBackgroundAlter] = useState<string | null>(null);
+	const [shellSkin, setShellSkin] = useState("kanagawa");
 	const [launchData, setLaunchData] = useState<ShellSmashStartData | null>(null);
 
 	const sceneData = useMemo(() => {
@@ -98,6 +104,7 @@ export default function GamePage(): JSX.Element {
 				if (!cancelled) {
 					setHubBackground(user.hubBackground);
 					setHubBackgroundAlter(user.hubBackgroundAlter);
+					setShellSkin(user.shellSkin || "kanagawa");
 				}
 			})
 			.catch((err: unknown) => {
@@ -133,8 +140,9 @@ export default function GamePage(): JSX.Element {
 				sceneData={sceneData}
 				hubBackground={hubBackground}
 				hubBackgroundAlter={hubBackgroundAlter}
-				onBack={() => navigate("/?view=normal", { replace: true })}
+					onBack={() => navigate("/?view=normal", { replace: true })}
 				onLaunch={setLaunchData}
+				shellSkin={shellSkin}
 			/>
 		);
 	}
@@ -158,6 +166,7 @@ function PowerupMatchmakingPanel({
 	hubBackgroundAlter,
 	onBack,
 	onLaunch,
+	shellSkin,
 }: {
 	sceneData: {
 		gameId: string;
@@ -170,6 +179,7 @@ function PowerupMatchmakingPanel({
 	hubBackgroundAlter: string | null;
 	onBack: () => void;
 	onLaunch: (data: ShellSmashStartData) => void;
+	shellSkin: string;
 }): JSX.Element {
 	const gameId = sceneData.gameId as GameId;
 	const location = useLocation();
@@ -262,6 +272,14 @@ function PowerupMatchmakingPanel({
 			return;
 		}
 		const playerCount = localMode === "versus" ? localVsPlayerCount : 1;
+		const shellSkins = Object.fromEntries(
+			Array.from({ length: playerCount }, (_value, index) => [
+				`player${index}`,
+				index === 0
+					? shellSkin
+					: LOCAL_TEST_SHELL_SKINS[(index - 1) % LOCAL_TEST_SHELL_SKINS.length],
+			]),
+		) as Record<string, string>;
 		onLaunch({
 			gameId,
 			targetScene: sceneData.targetScene,
@@ -274,6 +292,7 @@ function PowerupMatchmakingPanel({
 			localMode,
 			localPlayerCount: playerCount,
 			localPowerupsEnabled,
+			shellSkins,
 		});
 	};
 
@@ -410,6 +429,7 @@ function PowerupMatchmakingPanel({
 					<div className="power-picker-page__grid">
 						{displayedPowerups.map((type) => {
 							const def = ALL_POWERS[type];
+							const imageSrc = POWER_UP_ASSETS[type];
 
 							return (
 								<article
@@ -418,7 +438,11 @@ function PowerupMatchmakingPanel({
 									style={{ "--power-accent": toHex(def.accentColour) } as CSSProperties}
 									title={def.description}
 								>
-									<span className="power-card__orb" />
+									{imageSrc ? (
+										<img className="power-card__orb" src={imageSrc} alt="" aria-hidden="true" />
+									) : (
+										<span className="power-card__orb" />
+									)}
 									<strong>{def.label}</strong>
 								</article>
 							);

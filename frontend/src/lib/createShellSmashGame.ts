@@ -14,6 +14,7 @@ export interface ShellSmashStartData {
 	gameId: GameId;
 	targetScene: string;
 	shellSelection: Record<string, string[]>;
+	shellSkins?: Record<string, string>;
 	localMode?: "solo" | "versus";
 	localPlayerCount?: number;
 	localPowerupsEnabled?: boolean;
@@ -50,6 +51,7 @@ export function createShellSmashGame(
 	installHiDPI(game);
 	if (initialScene) {
 		game.registry.set("shellSelection", initialScene.shellSelection);
+		game.registry.set("shellSkins", initialScene.shellSkins ?? {});
 		game.registry.set("localMode", initialScene.localMode ?? "solo");
 		game.registry.set("localPlayerCount", initialScene.localPlayerCount ?? 1);
 		game.registry.set(
