@@ -19,7 +19,7 @@ import {
 } from "../services/network/gameSocket";
 
 const DISPLAYED_POWERUP_COUNT = 8;
-const LOCAL_TEST_SHELL_SKINS = ["dragon", "bamboo", "purple", "kanagawa"];
+const LOCAL_TEST_SHELL_SKINS = ["dragon", "bamboo", "purple", "base"];
 type LocalGameMode = "solo" | "versus";
 
 interface GameSceneConfig {
@@ -79,7 +79,7 @@ export default function GamePage(): JSX.Element {
 	const { gameId } = useParams();
 	const [hubBackground, setHubBackground] = useState<string | null>(null);
 	const [hubBackgroundAlter, setHubBackgroundAlter] = useState<string | null>(null);
-	const [shellSkin, setShellSkin] = useState("kanagawa");
+	const [shellSkin, setShellSkin] = useState("base");
 	const [launchData, setLaunchData] = useState<ShellSmashStartData | null>(null);
 
 	const sceneData = useMemo(() => {
@@ -104,7 +104,7 @@ export default function GamePage(): JSX.Element {
 				if (!cancelled) {
 					setHubBackground(user.hubBackground);
 					setHubBackgroundAlter(user.hubBackgroundAlter);
-					setShellSkin(user.shellSkin || "kanagawa");
+					setShellSkin(user.shellSkin || "base");
 				}
 			})
 			.catch((err: unknown) => {

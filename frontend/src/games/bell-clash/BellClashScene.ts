@@ -182,7 +182,7 @@ export class BellClashScene extends ResponsiveScene {
 	private onlineAppliedRound = 0;
 	private localMode: "solo" | "versus" = "solo";
 	private localPlayerCount = 1;
-	private playerShellSkins: string[] = ["kanagawa", "dragon", "bamboo", "purple", "kanagawa"];
+	private playerShellSkins: string[] = ["base", "dragon", "bamboo", "purple", "base"];
 	private localTurnNumber = 0;
 	private localScores: number[] = [0];
 	private localBalls = new Map<number, BallState>();
@@ -290,7 +290,7 @@ export class BellClashScene extends ResponsiveScene {
 			| undefined;
 		this.playerShellSkins = Array.from(
 			{ length: 5 },
-			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "kanagawa",
+			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "base",
 		);
 		const localPowerupsEnabled = this.onlineMatch
 			? true

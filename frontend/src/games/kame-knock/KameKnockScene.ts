@@ -226,7 +226,7 @@ export class KameKnockScene extends ResponsiveScene {
 
 	/** Per-player power pools. Offline uses player 0; online maps by side. */
 	private playerPowers: PowerType[][] = [FALLBACK_POWERS];
-	private playerShellSkins: string[] = ["kanagawa", "dragon", "bamboo", "purple", "kanagawa"];
+	private playerShellSkins: string[] = ["base", "dragon", "bamboo", "purple", "base"];
 	private activePower: PowerType = PowerType.NONE;
 	/** Per-player used-power tracking (one-shot each per game, NONE always reusable). */
 	private powerUsed: Array<Set<PowerType>> = [new Set()];
@@ -333,7 +333,7 @@ export class KameKnockScene extends ResponsiveScene {
 			| undefined;
 		this.playerShellSkins = Array.from(
 			{ length: 5 },
-			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "kanagawa",
+			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "base",
 		);
 		const localPowerupsEnabled = this.onlineMatch
 			? true

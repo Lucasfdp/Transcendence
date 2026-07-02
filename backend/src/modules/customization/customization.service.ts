@@ -197,7 +197,7 @@ export class CustomizationService {
 
 	private isEquipped(user: User, cosmetic: CosmeticDefinition): boolean {
 		if (cosmetic.type === "shell_skin")
-			return (user.shellSkin ?? "kanagawa") === cosmetic.id;
+			return (user.shellSkin ?? "base") === cosmetic.id;
 		if (cosmetic.type === "hub_background")
 			return (
 				normalizeCosmeticId(user.hubBackground ?? "night_bg") === cosmetic.id

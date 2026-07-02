@@ -94,8 +94,8 @@ const COSMETIC_TABS: { id: CosmeticTabType; title: string; disabled?: boolean }[
 ];
 
 const COSMETIC_PREVIEWS: Partial<Record<Cosmetic["id"], string>> = {
-	kanagawa: "/assets/character/shells/base.png",
-	dragon: "/assets/character/shells/dragonshell.png",
+	base: "/assets/character/shells/baseShell.png",
+	dragon: "/assets/character/shells/dragonShell.png",
 	bamboo: "/assets/character/shells/bambooShell.png",
 	purple: "/assets/character/shells/purpleShell.png",
 	night_bg: "/assets/backgrounds/night_bg.png",
@@ -138,19 +138,19 @@ function isCosmeticActionDisabled(cosmetic: Cosmetic): boolean {
 }
 
 function getCosmeticDisplayName(cosmetic: Cosmetic): string {
-	if (cosmetic.id === "kanagawa") return "Default Shell";
+	if (cosmetic.id === "base") return "Default Shell";
 	return cosmetic.name;
 }
 
 function getCosmeticDisplayDescription(cosmetic: Cosmetic): string {
-	if (cosmetic.id === "kanagawa") {
+	if (cosmetic.id === "base") {
 		return "The plain starter shell. No special color, no decoration, just the shell every player begins with.";
 	}
 	return cosmetic.description;
 }
 
 function getShellSkinDisplayName(shellSkin: string | null | undefined): string {
-	if (!shellSkin || shellSkin === "kanagawa") return "Default Shell";
+	if (!shellSkin || shellSkin === "base") return "Default Shell";
 	if (shellSkin === "dragon") return "Dragon Shell";
 	if (shellSkin === "bamboo") return "Bamboo Shell";
 	if (shellSkin === "purple") return "Purple Shell";

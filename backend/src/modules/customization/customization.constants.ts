@@ -33,7 +33,7 @@ const LEGACY_COSMETIC_IDS: Record<string, string> = {
 
 export const COSMETICS: CosmeticDefinition[] = [
 	{
-		id: "kanagawa",
+		id: "base",
 		type: "shell_skin",
 		name: "Default Shell",
 		description: "The plain starter shell. No special color, no decoration, just the shell every player begins with.",

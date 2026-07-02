@@ -7,18 +7,18 @@ export const INGAME_PLAYER_ASSET = {
 	bodyKey: "ingame-base-char",
 	bodySource: "/assets/character/ingame_base_char.png",
 	shellKey: "ingame-shell-base",
-	shellSource: "/assets/character/shells/base.png",
+	shellSource: "/assets/character/shells/baseShell.png",
 	size: 384,
 } as const;
 
 export const SHELL_SKIN_ASSETS = {
-	kanagawa: {
+	base: {
 		key: "ingame-shell-base",
-		source: "/assets/character/shells/base.png",
+		source: "/assets/character/shells/baseShell.png",
 	},
 	dragon: {
 		key: "ingame-shell-dragon",
-		source: "/assets/character/shells/dragonshell.png",
+		source: "/assets/character/shells/dragonShell.png",
 	},
 	bamboo: {
 		key: "ingame-shell-bamboo",
@@ -33,5 +33,5 @@ export const SHELL_SKIN_ASSETS = {
 export type ShellSkinId = keyof typeof SHELL_SKIN_ASSETS;
 
 export function resolveShellSkinAsset(shellSkin: string | null | undefined) {
-	return SHELL_SKIN_ASSETS[(shellSkin ?? "kanagawa") as ShellSkinId] ?? SHELL_SKIN_ASSETS.kanagawa;
+	return SHELL_SKIN_ASSETS[(shellSkin ?? "base") as ShellSkinId] ?? SHELL_SKIN_ASSETS.base;
 }

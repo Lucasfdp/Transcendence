@@ -296,7 +296,7 @@ JWT-protected request:
 | level      | int               | default 1                            |
 | xp         | int               | default 0                            |
 | turtleName | string (nullable) | display name; falls back to username |
-| shellSkin  | string            | default `"kanagawa"`                 |
+| shellSkin  | string            | default `"base"`                     |
 | createdAt  | timestamp         |                                      |
 | updatedAt  | timestamp         |                                      |
 | profile    | Profile           | one-to-one, eager-loaded             |

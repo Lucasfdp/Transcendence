@@ -19,7 +19,7 @@ function makeUser(overrides: Partial<User> = {}): User {
 	user.level = overrides.level ?? 1;
 	user.xp = overrides.xp ?? 0;
 	user.coins = overrides.coins ?? 0;
-	user.shellSkin = overrides.shellSkin ?? "kanagawa";
+	user.shellSkin = overrides.shellSkin ?? "base";
 	user.hubBackground = overrides.hubBackground ?? "night_bg";
 	user.hubBackgroundAlter = overrides.hubBackgroundAlter ?? null;
 	user.profile = overrides.profile ?? new Profile();
@@ -115,13 +115,13 @@ describe("CustomizationService", () => {
 		service = module.get(CustomizationService);
 	});
 
-	it("marks default kanagawa as owned", async () => {
+	it("marks default base shell as owned", async () => {
 		const user = makeUser();
 
 		const cosmetics = await service.listForUser(user);
 
 		expect(
-			cosmetics.find((cosmetic) => cosmetic.id === "kanagawa"),
+			cosmetics.find((cosmetic) => cosmetic.id === "base"),
 		).toEqual(expect.objectContaining({ owned: true, equipped: true }));
 		expect(
 			cosmetics.find((cosmetic) => cosmetic.id === "night_bg"),
@@ -181,7 +181,7 @@ describe("CustomizationService", () => {
 				?.equipped,
 		).toBe(true);
 		expect(
-			cosmetics.find((cosmetic) => cosmetic.id === "kanagawa")?.equipped,
+			cosmetics.find((cosmetic) => cosmetic.id === "base")?.equipped,
 		).toBe(true);
 	});
 

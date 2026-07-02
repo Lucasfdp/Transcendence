@@ -336,12 +336,12 @@ const SHRINE_CARDS: readonly CardDefinition[] = [
 
 const SHELL_SKIN_CARDS: readonly CardDefinition[] = [
 	{
-		id: "skin-kanagawa",
+		id: "skin-base",
 		family: "shell_skin",
 		rarity: "stone",
-		name: "Kanagawa Shell",
-		flavor: "The classic blue wave — the default dojo style.",
-		sourceRef: "kanagawa",
+		name: "Default Shell",
+		flavor: "The plain starter shell every player begins with.",
+		sourceRef: "base",
 	},
 	{
 		id: "skin-bamboo",

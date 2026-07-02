@@ -3579,7 +3579,7 @@ img.power-card__orb {
 	display: none;
 	width: clamp(1.94rem, 3.39vw, 2.54rem);
 	aspect-ratio: 1;
-	background: url("/assets/character/shells/base.png") center / contain no-repeat;
+	background: url("/assets/character/shells/baseShell.png") center / contain no-repeat;
 	transform: translate(-50%, 50%);
 	filter:
 		drop-shadow(0 0 5px rgba(120, 255, 130, 0.42))

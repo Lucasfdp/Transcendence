@@ -207,7 +207,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private activeStone: StoneState | null = null;
 	private activeRingGfx: Phaser.GameObjects.Graphics | null = null;
 	private activeRingTween: Phaser.Tweens.Tween | null = null;
-	private playerShellSkins: string[] = ["kanagawa", "dragon", "bamboo", "purple", "kanagawa"];
+	private playerShellSkins: string[] = ["base", "dragon", "bamboo", "purple", "base"];
 	private nextStoneId = 0;
 	private settlingTimer = 0;
 
@@ -365,7 +365,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			| undefined;
 		this.playerShellSkins = Array.from(
 			{ length: 5 },
-			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "kanagawa",
+			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "base",
 		);
 
 		// Power registry — register ALL powers so the registry can always resolve any type

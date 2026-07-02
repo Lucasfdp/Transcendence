@@ -156,7 +156,7 @@ export class BambooBashScene extends ResponsiveScene {
 	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
 	private slingshot!: Slingshot;
 	private localParticipants: LocalParticipant[] = [];
-	private playerShellSkins: string[] = ["kanagawa", "dragon", "bamboo", "purple", "kanagawa"];
+	private playerShellSkins: string[] = ["base", "dragon", "bamboo", "purple", "base"];
 	private localTimeLeftMs: number[] = [];
 	private activeLocalParticipantIndex = 0;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
@@ -309,7 +309,7 @@ export class BambooBashScene extends ResponsiveScene {
 			| undefined;
 		this.playerShellSkins = Array.from(
 			{ length: 5 },
-			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "kanagawa",
+			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "base",
 		);
 		const localMode = this.registry.get("localMode") as
 			| "solo"

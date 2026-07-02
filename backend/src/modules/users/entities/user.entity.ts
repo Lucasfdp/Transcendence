@@ -53,8 +53,8 @@ export class User {
 	@Column({ nullable: true })
 	turtleName: string;
 
-	// Cosmetic shell skin — e.g. "kanagawa", "dragon", "bamboo"
-	@Column({ default: "kanagawa" })
+	// Cosmetic shell skin — e.g. "base", "dragon", "bamboo"
+	@Column({ default: "base" })
 	shellSkin: string;
 
 	// Cosmetic Hub background preset — e.g. "night_bg", "sunset_bg"
