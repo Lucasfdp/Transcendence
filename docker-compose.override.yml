@@ -14,11 +14,11 @@
 #   TypeScript is recompiled and the server restarted automatically on save.
 #
 # Usage:
-#   make dev       (loads this override explicitly)
-#   make up        (production-like, does not load this override)
+#   make up        (development mode)
+#   make dev       (development mode with explicit DEV messaging)
 #
 # To run WITHOUT the override (production-like):
-#   docker compose -f docker-compose.yml up --build
+#   make prod
 # ==============================================================================
 
 services:

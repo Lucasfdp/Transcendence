@@ -41,7 +41,8 @@ make ps
 `make up` performs the following steps in order:
 
 1. Reads `.env` and validates it exists.
-2. Builds Docker images for all services (uses build cache when possible).
+2. Builds Docker images for all services with the development override enabled
+   (uses build cache when possible).
 3. Creates Docker networks (`frontend_network`, `backend_network`).
 4. Creates named volumes if they do not exist.
 5. Starts `database` and `redis` (no dependencies).
@@ -62,12 +63,27 @@ The application is accessible at `https://localhost:42424` (or your configured `
 ### Local / Development
 
 ```bash
-make up        # Start all services
+make up        # Start all services in development mode with the override
+make dev       # Same dev stack, with explicit dev-mode entrypoint
 make logs      # Watch all logs
 make ps        # Check service status
 make down      # Stop (preserves volumes)
 make restart   # Stop then start
 ```
+
+`make up`, `make dev`, `make build`, `make re`, `make rebuild-front`, and
+`make rebuild-back` all force `FRONTEND_ENV=development` and
+`BACKEND_ENV=development`, regardless of the values present in `.env`.
+
+### Production-Like Local Run
+
+```bash
+make prod      # Force FRONTEND_ENV=production and BACKEND_ENV=production
+```
+
+`make prod` intentionally overrides any `FRONTEND_ENV=development` or
+`BACKEND_ENV=development` values present in `.env` so the frontend is built with
+the production React/Vite bundle and served without the dev override.
 
 ### Rebuild After Code Changes
 

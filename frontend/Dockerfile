@@ -6,7 +6,6 @@ LABEL stage="builder"
 ARG FRONTEND_ENV=production
 ARG VITE_API_URL=/api
 ARG VITE_GITHUB_AUTH_URL=
-ENV NODE_ENV=${FRONTEND_ENV}
 ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_GITHUB_AUTH_URL=${VITE_GITHUB_AUTH_URL}
 WORKDIR /app/frontend
@@ -14,7 +13,8 @@ COPY frontend/package.json ./
 COPY frontend/package-lock.json* ./
 # Keep `npm install` here instead of `npm ci`: Vite/Rollup's optional native
 # packages can differ by platform, and `npm install` re-resolves them inside the
-# target container environment.
+# target container environment. The build stage must keep devDependencies
+# available even when the final runtime image uses production settings.
 RUN --mount=type=cache,target=/root/.npm npm install
 COPY frontend/ ./
 COPY public /app/public

@@ -12,6 +12,8 @@ DEV_COMPOSE	:= -f $(COMPOSE_FILE) -f $(OVERRIDE_FILE)
 ENV_FILE		:= .env
 BASE_COMPOSE	:= docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE)
 HOT_COMPOSE	:= docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE)
+DEV_ENV			:= FRONTEND_ENV=development BACKEND_ENV=development
+PROD_ENV		:= FRONTEND_ENV=production BACKEND_ENV=production
 PROJECT_NAME	:= transcendence
 CERT_DIR		:= secrets/nginx_ssl
 VAULT_INIT_FILE	:= secrets/vault/init.txt
@@ -51,22 +53,22 @@ endif
 ## up: Build images (if needed) and start all services in detached mode
 up: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting all services...$(RESET)"
-	$(BASE_COMPOSE) config >/dev/null
-	$(BASE_COMPOSE) up -d --build --remove-orphans
+	$(DEV_ENV) $(HOT_COMPOSE) config >/dev/null
+	$(DEV_ENV) $(HOT_COMPOSE) up -d --build --remove-orphans
 	@echo "$(GREEN)All services are up. Run 'make ps' to verify.$(RESET)"
 
 ## dev: Start with hot-reload override (Vite HMR + NestJS watch). Access frontend at https://localhost:42424
 dev: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting in DEV mode (hot-reload)...$(RESET)"
-	$(HOT_COMPOSE) config >/dev/null
-	$(HOT_COMPOSE) up -d --build --remove-orphans
+	$(DEV_ENV) $(HOT_COMPOSE) config >/dev/null
+	$(DEV_ENV) $(HOT_COMPOSE) up -d --build --remove-orphans
 	@echo "$(GREEN)Dev server running. Frontend: https://localhost:42424$(RESET)"
 
 ## prod: Start WITHOUT the dev override — production-like mode (compiled frontend + runtime images)
 prod: check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting in PROD mode (no override)...$(RESET)"
-	$(BASE_COMPOSE) config >/dev/null
-	$(BASE_COMPOSE) up -d --build --remove-orphans
+	$(PROD_ENV) $(BASE_COMPOSE) config >/dev/null
+	$(PROD_ENV) $(BASE_COMPOSE) up -d --build --remove-orphans
 	@echo "$(GREEN)Production-mode services up. Frontend: https://localhost:42424$(RESET)"
 
 ## vault-bootstrap: Ensure the local Vault is initialised, unsealed and seeded before starting dependants
@@ -124,13 +126,13 @@ restart-back:
 ## rebuild-front: Rebuild and recreate only the frontend service
 rebuild-front: check-env certs
 	@echo "$(CYAN)Rebuilding frontend only...$(RESET)"
-	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --no-deps frontend
+	$(DEV_ENV) docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --no-deps frontend
 	@echo "$(GREEN)Frontend rebuilt and restarted.$(RESET)"
 
 ## rebuild-back: Rebuild and recreate only the backend service
 rebuild-back: check-env certs
 	@echo "$(CYAN)Rebuilding backend only...$(RESET)"
-	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --no-deps backend
+	$(DEV_ENV) docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --no-deps backend
 	@echo "$(GREEN)Backend rebuilt and restarted.$(RESET)"
 
 ## refresh-app: Rebuild frontend and backend to validate app changes quickly
@@ -140,7 +142,7 @@ refresh-app: rebuild-front rebuild-back
 ## build: Build or rebuild all images without starting containers
 build: check-env
 	@echo "$(CYAN)Building all images...$(RESET)"
-	$(BASE_COMPOSE) build --no-cache
+	$(DEV_ENV) $(BASE_COMPOSE) build --no-cache
 
 ## logs: Tail logs for all services, or one service. Usage: make logs [SERVICE=backend]
 logs:
