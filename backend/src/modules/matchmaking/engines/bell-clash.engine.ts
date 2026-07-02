@@ -33,6 +33,7 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 			seq: 0,
 			gameId: "bell-clash",
 			mode: context.mode,
+			powerupsEnabled: context.powerupsEnabled ?? true,
 			phase: "pending",
 			roundNumber: 1,
 			totalRounds: TOTAL_ROUNDS,

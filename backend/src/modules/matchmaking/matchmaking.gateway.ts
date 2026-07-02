@@ -17,7 +17,11 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { UsersService } from "../users/users.service";
 import { GameSessionService } from "./game-session.service";
 import { MatchmakingService } from "./matchmaking.service";
-import { PrivateLobbiesService } from "./private-lobbies.service";
+import {
+	PrivateLobbiesService,
+	type LobbyJoinResult,
+	type PrivateLobby,
+} from "./private-lobbies.service";
 import {
 	BambooBashThrowEvent,
 	BellClashThrowEvent,
@@ -489,20 +493,56 @@ export class MatchmakingGateway
 				user,
 				payload.gameId,
 				payload.shellSelection ?? [],
-				(expired) => {
-					socket.emit("lobby:expired", { lobbyId: expired.lobbyId });
-					if (expired.pendingInviteeId) {
-						for (const sid of this.presence.getSocketIds(expired.pendingInviteeId)) {
-							this.server.to(sid).emit("lobby:cancelled", { lobbyId: expired.lobbyId });
-						}
-					}
-				},
+				(expired) => this.emitLobbyExpired(expired),
 			);
 			socket.emit("lobby:created", {
 				lobbyId: lobby.lobbyId,
 				gameId: lobby.gameId,
 				expiresAt: lobby.createdAt + 2 * 60 * 1_000,
 			});
+		} catch (err) {
+			socket.emit("lobby:error", {
+				message: err instanceof Error ? err.message : "Failed to create lobby",
+			});
+		}
+	}
+
+	@SubscribeMessage("lobby:create-pin")
+	async onLobbyCreatePin(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody()
+		payload: {
+			gameId: string;
+			playerCount?: number;
+			powerupsEnabled?: boolean;
+			shellSelection?: string[];
+		},
+	): Promise<void> {
+		const user = socket.data.user as SocketUser;
+		if (user.isGuest) {
+			socket.emit("lobby:error", { message: "Guests cannot create lobbies" });
+			return;
+		}
+		try {
+			const lobby = this.privateLobbies.createPinLobby(
+				socket.id,
+				user,
+				payload.gameId,
+				payload.playerCount ?? 2,
+				payload.powerupsEnabled ?? true,
+				payload.shellSelection ?? [],
+				(expired) => this.emitLobbyExpired(expired),
+			);
+			const expiresAt = lobby.createdAt + 2 * 60 * 1_000;
+			socket.emit("lobby:created-pin", {
+				lobbyId: lobby.lobbyId,
+				pin: lobby.pin,
+				gameId: lobby.gameId,
+				playerCount: lobby.playerCount,
+				joinedCount: lobby.participants.length,
+				expiresAt,
+			});
+			this.emitPinLobbyWaiting(lobby);
 		} catch (err) {
 			socket.emit("lobby:error", {
 				message: err instanceof Error ? err.message : "Failed to create lobby",
@@ -522,7 +562,7 @@ export class MatchmakingGateway
 		const user = socket.data.user as SocketUser;
 		const lobby = this.privateLobbies.getLobby(payload.lobbyId);
 
-		if (!lobby || lobby.host.id !== user.id) {
+		if (!lobby || lobby.kind !== "invite" || lobby.host.id !== user.id) {
 			socket.emit("lobby:error", { message: "Lobby not found" });
 			return;
 		}
@@ -579,37 +619,71 @@ export class MatchmakingGateway
 				return;
 			}
 
-			const { matchId, room } = result;
-			this.syncRoomPresence(room);
-			for (const player of room.players) {
-				for (const sid of this.presence.getSocketIds(player.user.id)) {
-					const s = this.server.sockets.sockets.get(sid);
-					if (s) {
-						s.join(matchId);
-						s.emit("lobby:matched", {
-							matchId,
-							side: player.side,
-							gameId: room.gameId,
-						});
-					}
-				}
-			}
-
-			// Invite matches skip the normal queue:join → room:ready handshake, so
-			// the room would otherwise stay "pending" forever (engines reject all
-			// input, HUD scenes never leave their pre-active phase). Mirror the
-			// normal-matchmaking hand-off here: mark both players ready and start
-			// the session immediately, then broadcast the resulting state.
-			for (const player of room.players) {
-				this.rooms.setReady(matchId, player.user.id);
-			}
-			const started = await this.sessions.startIfReady(matchId);
-			this.emitState(started?.matchId ?? matchId);
+			await this.launchPrivateMatch(result);
 		} catch (err) {
 			socket.emit("lobby:error", {
 				message: err instanceof Error ? err.message : "Failed to join lobby",
 			});
 		}
+	}
+
+	@SubscribeMessage("lobby:join-pin")
+	async onLobbyJoinPin(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { pin: string; shellSelection?: string[] },
+	): Promise<void> {
+		const user = socket.data.user as SocketUser;
+		try {
+			const result = await this.privateLobbies.joinPinLobby(
+				payload.pin,
+				socket.id,
+				user,
+				payload.shellSelection ?? [],
+			);
+			if (!result) {
+				socket.emit("lobby:error", { message: "Private room not found" });
+				return;
+			}
+			if (result.matched === false) {
+				this.emitPinLobbyWaiting(result.lobby);
+				return;
+			}
+			await this.launchPrivateMatch(result);
+		} catch (err) {
+			socket.emit("lobby:error", {
+				message: err instanceof Error ? err.message : "Failed to join private room",
+			});
+		}
+	}
+
+	@SubscribeMessage("lobby:spectate-pin")
+	onLobbySpectatePin(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { pin: string },
+	): void {
+		const lobby = this.privateLobbies.getLobbyByPin(payload.pin);
+		if (lobby) {
+			socket.emit("lobby:error", { message: "Private match has not started yet" });
+			return;
+		}
+
+		const started = this.privateLobbies.getStartedMatchByPin(payload.pin);
+		const user = socket.data.user as SocketUser;
+		const room = started
+			? this.rooms.addSpectator(started.matchId, socket.id, user)
+			: null;
+		if (!started || !room) {
+			socket.emit("lobby:error", { message: "Private match not found" });
+			return;
+		}
+
+		socket.join(room.matchId);
+		socket.emit("lobby:spectating", {
+			matchId: room.matchId,
+			gameId: room.gameId,
+			snapshot: room.state,
+		});
+		socket.emit("game:state", room.state);
 	}
 
 	/** Invitee declines — notifies the host. */
@@ -637,12 +711,18 @@ export class MatchmakingGateway
 		if (!lobby || lobby.host.id !== user.id) return;
 
 		const cancelled = this.privateLobbies.cancelLobby(payload.lobbyId);
+		if (cancelled) {
+			for (const participant of cancelled.participants) {
+				for (const sid of this.presence.getSocketIds(participant.user.id)) {
+					this.server.to(sid).emit("lobby:cancelled", { lobbyId: payload.lobbyId });
+				}
+			}
+		}
 		if (cancelled?.pendingInviteeId) {
 			for (const sid of this.presence.getSocketIds(cancelled.pendingInviteeId)) {
 				this.server.to(sid).emit("lobby:cancelled", { lobbyId: payload.lobbyId });
 			}
 		}
-		socket.emit("lobby:cancelled", { lobbyId: payload.lobbyId });
 	}
 
 	/** Mark a single notification as read for the authenticated user. */
@@ -670,6 +750,65 @@ export class MatchmakingGateway
 			this.syncRoomPresence(room);
 			this.replays.captureFrame(room);
 			this.server.to(matchId).emit("game:state", room.state);
+		}
+	}
+
+	private emitLobbyExpired(lobby: PrivateLobby): void {
+		for (const participant of lobby.participants) {
+			for (const sid of this.presence.getSocketIds(participant.user.id)) {
+				this.server.to(sid).emit("lobby:expired", { lobbyId: lobby.lobbyId });
+			}
+		}
+		if (lobby.pendingInviteeId) {
+			for (const sid of this.presence.getSocketIds(lobby.pendingInviteeId)) {
+				this.server.to(sid).emit("lobby:cancelled", { lobbyId: lobby.lobbyId });
+			}
+		}
+	}
+
+	private emitPinLobbyWaiting(lobby: PrivateLobby): void {
+		const payload = {
+			lobbyId: lobby.lobbyId,
+			pin: lobby.pin,
+			gameId: lobby.gameId,
+			playerCount: lobby.playerCount,
+			joinedCount: lobby.participants.length,
+			expiresAt: lobby.createdAt + 2 * 60 * 1_000,
+		};
+		for (const participant of lobby.participants) {
+			for (const sid of this.presence.getSocketIds(participant.user.id)) {
+				this.server.to(sid).emit("lobby:waiting", payload);
+			}
+		}
+	}
+
+	private async launchPrivateMatch(result: LobbyJoinResult): Promise<void> {
+		const { matchId, room } = result;
+		this.syncRoomPresence(room);
+		for (const player of room.players) {
+			for (const sid of this.presence.getSocketIds(player.user.id)) {
+				const s = this.server.sockets.sockets.get(sid);
+				if (s) s.join(matchId);
+			}
+		}
+
+		// Private matches skip queue:join -> room:ready, so start them directly.
+		for (const player of room.players) {
+			this.rooms.setReady(matchId, player.user.id);
+		}
+		const started = await this.sessions.startIfReady(matchId);
+		const activeRoom = started ?? room;
+		this.emitState(activeRoom.matchId);
+
+		for (const player of activeRoom.players) {
+			for (const sid of this.presence.getSocketIds(player.user.id)) {
+				this.server.to(sid).emit("lobby:matched", {
+					matchId: activeRoom.matchId,
+					side: player.side,
+					gameId: activeRoom.gameId,
+					snapshot: activeRoom.state,
+				});
+			}
 		}
 	}
 

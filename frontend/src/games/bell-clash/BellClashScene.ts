@@ -293,7 +293,7 @@ export class BellClashScene extends ResponsiveScene {
 			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "base",
 		);
 		const localPowerupsEnabled = this.onlineMatch
-			? true
+			? this.onlineMatch.snapshot?.powerupsEnabled !== false
 			: this.registry.get("localPowerupsEnabled") !== false;
 		const registryLocalMode = this.registry.get("localMode") as
 			| "solo"
@@ -329,7 +329,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.playerPowers = Array.from({ length: 5 }, (_, index) =>
 			buildPool(sel?.[`player${index}`]),
 		);
-		if (this.onlineMatch)
+		if (this.onlineMatch && !this.onlineMatch.spectator)
 			this.playerPowers[this.onlineMatch.side] = buildPool(sel?.player0);
 
 		const initialOnlineSnapshot =
@@ -477,6 +477,7 @@ export class BellClashScene extends ResponsiveScene {
 
 	private onLaunch(): void {
 		if (this.onlineMatch) {
+			if (this.onlineMatch.spectator) return;
 			const sourceVx = this.ball.vx / this.arena.scale;
 			const sourceVy = this.ball.vy / this.arena.scale;
 			const power = this.activePower;
@@ -535,7 +536,7 @@ export class BellClashScene extends ResponsiveScene {
 
 	/** Index of the player whose turn it currently is. */
 	private currentPlayerIndex(): number {
-		if (this.onlineMatch) return this.onlineMatch.side;
+		if (this.onlineMatch) return Math.max(0, this.onlineMatch.side);
 		return this.localTurnNumber % this.localPlayerCount;
 	}
 
@@ -1113,7 +1114,7 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private finishOnlineShot(): void {
-		if (!this.onlineMatch || this.onlineRoundSubmitted) return;
+		if (!this.onlineMatch || this.onlineMatch.spectator || this.onlineRoundSubmitted) return;
 		this.launchedThisShot = false;
 		this.ballGfx.setAlpha(1);
 		if (this.onlineLocalShotNumber >= this.onlineShotsPerRound) {
@@ -1158,6 +1159,7 @@ export class BellClashScene extends ResponsiveScene {
 	private syncOnlineSlingshot(): void {
 		if (
 			!this.onlineMatch ||
+			this.onlineMatch.spectator ||
 			this.onlineRoundSubmitted ||
 			this.onlineLocalShotNumber >= this.onlineShotsPerRound ||
 			isBallMoving(this.ball)

@@ -336,7 +336,7 @@ export class KameKnockScene extends ResponsiveScene {
 			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "base",
 		);
 		const localPowerupsEnabled = this.onlineMatch
-			? true
+			? this.onlineMatch.snapshot?.powerupsEnabled !== false
 			: this.registry.get("localPowerupsEnabled") !== false;
 
 		const buildPool = (picks: string[] | undefined): PowerType[] => {
@@ -373,7 +373,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.playerPowers = Array.from({ length: 5 }, (_, index) =>
 			buildPool(sel?.[`player${index}`]),
 		);
-		if (this.onlineMatch)
+		if (this.onlineMatch && !this.onlineMatch.spectator)
 			this.playerPowers[this.onlineMatch.side] = buildPool(sel?.player0);
 
 		this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);

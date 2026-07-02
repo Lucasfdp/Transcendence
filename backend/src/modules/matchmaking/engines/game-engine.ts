@@ -11,6 +11,7 @@ export interface GameEngineCreateContext {
 	matchId: string;
 	gameId: string;
 	mode: MatchMode;
+	powerupsEnabled?: boolean;
 	players: Array<{
 		socketId: string;
 		user: SocketUser;

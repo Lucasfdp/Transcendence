@@ -196,6 +196,14 @@ function PowerupMatchmakingPanel({
 	const [privateOnlinePlayerCount, setPrivateOnlinePlayerCount] = useState(2);
 	const [privateOnlinePowerupsEnabled, setPrivateOnlinePowerupsEnabled] = useState(true);
 	const [privateRoomPin, setPrivateRoomPin] = useState("");
+	const [privateLobby, setPrivateLobby] = useState<{
+		lobbyId: string;
+		pin: string;
+		gameId: string;
+		playerCount: number;
+		joinedCount: number;
+		expiresAt: number;
+	} | null>(null);
 	const [isSearchingOnline, setIsSearchingOnline] = useState(false);
 	const [activeMatchStatus, setActiveMatchStatus] = useState<MatchStatusPayload | null>(null);
 	const isSearchingOnlineRef = useRef(false);
@@ -210,19 +218,110 @@ function PowerupMatchmakingPanel({
 			setActiveMatchStatus(payload.inMatch ? payload : null);
 			if (payload.inMatch) setIsSearchingOnline(false);
 		};
+		const handleLobbyCreatedPin = (payload: {
+			lobbyId: string;
+			pin: string;
+			gameId: string;
+			playerCount: number;
+			joinedCount: number;
+			expiresAt: number;
+		}) => {
+			setPrivateLobby(payload);
+			setPrivateRoomPin(payload.pin);
+			setMessage(`Private room ${payload.pin} created. Waiting for ${payload.joinedCount}/${payload.playerCount} players.`);
+			setMessageTone("gold");
+		};
+		const handleLobbyWaiting = (payload: {
+			lobbyId: string;
+			pin: string;
+			gameId: string;
+			playerCount: number;
+			joinedCount: number;
+			expiresAt: number;
+		}) => {
+			if (payload.gameId !== gameId) return;
+			setPrivateLobby(payload);
+			setPrivateRoomPin(payload.pin);
+			setMessage(`Private room ${payload.pin}: ${payload.joinedCount}/${payload.playerCount} players joined.`);
+			setMessageTone("gold");
+		};
+		const handleLobbyMatched = (payload: {
+			matchId: string;
+			side: number;
+			gameId: string;
+			snapshot?: GameSnapshot;
+		}) => {
+			if (payload.gameId !== gameId || !payload.snapshot) return;
+			setPrivateLobby(null);
+			setIsSearchingOnline(false);
+			onLaunch({
+				gameId,
+				targetScene: sceneData.targetScene,
+				shellSelection: buildEmptyShellSelection(payload.snapshot.players.length),
+				onlineMatch: {
+					matchId: payload.matchId,
+					side: payload.side,
+					snapshot: payload.snapshot,
+				} satisfies OnlineMatchContext,
+			});
+		};
+		const handleLobbySpectating = (payload: {
+			matchId: string;
+			gameId: string;
+			snapshot: GameSnapshot;
+		}) => {
+			if (payload.gameId !== gameId) return;
+			setPrivateLobby(null);
+			onLaunch({
+				gameId,
+				targetScene: sceneData.targetScene,
+				shellSelection: buildEmptyShellSelection(payload.snapshot.players.length),
+				onlineMatch: {
+					matchId: payload.matchId,
+					side: -1,
+					spectator: true,
+					snapshot: payload.snapshot,
+				} satisfies OnlineMatchContext,
+			});
+		};
+		const handleLobbyClosed = (payload: { lobbyId: string }) => {
+			setPrivateLobby((current) =>
+				!current || current.lobbyId !== payload.lobbyId ? current : null,
+			);
+			setMessage("Private room closed. You can create or join another one.");
+			setMessageTone("muted");
+		};
+		const handleLobbyError = (payload: { message?: string }) => {
+			setMessage(payload.message ?? "Private room action failed.");
+			setMessageTone("error");
+		};
 		socket.off("match:status", handleMatchStatus);
 		socket.on("match:status", handleMatchStatus);
+		socket.on("lobby:created-pin", handleLobbyCreatedPin);
+		socket.on("lobby:waiting", handleLobbyWaiting);
+		socket.on("lobby:matched", handleLobbyMatched);
+		socket.on("lobby:spectating", handleLobbySpectating);
+		socket.on("lobby:expired", handleLobbyClosed);
+		socket.on("lobby:cancelled", handleLobbyClosed);
+		socket.on("lobby:error", handleLobbyError);
 		socket.emit("match:status");
 
 		return () => {
 			if (isSearchingOnlineRef.current) socket.emit("queue:leave");
 			socket.off("match:status", handleMatchStatus);
+			socket.off("lobby:created-pin", handleLobbyCreatedPin);
+			socket.off("lobby:waiting", handleLobbyWaiting);
+			socket.off("lobby:matched", handleLobbyMatched);
+			socket.off("lobby:spectating", handleLobbySpectating);
+			socket.off("lobby:expired", handleLobbyClosed);
+			socket.off("lobby:cancelled", handleLobbyClosed);
+			socket.off("lobby:error", handleLobbyError);
 			socket.off("match:found");
 			socket.off("game:state");
 			socket.off("queue:error");
 			socket.off("queue:left");
 		};
-	}, []);
+	}, [gameId, onLaunch, sceneData.targetScene]);
 
 	const backgroundClass = hubBackgroundClass(
 		"game-host",
@@ -296,18 +395,52 @@ function PowerupMatchmakingPanel({
 		});
 	};
 
-	const showPrivateRoomMessage = (action: "create" | "join") => {
-		if (action === "join" && !privateRoomPin.trim()) {
+	const createPrivateRoom = () => {
+		if (activeMatchStatus) {
+			setMessage("Finish or abandon your active match before creating a private room.");
+			setMessageTone("error");
+			return;
+		}
+		getGameSocket().emit("lobby:create-pin", {
+			gameId,
+			playerCount: privateOnlinePlayerCount,
+			powerupsEnabled: privateOnlinePowerupsEnabled,
+			shellSelection: [],
+		});
+		setMessage("Creating private room...");
+		setMessageTone("gold");
+	};
+
+	const joinPrivateRoom = () => {
+		const pin = privateRoomPin.trim();
+		if (!pin) {
 			setMessage("Enter a room PIN before joining a private match.");
 			setMessageTone("error");
 			return;
 		}
-		setMessage(
-			action === "create"
-				? `Private rooms are prepared for ${privateOnlinePlayerCount} players. Room creation is coming soon.`
-				: `Private room ${privateRoomPin.trim()} is ready for join integration.`,
-		);
+		getGameSocket().emit("lobby:join-pin", { pin, shellSelection: [] });
+		setMessage(`Joining private room ${pin}...`);
 		setMessageTone("gold");
+	};
+
+	const spectatePrivateRoom = () => {
+		const pin = privateRoomPin.trim();
+		if (!pin) {
+			setMessage("Enter a room PIN before watching a private match.");
+			setMessageTone("error");
+			return;
+		}
+		getGameSocket().emit("lobby:spectate-pin", { pin });
+		setMessage(`Looking for private match ${pin}...`);
+		setMessageTone("gold");
+	};
+
+	const cancelPrivateRoom = () => {
+		if (!privateLobby) return;
+		getGameSocket().emit("lobby:cancel", { lobbyId: privateLobby.lobbyId });
+		setPrivateLobby(null);
+		setMessage("Private room cancelled.");
+		setMessageTone("muted");
 	};
 
 	const cancelOnlineSearch = () => {
@@ -531,23 +664,40 @@ function PowerupMatchmakingPanel({
 							<input
 								className="power-picker-page__pin-input"
 								value={privateRoomPin}
-								onChange={(event) => setPrivateRoomPin(event.target.value.toUpperCase())}
+								onChange={(event) => setPrivateRoomPin(event.target.value.replace(/[^a-z0-9]/gi, "").toUpperCase())}
 								placeholder="PIN"
 								maxLength={8}
 								aria-label="Private room PIN"
 							/>
-							<button type="button" className="power-picker-page__primary" onClick={() => showPrivateRoomMessage("join")}>
+							<button type="button" className="power-picker-page__primary" onClick={joinPrivateRoom}>
 								Join
 							</button>
-							<button type="button" className="power-picker-page__online-button" onClick={() => showPrivateRoomMessage("create")}>
+							<button type="button" className="power-picker-page__online-button" onClick={createPrivateRoom}>
 								Create
 							</button>
+							<button type="button" className="power-picker-page__online-button" onClick={spectatePrivateRoom}>
+								Watch
+							</button>
 						</div>
+						{privateLobby ? (
+							<>
+								<p className="power-picker-page__mode-note">
+									PIN {privateLobby.pin} · {privateLobby.joinedCount}/{privateLobby.playerCount} players
+								</p>
+								<button type="button" className="power-picker-page__danger" onClick={cancelPrivateRoom}>Cancel Private Room</button>
+							</>
+						) : null}
 					</section>
 				</footer>
 			</section>
 		</main>
 	);
+}
+
+function buildEmptyShellSelection(playerCount: number): Record<string, string[]> {
+	return Object.fromEntries(
+		Array.from({ length: playerCount }, (_value, index) => [`player${index}`, []]),
+	) as Record<string, string[]>;
 }
 
 function toHex(color: number): string {

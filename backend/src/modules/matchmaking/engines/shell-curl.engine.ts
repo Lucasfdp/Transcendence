@@ -53,6 +53,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			seq: 0,
 			gameId: context.gameId,
 			mode: context.mode,
+			powerupsEnabled: context.powerupsEnabled ?? true,
 			phase: "pending",
 			currentTurn: 0,
 			turnNumber: 0,

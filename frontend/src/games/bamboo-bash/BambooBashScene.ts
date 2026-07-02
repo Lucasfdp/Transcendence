@@ -323,7 +323,7 @@ export class BambooBashScene extends ResponsiveScene {
 			),
 		);
 		const localPowerupsEnabled = this.onlineMatch
-			? true
+			? this.onlineMatch.snapshot?.powerupsEnabled !== false
 			: this.registry.get("localPowerupsEnabled") !== false;
 		const buildPool = (picks: string[] | undefined): PowerType[] => {
 			if (!localPowerupsEnabled) return [PowerType.NONE];
@@ -846,7 +846,7 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private submitOnlineRoundScore(): void {
-		if (!this.onlineMatch || this.onlineRoundSubmitted) return;
+		if (!this.onlineMatch || this.onlineMatch.spectator || this.onlineRoundSubmitted) return;
 		this.onlineRoundSubmitted = true;
 		this.updateOnlineStatus("Waiting for opponents...");
 		getGameSocket().emit("game:input", {
@@ -871,8 +871,9 @@ export class BambooBashScene extends ResponsiveScene {
 		this.onlineRoundNumber = snapshot.roundNumber;
 		this.onlineTotalRounds = snapshot.totalRounds;
 		this.onlineScores = snapshot.score;
-		this.score =
-			snapshot.liveRoundScores[this.onlineMatch.side] ?? this.score;
+		if (!this.onlineMatch.spectator)
+			this.score =
+				snapshot.liveRoundScores[this.onlineMatch.side] ?? this.score;
 		this.bamboos = snapshot.bamboos.map((bamboo) => ({ ...bamboo }));
 		const liveBambooIds = new Set(
 			snapshot.bamboos.map((bamboo) => bamboo.id),
@@ -884,8 +885,9 @@ export class BambooBashScene extends ResponsiveScene {
 		this.drawBamboos();
 		this.syncOnlineBalls(snapshot);
 		this.drawBalls();
-		this.totalScore =
-			snapshot.score[this.onlineMatch.side] ?? this.totalScore;
+		if (!this.onlineMatch.spectator)
+			this.totalScore =
+				snapshot.score[this.onlineMatch.side] ?? this.totalScore;
 		this.syncOnlineTimeLeft(snapshot);
 		this.updateHudText();
 		this.updateSidePanels();
@@ -900,8 +902,9 @@ export class BambooBashScene extends ResponsiveScene {
 			return;
 		}
 
-		const localSubmitted =
-			snapshot.roundScores[this.onlineMatch.side] !== null;
+		const localSubmitted = this.onlineMatch.spectator
+			? true
+			: snapshot.roundScores[this.onlineMatch.side] !== null;
 		if (localSubmitted) {
 			this.updateOnlineStatus("Waiting for opponents...");
 			return;
@@ -1880,7 +1883,7 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private syncOnlineBamboos(delta: number): void {
-		if (!this.onlineMatch || this.onlineRoundSubmitted) return;
+		if (!this.onlineMatch || this.onlineMatch.spectator || this.onlineRoundSubmitted) return;
 		this.onlineBambooSyncAccMs += delta;
 		if (this.onlineBambooSyncAccMs < 1000) return;
 		this.onlineBambooSyncAccMs = 0;

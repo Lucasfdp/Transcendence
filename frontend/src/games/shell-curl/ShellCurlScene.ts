@@ -340,9 +340,9 @@ export class ShellCurlScene extends ResponsiveScene {
 			| Record<string, string[] | undefined>
 			| undefined;
 		const localPowerupsEnabled = this.onlineMatch
-			? true
+			? this.onlineMatch.snapshot?.powerupsEnabled !== false
 			: this.registry.get("localPowerupsEnabled") !== false;
-		this.powerupsEnabled = !this.onlineMatch && localPowerupsEnabled;
+		this.powerupsEnabled = localPowerupsEnabled;
 
 		const buildPool = (picks: string[] | undefined): PowerType[] => {
 			if (!localPowerupsEnabled) return [PowerType.NONE];

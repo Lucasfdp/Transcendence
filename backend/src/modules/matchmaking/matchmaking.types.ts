@@ -84,6 +84,7 @@ export interface CurlingSnapshot {
 	seq: number;
 	gameId: string;
 	mode: MatchMode;
+	powerupsEnabled: boolean;
 	phase: "pending" | "active" | "finished" | "abandoned";
 	currentTurn: number;
 	turnNumber: number;
@@ -178,6 +179,7 @@ export interface BambooBashSnapshot {
 	seq: number;
 	gameId: "bamboo-bash";
 	mode: MatchMode;
+	powerupsEnabled: boolean;
 	phase: "pending" | "active" | "finished" | "abandoned";
 	roundNumber: number;
 	totalRounds: number;
@@ -210,6 +212,7 @@ export interface KameKnockSnapshot {
 	seq: number;
 	gameId: "kame-knock";
 	mode: MatchMode;
+	powerupsEnabled: boolean;
 	phase: "pending" | "active" | "finished" | "abandoned";
 	currentTurn: number;
 	turnNumber: number;
@@ -243,6 +246,7 @@ export interface BellClashSnapshot {
 	seq: number;
 	gameId: "bell-clash";
 	mode: MatchMode;
+	powerupsEnabled: boolean;
 	phase: "pending" | "active" | "finished" | "abandoned";
 	roundNumber: number;
 	totalRounds: number;

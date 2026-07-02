@@ -4,16 +4,26 @@ import { Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
 import { MatchPlayer } from "./entities/match-player.entity";
 import { Match } from "./entities/match.entity";
-import { GameEngineRegistry } from "./engines/game-engine.registry";
 import { RoomService } from "./room.service";
 import { MatchRoom, SocketUser } from "./matchmaking.types";
 
+interface PrivateLobbyParticipant {
+	socketId: string;
+	user: SocketUser;
+	shellSelection: string[];
+}
+
 export interface PrivateLobby {
 	lobbyId: string;
+	kind: "invite" | "pin";
+	pin: string | null;
 	hostSocketId: string;
 	host: SocketUser;
 	gameId: string;
+	playerCount: number;
+	powerupsEnabled: boolean;
 	shellSelection: string[];
+	participants: PrivateLobbyParticipant[];
 	createdAt: number;
 	/** Set when an invite is pending — cleared on accept/decline/cancel. */
 	pendingInviteeId: number | null;
@@ -25,11 +35,22 @@ export interface LobbyJoinResult {
 	room: MatchRoom;
 }
 
+export interface StartedPinMatch {
+	matchId: string;
+	gameId: string;
+	startedAt: number;
+}
+
 const LOBBY_EXPIRY_MS = 2 * 60 * 1_000; // 2 minutes
+const MIN_PLAYERS = 2;
+const MAX_PLAYERS = 5;
+const PIN_LENGTH = 6;
+const PIN_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 @Injectable()
 export class PrivateLobbiesService {
 	private readonly lobbies = new Map<string, PrivateLobby>();
+	private readonly startedPinMatches = new Map<string, StartedPinMatch>();
 
 	constructor(
 		@InjectRepository(Match)
@@ -37,7 +58,6 @@ export class PrivateLobbiesService {
 		@InjectRepository(MatchPlayer)
 		private readonly matchPlayerRepo: Repository<MatchPlayer>,
 		private readonly roomService: RoomService,
-		private readonly engines: GameEngineRegistry,
 	) {}
 
 	/**
@@ -66,10 +86,59 @@ export class PrivateLobbiesService {
 
 		const lobby: PrivateLobby = {
 			lobbyId,
+			kind: "invite",
+			pin: null,
 			hostSocketId,
 			host,
 			gameId,
+			playerCount: 2,
+			powerupsEnabled: true,
 			shellSelection,
+			participants: [{ socketId: hostSocketId, user: host, shellSelection }],
+			createdAt: Date.now(),
+			pendingInviteeId: null,
+			expiryTimer,
+		};
+
+		this.lobbies.set(lobbyId, lobby);
+		return lobby;
+	}
+
+	createPinLobby(
+		hostSocketId: string,
+		host: SocketUser,
+		gameId: string,
+		playerCount: number,
+		powerupsEnabled: boolean,
+		shellSelection: string[],
+		onExpiry: (lobby: PrivateLobby) => void,
+	): PrivateLobby {
+		if (this.roomService.hasActiveRoom(host.id)) {
+			throw new BadRequestException("You are already in an active match");
+		}
+		if (this.getLobbyForUser(host.id)) {
+			throw new BadRequestException("You already have an open lobby");
+		}
+
+		const lobbyId = uuidv4();
+		const pin = this.generateUniquePin();
+		const normalizedPlayerCount = this.normalizePlayerCount(playerCount);
+		const expiryTimer = setTimeout(() => {
+			this.lobbies.delete(lobbyId);
+			onExpiry(lobby);
+		}, LOBBY_EXPIRY_MS);
+
+		const lobby: PrivateLobby = {
+			lobbyId,
+			kind: "pin",
+			pin,
+			hostSocketId,
+			host,
+			gameId,
+			playerCount: normalizedPlayerCount,
+			powerupsEnabled,
+			shellSelection,
+			participants: [{ socketId: hostSocketId, user: host, shellSelection }],
 			createdAt: Date.now(),
 			pendingInviteeId: null,
 			expiryTimer,
@@ -83,9 +152,25 @@ export class PrivateLobbiesService {
 		return this.lobbies.get(lobbyId) ?? null;
 	}
 
+	getLobbyByPin(pin: string): PrivateLobby | null {
+		const normalizedPin = this.normalizePin(pin);
+		for (const lobby of this.lobbies.values()) {
+			if (lobby.pin === normalizedPin) return lobby;
+		}
+		return null;
+	}
+
+	getStartedMatchByPin(pin: string): StartedPinMatch | null {
+		return this.startedPinMatches.get(this.normalizePin(pin)) ?? null;
+	}
+
 	getLobbyForUser(userId: number): PrivateLobby | null {
 		for (const lobby of this.lobbies.values()) {
-			if (lobby.host.id === userId) return lobby;
+			if (
+				lobby.host.id === userId ||
+				lobby.participants.some((participant) => participant.user.id === userId)
+			)
+				return lobby;
 		}
 		return null;
 	}
@@ -107,21 +192,14 @@ export class PrivateLobbiesService {
 	): Promise<LobbyJoinResult | null> {
 		const lobby = this.lobbies.get(lobbyId);
 		if (!lobby) return null;
+		if (lobby.kind !== "invite") {
+			throw new BadRequestException("Use the room PIN to join this lobby");
+		}
 
 		// Prevent double-join
 		if (this.roomService.hasActiveRoom(joiner.id)) {
 			throw new BadRequestException("You are already in an active match");
 		}
-
-		this.cancelLobby(lobbyId); // clears timer + removes from map
-
-		const match = await this.matchRepo.save(
-			this.matchRepo.create({
-				gameId: lobby.gameId,
-				mode: "casual", // private lobbies are always casual
-				status: "pending",
-			}),
-		);
 
 		const players = [
 			{
@@ -136,12 +214,75 @@ export class PrivateLobbiesService {
 			},
 		];
 
-		const room = this.roomService.createRoom(
-			match.id,
+		this.cancelLobby(lobbyId); // clears timer + removes from map
+		return this.createMatchRoom(lobby.gameId, players, lobby.powerupsEnabled);
+	}
+
+	async joinPinLobby(
+		pin: string,
+		joinerSocketId: string,
+		joiner: SocketUser,
+		joinerShellSelection: string[],
+	): Promise<
+		| { matched: false; lobby: PrivateLobby }
+		| { matched: true; matchId: string; room: MatchRoom; pin: string }
+		| null
+	> {
+		const lobby = this.getLobbyByPin(pin);
+		if (!lobby || lobby.kind !== "pin" || !lobby.pin) return null;
+
+		if (this.roomService.hasActiveRoom(joiner.id)) {
+			throw new BadRequestException("You are already in an active match");
+		}
+		if (lobby.participants.some((participant) => participant.user.id === joiner.id)) {
+			throw new BadRequestException("You are already in this lobby");
+		}
+		if (lobby.participants.length >= lobby.playerCount) {
+			throw new BadRequestException("Private room is full");
+		}
+
+		lobby.participants.push({
+			socketId: joinerSocketId,
+			user: joiner,
+			shellSelection: joinerShellSelection,
+		});
+
+		if (lobby.participants.length < lobby.playerCount) {
+			return { matched: false, lobby };
+		}
+
+		const players = [...lobby.participants];
+		const completedPin = lobby.pin;
+		this.cancelLobby(lobby.lobbyId);
+		const result = await this.createMatchRoom(
 			lobby.gameId,
-			"casual",
 			players,
+			lobby.powerupsEnabled,
 		);
+		this.startedPinMatches.set(completedPin, {
+			matchId: result.matchId,
+			gameId: lobby.gameId,
+			startedAt: Date.now(),
+		});
+		return { matched: true, ...result, pin: completedPin };
+	}
+
+	private async createMatchRoom(
+		gameId: string,
+		players: PrivateLobbyParticipant[],
+		powerupsEnabled: boolean,
+	): Promise<LobbyJoinResult> {
+		const match = await this.matchRepo.save(
+			this.matchRepo.create({
+				gameId,
+				mode: "casual", // private lobbies are always casual
+				status: "pending",
+			}),
+		);
+
+		const room = this.roomService.createRoom(match.id, gameId, "casual", players, {
+			powerupsEnabled,
+		});
 
 		await this.matchPlayerRepo.save(
 			room.players.map((p) =>
@@ -175,5 +316,28 @@ export class PrivateLobbiesService {
 		const lobby = this.getLobbyForUser(userId);
 		if (!lobby) return null;
 		return this.cancelLobby(lobby.lobbyId);
+	}
+
+	private normalizePlayerCount(playerCount: number): number {
+		return Math.max(
+			MIN_PLAYERS,
+			Math.min(MAX_PLAYERS, Math.floor(Number(playerCount || MIN_PLAYERS))),
+		);
+	}
+
+	private normalizePin(pin: string): string {
+		return String(pin ?? "")
+			.trim()
+			.toUpperCase();
+	}
+
+	private generateUniquePin(): string {
+		let pin = "";
+		do {
+			pin = Array.from({ length: PIN_LENGTH }, () =>
+				PIN_ALPHABET[Math.floor(Math.random() * PIN_ALPHABET.length)],
+			).join("");
+		} while (this.getLobbyByPin(pin));
+		return pin;
 	}
 }

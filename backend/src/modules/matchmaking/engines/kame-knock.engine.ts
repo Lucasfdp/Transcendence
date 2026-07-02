@@ -42,6 +42,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 			seq: 0,
 			gameId: "kame-knock",
 			mode: context.mode,
+			powerupsEnabled: context.powerupsEnabled ?? true,
 			phase: "pending",
 			currentTurn: 0,
 			turnNumber: 0,

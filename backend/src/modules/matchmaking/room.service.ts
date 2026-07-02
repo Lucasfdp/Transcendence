@@ -21,6 +21,7 @@ export class RoomService {
 			user: SocketUser;
 			shellSelection: string[];
 		}>,
+		options: { powerupsEnabled?: boolean } = {},
 	): MatchRoom {
 		const roomPlayers = players
 			.slice(0, MAX_PLAYERS)
@@ -41,7 +42,13 @@ export class RoomService {
 			spectators: new Map(),
 			seq: 0,
 			state: engine.createInitialState(
-				{ matchId, gameId, mode, players },
+				{
+					matchId,
+					gameId,
+					mode,
+					players,
+					powerupsEnabled: options.powerupsEnabled ?? true,
+				},
 				roomPlayers,
 			),
 			replayFrames: [],

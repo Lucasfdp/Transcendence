@@ -1677,7 +1677,7 @@ function HomeMenu(): JSX.Element {
 							) : null}
 						</span>
 						<span className="hub-page__player-meta">
-							Lvl {player?.level ?? 1} · Shell {getShellSkinDisplayName(player?.shellSkin)} · ⬡ {player?.coins ?? 0}
+							Lvl {player?.level ?? 1} · {getShellSkinDisplayName(player?.shellSkin)} · ⬡ {player?.coins ?? 0}
 						</span>
 						{player?.mostPlayedGame ? (
 							<span className="hub-page__most-played">
@@ -1775,38 +1775,38 @@ function HomeMenu(): JSX.Element {
 							className="hub-panel__button"
 							onClick={() => setActiveModal("cards")}
 						>
-							Shell Cards
+							SHELL CARDS
 						</NineSliceButton>
 						<NineSliceButton
 							type="button"
 							className="hub-panel__button"
 							onClick={openAchievements}
 						>
-							Achievements
+							ACHIEVEMENTS
 						</NineSliceButton>
 						<NineSliceButton
 							type="button"
 							className="hub-panel__button"
 							onClick={openCustomization}
 						>
-							Customization
+							CUSTOMIZATION
 						</NineSliceButton>
 						<NineSliceButton
 							type="button"
 							className="hub-panel__button"
 							onClick={() => void openReplays()}
 						>
-							Replays
+							REPLAYS
 						</NineSliceButton>
 						<NineSliceButton type="button" className="hub-panel__button" onClick={() => void openSocial()}>
-							Social
+							SOCIAL
 						</NineSliceButton>
 						<NineSliceButton
 							type="button"
 							className="hub-panel__button"
 							onClick={() => setActiveModal("rankings")}
 						>
-							Rankings
+							RANKINGS
 						</NineSliceButton>
 					</aside>
 
@@ -2215,7 +2215,7 @@ function HomeMenu(): JSX.Element {
 			) : null}
 
 			{activeModal === "rankings" ? (
-				<HubModal title="Rankings" onClose={() => setActiveModal(null)}>
+				<HubModal title="Rankings" onClose={() => setActiveModal(null)} variant="wide">
 					<div className="hub-modal__rankings">
 						<div className="hub-leaderboard-controls">
 							<select
@@ -2290,7 +2290,7 @@ function HomeMenu(): JSX.Element {
 			) : null}
 
 			{activeModal === "achievements" ? (
-				<HubModal title="Achievements" onClose={() => setActiveModal(null)}>
+				<HubModal title="Achievements" onClose={() => setActiveModal(null)} variant="wide">
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					{achievements ? (
 						<div className="hub-modal__list hub-modal__list--achievements">
@@ -2481,6 +2481,7 @@ function HomeMenu(): JSX.Element {
 			{activeModal === "replays" ? (
 				<HubModal
 					title="Match Replays"
+					variant="wide"
 					onClose={() => {
 						setActiveModal(null);
 						setSelectedReplay(null);
@@ -2581,7 +2582,7 @@ function HomeMenu(): JSX.Element {
 			) : null}
 
 			{activeModal === "social" ? (
-				<HubModal title="Social" onClose={() => { setActiveModal(null); setFriendUsername(""); }}>
+				<HubModal title="Social" onClose={() => { setActiveModal(null); setFriendUsername(""); }} variant="wide">
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 
 					{player?.username ? (
@@ -3135,7 +3136,7 @@ function HomeMenu(): JSX.Element {
 			) : null}
 
 			{activeModal === "cards" ? (
-				<HubModal title="Shell Cards" onClose={() => setActiveModal(null)}>
+				<HubModal title="Shell Cards" onClose={() => setActiveModal(null)} variant="wide">
 					<ShellCardsModal
 						coins={player?.coins ?? 0}
 						onCoinsChange={(coins) =>
