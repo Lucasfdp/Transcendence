@@ -77,16 +77,32 @@ export class FriendsController {
 	}
 
 	/**
-	 * DELETE /api/friends/:userId — remove a friend or decline a pending request.
-	 * Works regardless of who originally sent the request.
+	 * DELETE /api/friends/:userId — remove an established (accepted) friend.
+	 * Works regardless of who originally sent the request. Scoped to accepted
+	 * rows only — see POST /friends/decline for pending requests.
 	 */
 	@Delete(":userId")
 	@HttpCode(200)
-	async removeOrDecline(
+	async removeFriend(
 		@Request() req: { user: { id: number } },
 		@Param("userId", ParseIntPipe) userId: number,
 	): Promise<{ ok: boolean }> {
-		await this.friendsService.removeOrDecline(req.user.id, userId);
+		await this.friendsService.removeFriend(req.user.id, userId);
+		return { ok: true };
+	}
+
+	/**
+	 * POST /api/friends/decline — decline an incoming pending request, or
+	 * cancel your own outgoing one. Idempotent: safe to call even if the
+	 * request was already accepted or resolved from another surface.
+	 */
+	@Post("decline")
+	@HttpCode(200)
+	async declineOrCancel(
+		@Request() req: { user: { id: number } },
+		@Body() body: FriendUserIdDto,
+	): Promise<{ ok: boolean }> {
+		await this.friendsService.declineOrCancelRequest(req.user.id, body.userId);
 		return { ok: true };
 	}
 

@@ -1495,17 +1495,32 @@ export class BambooBashScene extends ResponsiveScene {
 		const next = new Map<number, BallState>();
 		const players = [...snapshot.players].sort((a, b) => a.side - b.side);
 		players.forEach((player, index) => {
-			const existing =
-				player.side === this.onlineMatch?.side
-					? this.ball
-					: (this.onlineBalls.get(player.side) ?? {
-							x: 0,
-							y: 0,
-							vx: 0,
-							vy: 0,
-							r: BALL_SRC_R * this.arena.scale,
-						});
-			if (!isBallMoving(existing)) {
+			const isLocal = player.side === this.onlineMatch?.side;
+			const existing = isLocal
+				? this.ball
+				: (this.onlineBalls.get(player.side) ?? {
+						x: 0,
+						y: 0,
+						vx: 0,
+						vy: 0,
+						r: BALL_SRC_R * this.arena.scale,
+					});
+			// Our own ball is driven by live local physics — isBallMoving() is
+			// authoritative and instantaneous for it. The opponent's ball is a
+			// mirrored simulation (see updateOnlineRemoteBalls) that runs fully
+			// independently on this client and can drift from theirs (frame
+			// timing, client-side collision resolution, etc). Trust the
+			// server-relayed "stopped" flag the opponent's own client reported
+			// for it instead — otherwise a desynced local sim that never
+			// converges to "not moving" leaves the opponent's ball frozen
+			// mid-air forever (the reported "ghost shell" bug).
+			const serverBall = isLocal
+				? null
+				: snapshot.balls.find((ball) => ball.side === player.side);
+			const shouldReset = isLocal
+				? !isBallMoving(existing)
+				: (serverBall ? serverBall.stopped : !isBallMoving(existing));
+			if (shouldReset) {
 				this.resetOnlineBall(existing, index, players.length);
 				resetPlayerTrail(this.ballTrails, player.side, existing.x, existing.y);
 			}
@@ -1983,10 +1998,22 @@ export class BambooBashScene extends ResponsiveScene {
 		this.onlineBambooSyncAccMs += delta;
 		if (this.onlineBambooSyncAccMs < 1000) return;
 		this.onlineBambooSyncAccMs = 0;
+		// Report this client's own ball position/velocity/stopped state so the
+		// opponent's client can trust server-relayed ground truth instead of
+		// purely re-simulating our ball with independent local physics (which
+		// drifts and can leave a "ghost" ball stuck mid-air on their screen —
+		// see updateOnlineRemoteBalls / syncOnlineBalls).
 		getGameSocket().emit("game:input", {
 			matchId: this.onlineMatch.matchId,
 			action: "bamboo:sync",
-			payload: { roundNumber: this.onlineRoundNumber },
+			payload: {
+				roundNumber: this.onlineRoundNumber,
+				x: (this.ball.x - this.arena.cx) / this.arena.rx,
+				y: (this.ball.y - this.arena.cy) / this.arena.ry,
+				vx: this.ball.vx / this.arena.scale,
+				vy: this.ball.vy / this.arena.scale,
+				stopped: !isBallMoving(this.ball),
+			},
 		});
 	}
 

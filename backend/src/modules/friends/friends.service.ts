@@ -158,17 +158,47 @@ export class FriendsService {
 	}
 
 	/**
-	 * Remove a friendship or decline a pending request.
-	 * Works regardless of which user initiated the original request.
+	 * Remove an established (accepted) friendship. Works regardless of which
+	 * user originally sent the request.
+	 *
+	 * Scoped to status="accepted" only — deliberately does NOT touch a
+	 * "pending" row. Two UI surfaces can race on the same pair (e.g. the
+	 * notification drawer accepts a request while the social tab's stale
+	 * pending list still shows a Decline button); scoping by status makes the
+	 * loser of that race a no-op instead of destroying the winner's state.
+	 * See declineOrCancelRequest for the pending-only counterpart.
 	 */
-	async removeOrDecline(actorId: number, otherId: number): Promise<void> {
+	async removeFriend(actorId: number, otherId: number): Promise<void> {
 		try {
 			await this.friendshipRepo.delete([
-				{ requesterId: actorId, addresseeId: otherId },
-				{ requesterId: otherId, addresseeId: actorId },
+				{ requesterId: actorId, addresseeId: otherId, status: "accepted" },
+				{ requesterId: otherId, addresseeId: actorId, status: "accepted" },
 			]);
 		} catch {
 			throw new InternalServerErrorException("Failed to remove friend");
+		}
+	}
+
+	/**
+	 * Decline an incoming pending request, or cancel your own outgoing one.
+	 * Works regardless of which user originally sent the request.
+	 *
+	 * Scoped to status="pending" only. Idempotent: if the row was already
+	 * accepted (or already gone) by the time this runs — e.g. the requester
+	 * was accepted from another tab a moment earlier — this is a silent
+	 * no-op rather than an error, and importantly does NOT fall through to
+	 * deleting the now-accepted friendship.
+	 */
+	async declineOrCancelRequest(actorId: number, otherId: number): Promise<void> {
+		try {
+			await this.friendshipRepo.delete([
+				{ requesterId: actorId, addresseeId: otherId, status: "pending" },
+				{ requesterId: otherId, addresseeId: actorId, status: "pending" },
+			]);
+		} catch {
+			throw new InternalServerErrorException(
+				"Failed to decline friend request",
+			);
 		}
 	}
 

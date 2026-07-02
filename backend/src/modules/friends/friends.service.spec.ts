@@ -148,6 +148,71 @@ describe("FriendsService", () => {
 		});
 	});
 
+	// ── removeFriend / declineOrCancelRequest ───────────────────────────────────
+	//
+	// These used to be one method (removeOrDecline) that deleted ANY row
+	// regardless of status. That was a real bug: if Accept happens on one UI
+	// surface (e.g. the notification drawer) and Decline/Cancel fires from a
+	// stale UI elsewhere (e.g. the social tab's pending list) for the same
+	// pair, the stale decline would delete the *just-accepted* friendship.
+	// Splitting by status makes the stale action a safe no-op instead.
+
+	describe("removeFriend", () => {
+		it("should delete only the accepted row between the two users, in either direction", async () => {
+			friendshipRepo.delete.mockResolvedValue({ affected: 1 });
+
+			await service.removeFriend(1, 2);
+
+			expect(friendshipRepo.delete).toHaveBeenCalledWith([
+				{ requesterId: 1, addresseeId: 2, status: "accepted" },
+				{ requesterId: 2, addresseeId: 1, status: "accepted" },
+			]);
+		});
+
+		it("should resolve without throwing when there is no matching accepted row (already removed elsewhere)", async () => {
+			friendshipRepo.delete.mockResolvedValue({ affected: 0 });
+
+			await expect(service.removeFriend(1, 2)).resolves.toBeUndefined();
+		});
+
+		it("should throw InternalServerErrorException when the repository fails", async () => {
+			friendshipRepo.delete.mockRejectedValue(new Error("db down"));
+
+			await expect(service.removeFriend(1, 2)).rejects.toThrow(
+				"Failed to remove friend",
+			);
+		});
+	});
+
+	describe("declineOrCancelRequest", () => {
+		it("should delete only the pending row between the two users, in either direction", async () => {
+			friendshipRepo.delete.mockResolvedValue({ affected: 1 });
+
+			await service.declineOrCancelRequest(1, 2);
+
+			expect(friendshipRepo.delete).toHaveBeenCalledWith([
+				{ requesterId: 1, addresseeId: 2, status: "pending" },
+				{ requesterId: 2, addresseeId: 1, status: "pending" },
+			]);
+		});
+
+		it("should resolve without throwing when there is no matching pending row (e.g. already accepted elsewhere)", async () => {
+			friendshipRepo.delete.mockResolvedValue({ affected: 0 });
+
+			await expect(
+				service.declineOrCancelRequest(1, 2),
+			).resolves.toBeUndefined();
+		});
+
+		it("should throw InternalServerErrorException when the repository fails", async () => {
+			friendshipRepo.delete.mockRejectedValue(new Error("db down"));
+
+			await expect(service.declineOrCancelRequest(1, 2)).rejects.toThrow(
+				"Failed to decline friend request",
+			);
+		});
+	});
+
 	// ── getFriendIds ─────────────────────────────────────────────────────────────
 
 	describe("getFriendIds", () => {

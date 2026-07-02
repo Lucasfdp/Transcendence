@@ -694,12 +694,14 @@ function HomeMenu(): JSX.Element {
 			expiresAt: number;
 		}) => setIncomingInvite(data);
 
-		// Both host and joiner receive this — navigate into match via existing match:status flow
+		// Both host and joiner receive this — take both players straight into the
+		// match instead of leaving them to separately find their way to the game
+		// page and click "Rejoin Match". GamePage reads autoJoinMatch from router
+		// state and auto-launches once its own match:status round trip resolves.
 		const onLobbyMatched = (data: { matchId: string; side: number; gameId: string }) => {
 			setActiveLobby(null);
 			setIncomingInvite(null);
-			// Emit match:status to sync the hub's in-match state (same path as ranked queue)
-			socket.emit("match:status");
+			navigate(`/play/${data.gameId}`, { state: { autoJoinMatch: true } });
 		};
 
 		socket.on("notification:inbox", onInbox);
@@ -1374,7 +1376,7 @@ function HomeMenu(): JSX.Element {
 		setPendingRequests((prev) => (prev ? removeById(prev, req.userId) : prev));
 		try {
 			await api.getCsrfToken();
-			await api.removeFriend(req.userId);
+			await api.declineOrCancelFriendRequest(req.userId);
 			showToast({
 				message: `Declined ${req.turtleName ?? req.username}`,
 				variant: "info",
@@ -1396,7 +1398,7 @@ function HomeMenu(): JSX.Element {
 		);
 		try {
 			await api.getCsrfToken();
-			await api.removeFriend(req.userId);
+			await api.declineOrCancelFriendRequest(req.userId);
 			showToast({
 				message: `Cancelled request to ${req.turtleName ?? req.username}`,
 				variant: "info",
@@ -2093,6 +2095,9 @@ function HomeMenu(): JSX.Element {
 														try {
 															await api.acceptFriendRequest(notif.fromUserId);
 															handleResolveFriendRequestNotifs(notif.fromUserId);
+															// Keep the social tab's friends/pending state in sync in
+															// case it's open (or opened next) elsewhere.
+															void refreshSocial();
 														} catch {
 															// Non-fatal — button remains active if it fails
 														}
@@ -2105,8 +2110,11 @@ function HomeMenu(): JSX.Element {
 													className="hub-notif-drawer__action hub-notif-drawer__action--decline"
 													onClick={async () => {
 														try {
-															await api.removeFriend(notif.fromUserId);
+															await api.declineOrCancelFriendRequest(notif.fromUserId);
 															handleResolveFriendRequestNotifs(notif.fromUserId);
+															// Keep the social tab's friends/pending state in sync in
+															// case it's open (or opened next) elsewhere.
+															void refreshSocial();
 														} catch {
 															// Non-fatal
 														}

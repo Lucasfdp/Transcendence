@@ -76,9 +76,16 @@ describe("MatchmakingGateway", () => {
 	let gateway: MatchmakingGateway;
 	let presence: ReturnType<typeof makePresenceMock>;
 	let usersService: ReturnType<typeof makeUsersServiceMock>;
-	let rooms: { removeSpectator: jest.Mock; markDisconnected: jest.Mock };
+	let rooms: {
+		removeSpectator: jest.Mock;
+		markDisconnected: jest.Mock;
+		setReady: jest.Mock;
+		getRoom: jest.Mock;
+	};
 	let matchmaking: { removeSocket: jest.Mock };
-	let privateLobbies: { removeLobbyForUser: jest.Mock };
+	let privateLobbies: { removeLobbyForUser: jest.Mock; joinLobby: jest.Mock };
+	let sessions: { startIfReady: jest.Mock };
+	let replays: { captureFrame: jest.Mock };
 
 	beforeEach(async () => {
 		presence = makePresenceMock();
@@ -86,9 +93,16 @@ describe("MatchmakingGateway", () => {
 		rooms = {
 			removeSpectator: jest.fn(),
 			markDisconnected: jest.fn().mockReturnValue(null),
+			setReady: jest.fn(),
+			getRoom: jest.fn(),
 		};
 		matchmaking = { removeSocket: jest.fn() };
-		privateLobbies = { removeLobbyForUser: jest.fn().mockReturnValue(null) };
+		privateLobbies = {
+			removeLobbyForUser: jest.fn().mockReturnValue(null),
+			joinLobby: jest.fn(),
+		};
+		sessions = { startIfReady: jest.fn() };
+		replays = { captureFrame: jest.fn() };
 
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
@@ -98,11 +112,11 @@ describe("MatchmakingGateway", () => {
 				{ provide: PresenceService, useValue: presence },
 				{ provide: MatchmakingService, useValue: matchmaking },
 				{ provide: RoomService, useValue: rooms },
-				{ provide: GameSessionService, useValue: {} },
+				{ provide: GameSessionService, useValue: sessions },
 				{ provide: NotificationsService, useValue: {} },
 				{ provide: PrivateLobbiesService, useValue: privateLobbies },
 				{ provide: FriendsService, useValue: {} },
-				{ provide: ReplayService, useValue: {} },
+				{ provide: ReplayService, useValue: replays },
 			],
 		}).compile();
 
@@ -207,6 +221,125 @@ describe("MatchmakingGateway", () => {
 			usersService.markSeen.mockRejectedValue(new Error("db down"));
 
 			await expect(gateway.handleDisconnect(makeSocket())).resolves.toBeUndefined();
+		});
+	});
+
+	// ── onLobbyJoin — invite matches must start immediately (Task A fix) ──────
+	//
+	// Root cause under test: private-lobby invite matches used to be created
+	// "pending" and left that way forever (nobody ever emitted room:ready), so
+	// the engine rejected all input ("Launching..." never resolved) and
+	// phase-gated HUD panels never rendered (missing borders). The fix mirrors
+	// normal matchmaking's room:ready -> startIfReady hand-off inline in
+	// onLobbyJoin: mark both players ready, start the session, and broadcast
+	// the resulting (now active) game:state to the whole match room.
+	describe("onLobbyJoin", () => {
+		const makeConnSocket = (id: string, userId: number, username: string): Socket =>
+			({
+				id,
+				data: { user: { id: userId, username, isGuest: false } },
+				emit: jest.fn(),
+			}) as unknown as Socket;
+
+		const makeRoomSocket = (id: string) =>
+			({ id, join: jest.fn(), emit: jest.fn() }) as unknown as Socket & {
+				join: jest.Mock;
+				emit: jest.Mock;
+			};
+
+		const installFakeServer = (
+			sockets: Array<ReturnType<typeof makeRoomSocket>>,
+		) => {
+			const roomEmit = jest.fn();
+			const socketsMap = new Map(sockets.map((s) => [s.id, s]));
+			(gateway as unknown as { server: unknown }).server = {
+				sockets: { sockets: socketsMap },
+				to: jest.fn().mockReturnValue({ emit: roomEmit }),
+			};
+			return { roomEmit };
+		};
+
+		it("should mark both players ready, start the session, and broadcast an active game:state to both sockets", async () => {
+			const hostSocket = makeRoomSocket("socket-host");
+			const joinerSocket = makeRoomSocket("socket-joiner");
+			const { roomEmit } = installFakeServer([hostSocket, joinerSocket]);
+
+			const pendingRoom = makeRoom({
+				matchId: "match-invite-1",
+				status: "pending",
+				gameId: "temple-curling",
+				players: [
+					makePlayer(10, { side: 0, socketId: "socket-host", ready: false }),
+					makePlayer(20, { side: 1, socketId: "socket-joiner", ready: false }),
+				],
+			});
+			const activeRoom: MatchRoom = { ...pendingRoom, status: "active" };
+
+			privateLobbies.joinLobby.mockResolvedValue({
+				matchId: "match-invite-1",
+				room: pendingRoom,
+			});
+			sessions.startIfReady.mockResolvedValue(activeRoom);
+			rooms.getRoom.mockReturnValue(activeRoom);
+			presence.getSocketIds.mockImplementation((userId: number) =>
+				userId === 10 ? ["socket-host"] : ["socket-joiner"],
+			);
+
+			const joinerConnSocket = makeConnSocket("socket-joiner", 20, "joiner");
+
+			await gateway.onLobbyJoin(joinerConnSocket, {
+				lobbyId: "lobby-1",
+				shellSelection: [],
+			});
+
+			expect(rooms.setReady).toHaveBeenCalledWith("match-invite-1", 10);
+			expect(rooms.setReady).toHaveBeenCalledWith("match-invite-1", 20);
+			expect(sessions.startIfReady).toHaveBeenCalledWith("match-invite-1");
+
+			expect(hostSocket.join).toHaveBeenCalledWith("match-invite-1");
+			expect(joinerSocket.join).toHaveBeenCalledWith("match-invite-1");
+			expect(hostSocket.emit).toHaveBeenCalledWith(
+				"lobby:matched",
+				expect.objectContaining({ matchId: "match-invite-1", side: 0 }),
+			);
+			expect(joinerSocket.emit).toHaveBeenCalledWith(
+				"lobby:matched",
+				expect.objectContaining({ matchId: "match-invite-1", side: 1 }),
+			);
+
+			// emitState() re-reads the room from RoomService and broadcasts to the
+			// whole match room — this is the assertion that actually proves the
+			// bug is fixed: both players receive an *active* game:state instead
+			// of being left on the pending snapshot.
+			expect(roomEmit).toHaveBeenCalledWith("game:state", activeRoom.state);
+		});
+
+		it("should emit lobby:error and touch no room state when the lobby no longer exists", async () => {
+			const socket = makeConnSocket("socket-joiner", 20, "joiner");
+			privateLobbies.joinLobby.mockResolvedValue(null);
+
+			await gateway.onLobbyJoin(socket, { lobbyId: "missing", shellSelection: [] });
+
+			expect(socket.emit).toHaveBeenCalledWith("lobby:error", {
+				message: "Lobby no longer exists",
+			});
+			expect(rooms.setReady).not.toHaveBeenCalled();
+			expect(sessions.startIfReady).not.toHaveBeenCalled();
+		});
+
+		it("should emit lobby:error and not start a session when joinLobby rejects (e.g. joiner already in an active match)", async () => {
+			const socket = makeConnSocket("socket-joiner", 20, "joiner");
+			privateLobbies.joinLobby.mockRejectedValue(
+				new Error("You are already in an active match"),
+			);
+
+			await gateway.onLobbyJoin(socket, { lobbyId: "lobby-1", shellSelection: [] });
+
+			expect(socket.emit).toHaveBeenCalledWith("lobby:error", {
+				message: "You are already in an active match",
+			});
+			expect(rooms.setReady).not.toHaveBeenCalled();
+			expect(sessions.startIfReady).not.toHaveBeenCalled();
 		});
 	});
 });

@@ -393,6 +393,13 @@ export class ShellCurlScene extends ResponsiveScene {
 		);
 
 		this.scoreHud.update(this.turnManager.state);
+		// Build the side panels (TEMPLE CURLING info + SCORE LOG) unconditionally,
+		// mirroring Bell Clash / Kame Knock. Previously these were only created
+		// inside beginTurn()/updateSidePanels() calls reachable from the "active"
+		// branch of applyOnlineSnapshot, so a match launched (or reconnected) in a
+		// non-active phase — e.g. an invite match briefly before the server marks
+		// it active — rendered with no HUD borders at all.
+		this.updateSidePanels();
 		if (this.onlineMatch) this.createOnlineStatusText();
 		// Defer beginTurn() by one tick — this.scene.isActive() returns false
 		// during create() (scene is CREATING, not yet RUNNING), so the guard

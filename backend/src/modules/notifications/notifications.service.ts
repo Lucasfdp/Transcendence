@@ -69,7 +69,18 @@ export class NotificationsService {
 
 			// Push real-time to every open tab of the recipient
 			if (this.server) {
-				const view = await this.toView(notification);
+				// save() only returns the columns/relations that were part of the
+				// input — fromUser is never populated on a fresh insert — so reload
+				// with the relation to get a real fromUsername in the pushed view.
+				// Non-fatal: fall back to the un-related notification (blank
+				// fromUsername) rather than dropping the push entirely.
+				const withRelation = await this.notificationRepo
+					.findOne({
+						where: { id: notification.id },
+						relations: ["fromUser"],
+					})
+					.catch(() => null);
+				const view = this.toView(withRelation ?? notification);
 				for (const socketId of this.presence.getSocketIds(toUserId)) {
 					this.server.to(socketId).emit(WS_EVENT_NEW, view);
 				}

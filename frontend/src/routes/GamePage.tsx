@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../features/hub/api";
 import { RETURN_TO_HUB_EVENT } from "../features/hub/ReturnToHubScene";
 import type { ShellSmashStartData } from "../lib/createShellSmashGame";
@@ -172,6 +172,11 @@ function PowerupMatchmakingPanel({
 	onLaunch: (data: ShellSmashStartData) => void;
 }): JSX.Element {
 	const gameId = sceneData.gameId as GameId;
+	const location = useLocation();
+	const autoJoinMatch = Boolean(
+		(location.state as { autoJoinMatch?: boolean } | null)?.autoJoinMatch,
+	);
+	const hasAutoJoinedRef = useRef(false);
 	const [message, setMessage] = useState("Random power-ups will appear during the match.");
 	const [messageTone, setMessageTone] = useState<"muted" | "gold" | "error">("muted");
 	const [soloPowerupsEnabled, setSoloPowerupsEnabled] = useState(true);
@@ -317,6 +322,26 @@ function PowerupMatchmakingPanel({
 		setMessage("Match abandoned. You can search for a new match.");
 		setMessageTone("muted");
 	};
+
+	// Auto-join a private-lobby match: HomePage navigates here with
+	// { autoJoinMatch: true } right after a lobby invite is accepted (see
+	// onLobbyMatched in HomePage.tsx), so both players land directly in
+	// gameplay instead of each having to find and click "Rejoin Match".
+	// Guarded by a ref so it only fires once per page visit, and scoped to
+	// this game's id so a stale flag can't hijack an unrelated match.
+	useEffect(() => {
+		if (!autoJoinMatch || hasAutoJoinedRef.current) return;
+		if (
+			activeMatchStatus?.matchId &&
+			activeMatchStatus.side !== undefined &&
+			activeMatchStatus.snapshot &&
+			activeMatchStatus.gameId === gameId
+		) {
+			hasAutoJoinedRef.current = true;
+			rejoinActiveMatch();
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- rejoinActiveMatch closes over activeMatchStatus/onLaunch, re-created every render; the ref guard makes re-running this effect body harmless
+	}, [autoJoinMatch, activeMatchStatus, gameId]);
 
 	const findOnlineMatch = async () => {
 		if (activeMatchStatus) {

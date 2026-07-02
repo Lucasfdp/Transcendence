@@ -921,9 +921,21 @@ export const api = {
 			body: JSON.stringify({ userId }),
 		}),
 
-	/** Remove a friend or decline/cancel a pending request. */
+	/** Remove an established (accepted) friend. Use declineOrCancelFriendRequest for pending requests. */
 	removeFriend: (userId: number): Promise<void> =>
 		apiFetch<void>(`/friends/${userId}`, { method: "DELETE" }),
+
+	/**
+	 * Decline an incoming pending request, or cancel your own outgoing one.
+	 * Idempotent server-side — safe to call even if the request was already
+	 * resolved from another surface (e.g. accepted via the notification drawer
+	 * while this was still showing as pending in the social tab).
+	 */
+	declineOrCancelFriendRequest: (userId: number): Promise<void> =>
+		apiFetch<void>("/friends/decline", {
+			method: "POST",
+			body: JSON.stringify({ userId }),
+		}),
 
 	/** Block a user by userId. */
 	blockUser: (userId: number): Promise<void> =>

@@ -30,7 +30,9 @@ const mockRepo = () => ({
 	create: jest.fn((v) => v),
 	save: jest.fn(async (v) => ({ ...v, id: 1 })),
 	find: jest.fn(),
-	findOne: jest.fn(),
+	// Default to a resolved promise so the service's `.catch()` chaining on
+	// findOne behaves like a real repository. Tests override per-case.
+	findOne: jest.fn().mockResolvedValue(null),
 	createQueryBuilder: jest.fn(() => ({
 		update: jest.fn().mockReturnThis(),
 		set: jest.fn().mockReturnThis(),
@@ -165,6 +167,72 @@ describe("NotificationsService", () => {
 			await expect(
 				service.create("friend_request", 10, 20, {}),
 			).rejects.toThrow(InternalServerErrorException);
+		});
+
+		it("should reload the notification with its fromUser relation before pushing, since save() does not return relations", async () => {
+			const mockEmit = jest.fn();
+			const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
+			service.setServer({ to: mockTo } as never);
+			presence.getSocketIds.mockReturnValue(["socket-abc"]);
+
+			// Mirrors real TypeORM behaviour: a fresh .save() only returns the
+			// columns/relations that were part of the input — no fromUser here.
+			const savedWithoutRelation = Object.assign(new Notification(), {
+				id: 1,
+				type: "friend_request" as const,
+				fromUserId: 10,
+				toUserId: 20,
+				payload: { username: "kame" },
+				readAt: null,
+				createdAt: new Date("2026-06-27T00:00:00Z"),
+			});
+			const reloadedWithRelation = makeNotification();
+
+			repo.findOne
+				.mockResolvedValueOnce(null) // dedup check — no existing duplicate
+				.mockResolvedValueOnce(reloadedWithRelation); // post-save reload for the push
+			repo.save.mockResolvedValue(savedWithoutRelation);
+
+			await service.create("friend_request", 10, 20, { username: "kame" });
+
+			expect(repo.findOne).toHaveBeenLastCalledWith({
+				where: { id: 1 },
+				relations: ["fromUser"],
+			});
+			expect(mockEmit).toHaveBeenCalledWith(
+				"notification:new",
+				expect.objectContaining({ fromUsername: "kame" }),
+			);
+		});
+
+		it("should fall back to the un-related notification without throwing if the reload finds nothing", async () => {
+			const mockEmit = jest.fn();
+			const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
+			service.setServer({ to: mockTo } as never);
+			presence.getSocketIds.mockReturnValue(["socket-abc"]);
+
+			const savedWithoutRelation = Object.assign(new Notification(), {
+				id: 1,
+				type: "friend_request" as const,
+				fromUserId: 10,
+				toUserId: 20,
+				payload: {},
+				readAt: null,
+				createdAt: new Date("2026-06-27T00:00:00Z"),
+			});
+
+			repo.findOne
+				.mockResolvedValueOnce(null) // dedup check
+				.mockResolvedValueOnce(null); // reload finds nothing (edge case)
+			repo.save.mockResolvedValue(savedWithoutRelation);
+
+			await expect(
+				service.create("friend_request", 10, 20, {}),
+			).resolves.toBeUndefined();
+			expect(mockEmit).toHaveBeenCalledWith(
+				"notification:new",
+				expect.objectContaining({ fromUsername: "" }),
+			);
 		});
 	});
 

@@ -224,12 +224,28 @@ function applyArenaBallPayload(
 	const y = readNumber(payload, "y");
 	const vx = readNumber(payload, "vx");
 	const vy = readNumber(payload, "vy");
-	if (x === null && y === null && vx === null && vy === null) return false;
+	// Ball owners self-report whether their own ball has come to rest — this is
+	// the only reliable "stopped" signal for games (Bamboo Bash) that never
+	// call settleArenaReplayBall. upsertArenaBall() already knows how to apply
+	// a boolean `stopped`; relaying the client's report through here lets the
+	// opponent's client trust it instead of re-deriving movement from its own
+	// independent local physics simulation.
+	const stopped =
+		typeof payload.stopped === "boolean" ? payload.stopped : undefined;
+	if (
+		x === null &&
+		y === null &&
+		vx === null &&
+		vy === null &&
+		stopped === undefined
+	)
+		return false;
 	upsertArenaBall(snapshot, side, {
 		x: x ?? undefined,
 		y: y ?? undefined,
 		vx: vx ?? undefined,
 		vy: vy ?? undefined,
+		stopped,
 	});
 	return true;
 }

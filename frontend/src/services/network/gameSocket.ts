@@ -52,6 +52,7 @@ export interface BallSnapshotData {
 	vx: number;
 	vy: number;
 	moving?: boolean;
+	stopped?: boolean;
 	visible?: boolean;
 	power?: string;
 	scale?: number;

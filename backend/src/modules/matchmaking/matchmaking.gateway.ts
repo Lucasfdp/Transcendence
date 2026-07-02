@@ -591,10 +591,20 @@ export class MatchmakingGateway
 							side: player.side,
 							gameId: room.gameId,
 						});
-						s.emit("game:state", room.state);
 					}
 				}
 			}
+
+			// Invite matches skip the normal queue:join → room:ready handshake, so
+			// the room would otherwise stay "pending" forever (engines reject all
+			// input, HUD scenes never leave their pre-active phase). Mirror the
+			// normal-matchmaking hand-off here: mark both players ready and start
+			// the session immediately, then broadcast the resulting state.
+			for (const player of room.players) {
+				this.rooms.setReady(matchId, player.user.id);
+			}
+			const started = await this.sessions.startIfReady(matchId);
+			this.emitState(started?.matchId ?? matchId);
 		} catch (err) {
 			socket.emit("lobby:error", {
 				message: err instanceof Error ? err.message : "Failed to join lobby",

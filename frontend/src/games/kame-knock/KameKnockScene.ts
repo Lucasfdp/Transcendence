@@ -900,6 +900,21 @@ export class KameKnockScene extends ResponsiveScene {
 			return;
 		this.lastOnlineSeq = snapshot.seq;
 		this.onlineMatch.snapshot = snapshot;
+		// The server is authoritative on whether a ball is still in flight
+		// (activeTurnNumber is null once it has processed a "settled" input).
+		// launchedThisBall is normally cleared by this client's own local
+		// physics detecting the ball has stopped (finishBallRound()) — but if a
+		// throw event for the *next* turn arrives before that local detection
+		// finishes, this client stops stepping the old ball's physics entirely
+		// and finishBallRound() never runs for it, leaving launchedThisBall
+		// stuck true forever. That freezes the ball's render mid-air (a "ghost"
+		// shell) and hides the power panel/slingshot for whoever's turn it now
+		// is. Once the server confirms nothing is in flight, force-correct our
+		// local flags to match rather than trusting a possibly-orphaned one.
+		if (snapshot.activeTurnNumber === null && this.launchedThisBall) {
+			this.launchedThisBall = false;
+			this.onlineSettledSubmitted = false;
+		}
 		this.localPlayerCount = snapshot.players.length;
 		this.currentBallIndex = Math.max(0, snapshot.roundNumber - 1);
 		if (!this.launchedThisBall) this.visibleBallSide = snapshot.currentTurn;
