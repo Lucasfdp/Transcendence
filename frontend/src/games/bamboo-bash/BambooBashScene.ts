@@ -54,12 +54,24 @@ import {
 	preloadPowerUpAssets,
 } from "../../shared/mechanics/game-powers";
 import {
+	PowerPickupManager,
+	createEllipsePowerPickupArea,
+	type PowerPickupBlocker,
+} from "../../shared/mechanics/power-pickups";
+import {
+	applyBallCurl,
 	applyBallPower,
 	BallExtState,
 	BALL_FRICTION_BASE,
 } from "../../shared/mechanics/ball-powers";
 import {
+	createMirrorBall,
+	createSplitBalls,
+} from "../../shared/mechanics/ball-spawn-powers";
+import {
+	destroyIngamePlayerTexture,
 	drawIngamePlayerTexture,
+	hideIngamePlayerTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
 import {
@@ -108,6 +120,9 @@ const MAX_BAMBOO = 6; // max bamboo alive at once
 const START_BAMBOO = 2; // bamboo present when the round begins
 const FREEZE_DURATION_MS = 5_000; // how long FREEZE pauses spawn accumulation
 const REPLAY_CAPTURE_STEP_MS = 100;
+const PICKUP_RADIUS_SRC = 20;
+const PICKUP_SPAWN_ATTEMPTS = 80;
+const PICKUP_CLEARANCE_SRC = 14;
 
 const DEPTH_OVERLAY = 30;
 const DEPTH_HUD = 20;
@@ -145,6 +160,7 @@ interface LocalParticipant {
 
 export class BambooBashScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
+	private pickupGfx!: Phaser.GameObjects.Graphics;
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private ballGfx!: Phaser.GameObjects.Graphics;
 	private bambooSprites = new Map<
@@ -154,6 +170,8 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private arena!: ArenaPixels;
 	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
+	private powerBalls: Array<{ ball: BallState; player: number }> = [];
+	private powerBallTexCount = 0;
 	private slingshot!: Slingshot;
 	private localParticipants: LocalParticipant[] = [];
 	private playerShellSkins: string[] = ["base", "dragon", "bamboo", "purple", "base"];
@@ -184,6 +202,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 	// ── Power panel ──────────────────────────────────────────────────────────────
 	private powerSidePanel: GameInfoSidePanel | null = null;
+	private powerPickups: PowerPickupManager | null = null;
 
 	/** Shell power pool for this player (read from registry in create()). */
 	private playerPowers: PowerType[] = [PowerType.NONE];
@@ -256,6 +275,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.onlineTotalRounds = 3;
 		this.onlineScores = [];
 		this.onlineBalls.clear();
+		this.clearPowerBalls();
 		this.ballTrails.clear();
 		this.pendingOnlineBambooHits.clear();
 		this.onlineBambooSyncAccMs = 0;
@@ -342,6 +362,8 @@ export class BambooBashScene extends ResponsiveScene {
 		this.playerPowers = buildPool(sel?.player0);
 
 		this.bgGfx = this.add.graphics().setDepth(0);
+		this.pickupGfx = this.add.graphics().setDepth(2.5);
+		this.recreatePowerPickups();
 		this.trailGfx = this.add.graphics().setDepth(2.75);
 		this.ballGfx = this.add.graphics().setDepth(3);
 		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
@@ -409,9 +431,12 @@ export class BambooBashScene extends ResponsiveScene {
 		if (!this.onlineMatch) {
 			for (let i = 0; i < START_BAMBOO; i++) this.spawnBamboo();
 		}
+		this.spawnPowerPickup();
 
 		this.drawBackground();
 		this.drawBamboos();
+		this.recreatePowerPickups();
+		this.spawnPowerPickup();
 		this.drawBalls();
 		this.buildHud();
 		this.updateHudText();
@@ -512,6 +537,9 @@ export class BambooBashScene extends ResponsiveScene {
 		this.overlay?.destroy(true);
 		this.powerSidePanel?.destroy();
 		this.powerSidePanel = null;
+		this.powerPickups?.destroy();
+		this.powerPickups = null;
+		this.pickupGfx?.destroy();
 		this.scoreHud?.destroy();
 		this.scoreHud = null;
 		this.trailGfx?.destroy();
@@ -566,6 +594,8 @@ export class BambooBashScene extends ResponsiveScene {
 
 		if (this.localParticipants.length > 0) {
 			this.updateLocalParticipants(delta);
+			this.updatePowerBalls(delta);
+			this.resolvePowerBallCollisions();
 			this.recordBallTrails();
 			this.drawBamboos();
 			this.drawBallTrails();
@@ -587,6 +617,7 @@ export class BambooBashScene extends ResponsiveScene {
 			this.ball.vx *= factor;
 			this.ball.vy *= factor;
 		}
+		if (moving) applyBallCurl(this.ball, delta);
 
 		if (this.onlineMatch) {
 			this.updateOnlineRemoteBalls(delta);
@@ -595,7 +626,8 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 
 		if (moving) {
-			this.checkBambooHits();
+			this.collectPowerPickup(this.ball);
+			this.checkBambooHitsForBall(this.ball, 0);
 		} else {
 			// Ball just stopped — resolve pending power flags (idempotent: flags cleared on first check)
 			if (ext.phantomHidden) ext.phantomHidden = false;
@@ -612,6 +644,8 @@ export class BambooBashScene extends ResponsiveScene {
 				ext.freezePending = false;
 			}
 		}
+		this.updatePowerBalls(delta);
+		this.resolvePowerBallCollisions();
 
 		// Show power panel once ball has stopped (transition detection)
 		if (!moving && this.ballWasMoving && this.running) {
@@ -753,18 +787,17 @@ export class BambooBashScene extends ResponsiveScene {
 		this.bamboos.push({ nx: spot.nx, ny: spot.ny, stage: 1, ageMs: 0 });
 	}
 
-	private checkBambooHits(): void {
-		const ext = this.ball as BallExtState;
-		if (ext.phantomHidden) return;
+	private checkBambooHitsForBall(ball: BallState, playerIndex: number): void {
+		const ext = ball as BallExtState;
 		for (let i = this.bamboos.length - 1; i >= 0; i--) {
 			const b = this.bamboos[i];
 			if (
 				!hitsBamboo(
 					b,
 					this.arena,
-					this.ball.x,
-					this.ball.y,
-					this.ball.r,
+					ball.x,
+					ball.y,
+					ball.r,
 				)
 			)
 				continue;
@@ -781,12 +814,23 @@ export class BambooBashScene extends ResponsiveScene {
 			}
 
 			const points = STAGE_POINTS[b.stage] ?? 0;
-			this.score += points;
+			if (this.localParticipants.length > 0) {
+				const participant = this.localParticipants[playerIndex];
+				if (participant) participant.score += points;
+				this.score = this.localParticipants[0]?.score ?? this.score;
+			} else {
+				this.score += points;
+			}
 			this.updateHudText();
 
 			const p = bambooPos(b, this.arena);
 			this.popScore(p.x, p.y, points);
-			this.addScoreEvent(`Stage ${b.stage} bamboo`, `+${points}`);
+			this.addScoreEvent(
+				this.localParticipants.length > 0
+					? `P${playerIndex + 1} stage ${b.stage} bamboo`
+					: `Stage ${b.stage} bamboo`,
+				`+${points}`,
+			);
 			this.bamboos.splice(i, 1);
 		}
 	}
@@ -818,6 +862,10 @@ export class BambooBashScene extends ResponsiveScene {
 			participant.slingshot.cancel();
 			participant.ball.vx = 0;
 			participant.ball.vy = 0;
+		}
+		for (const entry of this.powerBalls) {
+			entry.ball.vx = 0;
+			entry.ball.vy = 0;
 		}
 		this.ball.vx = 0;
 		this.ball.vy = 0;
@@ -1322,6 +1370,7 @@ export class BambooBashScene extends ResponsiveScene {
 				);
 				this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.08);
 			}
+			this.drawPowerBalls();
 			return;
 		}
 
@@ -1336,6 +1385,7 @@ export class BambooBashScene extends ResponsiveScene {
 				)
 			)
 				drawShellBall(this.ballGfx, this.ball, false);
+			this.drawPowerBalls();
 			return;
 		}
 
@@ -1362,6 +1412,38 @@ export class BambooBashScene extends ResponsiveScene {
 				participant.ball.r * 1.08,
 			);
 		});
+		this.drawPowerBalls();
+	}
+
+	private clearPowerBalls(): void {
+		for (let i = 0; i < this.powerBallTexCount; i++) {
+			destroyIngamePlayerTexture(this, `bamboo-bash-pb-${i}`);
+		}
+		this.powerBallTexCount = 0;
+		this.powerBalls = [];
+	}
+
+	private drawPowerBalls(): void {
+		for (let i = this.powerBalls.length; i < this.powerBallTexCount; i++) {
+			hideIngamePlayerTexture(this, `bamboo-bash-pb-${i}`);
+		}
+		this.powerBallTexCount = this.powerBalls.length;
+		for (let i = 0; i < this.powerBalls.length; i++) {
+			const { ball, player } = this.powerBalls[i];
+			const colour = LOCAL_PLAYER_COLOURS[player % LOCAL_PLAYER_COLOURS.length];
+			if (
+				!drawIngamePlayerTexture(
+					this,
+					`bamboo-bash-pb-${i}`,
+					ball,
+					DEPTH_HUD - 17,
+					this.playerShellSkins[player],
+				)
+			)
+				drawShellBall(this.ballGfx, ball, false);
+			this.ballGfx.lineStyle(Math.max(2, ball.r * 0.14), colour, 0.75);
+			this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.06);
+		}
 	}
 
 	private resetBall(): void {
@@ -1477,13 +1559,22 @@ export class BambooBashScene extends ResponsiveScene {
 		if (this.onlineBalls.size > 0) {
 			recordPlayerTrails(
 				this.ballTrails,
-				[...this.onlineBalls.entries()].map(([side, ball]) => ({
-					id: side,
-					player: side,
-					x: ball.x,
-					y: ball.y,
-					moving: isBallMoving(ball),
-				})),
+				[
+					...[...this.onlineBalls.entries()].map(([side, ball]) => ({
+						id: side,
+						player: side,
+						x: ball.x,
+						y: ball.y,
+						moving: isBallMoving(ball),
+					})),
+					...this.powerBalls.map((entry, index) => ({
+						id: `power-${index}`,
+						player: entry.player,
+						x: entry.ball.x,
+						y: entry.ball.y,
+						moving: isBallMoving(entry.ball),
+					})),
+				],
 				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 			);
 			return;
@@ -1492,13 +1583,22 @@ export class BambooBashScene extends ResponsiveScene {
 		if (this.localParticipants.length > 0) {
 			recordPlayerTrails(
 				this.ballTrails,
-				this.localParticipants.map((participant, index) => ({
-					id: `local-${index}`,
-					player: index,
-					x: participant.ball.x,
-					y: participant.ball.y,
-					moving: isBallMoving(participant.ball),
-				})),
+				[
+					...this.localParticipants.map((participant, index) => ({
+						id: `local-${index}`,
+						player: index,
+						x: participant.ball.x,
+						y: participant.ball.y,
+						moving: isBallMoving(participant.ball),
+					})),
+					...this.powerBalls.map((entry, index) => ({
+						id: `power-${index}`,
+						player: entry.player,
+						x: entry.ball.x,
+						y: entry.ball.y,
+						moving: isBallMoving(entry.ball),
+					})),
+				],
 				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 			);
 			return;
@@ -1507,14 +1607,21 @@ export class BambooBashScene extends ResponsiveScene {
 		recordPlayerTrails(
 			this.ballTrails,
 			[
-				{
-					id: "local",
-					player: 0,
-					x: this.ball.x,
-					y: this.ball.y,
-					moving: isBallMoving(this.ball),
-				},
-			],
+			{
+				id: "local",
+				player: 0,
+				x: this.ball.x,
+				y: this.ball.y,
+				moving: isBallMoving(this.ball),
+			},
+			...this.powerBalls.map((entry, index) => ({
+				id: `power-${index}`,
+				player: entry.player,
+				x: entry.ball.x,
+				y: entry.ball.y,
+				moving: isBallMoving(entry.ball),
+			})),
+		],
 			{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 		);
 	}
@@ -1524,6 +1631,9 @@ export class BambooBashScene extends ResponsiveScene {
 		for (const [side] of this.onlineBalls) playersById.set(side, side);
 		this.localParticipants.forEach((_participant, index) =>
 			playersById.set(`local-${index}`, index),
+		);
+		this.powerBalls.forEach((entry, index) =>
+			playersById.set(`power-${index}`, entry.player),
 		);
 		drawPlayerTrails(this.trailGfx, this.ballTrails, playersById, {
 			...BALL_TRAIL_OPTIONS,
@@ -1542,7 +1652,7 @@ export class BambooBashScene extends ResponsiveScene {
 		if (
 			this.localParticipants.some((participant) =>
 				isBallMoving(participant.ball),
-			)
+			) || this.powerBalls.some((entry) => isBallMoving(entry.ball))
 		)
 			return;
 
@@ -1813,6 +1923,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.localParticipants.forEach((participant, index) => {
 			const ext = participant.ball as BallExtState;
 			if (moving[index]) {
+				this.collectPowerPickup(participant.ball);
 				this.checkLocalBambooHits(participant, index);
 			} else {
 				if (ext.phantomHidden) ext.phantomHidden = false;
@@ -1859,6 +1970,7 @@ export class BambooBashScene extends ResponsiveScene {
 				ball.vx *= factor;
 				ball.vy *= factor;
 			}
+			if (moving) applyBallCurl(ball, delta);
 			if (!moving) {
 				ext.phantomHidden = false;
 				ext.bombPending = false;
@@ -1940,36 +2052,7 @@ export class BambooBashScene extends ResponsiveScene {
 		participant: LocalParticipant,
 		participantIndex: number,
 	): void {
-		const ext = participant.ball as BallExtState;
-		if (ext.phantomHidden) return;
-		for (let i = this.bamboos.length - 1; i >= 0; i--) {
-			const b = this.bamboos[i];
-			if (
-				!hitsBamboo(
-					b,
-					this.arena,
-					participant.ball.x,
-					participant.ball.y,
-					participant.ball.r,
-				)
-			)
-				continue;
-			if (ext.ghostUsed === false) {
-				ext.ghostUsed = true;
-				continue;
-			}
-			const points = STAGE_POINTS[b.stage] ?? 0;
-			participant.score += points;
-			const p = bambooPos(b, this.arena);
-			this.popScore(p.x, p.y, points);
-			this.addScoreEvent(
-				`P${participantIndex + 1} stage ${b.stage} bamboo`,
-				`+${points}`,
-			);
-			this.bamboos.splice(i, 1);
-		}
-		this.score = this.localParticipants[0]?.score ?? this.score;
-		this.updateHudText();
+		this.checkBambooHitsForBall(participant.ball, participantIndex);
 	}
 
 	private resolveLocalStopBomb(ball: BallState): void {
@@ -2065,6 +2148,15 @@ export class BambooBashScene extends ResponsiveScene {
 			}
 			participant.ball.r = BALL_SRC_R * this.arena.scale;
 		});
+		for (const entry of this.powerBalls) {
+			const pRelX = (entry.ball.x - oldArena.cx) / oldArena.rx;
+			const pRelY = (entry.ball.y - oldArena.cy) / oldArena.ry;
+			entry.ball.x = this.arena.cx + pRelX * this.arena.rx;
+			entry.ball.y = this.arena.cy + pRelY * this.arena.ry;
+			entry.ball.r *= this.arena.scale / oldArena.scale;
+			entry.ball.vx *= this.arena.scale / oldArena.scale;
+			entry.ball.vy *= this.arena.scale / oldArena.scale;
+		}
 
 		this.drawBackground();
 		this.drawBamboos();
@@ -2123,6 +2215,151 @@ export class BambooBashScene extends ResponsiveScene {
 			content.width,
 			content.height,
 		);
+	}
+
+	// ── Power pickups ─────────────────────────────────────────────────────────────
+
+	private recreatePowerPickups(): void {
+		this.powerPickups?.destroy();
+		this.powerPickups = new PowerPickupManager({
+			scene: this,
+			graphics: this.pickupGfx,
+			depth: 2.55,
+			pool: GAME_POWERS["bamboo-bash"],
+			radius: PICKUP_RADIUS_SRC * this.arena.scale,
+			spawnAttempts: PICKUP_SPAWN_ATTEMPTS,
+			clearance: PICKUP_CLEARANCE_SRC * this.arena.scale,
+		});
+	}
+
+	private spawnPowerPickup(): void {
+		const powerupsEnabled = this.onlineMatch
+			? this.onlineMatch.snapshot?.powerupsEnabled !== false
+			: this.registry.get("localPowerupsEnabled") !== false;
+		if (!powerupsEnabled || !this.powerPickups) {
+			this.powerPickups?.clear();
+			return;
+		}
+
+		this.powerPickups.clear();
+		this.powerPickups.spawn(
+			createEllipsePowerPickupArea(this.arena),
+			this.powerPickupBlockers(),
+		);
+		this.powerPickups.draw();
+	}
+
+	private collectPowerPickup(ball: BallState): void {
+		if (!this.powerPickups) return;
+		const pickup = this.powerPickups.collect(ball.x, ball.y, ball.r);
+		if (!pickup) return;
+		const player = this.localParticipants.length > 0
+			? this.activeLocalParticipantIndex
+			: 0;
+		if (pickup.type === PowerType.SPLITTER) {
+			const children = createSplitBalls(ball);
+			this.powerBalls.push(
+				{ ball: children[0], player },
+				{ ball: children[2], player },
+			);
+		} else if (pickup.type === PowerType.MIRROR) {
+			this.powerBalls.push({ ball: createMirrorBall(ball, this.arena), player });
+		} else {
+			applyBallPower(pickup.type, ball, this.arena);
+		}
+		this.powerPickups.draw();
+		this.showPowerPickupNotice(pickup.type, pickup.x, pickup.y);
+	}
+
+	private updatePowerBalls(delta: number): void {
+		for (const entry of this.powerBalls) {
+			const { ball, player } = entry;
+			const moving = stepBall(ball, delta, this.arena);
+			const ext = ball as BallExtState;
+			if (moving && ext.frictionOverride !== undefined) {
+				const factor = Math.pow(
+					ext.frictionOverride / BALL_FRICTION_BASE,
+					delta / 16.67,
+				);
+				ball.vx *= factor;
+				ball.vy *= factor;
+			}
+			if (moving) applyBallCurl(ball, delta);
+			if (moving || isBallMoving(ball)) {
+				this.collectPowerPickup(ball);
+				this.checkBambooHitsForBall(ball, player);
+			} else {
+				if (ext.phantomHidden) ext.phantomHidden = false;
+				if (ext.bombPending) {
+					this.resolveLocalStopBomb(ball);
+					ext.bombPending = false;
+				}
+				if (ext.repelPending) {
+					this.resolveLocalStopRepel(ball);
+					ext.repelPending = false;
+				}
+			}
+		}
+	}
+
+	private resolvePowerBallCollisions(): void {
+		const balls = [
+			...this.basePhysicsBalls(),
+			...this.powerBalls.map((entry) => entry.ball),
+		];
+		for (let i = 0; i < balls.length; i++) {
+			for (let j = i + 1; j < balls.length; j++) {
+				if (
+					(balls[i] as BallExtState).phantomHidden ||
+					(balls[j] as BallExtState).phantomHidden
+				)
+					continue;
+				resolveBallCollision(balls[i], balls[j]);
+			}
+		}
+	}
+
+	private basePhysicsBalls(): BallState[] {
+		if (this.onlineBalls.size > 0) return [...new Set(this.onlineBalls.values())];
+		if (this.localParticipants.length > 0)
+			return this.localParticipants.map((participant) => participant.ball);
+		return [this.ball];
+	}
+
+	private powerPickupBlockers(): PowerPickupBlocker[] {
+		return this.bamboos.map((bamboo) => {
+			const pos = bambooPos(bamboo, this.arena);
+			return {
+				x: pos.x,
+				y: pos.y,
+				r: (BAMBOO_DISPLAY_SRC_SIZE * this.arena.scale) / 2,
+			};
+		});
+	}
+
+	private showPowerPickupNotice(type: PowerType, x: number, y: number): void {
+		const label = this.add
+			.text(x, y - 34 * this.arena.scale, `POWER UP\n${type.toUpperCase()}`, {
+				fontSize: `${Math.max(18, 28 * this.arena.scale)}px`,
+				color: "#fff7d6",
+				fontFamily: THEME.fontUrbanStone,
+				fontStyle: "bold",
+				align: "center",
+				stroke: "#171008",
+				strokeThickness: 4,
+			})
+			.setOrigin(0.5)
+			.setDepth(DEPTH_HUD + 4)
+			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
+
+		this.tweens.add({
+			targets: label,
+			y: label.y - 46 * this.arena.scale,
+			alpha: 0,
+			duration: 950,
+			ease: "Cubic.easeOut",
+			onComplete: () => label.destroy(),
+		});
 	}
 
 	/** Show or refresh the power panel in the left column before each shot. */

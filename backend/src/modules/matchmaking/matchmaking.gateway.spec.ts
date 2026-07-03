@@ -298,11 +298,11 @@ describe("MatchmakingGateway", () => {
 
 			expect(hostSocket.join).toHaveBeenCalledWith("match-invite-1");
 			expect(joinerSocket.join).toHaveBeenCalledWith("match-invite-1");
-			expect(hostSocket.emit).toHaveBeenCalledWith(
+			expect(roomEmit).toHaveBeenCalledWith(
 				"lobby:matched",
 				expect.objectContaining({ matchId: "match-invite-1", side: 0 }),
 			);
-			expect(joinerSocket.emit).toHaveBeenCalledWith(
+			expect(roomEmit).toHaveBeenCalledWith(
 				"lobby:matched",
 				expect.objectContaining({ matchId: "match-invite-1", side: 1 }),
 			);

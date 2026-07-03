@@ -145,6 +145,7 @@ describe("PrivateLobbiesService", () => {
 					expect.objectContaining({ user: HOST }),
 					expect.objectContaining({ user: JOINER }),
 				]),
+				expect.objectContaining({ powerupsEnabled: true }),
 			);
 		});
 

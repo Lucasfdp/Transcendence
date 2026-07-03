@@ -98,6 +98,8 @@ const COSMETIC_PREVIEWS: Partial<Record<Cosmetic["id"], string>> = {
 	dragon: "/assets/character/shells/dragonShell.png",
 	bamboo: "/assets/character/shells/bambooShell.png",
 	purple: "/assets/character/shells/purpleShell.png",
+	pink: "/assets/character/shells/pinkShell.png",
+	stone: "/assets/character/shells/stoneShell.png",
 	night_bg: "/assets/backgrounds/night_bg.png",
 	sunset_bg: "/assets/backgrounds/sunset_bg.png",
 	sunrise_bg: "/assets/backgrounds/sunrise_bg.png",

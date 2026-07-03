@@ -35,9 +35,13 @@ import {
 } from "../../shared/mechanics/power-system";
 import {
 	GAME_POWERS,
-	POWER_UP_TEXTURES,
 	preloadPowerUpAssets,
 } from "../../shared/mechanics/game-powers";
+import {
+	PowerPickupManager,
+	createRectPowerPickupArea,
+	type PowerPickupBlocker,
+} from "../../shared/mechanics/power-pickups";
 import {
 	TurnManager,
 	type TurnPhase,
@@ -149,14 +153,6 @@ interface Bumper {
 	flashTimer: number; // ms remaining for hit-flash visual
 }
 
-interface PowerPickup {
-	id: number;
-	type: PowerType;
-	fx: number;
-	fy: number;
-	rSrc: number;
-}
-
 /**
  * Generate random bumper positions for one end.
  * Bumpers are placed in the middle 15%–58% of the sheet width so the
@@ -221,15 +217,13 @@ export class ShellCurlScene extends ResponsiveScene {
 	private sheetGfx!: Phaser.GameObjects.Graphics;
 	private bumperGfx!: Phaser.GameObjects.Graphics;
 	private pickupGfx!: Phaser.GameObjects.Graphics;
-	private pickupImages: Phaser.GameObjects.Image[] = [];
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 	private stoneTrails: PlayerTrailStore = new Map();
 
 	// ── Bumpers ───────────────────────────────────────────────────────────────
 	private bumpers: Bumper[] = [];
-	private pickups: PowerPickup[] = [];
-	private nextPickupId = 0;
+	private powerPickups: PowerPickupManager | null = null;
 	private powerupsEnabled = true;
 
 	// ── Overlay ───────────────────────────────────────────────────────────────
@@ -379,6 +373,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.sheetGfx = this.add.graphics().setDepth(DEPTH_SHEET);
 		this.bumperGfx = this.add.graphics().setDepth(DEPTH_BUMPERS);
 		this.pickupGfx = this.add.graphics().setDepth(DEPTH_STONES - 0.5);
+		this.recreatePowerPickups();
 		this.trailGfx = this.add.graphics().setDepth(DEPTH_STONES - 0.25);
 
 		// Draw background & sheet
@@ -453,7 +448,8 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.scoreLogPanel?.destroy();
 		this.scoreLogPanel = null;
 		this.clearAllStoneGfx();
-		this.clearPowerPickupImages();
+		this.powerPickups?.destroy();
+		this.powerPickups = null;
 		this.bumperGfx.destroy();
 		this.pickupGfx.destroy();
 		this.trailGfx.destroy();
@@ -493,6 +489,10 @@ export class ShellCurlScene extends ResponsiveScene {
 				this.activeStone.splitterPending = false;
 				this.spawnSplitStones(this.activeStone);
 				this.activeStone = null;
+			}
+			if (this.activeStone?.mirrorPending) {
+				this.activeStone.mirrorPending = false;
+				this.spawnMirrorStone(this.activeStone);
 			}
 
 			if (this.activeStone) {
@@ -943,6 +943,30 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.redrawAllStones();
 	}
 
+	private spawnMirrorStone(parent: StoneState): void {
+		const mirroredY = this.arena.sheetY + this.arena.sheetH - (parent.y - this.arena.sheetY);
+		const mirror: StoneState = {
+			id: this.nextStoneId++,
+			teamId: parent.teamId,
+			x: parent.x,
+			y: mirroredY,
+			vx: parent.vx,
+			vy: -parent.vy,
+			r: parent.r,
+			power: PowerType.NONE,
+			stopped: false,
+			curlBias: -parent.curlBias,
+		};
+
+		const gfx = this.add.graphics().setDepth(DEPTH_STONES);
+		this.stoneGfx.set(mirror.id, gfx);
+		this.allStones.push(mirror);
+		this.stoneTrails.set(mirror.id, [{ x: mirror.x, y: mirror.y }]);
+		this.showPowerPickupNotice(PowerType.MIRROR, parent.x, parent.y);
+		this.drawStoneTrails();
+		this.redrawAllStones();
+	}
+
 	private showSplitterNotice(x: number, y: number): void {
 		const text = this.add
 			.text(x, y - 42 * this.arena.scale, "SPLIT!", {
@@ -1271,10 +1295,10 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		this.showOverlay(message, "NEXT END", () => {
 			this.clearAllStoneGfx();
-			this.pickups = [];
+			this.powerPickups?.clear();
 			this.buildBumpers(true); // fresh random layout for new end
 			this.drawBumpers();
-			this.drawPowerPickups();
+			this.powerPickups?.draw();
 			this.beginTurn();
 		});
 	}
@@ -2157,73 +2181,39 @@ export class ShellCurlScene extends ResponsiveScene {
 	// ── Power pickups ─────────────────────────────────────────────────────────
 
 	private spawnPowerPickup(): void {
-		if (!this.powerupsEnabled) return;
-		const pool = GAME_POWERS["temple-curling"];
-		if (pool.length === 0) return;
-
-		for (let attempt = 0; attempt < PICKUP_SPAWN_ATTEMPTS; attempt++) {
-			const fx = Phaser.Math.FloatBetween(0.18, 0.82);
-			const fy = Phaser.Math.FloatBetween(0.2, 0.8);
-			if (!this.canPlacePowerPickup(fx, fy, PICKUP_RADIUS_SRC)) continue;
-
-			this.pickups.push({
-				id: this.nextPickupId++,
-				type: Phaser.Math.RND.pick(pool),
-				fx,
-				fy,
-				rSrc: PICKUP_RADIUS_SRC,
-			});
-			return;
-		}
+		if (!this.powerupsEnabled || !this.powerPickups) return;
+		const area = createRectPowerPickupArea({
+			x: this.arena.sheetX + this.arena.sheetW * 0.18,
+			y: this.arena.sheetY + this.arena.sheetH * 0.2,
+			w: this.arena.sheetW * 0.64,
+			h: this.arena.sheetH * 0.6,
+		});
+		this.powerPickups.spawn(area, this.powerPickupBlockers());
 	}
 
-	private canPlacePowerPickup(fx: number, fy: number, rSrc: number): boolean {
-		const x = this.arena.sheetX + fx * this.arena.sheetW;
-		const y = this.arena.sheetY + fy * this.arena.sheetH;
-		const r = rSrc * this.arena.scale;
-		const clearance = PICKUP_CLEARANCE_SRC * this.arena.scale;
-		const minDistance = (otherR: number) => r + otherR + clearance;
-
-		for (const bumper of this.bumpers) {
-			if (Math.hypot(x - bumper.x, y - bumper.y) < minDistance(bumper.r))
-				return false;
-		}
-
-		for (const stone of this.allStones) {
-			if (Math.hypot(x - stone.x, y - stone.y) < minDistance(stone.r))
-				return false;
-		}
-
-		for (const pickup of this.pickups) {
-			const pos = this.pickupPosition(pickup);
-			if (
-				Math.hypot(x - pos.x, y - pos.y) <
-				minDistance(pickup.rSrc * this.arena.scale)
-			)
-				return false;
-		}
-
-		return true;
+	private recreatePowerPickups(): void {
+		this.powerPickups?.destroy();
+		this.powerPickups = new PowerPickupManager({
+			scene: this,
+			graphics: this.pickupGfx,
+			depth: DEPTH_STONES - 0.45,
+			pool: GAME_POWERS["temple-curling"],
+			radius: PICKUP_RADIUS_SRC * this.arena.scale,
+			spawnAttempts: PICKUP_SPAWN_ATTEMPTS,
+			clearance: PICKUP_CLEARANCE_SRC * this.arena.scale,
+		});
 	}
 
 	private collectPowerPickup(stone: StoneState | null): void {
-		if (!stone || stone.power !== PowerType.NONE || this.pickups.length === 0)
-			return;
+		if (!stone || stone.power !== PowerType.NONE || !this.powerPickups) return;
+		const pickup = this.powerPickups.collect(stone.x, stone.y, stone.r);
+		if (!pickup) return;
 
-		for (const pickup of [...this.pickups]) {
-			const pos = this.pickupPosition(pickup);
-			const pickupR = pickup.rSrc * this.arena.scale;
-			if (Math.hypot(stone.x - pos.x, stone.y - pos.y) > stone.r + pickupR)
-				continue;
-
-			stone.power = pickup.type;
-			this.powerRegistry.get(pickup.type).onApply(stone, this.arena);
-			this.pickups = this.pickups.filter((p) => p.id !== pickup.id);
-			this.drawPowerPickups();
-			this.showPowerPickupNotice(pickup.type, pos.x, pos.y);
-			this.updateSidePanels();
-			return;
-		}
+		stone.power = pickup.type;
+		this.powerRegistry.get(pickup.type).onApply(stone, this.arena);
+		this.powerPickups.draw();
+		this.showPowerPickupNotice(pickup.type, pickup.x, pickup.y);
+		this.updateSidePanels();
 	}
 
 	private showPowerPickupNotice(type: PowerType, x: number, y: number): void {
@@ -2252,43 +2242,27 @@ export class ShellCurlScene extends ResponsiveScene {
 		});
 	}
 
-	private pickupPosition(pickup: PowerPickup): { x: number; y: number } {
-		return {
-			x: this.arena.sheetX + pickup.fx * this.arena.sheetW,
-			y: this.arena.sheetY + pickup.fy * this.arena.sheetH,
-		};
-	}
-
 	private drawPowerPickups(): void {
-		this.pickupGfx.clear();
-		this.clearPowerPickupImages();
-		if (!this.powerupsEnabled) return;
-
-		for (const pickup of this.pickups) {
-			const def = ALL_POWERS[pickup.type];
-			const texture = POWER_UP_TEXTURES[pickup.type];
-			const { x, y } = this.pickupPosition(pickup);
-			const r = pickup.rSrc * this.arena.scale;
-			this.pickupGfx.fillStyle(def.accentColour, 0.25);
-			this.pickupGfx.fillCircle(x, y, r * 1.65);
-			this.pickupGfx.lineStyle(Math.max(1, 2 * this.arena.scale), 0xffffff, 0.75);
-			this.pickupGfx.strokeCircle(x, y, r * 1.15);
-			if (texture && this.textures.exists(texture)) {
-				const image = this.add
-					.image(x, y, texture)
-					.setDepth(DEPTH_STONES - 0.45)
-					.setDisplaySize(r * 2.45, r * 2.45);
-				this.pickupImages.push(image);
-			} else {
-				this.pickupGfx.fillStyle(def.accentColour, 0.9);
-				this.pickupGfx.fillCircle(x, y, r);
-			}
+		if (!this.powerupsEnabled) {
+			this.powerPickups?.clear();
+			return;
 		}
+		this.powerPickups?.draw();
 	}
 
-	private clearPowerPickupImages(): void {
-		for (const image of this.pickupImages) image.destroy();
-		this.pickupImages.length = 0;
+	private powerPickupBlockers(): PowerPickupBlocker[] {
+		return [
+			...this.bumpers.map((bumper) => ({
+				x: bumper.x,
+				y: bumper.y,
+				r: bumper.r,
+			})),
+			...this.allStones.map((stone) => ({
+				x: stone.x,
+				y: stone.y,
+				r: stone.r,
+			})),
+		];
 	}
 
 	// ── Resize ────────────────────────────────────────────────────────────────
@@ -2322,6 +2296,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		drawIceSheet(this.sheetGfx, this.arena);
 		this.buildBumpers();
 		this.drawBumpers();
+		this.recreatePowerPickups();
 		this.drawPowerPickups();
 		this.redrawAllStones();
 

@@ -43,6 +43,7 @@ function makeRoom(overrides: Partial<MatchRoom> = {}): MatchRoom {
 			seq: 1,
 			gameId: "temple-curling",
 			mode: "casual",
+			powerupsEnabled: true,
 			phase: "finished",
 			currentTurn: 0,
 			turnNumber: 0,

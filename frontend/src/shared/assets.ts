@@ -28,6 +28,14 @@ export const SHELL_SKIN_ASSETS = {
 		key: "ingame-shell-purple",
 		source: "/assets/character/shells/purpleShell.png",
 	},
+	pink: {
+		key: "ingame-shell-pink",
+		source: "/assets/character/shells/pinkShell.png",
+	},
+	stone: {
+		key: "ingame-shell-stone",
+		source: "/assets/character/shells/stoneShell.png",
+	},
 } as const;
 
 export type ShellSkinId = keyof typeof SHELL_SKIN_ASSETS;

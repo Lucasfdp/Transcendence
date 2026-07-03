@@ -68,6 +68,22 @@ export const COSMETICS: CosmeticDefinition[] = [
 		accentColor: 0x7a45b8,
 	},
 	{
+		id: "pink",
+		type: "shell_skin",
+		name: "Pink Shell",
+		description: "A bright pink shell for players who bring extra flair to the dojo.",
+		price: 200,
+		accentColor: 0xf26bb8,
+	},
+	{
+		id: "stone",
+		type: "shell_skin",
+		name: "Stone Shell",
+		description: "A rugged stone shell for players who prefer a grounded look.",
+		price: 200,
+		accentColor: 0x6f7378,
+	},
+	{
 		id: "night_bg",
 		type: "hub_background",
 		name: "Night Background",

@@ -13,6 +13,7 @@ interface QueueEntry {
 	gameId: string;
 	mode: MatchMode;
 	playerCount: number;
+	powerupsEnabled: boolean;
 	shellSelection: string[];
 	joinedAt: number;
 }
@@ -45,6 +46,7 @@ export class MatchmakingService {
 			Math.min(MAX_PLAYERS, Math.floor(Number(payload.playerCount ?? 2))),
 		);
 		const shellSelection = payload.shellSelection ?? [];
+		const powerupsEnabled = payload.powerupsEnabled ?? true;
 		if (!gameId) throw new BadRequestException("gameId is required");
 		if (!["casual", "ranked"].includes(mode))
 			throw new BadRequestException("Invalid mode");
@@ -69,6 +71,7 @@ export class MatchmakingService {
 			gameId,
 			mode,
 			playerCount,
+			powerupsEnabled,
 			shellSelection,
 			joinedAt: Date.now(),
 		});
@@ -92,6 +95,7 @@ export class MatchmakingService {
 			gameId,
 			mode,
 			players,
+			{ powerupsEnabled: true },
 		);
 		await this.matchPlayerRepo.save(
 			room.players.map((player) =>

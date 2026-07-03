@@ -31,7 +31,11 @@ import {
 	TINY_RADIUS_FACTOR,
 	ROCKET_SPEED_FACTOR,
 	FRICTION_SLICK,
+	SPINNING_CURL_BIAS,
 } from "./power-system";
+
+/** How strongly curlBias bends the ball's trajectory (radians/second per unit of bias). */
+export const BALL_CURL_STRENGTH = 0.5;
 
 // ── Extended BallState — optional properties set by applyBallPower ─────────────
 
@@ -56,6 +60,8 @@ export interface BallExtState extends BallState {
 	phantomHidden?: boolean;
 	/** REPEL: when ball stops, push/clear targets in REPEL_RADIUS_SRC * scale, then clear. */
 	repelPending?: boolean;
+	/** SPINNING: continuous curl bias applied per frame — >0 curves right, <0 curves left. */
+	curlBias?: number;
 }
 
 // ── Re-export for scene use ────────────────────────────────────────────────────
@@ -85,6 +91,7 @@ export function applyBallPower(
 	ext.ghostUsed = undefined;
 	ext.phantomHidden = undefined;
 	ext.repelPending = undefined;
+	ext.curlBias = undefined;
 
 	switch (power) {
 		// ── Radius modifiers ───────────────────────────────────────────────────────
@@ -122,10 +129,9 @@ export function applyBallPower(
 			break;
 
 		case PowerType.SPINNING:
-			// Extra friction to stop the ball sooner, plus a lateral drift bias.
+			// Continuous curl applied per-frame in the scene update + a one-time nudge.
 			ext.frictionOverride = 0.984;
-			// Lateral drift: nudge velocity 10° off-axis so the ball curves slightly.
-			// TODO(#spinning-drift): extend BallState.ts with curlBias analogue if wanted.
+			ext.curlBias = SPINNING_CURL_BIAS;
 			{
 				const angle = Math.atan2(ext.vy, ext.vx) + Math.PI / 18; // +10°
 				const spd = Math.sqrt(ext.vx * ext.vx + ext.vy * ext.vy);
@@ -174,4 +180,20 @@ export function applyBallPower(
 			// Exhaustive check — any new PowerType added to the enum will surface here.
 			break;
 	}
+}
+
+/**
+ * Apply a continuous curl force to a moving ball (used by SPINNING power).
+ * Call once per frame after stepBall() when the ball's curlBias is set.
+ */
+export function applyBallCurl(ball: BallState, deltaMs: number): void {
+	const ext = ball as BallExtState;
+	if (ext.curlBias === undefined) return;
+	const speed = Math.hypot(ball.vx, ball.vy);
+	if (speed <= 0.001) return;
+	const dt = deltaMs / 1000;
+	const perp_x = -ball.vy / speed;
+	const perp_y = ball.vx / speed;
+	ball.vx += perp_x * ext.curlBias * BALL_CURL_STRENGTH * speed * dt;
+	ball.vy += perp_y * ext.curlBias * BALL_CURL_STRENGTH * speed * dt;
 }

@@ -543,6 +543,7 @@ function PowerupMatchmakingPanel({
 			gameId,
 			mode: "casual",
 			playerCount: onlinePlayerCount,
+			powerupsEnabled: true,
 			shellSelection: [],
 		});
 	};
@@ -632,7 +633,7 @@ function PowerupMatchmakingPanel({
 					{isOnlineGame ? (
 						<section className="power-picker-page__mode-card power-picker-page__mode-card--online">
 							<h2>Multiplayer Online</h2>
-							<p>Jump into matchmaking against online opponents.</p>
+							<p>Jump into matchmaking against online opponents. Power-ups are always active.</p>
 							{renderPlayerPicker(onlinePlayerCount, setOnlinePlayerCount, "Online player count", Boolean(activeMatchStatus))}
 							<button type="button" className="power-picker-page__online-button" onClick={() => void findOnlineMatch()}>
 								{activeMatchStatus ? "Rejoin Match" : isSearchingOnline ? "Cancel Search" : "Find Online Match"}

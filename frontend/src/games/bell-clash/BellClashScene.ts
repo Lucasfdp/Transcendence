@@ -44,12 +44,24 @@ import {
 	preloadPowerUpAssets,
 } from "../../shared/mechanics/game-powers";
 import {
+	PowerPickupManager,
+	createEllipsePowerPickupArea,
+	type PowerPickupBlocker,
+} from "../../shared/mechanics/power-pickups";
+import {
+	applyBallCurl,
 	applyBallPower,
 	BallExtState,
 	BALL_FRICTION_BASE,
 } from "../../shared/mechanics/ball-powers";
 import {
+	createMirrorBall,
+	createSplitBalls,
+} from "../../shared/mechanics/ball-spawn-powers";
+import {
+	destroyIngamePlayerTexture,
 	drawIngamePlayerTexture,
+	hideIngamePlayerTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
 import {
@@ -102,6 +114,9 @@ const ZONE_SPAN = Math.PI * 2 * 0.15;
 const BELL_BOUNCE_DAMP = 0.88;
 const HIT_COOLDOWN_MS = 180;
 const REPLAY_CAPTURE_STEP_MS = 100;
+const PICKUP_RADIUS_SRC = 20;
+const PICKUP_SPAWN_ATTEMPTS = 80;
+const PICKUP_CLEARANCE_SRC = 14;
 
 const DEPTH_BG = 0;
 const DEPTH_ZONES = 1;
@@ -141,11 +156,14 @@ export class BellClashScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
 	private zoneGfx!: Phaser.GameObjects.Graphics;
 	private bellGfx!: Phaser.GameObjects.Graphics;
+	private pickupGfx!: Phaser.GameObjects.Graphics;
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private ballGfx!: Phaser.GameObjects.Graphics;
 
 	private arena!: ArenaPixels;
 	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
+	private powerBalls: Array<{ ball: BallState; player: number }> = [];
+	private powerBallTexCount = 0;
 	private slingshot: Slingshot | null = null;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 	private overlay?: Phaser.GameObjects.Container;
@@ -210,6 +228,7 @@ export class BellClashScene extends ResponsiveScene {
 
 	// ── Power state ──────────────────────────────────────────────────────────────
 	private powerSidePanel: GameInfoSidePanel | null = null;
+	private powerPickups: PowerPickupManager | null = null;
 
 	/** Per-player power pools. Bell Clash local-versus rotates one shot per player. */
 	private playerPowers: PowerType[][] = [FALLBACK_POWERS, FALLBACK_POWERS];
@@ -241,6 +260,7 @@ export class BellClashScene extends ResponsiveScene {
 				: null;
 		this.lastOnlineSeq = -1;
 		this.onlineBalls.clear();
+		this.clearPowerBalls();
 		this.ballTrails.clear();
 		this.onlineRoundNumber = 1;
 		this.onlineTotalRounds = 3;
@@ -351,6 +371,8 @@ export class BellClashScene extends ResponsiveScene {
 		this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
 		this.zoneGfx = this.add.graphics().setDepth(DEPTH_ZONES);
 		this.bellGfx = this.add.graphics().setDepth(DEPTH_BELL);
+		this.pickupGfx = this.add.graphics().setDepth(DEPTH_BALL - 0.5);
+		this.recreatePowerPickups();
 		this.trailGfx = this.add.graphics().setDepth(DEPTH_BALL - 0.25);
 		this.ballGfx = this.add.graphics().setDepth(DEPTH_BALL);
 		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
@@ -370,6 +392,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.drawBackground();
 		this.drawZones();
 		this.drawBell();
+		this.spawnPowerPickup();
 		if (this.onlineMatch && initialOnlineSnapshot)
 			this.resetOnlineBalls(initialOnlineSnapshot);
 		this.drawBalls();
@@ -406,6 +429,9 @@ export class BellClashScene extends ResponsiveScene {
 		this.onlineStatusText = null;
 		this.powerSidePanel?.destroy();
 		this.powerSidePanel = null;
+		this.powerPickups?.destroy();
+		this.powerPickups = null;
+		this.pickupGfx?.destroy();
 		this.trailGfx?.destroy();
 		this.ballTrails.clear();
 		this.destroySidePanels();
@@ -436,13 +462,20 @@ export class BellClashScene extends ResponsiveScene {
 				ball.vx *= factor;
 				ball.vy *= factor;
 			}
-			if (moving) this.checkBellHitForBall(ball, ball === this.ball);
+			if (moving) applyBallCurl(ball, delta);
+			if (moving) {
+				this.collectPowerPickup(ball);
+				this.checkBellHitForBall(ball, ball === this.ball);
+			}
 			anyMoving ||= moving || isBallMoving(ball);
 			if (!isBallMoving(ball) && this.launchedThisShot)
 				this.clearStoppedPowerFlags(ext, ball === this.ball);
 		}
+		this.updatePowerBalls(delta);
 		this.resolveLocalBallCollisions();
-		anyMoving = this.localBallsForPhysics().some(([, ball]) => isBallMoving(ball));
+		anyMoving =
+			this.localBallsForPhysics().some(([, ball]) => isBallMoving(ball)) ||
+			this.powerBalls.some((entry) => isBallMoving(entry.ball));
 
 		if (this.launchedThisShot && !anyMoving) this.finishShot();
 
@@ -459,8 +492,10 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private resolveLocalBallCollisions(): void {
-		if (this.localPlayerCount <= 1) return;
-		const balls = this.localBallsForPhysics().map(([, ball]) => ball);
+		const balls = [
+			...this.localBallsForPhysics().map(([, ball]) => ball),
+			...this.powerBalls.map((entry) => entry.ball),
+		];
 		for (let i = 0; i < balls.length; i++) {
 			for (let j = i + 1; j < balls.length; j++) {
 				if (
@@ -469,6 +504,29 @@ export class BellClashScene extends ResponsiveScene {
 				)
 					continue;
 				resolveBallCollision(balls[i], balls[j]);
+			}
+		}
+	}
+
+	private updatePowerBalls(delta: number): void {
+		for (const entry of this.powerBalls) {
+			const { ball } = entry;
+			const moving = stepBall(ball, delta, this.arena);
+			const ext = ball as BallExtState;
+			if (moving && ext.frictionOverride !== undefined) {
+				const factor = Math.pow(
+					ext.frictionOverride / BALL_FRICTION_BASE,
+					delta / 16.67,
+				);
+				ball.vx *= factor;
+				ball.vy *= factor;
+			}
+			if (moving) applyBallCurl(ball, delta);
+			if (moving || isBallMoving(ball)) {
+				this.collectPowerPickup(ball);
+				this.checkBellHitForBall(ball, true);
+			} else {
+				this.clearStoppedPowerFlags(ext, true);
 			}
 		}
 	}
@@ -542,6 +600,7 @@ export class BellClashScene extends ResponsiveScene {
 
 	private setupShot(): void {
 		this.launchedThisShot = false;
+		this.clearPowerBalls();
 		this.hitCooldownMs = 0;
 		this.bellPulseMs = 0;
 		if (this.localTurnNumber % this.localPlayerCount === 0) {
@@ -554,6 +613,7 @@ export class BellClashScene extends ResponsiveScene {
 
 		this.shotText?.setText(this.formatShotText());
 		this.lastHitText?.setText("LAST HIT  -");
+		this.spawnPowerPickup();
 		this.updateSidePanels();
 	}
 
@@ -643,8 +703,6 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private checkBellHitForBall(ball: BallState, canScore: boolean): void {
-		if ((ball as BallExtState).phantomHidden) return;
-
 		const dx = ball.x - this.arena.cx;
 		const dy = ball.y - this.arena.cy;
 		const dist = Math.max(0.001, Math.hypot(dx, dy));
@@ -1092,17 +1150,23 @@ export class BellClashScene extends ResponsiveScene {
 				ball.vx *= factor;
 				ball.vy *= factor;
 			}
-			if (moving)
+			if (moving) applyBallCurl(ball, delta);
+			if (moving) {
+				if (side === this.onlineMatch.side) this.collectPowerPickup(ball);
 				this.checkBellHitForBall(ball, side === this.onlineMatch.side);
+			}
 			if (!moving)
 				this.clearStoppedPowerFlags(
 					ext,
 					side === this.onlineMatch.side,
 				);
 		}
+		this.updatePowerBalls(delta);
 
 		this.resolveOnlineBallCollisions();
-		const localMoving = isBallMoving(this.ball);
+		const localMoving =
+			isBallMoving(this.ball) ||
+			this.powerBalls.some((entry) => isBallMoving(entry.ball));
 
 		if (!localMoving && this.onlineBallWasMoving) this.finishOnlineShot();
 		this.onlineBallWasMoving = localMoving;
@@ -1136,7 +1200,10 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private resolveOnlineBallCollisions(): void {
-		const balls = [...new Set(this.onlineBalls.values())];
+		const balls = [
+			...new Set(this.onlineBalls.values()),
+			...this.powerBalls.map((entry) => entry.ball),
+		];
 		for (let i = 0; i < balls.length; i++) {
 			for (let j = i + 1; j < balls.length; j++) {
 				if (
@@ -1229,6 +1296,93 @@ export class BellClashScene extends ResponsiveScene {
 		ball.vx = 0;
 		ball.vy = 0;
 		ball.r = BALL_SRC_R * this.arena.scale;
+	}
+
+	// ── Power pickups ─────────────────────────────────────────────────────────────
+
+	private recreatePowerPickups(): void {
+		this.powerPickups?.destroy();
+		this.powerPickups = new PowerPickupManager({
+			scene: this,
+			graphics: this.pickupGfx,
+			depth: DEPTH_BALL - 0.45,
+			pool: GAME_POWERS["bell-clash"],
+			radius: PICKUP_RADIUS_SRC * this.arena.scale,
+			spawnAttempts: PICKUP_SPAWN_ATTEMPTS,
+			clearance: PICKUP_CLEARANCE_SRC * this.arena.scale,
+		});
+	}
+
+	private spawnPowerPickup(): void {
+		const powerupsEnabled = this.onlineMatch
+			? this.onlineMatch.snapshot?.powerupsEnabled !== false
+			: this.registry.get("localPowerupsEnabled") !== false;
+		if (!powerupsEnabled || !this.powerPickups) {
+			this.powerPickups?.clear();
+			return;
+		}
+
+		this.powerPickups.clear();
+		this.powerPickups.spawn(
+			createEllipsePowerPickupArea(this.arena),
+			this.powerPickupBlockers(),
+		);
+		this.powerPickups.draw();
+	}
+
+	private collectPowerPickup(ball: BallState): void {
+		if (!this.powerPickups) return;
+		const pickup = this.powerPickups.collect(ball.x, ball.y, ball.r);
+		if (!pickup) return;
+		const player = this.currentPlayerIndex();
+		if (pickup.type === PowerType.SPLITTER) {
+			const children = createSplitBalls(ball);
+			this.powerBalls.push(
+				{ ball: children[0], player },
+				{ ball: children[2], player },
+			);
+		} else if (pickup.type === PowerType.MIRROR) {
+			this.powerBalls.push({ ball: createMirrorBall(ball, this.arena), player });
+		} else {
+			applyBallPower(pickup.type, ball, this.arena);
+		}
+		this.powerPickups.draw();
+		this.showPowerPickupNotice(pickup.type, pickup.x, pickup.y);
+	}
+
+	private powerPickupBlockers(): PowerPickupBlocker[] {
+		return [
+			{
+				x: this.arena.cx,
+				y: this.arena.cy,
+				r: this.bellRadius() + PICKUP_CLEARANCE_SRC * this.arena.scale,
+			},
+		];
+	}
+
+	private showPowerPickupNotice(type: PowerType, x: number, y: number): void {
+		const label = this.add
+			.text(x, y - 34 * this.arena.scale, `POWER UP\n${type.toUpperCase()}`, {
+				fontSize: `${Math.max(18, 28 * this.arena.scale)}px`,
+				color: "#fff7d6",
+				fontFamily: THEME.fontUrbanStone,
+				fontStyle: "bold",
+				align: "center",
+				stroke: "#171008",
+				strokeThickness: 4,
+			})
+			.setOrigin(0.5)
+			.setDepth(DEPTH_HUD + 4)
+			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
+
+		this.tweens.add({
+			targets: label,
+			y: label.y - 46 * this.arena.scale,
+			alpha: 0,
+			duration: 950,
+			ease: "Cubic.easeOut",
+			onComplete: () => label.destroy(),
+		});
 	}
 
 	// ── Power panel ──────────────────────────────────────────────────────────────
@@ -1405,13 +1559,22 @@ export class BellClashScene extends ResponsiveScene {
 		if (!this.onlineMatch && this.localPlayerCount > 1) {
 			recordPlayerTrails(
 				this.ballTrails,
-				this.localBallsForPhysics().map(([side, ball]) => ({
-					id: side,
-					player: side,
-					x: ball.x,
-					y: ball.y,
-					moving: isBallMoving(ball),
-				})),
+				[
+					...this.localBallsForPhysics().map(([side, ball]) => ({
+						id: side,
+						player: side,
+						x: ball.x,
+						y: ball.y,
+						moving: isBallMoving(ball),
+					})),
+					...this.powerBalls.map((entry, index) => ({
+						id: `power-${index}`,
+						player: entry.player,
+						x: entry.ball.x,
+						y: entry.ball.y,
+						moving: isBallMoving(entry.ball),
+					})),
+				],
 				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 			);
 			return;
@@ -1419,13 +1582,22 @@ export class BellClashScene extends ResponsiveScene {
 		if (this.onlineBalls.size > 0) {
 			recordPlayerTrails(
 				this.ballTrails,
-				[...this.onlineBalls.entries()].map(([side, ball]) => ({
-					id: side,
-					player: side,
-					x: ball.x,
-					y: ball.y,
-					moving: isBallMoving(ball),
-				})),
+				[
+					...[...this.onlineBalls.entries()].map(([side, ball]) => ({
+						id: side,
+						player: side,
+						x: ball.x,
+						y: ball.y,
+						moving: isBallMoving(ball),
+					})),
+					...this.powerBalls.map((entry, index) => ({
+						id: `power-${index}`,
+						player: entry.player,
+						x: entry.ball.x,
+						y: entry.ball.y,
+						moving: isBallMoving(entry.ball),
+					})),
+				],
 				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 			);
 			return;
@@ -1434,14 +1606,21 @@ export class BellClashScene extends ResponsiveScene {
 		recordPlayerTrails(
 			this.ballTrails,
 			[
-				{
-					id: "local",
-					player: this.currentPlayerIndex(),
-					x: this.ball.x,
-					y: this.ball.y,
-					moving: isBallMoving(this.ball),
-				},
-			],
+			{
+				id: "local",
+				player: this.currentPlayerIndex(),
+				x: this.ball.x,
+				y: this.ball.y,
+				moving: isBallMoving(this.ball),
+			},
+			...this.powerBalls.map((entry, index) => ({
+				id: `power-${index}`,
+				player: entry.player,
+				x: entry.ball.x,
+				y: entry.ball.y,
+				moving: isBallMoving(entry.ball),
+			})),
+		],
 			{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 		);
 	}
@@ -1452,6 +1631,9 @@ export class BellClashScene extends ResponsiveScene {
 		]);
 		for (const side of this.localBalls.keys()) playersById.set(side, side);
 		for (const side of this.onlineBalls.keys()) playersById.set(side, side);
+		this.powerBalls.forEach((entry, index) =>
+			playersById.set(`power-${index}`, entry.player),
+		);
 		drawPlayerTrails(this.trailGfx, this.ballTrails, playersById, {
 			...BALL_TRAIL_OPTIONS,
 			scale: this.arena.scale,
@@ -1856,6 +2038,7 @@ export class BellClashScene extends ResponsiveScene {
 					Math.max(5, ball.r * 0.22),
 				);
 			}
+			this.drawPowerBalls();
 			return;
 		}
 		if (!this.onlineMatch || this.onlineBalls.size <= 0) {
@@ -1869,6 +2052,7 @@ export class BellClashScene extends ResponsiveScene {
 				)
 			)
 				drawShellBall(this.ballGfx, this.ball, false);
+			this.drawPowerBalls();
 			return;
 		}
 
@@ -1895,6 +2079,38 @@ export class BellClashScene extends ResponsiveScene {
 				ball.y - ball.r * 1.45,
 				Math.max(5, ball.r * 0.22),
 			);
+		}
+		this.drawPowerBalls();
+	}
+
+	private clearPowerBalls(): void {
+		for (let i = 0; i < this.powerBallTexCount; i++) {
+			destroyIngamePlayerTexture(this, `bell-clash-pb-${i}`);
+		}
+		this.powerBallTexCount = 0;
+		this.powerBalls = [];
+	}
+
+	private drawPowerBalls(): void {
+		for (let i = this.powerBalls.length; i < this.powerBallTexCount; i++) {
+			hideIngamePlayerTexture(this, `bell-clash-pb-${i}`);
+		}
+		this.powerBallTexCount = this.powerBalls.length;
+		for (let i = 0; i < this.powerBalls.length; i++) {
+			const { ball, player } = this.powerBalls[i];
+			const colour = PLAYER_COLOURS[player % PLAYER_COLOURS.length] ?? THEME.gold;
+			if (
+				!drawIngamePlayerTexture(
+					this,
+					`bell-clash-pb-${i}`,
+					ball,
+					DEPTH_BALL,
+					this.playerShellSkins[player],
+				)
+			)
+				drawShellBall(this.ballGfx, ball, false);
+			this.ballGfx.lineStyle(Math.max(2, ball.r * 0.14), colour, 0.75);
+			this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.08);
 		}
 	}
 
@@ -2074,10 +2290,13 @@ export class BellClashScene extends ResponsiveScene {
 			for (const ball of new Set(this.onlineBalls.values()))
 				resizeBall(ball);
 		}
+		for (const entry of this.powerBalls) resizeBall(entry.ball);
 
 		this.drawBackground();
 		this.drawZones();
 		this.drawBell();
+		this.recreatePowerPickups();
+		this.spawnPowerPickup();
 		this.drawBalls();
 
 		this.hudObjects.forEach((object) => object.destroy());

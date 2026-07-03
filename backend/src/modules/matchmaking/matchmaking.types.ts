@@ -11,6 +11,7 @@ export interface QueueJoinPayload {
 	gameId: string;
 	mode: MatchMode;
 	playerCount?: number;
+	powerupsEnabled?: boolean;
 	shellSelection?: string[];
 }
 
