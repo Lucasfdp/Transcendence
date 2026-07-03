@@ -177,6 +177,23 @@ input {
 	filter: drop-shadow(0 18px 45px rgba(0, 0, 0, 0.38));
 }
 
+.auth-page__disclaimer {
+	position: fixed;
+	bottom: clamp(1rem, 2vw, 1.5rem);
+	left: 50%;
+	translate: -50% 0;
+	z-index: 70;
+	margin: 0;
+	padding: 0 1rem;
+	max-width: min(92vw, 48rem);
+	font-size: clamp(1rem, 2.6vw, 1.1rem);
+	line-height: 1.5;
+	color: var(--muted);
+	text-align: center;
+	opacity: 0.65;
+	pointer-events: none;
+}
+
 .auth-page__description,
 .menu-page__description {
 	width: min(36rem, 90vw);

@@ -185,6 +185,11 @@ export function AuthPage(): JSX.Element {
 		>
 			<TempleBackdrop pageClassName="auth-page" />
 
+			<p className="auth-page__disclaimer">
+				This is a work of fiction. Any resemblance to actual persons,
+				living or dead, or actual events is purely coincidental.
+			</p>
+
 			<section className="auth-page__shell">
 				<div className="auth-page__intro">
 					<h1 className="auth-page__logo-title">
