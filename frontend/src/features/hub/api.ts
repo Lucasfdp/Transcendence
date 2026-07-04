@@ -617,23 +617,82 @@ export interface OverallLeaderboardEntry {
 	totalWins: number;
 }
 
+export type ReplayContractVersion = 1;
+
+export interface ReplayVisualPlayer {
+	side: number;
+	userId: number | null;
+	username: string;
+	turtleName?: string | null;
+	shellSkin?: string;
+	hubBackground?: string;
+	hubBackgroundAlter?: string | null;
+}
+
+export interface ReplaySnapshotEntity {
+	id: number | string;
+	type: "projectile" | "stone" | string;
+	side?: number;
+	ownerSide?: number;
+	x: number;
+	y: number;
+	vx?: number;
+	vy?: number;
+	rotation?: number;
+	angularVelocity?: number;
+	r?: number;
+	power?: string;
+	scale?: number;
+	stateFlags?: string[];
+	visible?: boolean;
+	alpha?: number;
+	spriteKey?: string;
+	trail?: Array<{ x: number; y: number }>;
+}
+
+export interface ReplayFrameSnapshot {
+	gameId?: string;
+	seq?: number;
+	phase?: string;
+	players?: ReplayVisualPlayer[];
+	score?: number[];
+	scores?: number[];
+	currentTurn?: number;
+	activeStoneId?: number | string | null;
+	activeBallIdBySide?: Array<number | string | null>;
+	entities?: ReplaySnapshotEntity[];
+	balls?: ReplaySnapshotEntity[];
+	objects?: ReplaySnapshotEntity[];
+	powerups?: Array<Record<string, unknown>>;
+	powerPickups?: Array<Record<string, unknown>>;
+	winnerSide?: number | null;
+	[key: string]: unknown;
+}
+
 export interface ReplayFrame {
+	replayVersion?: ReplayContractVersion;
 	seq: number;
 	recordedAt: string;
+	recordedAtMs?: number;
+	tickTs?: number;
 	deltaMs?: number;
-	snapshot: Record<string, unknown>;
+	snapshot: ReplayFrameSnapshot;
 }
 
 export interface ReplayEvent {
+	replayVersion?: ReplayContractVersion;
 	type: string;
 	seq: number;
 	recordedAt: string;
+	recordedAtMs?: number;
+	tickTs?: number;
 	payload: Record<string, unknown>;
 }
 
 export interface ReplaySummary {
 	id: string;
 	matchId: string;
+	replayVersion: ReplayContractVersion | null;
 	gameId: string;
 	mode: string;
 	status: string;

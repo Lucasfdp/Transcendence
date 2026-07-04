@@ -119,7 +119,14 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 
 		state.shotCounts[player.side] =
 			(state.shotCounts[player.side] ?? 0) + 1;
-		initializeArenaReplayBall(state, player.side, vx, vy);
+		initializeArenaReplayBall(
+			state,
+			player.side,
+			vx,
+			vy,
+			undefined,
+			String(payload.power ?? "none"),
+		);
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;

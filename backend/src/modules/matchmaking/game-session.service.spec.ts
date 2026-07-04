@@ -6,7 +6,6 @@ import { UserRating } from "./entities/user-rating.entity";
 import { GameEngineRegistry } from "./engines/game-engine.registry";
 import { GameSessionService } from "./game-session.service";
 import { MatchRoom, RoomPlayer } from "./matchmaking.types";
-import { ReplayService } from "./replay.service";
 import { RoomService } from "./room.service";
 
 function makePlayer(
@@ -57,6 +56,7 @@ function makeRoom(overrides: Partial<MatchRoom> = {}): MatchRoom {
 			map: { gameId: "temple-curling" },
 			players: [],
 			objects: [],
+			entities: [],
 			activeStoneId: null,
 			winnerSide: 0,
 		},

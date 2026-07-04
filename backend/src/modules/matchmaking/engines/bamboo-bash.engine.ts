@@ -200,7 +200,7 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 		)
 			return null;
 		const power = this.consumePower(state, player.side, payload.power);
-		initializeArenaReplayBall(state, player.side, vx, vy, { x, y });
+		initializeArenaReplayBall(state, player.side, vx, vy, { x, y }, power);
 		state.lastPowerBySide[player.side] = power;
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);

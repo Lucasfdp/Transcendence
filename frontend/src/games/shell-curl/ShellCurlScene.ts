@@ -91,7 +91,9 @@ import {
 	buildLocalReplayPlayers,
 	createLocalReplayId,
 	normalizeReplayImportFrames,
+	replayStoneToEntity,
 	resolveReplayWinnerSide,
+	withPowerStateFlags,
 } from "../shared/localReplay";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -1414,6 +1416,42 @@ export class ShellCurlScene extends ResponsiveScene {
 		const deliveredTurns = this.localDeliveredTurns();
 		const phase =
 			phaseOverride ?? (state.phase === "gameover" ? "finished" : "active");
+		const objects = this.allStones.map((stone) => {
+			const power = stone.power;
+			const stateFlags = withPowerStateFlags(
+				stone.stopped ? ["settled"] : ["moving"],
+				power,
+			);
+			return {
+				id: stone.id,
+				side: stone.teamId,
+				type: "stone" as const,
+				ownerSide: stone.teamId,
+				x: (stone.x - this.arena.sheetX) / this.arena.sheetW,
+				y: (stone.y - this.arena.sheetY) / this.arena.sheetH,
+				vx: stone.vx / this.arena.scale,
+				vy: stone.vy / this.arena.scale,
+				rotation: 0,
+				angularVelocity: 0,
+				moving: !stone.stopped,
+				scale: stone.r / (28 * this.arena.scale),
+				visible: true,
+				alpha:
+					(power === PowerType.PHANTOM || power === PowerType.GHOST) &&
+					(stone as { phantomHidden?: boolean }).phantomHidden !== false
+						? 0.52
+						: 1,
+				spriteKey: "temple-curling-stone",
+				stateFlags,
+				createdAt: stone.id,
+				updatedAt: stone.id,
+				stopped: stone.stopped,
+				power,
+				...(this.readStoneTrail(stone.id).length
+					? { trail: this.readStoneTrail(stone.id) }
+					: {}),
+			};
+		});
 		return {
 			matchId: this.localReplayId ?? "local:temple-curling:unknown",
 			seq: this.localReplayFrames.length,
@@ -1437,31 +1475,8 @@ export class ShellCurlScene extends ResponsiveScene {
 				})),
 			},
 			players: this.buildLocalReplayPlayers(),
-			objects: this.allStones.map((stone) => ({
-				id: stone.id,
-				side: stone.teamId,
-				type: "stone" as const,
-				ownerSide: stone.teamId,
-				x: (stone.x - this.arena.sheetX) / this.arena.sheetW,
-				y: (stone.y - this.arena.sheetY) / this.arena.sheetH,
-				vx: stone.vx / this.arena.scale,
-				vy: stone.vy / this.arena.scale,
-				rotation: 0,
-				angularVelocity: 0,
-				moving: !stone.stopped,
-				scale: 1,
-				visible: true,
-				alpha: 1,
-				spriteKey: "temple-curling-stone",
-				stateFlags: stone.stopped ? ["settled"] : ["moving"],
-				createdAt: stone.id,
-				updatedAt: stone.id,
-				stopped: stone.stopped,
-				power: stone.power,
-				...(this.readStoneTrail(stone.id).length
-					? { trail: this.readStoneTrail(stone.id) }
-					: {}),
-			})),
+			objects,
+			entities: objects.map((stone) => replayStoneToEntity(stone)),
 			activeStoneId: this.activeStone?.id ?? null,
 			winnerSide:
 				phase === "finished" && this.localMode !== "solo"
@@ -1477,6 +1492,12 @@ export class ShellCurlScene extends ResponsiveScene {
 		return buildLocalReplayPlayers(
 			user,
 			Math.max(1, this.turnManager.state.score.length),
+			{
+				shellSkins: this.registry.get("shellSkins") as Record<
+					string,
+					string
+				>,
+			},
 		);
 	}
 

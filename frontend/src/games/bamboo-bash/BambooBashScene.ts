@@ -109,7 +109,9 @@ import {
 	buildLocalReplayPlayers,
 	createLocalReplayId,
 	normalizeReplayImportFrames,
+	replayBallToEntity,
 	resolveReplayWinnerSide,
+	withPowerStateFlags,
 } from "../shared/localReplay";
 
 // Slingshot tuning in arena source px (scaled by the letterbox factor so the
@@ -159,6 +161,7 @@ interface LocalParticipant {
 	powers: PowerType[];
 	powerUsed: Set<PowerType>;
 	activePower: PowerType;
+	replayPower: PowerType;
 	ballWasMoving: boolean;
 }
 
@@ -213,6 +216,7 @@ export class BambooBashScene extends ResponsiveScene {
 	private playerPowers: PowerType[] = [PowerType.NONE];
 	/** Currently selected power (updated by panel onSelect callback). */
 	private activePower: PowerType = PowerType.NONE;
+	private replayPower: PowerType = PowerType.NONE;
 	/** Powers already fired this game — one-shot each (NONE is always reusable). */
 	private powerUsed: Set<PowerType> = new Set();
 
@@ -337,6 +341,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.ballWasMoving = false;
 		this.powerUsed = new Set();
 		this.activePower = PowerType.NONE;
+		this.replayPower = PowerType.NONE;
 
 		this.arena = this.resolveArena();
 		this.resetBall();
@@ -445,6 +450,7 @@ export class BambooBashScene extends ResponsiveScene {
 					powers,
 					powerUsed: new Set<PowerType>(),
 					activePower: PowerType.NONE,
+					replayPower: PowerType.NONE,
 					ballWasMoving: false,
 				};
 			});
@@ -740,6 +746,7 @@ export class BambooBashScene extends ResponsiveScene {
 		// Reset radius so powers don't stack across shots within the same game
 		this.ball.r = BALL_SRC_R * this.arena.scale;
 
+		this.replayPower = this.activePower;
 		applyBallPower(this.activePower, this.ball, this.arena);
 
 		// Track used powers (NONE is always reusable)
@@ -757,6 +764,7 @@ export class BambooBashScene extends ResponsiveScene {
 		if (!participant) return;
 
 		participant.ball.r = BALL_SRC_R * this.arena.scale;
+		participant.replayPower = participant.activePower;
 		applyBallPower(participant.activePower, participant.ball, this.arena);
 
 		if (participant.activePower !== PowerType.NONE) {
@@ -1903,6 +1911,14 @@ export class BambooBashScene extends ResponsiveScene {
 	): BambooBashSnapshot {
 		const scores = this.localParticipants.map((participant) => participant.score);
 		const phase = phaseOverride ?? "active";
+		const balls = this.localParticipants.map((participant, index) =>
+			this.buildReplayBallSnapshot(
+				participant.ball,
+				index,
+				this.readArenaTrail(`local-${index}`),
+				participant.replayPower,
+			),
+		);
 		return {
 			matchId: this.localReplayId ?? "local:bamboo-bash:unknown",
 			seq: this.localReplayFrames.length,
@@ -1937,18 +1953,14 @@ export class BambooBashScene extends ResponsiveScene {
 			nextPowerPickupId: 1,
 			powerPickupAccMs: 0,
 			players: this.buildLocalReplayPlayers(),
-			balls: this.localParticipants.map((participant, index) =>
-				this.buildReplayBallSnapshot(
-					participant.ball,
-					index,
-					this.readArenaTrail(`local-${index}`),
-				),
-			),
+			balls,
 			activeBallIdBySide: this.localParticipants.map((participant, index) =>
 				this.isReplayBallMoving(participant.ball) ? index : null,
 			),
 			nextBallId: this.localParticipants.length,
-			entities: [],
+			entities: balls.map((ball) =>
+				replayBallToEntity(ball, "bamboo-bash-shell"),
+			),
 			winnerSide: phase === "finished" ? resolveReplayWinnerSide(scores) : null,
 		};
 	}
@@ -1960,6 +1972,12 @@ export class BambooBashScene extends ResponsiveScene {
 		return buildLocalReplayPlayers(
 			user,
 			Math.max(1, this.localParticipants.length || this.localTimeLeftMs.length || 1),
+			{
+				shellSkins: this.registry.get("shellSkins") as Record<
+					string,
+					string
+				>,
+			},
 		);
 	}
 
@@ -1967,18 +1985,29 @@ export class BambooBashScene extends ResponsiveScene {
 		ball: BallState,
 		side: number,
 		trail?: Array<{ x: number; y: number }>,
+		power: PowerType = this.replayPower,
 	): BambooBashSnapshot["balls"][number] {
+		const moving = this.isReplayBallMoving(ball);
+		const scale = ball.r / (BALL_SRC_R * this.arena.scale);
 		return {
 			id: side,
+			type: "projectile",
 			side,
+			ownerSide: side,
 			x: (ball.x - this.arena.cx) / this.arena.rx,
 			y: (ball.y - this.arena.cy) / this.arena.ry,
 			vx: ball.vx / this.arena.scale,
 			vy: ball.vy / this.arena.scale,
-			moving: this.isReplayBallMoving(ball),
+			rotation: 0,
+			angularVelocity: 0,
+			moving,
+			stopped: !moving,
 			visible: true,
-			power: "none",
-			scale: 1,
+			alpha: power === PowerType.PHANTOM || power === PowerType.GHOST ? 0.52 : 1,
+			spriteKey: "bamboo-bash-shell",
+			stateFlags: withPowerStateFlags([moving ? "moving" : "settled"], power),
+			power,
+			scale,
 			...(trail?.length ? { trail } : {}),
 		};
 	}

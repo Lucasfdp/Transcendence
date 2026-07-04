@@ -35,6 +35,13 @@ type ArenaBallSnapshot =
 const DEFAULT_PROJECTILE_SCALE = 1;
 const DEFAULT_STONE_SCALE = 1;
 
+const POWER_SCALE: Record<string, number> = {
+	giant: 2,
+	tiny: 0.5,
+};
+
+const TRANSLUCENT_POWERS = new Set(["phantom", "ghost"]);
+
 function clamp(value: number, min: number, max: number): number {
 	return Math.max(min, Math.min(max, value));
 }
@@ -120,7 +127,7 @@ function buildArenaProjectile(
 ): BallSnapshotData {
 	const now = Date.now();
 	const spawn = getArenaBallSpawn(snapshot, side);
-	return {
+	return applyReplayPowerVisuals({
 		id: values.id ?? snapshot.nextBallId++,
 		type: "projectile",
 		side,
@@ -139,7 +146,46 @@ function buildArenaProjectile(
 		createdAt: values.createdAt ?? now,
 		updatedAt: values.updatedAt ?? now,
 		stopped: values.stopped ?? false,
-	};
+		power: values.power ?? "none",
+	});
+}
+
+function applyReplayPowerVisuals<T extends BallSnapshotData>(entity: T): T {
+	const power = entity.power ?? "none";
+	const powerFlags = power === "none" ? [] : [`power:${power}`];
+	entity.power = power;
+	entity.scale = POWER_SCALE[power] ?? entity.scale ?? DEFAULT_PROJECTILE_SCALE;
+	entity.alpha = TRANSLUCENT_POWERS.has(power) ? 0.52 : entity.alpha ?? 1;
+	entity.stateFlags = [
+		...(entity.stateFlags ?? []),
+		...powerFlags,
+	].filter((flag, index, flags) => flags.indexOf(flag) === index);
+	return entity;
+}
+
+function syncCurlingEntityMirror(snapshot: CurlingSnapshot): void {
+	snapshot.entities = snapshot.objects.map((object) => ({
+		id: object.id,
+		type: "stone",
+		side: object.side,
+		ownerSide: object.ownerSide,
+		x: object.x,
+		y: object.y,
+		vx: object.vx ?? 0,
+		vy: object.vy ?? 0,
+		rotation: object.rotation,
+		angularVelocity: object.angularVelocity,
+		scale: object.scale,
+		visible: object.visible,
+		alpha: object.alpha,
+		spriteKey: object.spriteKey,
+		stateFlags: [...object.stateFlags],
+		createdAt: object.createdAt,
+		updatedAt: object.updatedAt,
+		stopped: object.stopped,
+		power: object.power,
+		...(object.trail?.length ? { trail: object.trail.map((point) => ({ ...point })) } : {}),
+	}));
 }
 
 function getActiveArenaProjectile(
@@ -207,11 +253,13 @@ function upsertArenaBall(
 	if (isFiniteNumber(values.scale)) projectile.scale = values.scale;
 	if (typeof values.visible === "boolean") projectile.visible = values.visible;
 	if (isFiniteNumber(values.alpha)) projectile.alpha = values.alpha;
+	if (typeof values.power === "string") projectile.power = values.power;
 	if (Array.isArray(values.stateFlags))
 		projectile.stateFlags = [...values.stateFlags];
 	if (typeof values.spriteKey === "string") projectile.spriteKey = values.spriteKey;
 	if (typeof values.stopped === "boolean") projectile.stopped = values.stopped;
 	projectile.updatedAt = now;
+	applyReplayPowerVisuals(projectile);
 	syncArenaProjectileMirror(snapshot, projectile);
 }
 
@@ -256,6 +304,7 @@ export function initializeArenaReplayBall(
 	vx: number,
 	vy: number,
 	position?: { x?: number; y?: number },
+	power = "none",
 ): void {
 	const spawn = getArenaBallSpawn(snapshot, side);
 	upsertArenaBall(snapshot, side, {
@@ -265,7 +314,8 @@ export function initializeArenaReplayBall(
 		vy: Number.isFinite(vy) ? vy : 0,
 		rotation: 0,
 		angularVelocity: 0,
-		stateFlags: ["launched"],
+		power,
+		stateFlags: power === "none" ? ["launched"] : ["launched", `power:${power}`],
 		stopped: false,
 	});
 }
@@ -349,11 +399,11 @@ export function initializeCurlingReplayStone(
 		rotation: 0,
 		angularVelocity: 0,
 		moving: true,
-		scale: DEFAULT_STONE_SCALE,
+		scale: POWER_SCALE[power] ?? DEFAULT_STONE_SCALE,
 		visible: true,
-		alpha: 1,
+		alpha: TRANSLUCENT_POWERS.has(power) ? 0.52 : 1,
 		spriteKey: "temple-curling-stone",
-		stateFlags: ["launched"],
+		stateFlags: power === "none" ? ["launched"] : ["launched", `power:${power}`],
 		createdAt: now,
 		updatedAt: now,
 		stopped: false,
@@ -362,6 +412,7 @@ export function initializeCurlingReplayStone(
 	};
 	if (existingIndex >= 0) snapshot.objects[existingIndex] = base;
 	else snapshot.objects.push(base);
+	syncCurlingEntityMirror(snapshot);
 	snapshot.activeStoneId = id;
 }
 
@@ -436,6 +487,7 @@ export function syncCurlingReplayStateFromPayload(
 			};
 		})
 		.filter((object) => object !== null) as CurlingSnapshot["objects"];
+	syncCurlingEntityMirror(snapshot);
 	snapshot.activeStoneId =
 		snapshot.objects.find((object) => object.moving)?.id ?? null;
 	return true;

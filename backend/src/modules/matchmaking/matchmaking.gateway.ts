@@ -106,6 +106,9 @@ export class MatchmakingGateway
 				id: user.id,
 				username: user.username,
 				turtleName: user.turtleName ?? null,
+				shellSkin: user.shellSkin ?? "base",
+				hubBackground: user.hubBackground ?? "night_bg",
+				hubBackgroundAlter: user.hubBackgroundAlter ?? null,
 				isGuest: user.isGuest,
 			};
 			this.presence.connect(socket.id, socketUser);

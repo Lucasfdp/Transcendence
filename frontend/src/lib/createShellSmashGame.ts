@@ -19,6 +19,9 @@ export interface ShellSmashStartData {
 		id?: number;
 		username?: string;
 		turtleName?: string | null;
+		shellSkin?: string;
+		hubBackground?: string;
+		hubBackgroundAlter?: string | null;
 		isGuest?: boolean;
 	};
 	localMode?: "solo" | "versus";

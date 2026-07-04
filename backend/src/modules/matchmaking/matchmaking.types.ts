@@ -5,8 +5,13 @@ export interface SocketUser {
 	id: number;
 	username: string;
 	turtleName?: string | null;
+	shellSkin?: string;
+	hubBackground?: string;
+	hubBackgroundAlter?: string | null;
 	isGuest: boolean;
 }
+
+export type ReplayContractVersion = 1;
 
 export interface QueueJoinPayload {
 	gameId: string;
@@ -123,6 +128,7 @@ export interface CurlingSnapshot {
 		power: string;
 		trail?: Array<{ x: number; y: number }>;
 	}>;
+	entities: ReplayFrameSnapshotEntity[];
 	activeStoneId: number | null;
 	winnerSide: number | null;
 }
@@ -146,11 +152,14 @@ export interface BallSnapshotData {
 	createdAt: number;
 	updatedAt: number;
 	stopped: boolean;
+	power?: string;
+	trail?: Array<{ x: number; y: number }>;
 }
 
 export interface ReplayFrameSnapshotEntity {
 	id: number;
 	type: "projectile" | "stone";
+	side?: number;
 	ownerSide: number;
 	x: number;
 	y: number;
@@ -158,6 +167,8 @@ export interface ReplayFrameSnapshotEntity {
 	vy: number;
 	rotation: number;
 	angularVelocity: number;
+	r?: number;
+	power?: string;
 	scale: number;
 	visible: boolean;
 	alpha: number;
@@ -166,6 +177,7 @@ export interface ReplayFrameSnapshotEntity {
 	createdAt: number;
 	updatedAt: number;
 	stopped: boolean;
+	trail?: Array<{ x: number; y: number }>;
 }
 
 export interface SnapshotPlayer {
@@ -173,6 +185,9 @@ export interface SnapshotPlayer {
 	userId: number | null;
 	username: string;
 	turtleName?: string | null;
+	shellSkin?: string;
+	hubBackground?: string;
+	hubBackgroundAlter?: string | null;
 	connected: boolean;
 	ready: boolean;
 	reconnectExpiresAt: number | null;
@@ -314,6 +329,7 @@ export interface MatchRoom {
 	rematchLeftUserIds?: Set<number>;
 	rematchStartedMatchId?: string;
 	replayFrames: Array<{
+		replayVersion?: ReplayContractVersion;
 		seq: number;
 		recordedAt: string;
 		recordedAtMs: number;
@@ -322,6 +338,7 @@ export interface MatchRoom {
 		snapshot: Record<string, unknown>;
 	}>;
 	replayEvents: Array<{
+		replayVersion?: ReplayContractVersion;
 		type: string;
 		seq: number;
 		recordedAt: string;

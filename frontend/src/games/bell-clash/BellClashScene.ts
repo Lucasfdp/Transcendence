@@ -95,7 +95,9 @@ import {
 	buildLocalReplayPlayers,
 	createLocalReplayId,
 	normalizeReplayImportFrames,
+	replayBallToEntity,
 	resolveReplayWinnerSide,
+	withPowerStateFlags,
 } from "../shared/localReplay";
 
 type ZoneKind = "red" | "yellow" | "green";
@@ -238,6 +240,7 @@ export class BellClashScene extends ResponsiveScene {
 	/** Per-player power pools. Bell Clash local-versus rotates one shot per player. */
 	private playerPowers: PowerType[][] = [FALLBACK_POWERS, FALLBACK_POWERS];
 	private activePower: PowerType = PowerType.NONE;
+	private replayPowerBySide: PowerType[] = [];
 	/** Per-player used-power tracking (one-shot each per game, NONE always reusable). */
 	private powerUsed: Array<Set<PowerType>> = [new Set(), new Set()];
 
@@ -304,6 +307,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.scoreEvents = [];
 		this.activePower = PowerType.NONE;
 		this.powerUsed = Array.from({ length: 5 }, () => new Set<PowerType>());
+		this.replayPowerBySide = Array.from({ length: 5 }, () => PowerType.NONE);
 
 		this.arena = this.resolveArena();
 
@@ -587,6 +591,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.lastHitText?.setText("LAST HIT  -");
 
 		// Apply power to ball (velocity already set by Slingshot, radius reset in setupShot)
+		this.replayPowerBySide[this.currentPlayerIndex()] = this.activePower;
 		applyBallPower(this.activePower, this.ball, this.arena);
 
 		// Track used powers for the current player
@@ -611,6 +616,7 @@ export class BellClashScene extends ResponsiveScene {
 	private setupShot(): void {
 		this.launchedThisShot = false;
 		this.clearPowerBalls();
+		this.replayPowerBySide[this.currentPlayerIndex()] = PowerType.NONE;
 		this.hitCooldownMs = 0;
 		this.bellPulseMs = 0;
 		if (this.localTurnNumber % this.localPlayerCount === 0) {
@@ -878,6 +884,38 @@ export class BellClashScene extends ResponsiveScene {
 					),
 				),
 		);
+		const balls = this.localBallsForPhysics().map(([side, ball]) => {
+			const moving = isBallMoving(ball);
+			const power = this.replayPowerBySide[side] ?? PowerType.NONE;
+			const scale = ball.r / (BALL_SRC_R * this.arena.scale);
+			const trail = this.readArenaTrail(
+				this.localPlayerCount > 1 ? side : "local",
+			);
+			return {
+				id: side,
+				type: "projectile" as const,
+				side,
+				ownerSide: side,
+				x: (ball.x - this.arena.cx) / this.arena.rx,
+				y: (ball.y - this.arena.cy) / this.arena.ry,
+				vx: ball.vx / this.arena.scale,
+				vy: ball.vy / this.arena.scale,
+				rotation: 0,
+				angularVelocity: 0,
+				moving,
+				stopped: !moving,
+				visible: true,
+				alpha:
+					power === PowerType.PHANTOM || power === PowerType.GHOST
+						? 0.52
+						: 1,
+				spriteKey: "bell-clash-shell",
+				stateFlags: withPowerStateFlags([moving ? "moving" : "settled"], power),
+				power,
+				scale,
+				...(trail.length ? { trail } : {}),
+			};
+		});
 		return {
 			matchId: this.localReplayId ?? "local:bell-clash:unknown",
 			seq: this.localReplayFrames.length,
@@ -893,21 +931,7 @@ export class BellClashScene extends ResponsiveScene {
 			shotCounts,
 			zones: this.zones.map((zone) => ({ ...zone })),
 			players: this.buildLocalReplayPlayers(),
-			balls: this.localBallsForPhysics().map(([side, ball]) => ({
-				id: side,
-				side,
-				x: (ball.x - this.arena.cx) / this.arena.rx,
-				y: (ball.y - this.arena.cy) / this.arena.ry,
-				vx: ball.vx / this.arena.scale,
-				vy: ball.vy / this.arena.scale,
-				moving: isBallMoving(ball),
-				visible: true,
-				power: "none",
-				scale: 1,
-				...(this.readArenaTrail(this.localPlayerCount > 1 ? side : "local").length
-					? { trail: this.readArenaTrail(this.localPlayerCount > 1 ? side : "local") }
-					: {}),
-			})),
+			balls,
 			activeBallIdBySide: Array.from(
 				{ length: this.localPlayerCount },
 				(_value, side) =>
@@ -916,7 +940,9 @@ export class BellClashScene extends ResponsiveScene {
 						: null,
 			),
 			nextBallId: this.localPlayerCount,
-			entities: [],
+			entities: balls.map((ball) =>
+				replayBallToEntity(ball, "bell-clash-shell"),
+			),
 			winnerSide:
 				phase === "finished" ? this.resolveLocalWinnerSide() : null,
 		};
@@ -926,7 +952,9 @@ export class BellClashScene extends ResponsiveScene {
 		const user = this.registry.get("user") as
 			| { id?: number; username?: string; turtleName?: string | null }
 			| undefined;
-		return buildLocalReplayPlayers(user, this.localPlayerCount);
+		return buildLocalReplayPlayers(user, this.localPlayerCount, {
+			shellSkins: this.registry.get("shellSkins") as Record<string, string>,
+		});
 	}
 
 	private resolveLocalWinnerSide(): number | null {

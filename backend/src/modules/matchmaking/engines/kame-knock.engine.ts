@@ -130,7 +130,14 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
 
 		state.activeTurnNumber = state.turnNumber;
-		initializeArenaReplayBall(state, player.side, vx, vy);
+		initializeArenaReplayBall(
+			state,
+			player.side,
+			vx,
+			vy,
+			undefined,
+			String(payload.power ?? "none"),
+		);
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;

@@ -108,7 +108,9 @@ import {
 	buildLocalReplayPlayers,
 	createLocalReplayId,
 	normalizeReplayImportFrames,
+	replayBallToEntity,
 	resolveReplayWinnerSide,
+	withPowerStateFlags,
 } from "../shared/localReplay";
 
 interface BallRoundConfig {
@@ -253,6 +255,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private playerPowers: PowerType[][] = [FALLBACK_POWERS];
 	private playerShellSkins: string[] = ["base", "dragon", "bamboo", "purple", "base"];
 	private activePower: PowerType = PowerType.NONE;
+	private replayPower: PowerType = PowerType.NONE;
 	/** Per-player used-power tracking (one-shot each per game, NONE always reusable). */
 	private powerUsed: Array<Set<PowerType>> = [new Set()];
 
@@ -346,6 +349,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.scoreLogPanel = null;
 		this.targetFreezeMs = 0;
 		this.activePower = PowerType.NONE;
+		this.replayPower = PowerType.NONE;
 		this.powerUsed = Array.from({ length: 5 }, () => new Set<PowerType>());
 
 		this.arena = this.resolveArena();
@@ -603,6 +607,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.combo = 0;
 
 		// Apply power to ball (velocity already set by Slingshot, radius reset in setupBallRound)
+		this.replayPower = this.activePower;
 		applyBallPower(this.activePower, this.ball, this.arena);
 
 		// Track used powers for the current player
@@ -676,6 +681,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.targets = [];
 		this.clearPowerBalls();
 		this.launchedThisBall = false;
+		this.replayPower = PowerType.NONE;
 		this.combo = 0;
 		this.resetBall();
 		this.score = this.localScores[this.currentPlayerIndex()] ?? 0;
@@ -1210,13 +1216,42 @@ export class KameKnockScene extends ResponsiveScene {
 	private buildLocalReplaySnapshot(
 		phaseOverride?: KameKnockSnapshot["phase"],
 	): KameKnockSnapshot {
+		const activeSide = this.currentPlayerIndex();
+		const trail = this.readArenaTrail("local");
+		const moving = this.isBallMoving(this.ball);
+		const scale = this.ball.r / (BALL_SRC_R * this.arena.scale);
+		const ball = {
+			id: "local-shell",
+			type: "projectile" as const,
+			side: activeSide,
+			ownerSide: activeSide,
+			x: (this.ball.x - this.arena.cx) / this.arena.rx,
+			y: (this.ball.y - this.arena.cy) / this.arena.ry,
+			vx: this.ball.vx / this.arena.scale,
+			vy: this.ball.vy / this.arena.scale,
+			rotation: 0,
+			angularVelocity: 0,
+			moving,
+			stopped: !moving,
+			visible: true,
+			alpha:
+				this.replayPower === PowerType.PHANTOM ||
+				this.replayPower === PowerType.GHOST
+					? 0.52
+					: 1,
+			spriteKey: "kame-knock-shell",
+			stateFlags: withPowerStateFlags([moving ? "moving" : "settled"], this.replayPower),
+			power: this.replayPower,
+			scale,
+			...(trail.length ? { trail } : {}),
+		};
 		return {
 			matchId: this.localReplayId ?? "local:kame-knock:unknown",
 			seq: this.localReplayFrames.length,
 			gameId: "kame-knock",
 			mode: "casual",
 			phase: phaseOverride ?? "active",
-			currentTurn: this.currentPlayerIndex(),
+			currentTurn: activeSide,
 			turnNumber: this.localTurnNumber,
 			roundNumber: this.currentBallIndex + 1,
 			totalRounds: BALL_ROUNDS.length,
@@ -1226,21 +1261,14 @@ export class KameKnockScene extends ResponsiveScene {
 			targets: this.targets.map((target) => ({ ...target })),
 			nextTargetId: this.nextTargetId,
 			players: this.buildLocalReplayPlayers(),
-			balls: [
-				{
-					id: "local-shell",
-					side: this.currentPlayerIndex(),
-					x: (this.ball.x - this.arena.cx) / this.arena.rx,
-					y: (this.ball.y - this.arena.cy) / this.arena.ry,
-					vx: this.ball.vx / this.arena.scale,
-					vy: this.ball.vy / this.arena.scale,
-					moving: this.isBallMoving(this.ball),
-					visible: true,
-					...(this.readArenaTrail("local").length
-						? { trail: this.readArenaTrail("local") }
-						: {}),
-				},
-			],
+			balls: [ball],
+			activeBallIdBySide: Array.from(
+				{ length: this.localPlayerCount },
+				(_value, side) =>
+					side === activeSide && this.launchedThisBall ? "local-shell" : null,
+			),
+			nextBallId: 1,
+			entities: [replayBallToEntity(ball, "kame-knock-shell")],
 			winnerSide:
 				phaseOverride === "finished" ? this.resolveLocalWinnerSide() : null,
 		};
@@ -1259,7 +1287,9 @@ export class KameKnockScene extends ResponsiveScene {
 		const user = this.registry.get("user") as
 			| { id?: number; username?: string; turtleName?: string | null }
 			| undefined;
-		return buildLocalReplayPlayers(user, this.localPlayerCount);
+		return buildLocalReplayPlayers(user, this.localPlayerCount, {
+			shellSkins: this.registry.get("shellSkins") as Record<string, string>,
+		});
 	}
 
 	private resolveLocalWinnerSide(): number | null {

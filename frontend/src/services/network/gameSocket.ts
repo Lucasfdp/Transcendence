@@ -2,6 +2,8 @@ import { io, Socket } from "socket.io-client";
 
 export type MatchMode = "casual" | "ranked";
 
+export type ReplayContractVersion = 1;
+
 export type GameMap =
 	| { gameId: "temple-curling"; bumpers: Array<{ fx: number; fy: number }> }
 	| { gameId: string };
@@ -28,6 +30,9 @@ export interface CurlingSnapshot {
 		userId: number | null;
 		username: string;
 		turtleName?: string | null;
+		shellSkin?: string;
+		hubBackground?: string;
+		hubBackgroundAlter?: string | null;
 		connected: boolean;
 		ready: boolean;
 		reconnectExpiresAt: number | null;
@@ -35,27 +40,49 @@ export interface CurlingSnapshot {
 	objects: Array<{
 		id: number;
 		side: number;
+		type?: "stone";
+		ownerSide?: number;
 		x: number;
 		y: number;
 		vx?: number;
 		vy?: number;
+		rotation?: number;
+		angularVelocity?: number;
 		moving?: boolean;
+		scale?: number;
+		visible?: boolean;
+		alpha?: number;
+		spriteKey?: string;
+		stateFlags?: string[];
+		createdAt?: number;
+		updatedAt?: number;
+		stopped?: boolean;
 		power: string;
 		trail?: Array<{ x: number; y: number }>;
 	}>;
+	entities?: ReplayFrameSnapshotEntity[];
+	activeStoneId?: number | null;
 	winnerSide: number | null;
 }
 
 export interface BallSnapshotData {
 	id?: number | string;
+	type?: "projectile";
 	side: number;
+	ownerSide?: number;
 	x: number;
 	y: number;
 	vx: number;
 	vy: number;
+	rotation?: number;
+	angularVelocity?: number;
+	r?: number;
 	moving?: boolean;
 	stopped?: boolean;
 	visible?: boolean;
+	alpha?: number;
+	spriteKey?: string;
+	stateFlags?: string[];
 	power?: string;
 	scale?: number;
 	trail?: Array<{ x: number; y: number }>;
@@ -70,6 +97,7 @@ export interface ReplayFrameSnapshotEntity {
 	y: number;
 	vx: number;
 	vy: number;
+	r?: number;
 	rotation?: number;
 	angularVelocity?: number;
 	scale?: number;
@@ -89,6 +117,9 @@ export interface SnapshotPlayer {
 	userId: number | null;
 	username: string;
 	turtleName?: string | null;
+	shellSkin?: string;
+	hubBackground?: string;
+	hubBackgroundAlter?: string | null;
 	connected: boolean;
 	ready: boolean;
 	reconnectExpiresAt: number | null;
@@ -132,7 +163,9 @@ export interface BambooBashSnapshot {
 	powerPickupAccMs: number;
 	players: SnapshotPlayer[];
 	balls: BallSnapshotData[];
-	entities?: ReplayFrameSnapshotEntity[];
+	activeBallIdBySide: Array<number | string | null>;
+	nextBallId: number;
+	entities: ReplayFrameSnapshotEntity[];
 	winnerSide: number | null;
 }
 
@@ -164,7 +197,9 @@ export interface KameKnockSnapshot {
 	nextTargetId: number;
 	players: SnapshotPlayer[];
 	balls: BallSnapshotData[];
-	entities?: ReplayFrameSnapshotEntity[];
+	activeBallIdBySide: Array<number | string | null>;
+	nextBallId: number;
+	entities: ReplayFrameSnapshotEntity[];
 	winnerSide: number | null;
 }
 
@@ -189,7 +224,9 @@ export interface BellClashSnapshot {
 	}>;
 	players: SnapshotPlayer[];
 	balls: BallSnapshotData[];
-	entities?: ReplayFrameSnapshotEntity[];
+	activeBallIdBySide: Array<number | string | null>;
+	nextBallId: number;
+	entities: ReplayFrameSnapshotEntity[];
 	winnerSide: number | null;
 }
 

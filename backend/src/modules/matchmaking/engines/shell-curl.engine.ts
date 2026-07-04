@@ -69,6 +69,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			map: createShellCurlMap(),
 			players: roomPlayers.map((player) => this.toSnapshotPlayer(player)),
 			objects: [],
+			entities: [],
 			activeStoneId: null,
 			winnerSide: null,
 		};
@@ -154,6 +155,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			state.currentEnd += 1;
 			state.throwsInEnd = 0;
 			state.objects = [];
+			state.entities = [];
 			state.activeStoneId = null;
 			if (state.currentEnd < state.totalEnds) state.map = createShellCurlMap();
 		}

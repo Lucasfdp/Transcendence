@@ -3,6 +3,7 @@ import type {
 	ReplayDetail,
 	ReplayEvent,
 	ReplayFrame,
+	ReplayFrameSnapshot,
 } from "../../features/hub/api";
 import type {
 	BallSnapshotData,
@@ -47,6 +48,11 @@ import {
 	simulateReplayProjectile,
 } from "../../shared/mechanics/physics";
 import { ReplayController } from "./ReplayController";
+import {
+	REPLAY_BACKGROUND_TEXTURES,
+	resolveActiveReplayBackground,
+	resolveActiveReplaySide,
+} from "./replayVisuals";
 
 const DEPTH_BG = 0;
 const DEPTH_ARENA = 1;
@@ -79,6 +85,15 @@ const TARGET_ASSETS = {
 	drum: "/assets/kame-knock/tambor.png",
 } as const;
 
+const REPLAY_BACKGROUND_ASSETS: Record<string, string> = {
+	night_bg: "/assets/backgrounds/night_bg.png",
+	night_cycle_bg: "/assets/backgrounds/night_cycle_part2.png",
+	sunset_bg: "/assets/backgrounds/sunset_bg.png",
+	sunset_cycle_bg: "/assets/backgrounds/sunset_bg.png",
+	sunrise_bg: "/assets/backgrounds/sunrise_bg.png",
+	sunrise_cycle_bg: "/assets/backgrounds/sunrise_bg.png",
+};
+
 const PLAYER_COLOURS = [
 	0x2255cc,
 	0xcc3333,
@@ -101,6 +116,7 @@ interface ProjectileRenderState {
 	r: number;
 	vx: number;
 	vy: number;
+	alpha: number;
 	trail: ReplayTrailPoint[];
 }
 
@@ -112,6 +128,7 @@ interface StoneRenderState {
 	y: number;
 	r: number;
 	power?: string;
+	alpha: number;
 	trail: ReplayTrailPoint[];
 	active: boolean;
 }
@@ -124,6 +141,7 @@ export class ReplayScene extends ResponsiveScene {
 	private needsRender = true;
 
 	private bgObjects: Phaser.GameObjects.GameObject[] = [];
+	private backgroundGfx!: Phaser.GameObjects.Graphics;
 	private arenaGfx!: Phaser.GameObjects.Graphics;
 	private arenaSkin!: Phaser.GameObjects.Image;
 	private decorGfx!: Phaser.GameObjects.Graphics;
@@ -140,6 +158,8 @@ export class ReplayScene extends ResponsiveScene {
 	private actorNames = new Set<string>();
 	private visibleObjectKeys = new Set<string>();
 	private visibleStoneKeys = new Set<string>();
+	private currentBackgroundId: string | null = null;
+	private lastActiveReplaySide: number | null = null;
 
 	constructor() {
 		super({ key: "ReplayScene" });
@@ -163,9 +183,14 @@ export class ReplayScene extends ResponsiveScene {
 			if (!this.textures.exists(TARGET_TEXTURES[kind]))
 				this.load.image(TARGET_TEXTURES[kind], TARGET_ASSETS[kind]);
 		}
+		for (const [id, asset] of Object.entries(REPLAY_BACKGROUND_ASSETS)) {
+			const texture = REPLAY_BACKGROUND_TEXTURES[id];
+			if (!this.textures.exists(texture)) this.load.image(texture, asset);
+		}
 	}
 
 	create(): void {
+		this.backgroundGfx = this.add.graphics().setDepth(DEPTH_BG);
 		this.arenaGfx = this.add.graphics().setDepth(DEPTH_ARENA);
 		this.decorGfx = this.add.graphics().setDepth(DEPTH_DECOR);
 		this.arenaSkin = this.add
@@ -236,6 +261,8 @@ export class ReplayScene extends ResponsiveScene {
 
 	private renderStatic(): void {
 		this.clearBackgroundObjects();
+		this.currentBackgroundId = null;
+		this.backgroundGfx.clear();
 		this.arenaGfx.clear();
 		this.decorGfx.clear();
 		this.trailGfx.clear();
@@ -244,7 +271,7 @@ export class ReplayScene extends ResponsiveScene {
 		this.arenaSkin.setVisible(false);
 
 		if (!this.replay) return;
-		this.drawFlatBackground(0x4f6f16);
+		this.drawFlatBackground(0x10150f);
 
 		if (this.replay.gameId === "temple-curling" && this.curlArena) {
 			this.arenaSkin.setVisible(false);
@@ -274,6 +301,7 @@ export class ReplayScene extends ResponsiveScene {
 
 		const playback = this.controller.getState();
 		if (!playback.frame) return;
+		this.renderReplayBackground(playback.frame);
 
 		switch (this.replay.gameId) {
 			case "temple-curling":
@@ -316,10 +344,16 @@ export class ReplayScene extends ResponsiveScene {
 		this.drawCurlingBumpers(snapshot);
 
 		const rendered = new Map<number, StoneRenderState>();
-		for (const object of snapshot.objects ?? []) {
+		const nextStones = normalizeReplayStones(
+			nextSnapshot?.objects,
+			nextSnapshot?.entities,
+		);
+		for (const object of normalizeReplayStones(
+			snapshot.objects,
+			snapshot.entities,
+		)) {
 			const nextObject =
-				nextSnapshot?.objects?.find((candidate) => candidate.id === object.id) ??
-				null;
+				nextStones.find((candidate) => candidate.id === object.id) ?? null;
 			rendered.set(object.id, {
 				key: `curling-${object.id}`,
 				id: object.id,
@@ -338,6 +372,7 @@ export class ReplayScene extends ResponsiveScene {
 				),
 				r: this.curlArena.scale * 28,
 				power: object.power,
+				alpha: Number(object.alpha ?? nextObject?.alpha ?? 1),
 				trail: interpolateNormalizedTrail(
 					object.trail,
 					nextObject?.trail,
@@ -425,7 +460,7 @@ export class ReplayScene extends ResponsiveScene {
 		);
 		const replayTimeMs = this.controller?.getState().timeMs ?? 0;
 		const fallbackProjectiles =
-			projectiles.length > 0
+			projectiles.length > 0 || !isLegacyReplayFrame(frame)
 				? []
 				: this.buildProjectileStatesFromEvents(
 						"game:kame-throw",
@@ -441,6 +476,7 @@ export class ReplayScene extends ResponsiveScene {
 				r: BALL_SRC_R * this.arena.scale,
 				vx: 0,
 				vy: 0,
+				alpha: 1,
 				trail: [],
 			});
 		}
@@ -504,6 +540,11 @@ export class ReplayScene extends ResponsiveScene {
 					r: BALL_SRC_R * this.arena!.scale * radiusScale,
 					vx: lerpNumber(ball.vx, nextBall?.vx ?? ball.vx, progress) * this.arena!.scale,
 					vy: lerpNumber(ball.vy, nextBall?.vy ?? ball.vy, progress) * this.arena!.scale,
+					alpha: lerpNumber(
+						Number(ball.alpha ?? 1),
+						Number(nextBall?.alpha ?? ball.alpha ?? 1),
+						progress,
+					),
 					trail: interpolateArenaTrail(
 						this.arena!,
 						ball.trail,
@@ -527,8 +568,11 @@ export class ReplayScene extends ResponsiveScene {
 		const actorName = `${prefix}-player-${projectile.key}`;
 		this.actorNames.add(actorName);
 		this.visibleActorNames.add(actorName);
-		if (!drawIngamePlayerTexture(this, actorName, ball, DEPTH_ACTORS))
+		if (drawIngamePlayerTexture(this, actorName, ball, DEPTH_ACTORS)) {
+			this.setPlayerActorAlpha(actorName, projectile.alpha);
+		} else {
 			drawShellBall(this.actorGfx, ball, false);
+		}
 
 		this.actorGfx.lineStyle(Math.max(2, projectile.r * 0.12), colour, 0.95);
 		this.actorGfx.strokeCircle(projectile.x, projectile.y, projectile.r * 1.08);
@@ -595,6 +639,14 @@ export class ReplayScene extends ResponsiveScene {
 		}
 	}
 
+	private setPlayerActorAlpha(actorName: string, alpha: number): void {
+		for (const childName of [`${actorName}-body`, `${actorName}-shell`, actorName]) {
+			const existing = this.children.getByName(childName);
+			if (existing instanceof Phaser.GameObjects.Image)
+				existing.setAlpha(Phaser.Math.Clamp(alpha, 0.2, 1));
+		}
+	}
+
 	private hideUnusedObjectImages(): void {
 		for (const [key, image] of this.objectImages) {
 			if (!this.visibleObjectKeys.has(key)) image.setVisible(false);
@@ -610,6 +662,47 @@ export class ReplayScene extends ResponsiveScene {
 	private clearBackgroundObjects(): void {
 		for (const object of this.bgObjects) object.destroy();
 		this.bgObjects = [];
+	}
+
+	private renderReplayBackground(frame: ReplayFrame): void {
+		const snapshot = frame.snapshot as ReplayFrameSnapshot;
+		const activeSide = resolveActiveReplaySide(
+			snapshot,
+			this.lastActiveReplaySide,
+		);
+		this.lastActiveReplaySide = activeSide;
+		const backgroundId = resolveActiveReplayBackground(snapshot, activeSide);
+		if (backgroundId === this.currentBackgroundId) return;
+
+		this.currentBackgroundId = backgroundId;
+		this.clearBackgroundObjects();
+		this.backgroundGfx.clear();
+
+		const texture = REPLAY_BACKGROUND_TEXTURES[backgroundId];
+		if (!texture || !this.textures.exists(texture)) {
+			this.drawFlatBackground(0x10150f);
+			return;
+		}
+
+		const image = this.add
+			.image(this.scale.width / 2, this.scale.height / 2, texture)
+			.setDepth(DEPTH_BG)
+			.setAlpha(1);
+		this.coverBackgroundImage(image);
+		this.bgObjects.push(image);
+	}
+
+	private coverBackgroundImage(image: Phaser.GameObjects.Image): void {
+		const source = image.texture.getSourceImage() as
+			| HTMLImageElement
+			| HTMLCanvasElement;
+		const sourceWidth = source.width || this.scale.width;
+		const sourceHeight = source.height || this.scale.height;
+		const scale = Math.max(
+			this.scale.width / sourceWidth,
+			this.scale.height / sourceHeight,
+		);
+		image.setDisplaySize(sourceWidth * scale, sourceHeight * scale);
 	}
 
 	private drawArenaBackdrop(top: number, ring: number): void {
@@ -648,8 +741,8 @@ export class ReplayScene extends ResponsiveScene {
 	}
 
 	private drawFlatBackground(colour: number): void {
-		this.decorGfx.fillStyle(colour, 1);
-		this.decorGfx.fillRect(0, 0, this.scale.width, this.scale.height);
+		this.backgroundGfx.fillStyle(colour, 1);
+		this.backgroundGfx.fillRect(0, 0, this.scale.width, this.scale.height);
 	}
 
 	private drawKameTarget(target: KameKnockSnapshot["targets"][number]): void {
@@ -772,6 +865,7 @@ export class ReplayScene extends ResponsiveScene {
 				r: simulated.state.r,
 				vx: simulated.state.vx,
 				vy: simulated.state.vy,
+				alpha: 1,
 				trail: simulated.trail,
 			};
 		});
@@ -888,8 +982,60 @@ function parsePowerType(value: string | undefined): PowerType | undefined {
 	return typeof value === "string" ? (value as PowerType) : undefined;
 }
 
+function isLegacyReplayFrame(frame: ReplayFrame): boolean {
+	return frame.replayVersion === undefined || frame.replayVersion === null;
+}
+
 interface ReplayBallWithKey extends BallSnapshotData {
 	key: string;
+}
+
+interface ReplayStoneWithKey {
+	id: number;
+	side: number;
+	x: number;
+	y: number;
+	vx?: number;
+	vy?: number;
+	moving?: boolean;
+	power?: string;
+	alpha?: number;
+	trail?: Array<{ x: number; y: number }>;
+}
+
+function normalizeReplayStones(
+	objects: CurlingSnapshot["objects"] | undefined,
+	entities?: ReplayFrameSnapshotEntity[] | undefined,
+): ReplayStoneWithKey[] {
+	if (Array.isArray(entities) && entities.length > 0) {
+		return entities
+			.filter((entity) => entity.type === "stone")
+			.map((entity) => ({
+				id: Number(entity.id),
+				side: entity.side ?? entity.ownerSide ?? 0,
+				x: entity.x,
+				y: entity.y,
+				vx: entity.vx,
+				vy: entity.vy,
+				moving: !entity.stopped,
+				power: entity.power,
+				alpha: entity.alpha,
+				trail: entity.trail,
+			}))
+			.filter((stone) => Number.isFinite(stone.id));
+	}
+	return (objects ?? []).map((object) => ({
+		id: object.id,
+		side: object.side,
+		x: object.x,
+		y: object.y,
+		vx: object.vx,
+		vy: object.vy,
+		moving: object.moving,
+		power: object.power,
+		alpha: object.alpha,
+		trail: object.trail,
+	}));
 }
 
 function normalizeReplayBalls(
@@ -897,24 +1043,29 @@ function normalizeReplayBalls(
 	entities?: ReplayFrameSnapshotEntity[] | undefined,
 ): ReplayBallWithKey[] {
 	const sourceBalls =
-		Array.isArray(balls) && balls.length > 0
-			? balls
-			: Array.isArray(entities)
-				? entities
-						.filter((entity) => entity.type === "projectile")
-						.map((entity) => ({
-							id: entity.id,
-							side: entity.side ?? entity.ownerSide,
-							x: entity.x,
-							y: entity.y,
-							vx: entity.vx,
-							vy: entity.vy,
-							moving: !entity.stopped,
-							visible: entity.visible,
-							power: entity.power,
-							trail: entity.trail,
-							scale: entity.scale,
-						}))
+		Array.isArray(entities) && entities.length > 0
+			? entities
+					.filter((entity) => entity.type === "projectile")
+					.map((entity) => ({
+						id: entity.id,
+						side: entity.side ?? entity.ownerSide ?? 0,
+						ownerSide: entity.ownerSide ?? entity.side ?? 0,
+						x: entity.x,
+						y: entity.y,
+						vx: entity.vx,
+						vy: entity.vy,
+						moving: !entity.stopped,
+						stopped: entity.stopped,
+						visible: entity.visible,
+						alpha: entity.alpha,
+						power: entity.power,
+						trail: entity.trail,
+						scale: entity.scale,
+						spriteKey: entity.spriteKey,
+						stateFlags: entity.stateFlags,
+					}))
+			: Array.isArray(balls) && balls.length > 0
+				? balls
 				: [];
 	if (sourceBalls.length === 0) return [];
 	const sideCounts = new Map<number, number>();
