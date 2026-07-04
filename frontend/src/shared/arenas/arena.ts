@@ -115,36 +115,31 @@ export function arenaEdgeFraction(
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
-const COLOR_FLOOR = 0xe8d5a3; // sandy clay
-const COLOR_TAWARA = 0x8b3a0f; // rice-straw bale (dark terracotta)
-const COLOR_MARKING = 0xffffff; // centre-line markings
-const TAWARA_THICK = 10; // border stroke width in source px
+export const OVAL_ARENA_SKIN = {
+	key: "oval-arena-skin",
+	source: "/assets/textures/arenas/ovalArenaSkin.png",
+	width: 1536,
+	height: 1100,
+	// The playable area is the inner sand ellipse, not the full stone rim.
+	// Keeping the same aspect as ARENA_01 avoids stretching the hand-painted asset.
+	playableW: 1240,
+	playableH: 864,
+} as const;
 
-/**
- * Draw the sumo ring onto `g`. Call once, or after g.clear() on resize.
- *
- * The ring consists of:
- *   1. Filled floor ellipse (sandy clay)
- *   2. Tawara border (two concentric filled ellipses — outer tawara colour,
- *      inner floor colour — since strokeEllipse isn't reliable across
- *      Phaser versions)
- *   3. Shikirisen — two short vertical start lines at the centre
- */
-export function drawSumoRing(
-	g: Phaser.GameObjects.Graphics,
+export function preloadOvalArenaSkin(scene: Phaser.Scene): void {
+	if (!scene.textures.exists(OVAL_ARENA_SKIN.key))
+		scene.load.image(OVAL_ARENA_SKIN.key, OVAL_ARENA_SKIN.source);
+}
+
+export function layoutOvalArenaSkin(
+	image: Phaser.GameObjects.Image,
 	a: ArenaPixels,
 ): void {
-	const bw = Math.max(4, Math.round(TAWARA_THICK * a.scale));
-
-	g.fillStyle(COLOR_TAWARA, 1);
-	g.fillEllipse(a.cx, a.cy, a.rx * 2, a.ry * 2);
-	g.fillStyle(COLOR_FLOOR, 1);
-	g.fillEllipse(a.cx, a.cy, (a.rx - bw) * 2, (a.ry - bw) * 2);
-
-	const lineH = a.ry * 0.12;
-	const lineW = Math.max(3, bw * 0.6);
-	const offset = a.rx * 0.06;
-	g.fillStyle(COLOR_MARKING, 1);
-	g.fillRect(a.cx - offset - lineW / 2, a.cy - lineH / 2, lineW, lineH);
-	g.fillRect(a.cx + offset - lineW / 2, a.cy - lineH / 2, lineW, lineH);
+	image
+		.setOrigin(0.5)
+		.setPosition(a.cx, a.cy)
+		.setDisplaySize(
+			a.rx * 2 * (OVAL_ARENA_SKIN.width / OVAL_ARENA_SKIN.playableW),
+			a.ry * 2 * (OVAL_ARENA_SKIN.height / OVAL_ARENA_SKIN.playableH),
+		);
 }

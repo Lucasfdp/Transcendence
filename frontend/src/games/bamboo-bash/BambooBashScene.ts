@@ -17,7 +17,9 @@ import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
 	ArenaPixels,
 	arenaPlayableToScreenInRect,
-	drawSumoRing,
+	layoutOvalArenaSkin,
+	OVAL_ARENA_SKIN,
+	preloadOvalArenaSkin,
 } from "../../shared/arenas/arena";
 import {
 	BallState,
@@ -162,6 +164,7 @@ interface LocalParticipant {
 
 export class BambooBashScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
+	private arenaSkin!: Phaser.GameObjects.Image;
 	private pickupGfx!: Phaser.GameObjects.Graphics;
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private ballGfx!: Phaser.GameObjects.Graphics;
@@ -269,6 +272,7 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	preload(): void {
+		preloadOvalArenaSkin(this);
 		preloadIngamePlayerTexture(this);
 		preloadPowerUpAssets(this);
 		for (const stage of [1, 2, 3])
@@ -379,6 +383,10 @@ export class BambooBashScene extends ResponsiveScene {
 		this.playerPowers = buildPool(sel?.player0);
 
 		this.bgGfx = this.add.graphics().setDepth(0);
+		this.arenaSkin = this.add
+			.image(this.arena.cx, this.arena.cy, OVAL_ARENA_SKIN.key)
+			.setDepth(0.1);
+		layoutOvalArenaSkin(this.arenaSkin, this.arena);
 		this.pickupGfx = this.add.graphics().setDepth(2.5);
 		this.recreatePowerPickups();
 		this.trailGfx = this.add.graphics().setDepth(2.75);
@@ -2212,7 +2220,7 @@ export class BambooBashScene extends ResponsiveScene {
 		for (let y = 0; y < height; y += step)
 			this.bgGfx.lineBetween(0, y, width, y);
 
-		drawSumoRing(this.bgGfx, this.arena);
+		layoutOvalArenaSkin(this.arenaSkin, this.arena);
 	}
 
 	// ── Resize ──────────────────────────────────────────────────────────────────

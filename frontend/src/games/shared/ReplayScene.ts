@@ -16,7 +16,9 @@ import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
 	type ArenaPixels,
 	arenaPlayableToScreenInRect,
-	drawSumoRing,
+	layoutOvalArenaSkin,
+	OVAL_ARENA_SKIN,
+	preloadOvalArenaSkin,
 } from "../../shared/arenas/arena";
 import { CURL_SHEET } from "../../shared/arenas/curl-sheet";
 import {
@@ -123,6 +125,7 @@ export class ReplayScene extends ResponsiveScene {
 
 	private bgObjects: Phaser.GameObjects.GameObject[] = [];
 	private arenaGfx!: Phaser.GameObjects.Graphics;
+	private arenaSkin!: Phaser.GameObjects.Image;
 	private decorGfx!: Phaser.GameObjects.Graphics;
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private overlayGfx!: Phaser.GameObjects.Graphics;
@@ -150,6 +153,7 @@ export class ReplayScene extends ResponsiveScene {
 	}
 
 	preload(): void {
+		preloadOvalArenaSkin(this);
 		preloadIngamePlayerTexture(this);
 		for (const stage of [1, 2, 3]) {
 			if (!this.textures.exists(BAMBOO_TEXTURES[stage]))
@@ -164,6 +168,10 @@ export class ReplayScene extends ResponsiveScene {
 	create(): void {
 		this.arenaGfx = this.add.graphics().setDepth(DEPTH_ARENA);
 		this.decorGfx = this.add.graphics().setDepth(DEPTH_DECOR);
+		this.arenaSkin = this.add
+			.image(0, 0, OVAL_ARENA_SKIN.key)
+			.setDepth(DEPTH_DECOR + 0.05)
+			.setVisible(false);
 		this.trailGfx = this.add.graphics().setDepth(DEPTH_TRAILS);
 		this.actorGfx = this.add.graphics().setDepth(DEPTH_ACTORS);
 		this.overlayGfx = this.add.graphics().setDepth(DEPTH_OVERLAY);
@@ -233,17 +241,18 @@ export class ReplayScene extends ResponsiveScene {
 		this.trailGfx.clear();
 		this.actorGfx.clear();
 		this.overlayGfx.clear();
+		this.arenaSkin.setVisible(false);
 
 		if (!this.replay) return;
 		this.drawFlatBackground(0x4f6f16);
 
 		if (this.replay.gameId === "temple-curling" && this.curlArena) {
+			this.arenaSkin.setVisible(false);
 			drawIceSheet(this.arenaGfx, this.curlArena);
 			return;
 		}
 
 		if (!this.arena) return;
-		drawSumoRing(this.arenaGfx, this.arena);
 		this.drawKameBackdrop();
 	}
 
@@ -634,7 +643,8 @@ export class ReplayScene extends ResponsiveScene {
 			this.decorGfx.lineBetween(x, 0, x, height);
 		for (let y = 0; y < height; y += gridStep)
 			this.decorGfx.lineBetween(0, y, width, y);
-		drawSumoRing(this.decorGfx, this.arena);
+		layoutOvalArenaSkin(this.arenaSkin, this.arena);
+		this.arenaSkin.setVisible(true);
 	}
 
 	private drawFlatBackground(colour: number): void {

@@ -16,7 +16,9 @@ import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
 	ArenaPixels,
 	arenaPlayableToScreenInRect,
-	drawSumoRing,
+	layoutOvalArenaSkin,
+	OVAL_ARENA_SKIN,
+	preloadOvalArenaSkin,
 } from "../../shared/arenas/arena";
 import {
 	BallState,
@@ -209,6 +211,7 @@ const FALLBACK_POWERS: PowerType[] = [
 
 export class KameKnockScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
+	private arenaSkin!: Phaser.GameObjects.Image;
 	private targetGfx!: Phaser.GameObjects.Graphics;
 	private targetMarkerGfx!: Phaser.GameObjects.Graphics;
 	private pickupGfx!: Phaser.GameObjects.Graphics;
@@ -294,6 +297,7 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	preload(): void {
+		preloadOvalArenaSkin(this);
 		preloadIngamePlayerTexture(this);
 		preloadPowerUpAssets(this);
 		for (const kind of TARGET_TYPES)
@@ -400,6 +404,10 @@ export class KameKnockScene extends ResponsiveScene {
 			this.playerPowers[this.onlineMatch.side] = buildPool(sel?.player0);
 
 		this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
+		this.arenaSkin = this.add
+			.image(this.arena.cx, this.arena.cy, OVAL_ARENA_SKIN.key)
+			.setDepth(DEPTH_BG + 0.1);
+		layoutOvalArenaSkin(this.arenaSkin, this.arena);
 		this.targetGfx = this.add.graphics().setDepth(DEPTH_TARGETS);
 		this.targetMarkerGfx = this.add
 			.graphics()
@@ -2025,7 +2033,7 @@ export class KameKnockScene extends ResponsiveScene {
 		for (let y = 0; y < height; y += gridStep)
 			this.bgGfx.lineBetween(0, y, width, y);
 
-		drawSumoRing(this.bgGfx, this.arena);
+		layoutOvalArenaSkin(this.arenaSkin, this.arena);
 	}
 
 	private drawTargets(): void {

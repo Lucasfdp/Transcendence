@@ -15,7 +15,9 @@ import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
 	ArenaPixels,
 	arenaPlayableToScreenInRect,
-	drawSumoRing,
+	layoutOvalArenaSkin,
+	OVAL_ARENA_SKIN,
+	preloadOvalArenaSkin,
 } from "../../shared/arenas/arena";
 import {
 	BallState,
@@ -156,6 +158,7 @@ const FALLBACK_POWERS: PowerType[] = [
 
 export class BellClashScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
+	private arenaSkin!: Phaser.GameObjects.Image;
 	private zoneGfx!: Phaser.GameObjects.Graphics;
 	private bellGfx!: Phaser.GameObjects.Graphics;
 	private pickupGfx!: Phaser.GameObjects.Graphics;
@@ -243,6 +246,7 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	preload(): void {
+		preloadOvalArenaSkin(this);
 		preloadIngamePlayerTexture(this);
 		preloadPowerUpAssets(this);
 	}
@@ -371,6 +375,10 @@ export class BellClashScene extends ResponsiveScene {
 		}
 
 		this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
+		this.arenaSkin = this.add
+			.image(this.arena.cx, this.arena.cy, OVAL_ARENA_SKIN.key)
+			.setDepth(DEPTH_BG + 0.1);
+		layoutOvalArenaSkin(this.arenaSkin, this.arena);
 		this.zoneGfx = this.add.graphics().setDepth(DEPTH_ZONES);
 		this.bellGfx = this.add.graphics().setDepth(DEPTH_BELL);
 		this.pickupGfx = this.add.graphics().setDepth(DEPTH_BALL - 0.5);
@@ -1900,7 +1908,7 @@ export class BellClashScene extends ResponsiveScene {
 		for (let y = 0; y < height; y += ringStep)
 			this.bgGfx.lineBetween(0, y, width, y);
 
-		drawSumoRing(this.bgGfx, this.arena);
+		layoutOvalArenaSkin(this.arenaSkin, this.arena);
 	}
 
 	private drawZones(): void {
