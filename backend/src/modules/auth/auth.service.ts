@@ -2,6 +2,7 @@ import {
 	ConflictException,
 	Injectable,
 	InternalServerErrorException,
+	Logger,
 	type OnApplicationBootstrap,
 	UnauthorizedException,
 } from "@nestjs/common";
@@ -89,6 +90,8 @@ const DEFAULT_DEMO_PASSWORD = "KameMaster42";
 
 @Injectable()
 export class AuthService implements OnApplicationBootstrap {
+	private readonly logger = new Logger(AuthService.name);
+
 	constructor(
 		private readonly usersService: UsersService,
 		private readonly jwtService: JwtService,
@@ -96,8 +99,10 @@ export class AuthService implements OnApplicationBootstrap {
 
 	/**
 	 * On boot, ensure the shared demo account exists so anyone (e.g. evaluators)
-	 * can log in through the normal username/password form. Seeded in every
-	 * environment. Failures are non-fatal — seeding must never block startup.
+	 * can log in through the normal username/password form. Gated to
+	 * non-production environments (or an explicit opt-in flag) — see
+	 * `seedDemoAccount()`. Failures are non-fatal — seeding must never block
+	 * startup.
 	 */
 	async onApplicationBootstrap(): Promise<void> {
 		await this.seedDemoAccount();
@@ -272,11 +277,42 @@ export class AuthService implements OnApplicationBootstrap {
 	 * from DEMO_USERNAME / DEMO_PASSWORD (with defaults). The coin balance is
 	 * topped back up on every boot so packs can always be showcased.
 	 *
+	 * GATED (Bug Audit M2): this used to seed a known-credential account
+	 * (`KameMaster` / `KameMaster42` by default) unconditionally in every
+	 * environment, including production — a predictable backdoor login unless
+	 * an operator remembered to override both env vars. It now requires BOTH:
+	 *   1. `NODE_ENV !== 'production'`, OR an explicit `ENABLE_DEMO_ACCOUNT=true`
+	 *      opt-in for the rare case a demo account is genuinely wanted in prod
+	 *      (e.g. a showcase deployment).
+	 *   2. Even when explicitly enabled in production, the well-known default
+	 *      username/password may not be used — an operator must set real ones.
+	 *
 	 * Best-effort: any failure is swallowed so it can never block startup.
 	 */
 	async seedDemoAccount(): Promise<User | null> {
+		const isProduction = process.env.NODE_ENV === "production";
+		const demoAccountEnabled = process.env.ENABLE_DEMO_ACCOUNT === "true";
+
+		if (isProduction && !demoAccountEnabled) {
+			this.logger.log(
+				"Demo account seeding skipped (production without ENABLE_DEMO_ACCOUNT=true)",
+			);
+			return null;
+		}
+
 		const username = process.env.DEMO_USERNAME ?? DEFAULT_DEMO_USERNAME;
 		const password = process.env.DEMO_PASSWORD ?? DEFAULT_DEMO_PASSWORD;
+
+		if (
+			isProduction &&
+			(username === DEFAULT_DEMO_USERNAME ||
+				password === DEFAULT_DEMO_PASSWORD)
+		) {
+			this.logger.warn(
+				"Demo account seeding refused: production requires DEMO_USERNAME and DEMO_PASSWORD to be overridden from their defaults",
+			);
+			return null;
+		}
 
 		try {
 			let user = await this.usersService.findByUsername(username);

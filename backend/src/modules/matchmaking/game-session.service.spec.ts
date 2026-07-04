@@ -206,7 +206,44 @@ describe("GameSessionService", () => {
 		expect(room.rewardsGranted).toBe(true);
 	});
 
-	it("does not grant loss rewards to disconnected losers", async () => {
+	it("still grants loss rewards to a disconnected loser (outcome-based eligibility)", async () => {
+		const room = makeRoom({
+			players: [makePlayer(0), makePlayer(1, { connected: false })],
+		});
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		expect(gameResultsService.submitResult).toHaveBeenCalledTimes(2);
+		expect(gameResultsService.submitResult).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 2 }),
+			{ gameId: "temple-curling", outcome: "loss" },
+		);
+	});
+
+	it("still grants win rewards to a winner whose socket blips at match end (Bug Audit M6)", async () => {
+		const room = makeRoom({
+			players: [
+				makePlayer(0, { connected: false }),
+				makePlayer(1, { connected: true }),
+			],
+		});
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		expect(gameResultsService.submitResult).toHaveBeenCalledTimes(2);
+		expect(gameResultsService.submitResult).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 1 }),
+			{ gameId: "temple-curling", outcome: "win" },
+		);
+	});
+
+	it("still does not grant rewards to guests regardless of connection state", async () => {
+		usersService.findById = jest.fn(async (id: number) => ({
+			id,
+			isGuest: id === 2,
+		})) as never;
 		const room = makeRoom({
 			players: [makePlayer(0), makePlayer(1, { connected: false })],
 		});
@@ -219,5 +256,103 @@ describe("GameSessionService", () => {
 			expect.objectContaining({ id: 1 }),
 			{ gameId: "temple-curling", outcome: "win" },
 		);
+	});
+});
+
+describe("GameSessionService — applyEloRatings (Bug Audit H1)", () => {
+	let service: GameSessionService;
+	let roomService: jest.Mocked<RoomService>;
+	let usersService: jest.Mocked<UsersService>;
+	let gameResultsService: jest.Mocked<GameResultsService>;
+	let replayService: { persistReplayForRoom: jest.Mock };
+	let matchRepo: { update: jest.Mock };
+	let matchPlayerRepo: { update: jest.Mock };
+	let ratingRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
+	let dataSource: { transaction: jest.Mock };
+	let savedRatings: Record<number, number>;
+
+	function makeRating(userId: number, rating: number) {
+		return { userId, gameId: "temple-curling", rating, wins: 0, losses: 0 };
+	}
+
+	beforeEach(() => {
+		savedRatings = {};
+		roomService = {
+			getRoom: jest.fn(),
+			finish: jest.fn((matchId, winnerSide) => {
+				const room = roomService.getRoom(matchId);
+				if (!room) return null;
+				room.status = "finished";
+				room.state.phase = "finished";
+				room.state.winnerSide = winnerSide;
+				return room;
+			}),
+		} as unknown as jest.Mocked<RoomService>;
+		usersService = {
+			findById: jest.fn(async (id: number) => ({ id, isGuest: false })),
+		} as unknown as jest.Mocked<UsersService>;
+		gameResultsService = {
+			submitResult: jest.fn(),
+		} as unknown as jest.Mocked<GameResultsService>;
+		replayService = { persistReplayForRoom: jest.fn() };
+		matchRepo = { update: jest.fn() };
+		matchPlayerRepo = { update: jest.fn() };
+		ratingRepo = {
+			findOne: jest.fn(),
+			create: jest.fn((rating) => rating),
+			save: jest.fn(async (rating) => {
+				savedRatings[rating.userId] = rating.rating;
+				return rating;
+			}),
+		};
+		dataSource = {
+			transaction: jest.fn(
+				async (
+					callback: (manager: {
+						getRepository: (entity: unknown) => unknown;
+					}) => unknown,
+				) =>
+					callback({
+						getRepository: (entity: unknown) => {
+							if (entity === Match) return matchRepo;
+							if (entity === MatchPlayer) return matchPlayerRepo;
+							if (entity === UserRating) return ratingRepo;
+							throw new Error("Unknown repository");
+						},
+					}),
+			),
+		};
+		service = new GameSessionService(
+			roomService,
+			{ get: jest.fn() } as unknown as jest.Mocked<GameEngineRegistry>,
+			usersService,
+			gameResultsService,
+			replayService as never,
+			dataSource as never,
+			matchRepo as never,
+			matchPlayerRepo as never,
+			ratingRepo as never,
+		);
+	});
+
+	it("computes a zero-sum, order-independent delta for a 2-player ranked match", async () => {
+		// Both directions of iteration must yield the same +/- delta magnitude:
+		// with the pre-fix bug, player 0's delta fed into player 1's expected
+		// score because ratings[0].rating was already mutated in place.
+		const p0 = makeRating(1, 1000);
+		const p1 = makeRating(2, 1000);
+		ratingRepo.findOne = jest
+			.fn()
+			.mockResolvedValueOnce(p0)
+			.mockResolvedValueOnce(p1);
+
+		const room = makeRoom({ mode: "ranked" });
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		// Equal starting ratings, winner side 0 -> +16 / -16 at K=32.
+		expect(savedRatings[1]).toBe(1016);
+		expect(savedRatings[2]).toBe(984);
 	});
 });

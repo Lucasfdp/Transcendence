@@ -16,6 +16,7 @@ import {
 	PACK_SIZE,
 	findCard,
 	type BinderView,
+	type CardDefinition,
 	type CardSetProgress,
 	type CardView,
 	type PackPull,
@@ -158,7 +159,11 @@ export class CardsService {
 			relations: ["user"],
 		});
 
-		if (!existing) {
+		if (existing) {
+			return this.incrementExisting(existing, rolled, card, repo);
+		}
+
+		try {
 			await repo.save(
 				repo.create({
 					user: { id: userId } as User,
@@ -171,8 +176,32 @@ export class CardsService {
 				pull: { card, foil: rolled.foil, isNew: true },
 				refund: 0,
 			};
+		} catch (err: unknown) {
+			// Two concurrent grants for this player's FIRST copy of the same
+			// card (e.g. two match completions finishing at nearly the same
+			// moment) can both miss the `existing` lookup above and then race
+			// the unique index on (user, cardId). Previously this bubbled as
+			// an unhandled 500 that `submitResult`'s best-effort wrapper
+			// swallowed, silently losing the drop for the losing request
+			// (Bug Audit L5). Re-read the row the winner just created and
+			// fall through to the increment path instead.
+			if ((err as { code?: string })?.code !== "23505") throw err;
+			const raceWinner = await repo.findOne({
+				where: { user: { id: userId }, cardId: rolled.cardId },
+				relations: ["user"],
+			});
+			if (!raceWinner) throw err;
+			return this.incrementExisting(raceWinner, rolled, card, repo);
 		}
+	}
 
+	/** Increment an already-owned card row and compute the duplicate refund. */
+	private async incrementExisting(
+		existing: UserCard,
+		rolled: RolledCard,
+		card: CardDefinition,
+		repo: Repository<UserCard>,
+	): Promise<{ pull: PackPull; refund: number }> {
 		existing.count += 1;
 		if (rolled.foil) existing.foilCount += 1;
 		await repo.save(existing);

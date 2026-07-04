@@ -137,8 +137,24 @@ export class ChatService {
 	}
 
 	/**
+	 * Canonical `min(userId):max(userId)` key for a dm pair — order-independent
+	 * so `dmKeyFor(a, b) === dmKeyFor(b, a)`. Matches the unique index on
+	 * `conversations.dmKey` (migration `20260704010000-add-conversations-dmkey`).
+	 */
+	private dmKeyFor(userAId: number, userBId: number): string {
+		return userAId < userBId
+			? `${userAId}:${userBId}`
+			: `${userBId}:${userAId}`;
+	}
+
+	/**
 	 * Find the existing dm conversation between two users, or create one.
-	 * Idempotent — never creates a second dm conversation for the same pair.
+	 * Idempotent — never creates a second dm conversation for the same pair,
+	 * even under a race between two concurrent calls for the same pair
+	 * (Bug Audit M3): the lookup and the insert both go through the same
+	 * `dmKey`, which is backed by a DB-level unique index, so a losing
+	 * concurrent insert fails with `23505` and is handled by re-reading the
+	 * winner's row instead of erroring out.
 	 *
 	 * An existing conversation is always returned regardless of current
 	 * friendship status (a DM is frozen, never deleted, once the users are no
@@ -154,21 +170,12 @@ export class ChatService {
 				throw new BadRequestException("You cannot message yourself");
 			}
 
-			const myParticipations = await this.participantRepo.find({
-				where: { userId: userAId },
-				relations: ["conversation"],
-			});
-			const dmConversationIds = myParticipations
-				.filter((p) => p.conversation.type === "dm")
-				.map((p) => p.conversationId);
+			const dmKey = this.dmKeyFor(userAId, userBId);
 
-			if (dmConversationIds.length > 0) {
-				const match = await this.participantRepo.findOne({
-					where: { userId: userBId, conversationId: In(dmConversationIds) },
-					relations: ["conversation"],
-				});
-				if (match) return match.conversation;
-			}
+			const existing = await this.conversationRepo.findOne({
+				where: { dmKey },
+			});
+			if (existing) return existing;
 
 			const areFriends = await this.friendsService.areFriends(
 				userAId,
@@ -183,24 +190,44 @@ export class ChatService {
 			const other = await this.userRepo.findOne({ where: { id: userBId } });
 			if (!other) throw new NotFoundException("User not found");
 
-			const conversation = await this.conversationRepo.manager.transaction(
-				async (em) => {
-					const created = await em.save(
-						em.create(Conversation, { type: "dm" }),
-					);
-					await em.save(ConversationParticipant, [
-						em.create(ConversationParticipant, {
-							conversationId: created.id,
-							userId: userAId,
-						}),
-						em.create(ConversationParticipant, {
-							conversationId: created.id,
-							userId: userBId,
-						}),
-					]);
-					return created;
-				},
-			);
+			let conversation: Conversation;
+			try {
+				conversation = await this.conversationRepo.manager.transaction(
+					async (em) => {
+						const created = await em.save(
+							em.create(Conversation, { type: "dm", dmKey }),
+						);
+						await em.save(ConversationParticipant, [
+							em.create(ConversationParticipant, {
+								conversationId: created.id,
+								userId: userAId,
+							}),
+							em.create(ConversationParticipant, {
+								conversationId: created.id,
+								userId: userBId,
+							}),
+						]);
+						return created;
+					},
+				);
+			} catch (err: unknown) {
+				// Unique violation on dmKey: a concurrent call for the same pair
+				// won the race and created the conversation first. Re-read and
+				// return that row instead of failing — this is what makes the
+				// operation actually idempotent under concurrency, not just
+				// "usually" idempotent (Bug Audit M3).
+				const pg = err as { code?: string };
+				if (pg?.code === "23505") {
+					const raceWinner = await this.conversationRepo.findOne({
+						where: { dmKey },
+					});
+					if (raceWinner) {
+						this.joinLiveParticipants(raceWinner.id, [userAId, userBId]);
+						return raceWinner;
+					}
+				}
+				throw err;
+			}
 
 			// Bring any already-connected participant sockets into the room now,
 			// so live delivery works immediately without waiting for a reconnect.

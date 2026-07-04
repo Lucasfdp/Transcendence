@@ -6,19 +6,34 @@ import {
 } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
+import type { EntityManager } from "typeorm";
 import { PresenceService } from "../presence/presence.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { User } from "../users/entities/user.entity";
 import { FriendView, FriendsService, PendingView } from "./friends.service";
 import { Friendship } from "./entities/friendship.entity";
 
-const mockFriendshipRepo = () => ({
-	findOne: jest.fn(),
-	find: jest.fn(),
-	save: jest.fn(),
-	create: jest.fn((v) => v),
-	delete: jest.fn(),
-});
+const mockFriendshipRepo = () => {
+	const repo: Record<string, jest.Mock> & {
+		manager?: { transaction: jest.Mock };
+	} = {
+		findOne: jest.fn(),
+		find: jest.fn(),
+		save: jest.fn(),
+		create: jest.fn((v) => v),
+		delete: jest.fn(),
+	};
+	// The transaction callback receives an EntityManager; `getRepository`
+	// just needs to hand back this same mock repo so assertions on
+	// delete/save/create apply the same whether block() ran inside a
+	// transaction it opened itself or one passed in by the caller.
+	repo.manager = {
+		transaction: jest.fn(async (cb: (em: EntityManager) => Promise<unknown>) =>
+			cb({ getRepository: () => repo } as unknown as EntityManager),
+		),
+	};
+	return repo;
+};
 
 const mockUserRepo = () => ({
 	// Default to a resolved promise so the service's `.catch()` chaining on
@@ -119,6 +134,89 @@ describe("FriendsService", () => {
 					addresseeId: 2,
 					status: "pending",
 				}),
+			);
+		});
+
+		it("should map a concurrent unique-violation (23505) to ConflictException, not a 500 (Bug Audit M5)", async () => {
+			userRepo.findOne.mockResolvedValue(
+				makeUser({ id: 2, username: "rival" }),
+			);
+			// The check-then-insert's `existing` lookup finds nothing (a
+			// concurrent request for the same pair hasn't committed yet), but
+			// the insert itself then races the DB unique index and loses.
+			friendshipRepo.findOne.mockResolvedValue(null);
+			friendshipRepo.save.mockRejectedValue(
+				Object.assign(new Error("duplicate key"), { code: "23505" }),
+			);
+
+			await expect(service.sendRequest(1, "rival")).rejects.toThrow(
+				ConflictException,
+			);
+		});
+
+		it("should throw InternalServerErrorException for a non-unique-violation save failure", async () => {
+			userRepo.findOne.mockResolvedValue(
+				makeUser({ id: 2, username: "rival" }),
+			);
+			friendshipRepo.findOne.mockResolvedValue(null);
+			friendshipRepo.save.mockRejectedValue(new Error("connection lost"));
+
+			await expect(service.sendRequest(1, "rival")).rejects.toThrow(
+				InternalServerErrorException,
+			);
+		});
+	});
+
+	// ── block ────────────────────────────────────────────────────────────────────
+
+	describe("block", () => {
+		it("should throw BadRequestException when blocking yourself", async () => {
+			await expect(service.block(1, 1)).rejects.toThrow(
+				BadRequestException,
+			);
+			expect(friendshipRepo.manager?.transaction).not.toHaveBeenCalled();
+		});
+
+		it("should delete any existing row in either direction, then insert a blocked row, inside a transaction (Bug Audit M5)", async () => {
+			friendshipRepo.delete.mockResolvedValue({ affected: 1 });
+			friendshipRepo.save.mockResolvedValue({});
+
+			await service.block(1, 2);
+
+			expect(friendshipRepo.manager?.transaction).toHaveBeenCalledTimes(1);
+			expect(friendshipRepo.delete).toHaveBeenCalledWith([
+				{ requesterId: 1, addresseeId: 2 },
+				{ requesterId: 2, addresseeId: 1 },
+			]);
+			expect(friendshipRepo.save).toHaveBeenCalledWith(
+				expect.objectContaining({
+					requesterId: 1,
+					addresseeId: 2,
+					status: "blocked",
+				}),
+			);
+		});
+
+		it("should join a caller-provided manager instead of opening its own transaction", async () => {
+			friendshipRepo.delete.mockResolvedValue({ affected: 0 });
+			friendshipRepo.save.mockResolvedValue({});
+			const callerManager = {
+				getRepository: () => friendshipRepo,
+			} as unknown as EntityManager;
+
+			await service.block(1, 2, callerManager);
+
+			expect(friendshipRepo.manager?.transaction).not.toHaveBeenCalled();
+			expect(friendshipRepo.save).toHaveBeenCalled();
+		});
+
+		it("should throw InternalServerErrorException when the transaction fails", async () => {
+			friendshipRepo.manager!.transaction.mockRejectedValueOnce(
+				new Error("db down"),
+			);
+
+			await expect(service.block(1, 2)).rejects.toThrow(
+				InternalServerErrorException,
 			);
 		});
 	});

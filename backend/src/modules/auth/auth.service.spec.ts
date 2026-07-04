@@ -38,6 +38,11 @@ describe("AuthService", () => {
 	let service: AuthService;
 	let usersService: jest.Mocked<UsersService>;
 	let jwtService: jest.Mocked<JwtService>;
+	const ORIGINAL_ENV = { ...process.env };
+
+	afterEach(() => {
+		process.env = { ...ORIGINAL_ENV };
+	});
 
 	beforeEach(async () => {
 		const module: TestingModule = await Test.createTestingModule({
@@ -205,10 +210,70 @@ describe("AuthService", () => {
 
 			await expect(service.seedDemoAccount()).resolves.toBeNull();
 		});
+
+		// ── Bug Audit M2: production gating ───────────────────────────────────────
+
+		it("does not seed in production without ENABLE_DEMO_ACCOUNT", async () => {
+			process.env.NODE_ENV = "production";
+			delete process.env.ENABLE_DEMO_ACCOUNT;
+			usersService.findByUsername.mockResolvedValue(null);
+
+			const result = await service.seedDemoAccount();
+
+			expect(result).toBeNull();
+			expect(usersService.findByUsername).not.toHaveBeenCalled();
+			expect(usersService.create).not.toHaveBeenCalled();
+		});
+
+		it("refuses to seed in production with ENABLE_DEMO_ACCOUNT=true but default credentials", async () => {
+			process.env.NODE_ENV = "production";
+			process.env.ENABLE_DEMO_ACCOUNT = "true";
+			delete process.env.DEMO_USERNAME;
+			delete process.env.DEMO_PASSWORD;
+			usersService.findByUsername.mockResolvedValue(null);
+
+			const result = await service.seedDemoAccount();
+
+			expect(result).toBeNull();
+			expect(usersService.findByUsername).not.toHaveBeenCalled();
+			expect(usersService.create).not.toHaveBeenCalled();
+		});
+
+		it("seeds in production when explicitly enabled with non-default credentials", async () => {
+			process.env.NODE_ENV = "production";
+			process.env.ENABLE_DEMO_ACCOUNT = "true";
+			process.env.DEMO_USERNAME = "ShowcaseAccount";
+			process.env.DEMO_PASSWORD = "a-real-generated-secret";
+			const created = { ...mockUser, profile: null } as unknown as User;
+			usersService.findByUsername.mockResolvedValue(null);
+			usersService.create.mockResolvedValue(created);
+			usersService.save.mockImplementation(async (u: User) => u);
+
+			const result = await service.seedDemoAccount();
+
+			expect(usersService.create).toHaveBeenCalledWith(
+				expect.objectContaining({ username: "ShowcaseAccount" }),
+			);
+			expect(result?.coins).toBe(DEMO_COINS);
+		});
+
+		it("seeds normally outside production regardless of ENABLE_DEMO_ACCOUNT", async () => {
+			process.env.NODE_ENV = "development";
+			delete process.env.ENABLE_DEMO_ACCOUNT;
+			const created = { ...mockUser, profile: null } as unknown as User;
+			usersService.findByUsername.mockResolvedValue(null);
+			usersService.create.mockResolvedValue(created);
+			usersService.save.mockImplementation(async (u: User) => u);
+
+			const result = await service.seedDemoAccount();
+
+			expect(usersService.create).toHaveBeenCalled();
+			expect(result?.coins).toBe(DEMO_COINS);
+		});
 	});
 
 	describe("onApplicationBootstrap", () => {
-		it("seeds the demo account on boot in every environment", async () => {
+		it("delegates to seedDemoAccount on boot", async () => {
 			const spy = jest
 				.spyOn(service, "seedDemoAccount")
 				.mockResolvedValue(mockUser);

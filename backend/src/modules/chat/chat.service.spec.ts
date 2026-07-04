@@ -173,45 +173,42 @@ describe("ChatService", () => {
 			).rejects.toThrow(BadRequestException);
 		});
 
-		it("should return the existing dm conversation when one already exists", async () => {
-			const existingConversation = makeConversation({ id: 5 });
-			participantRepo.find.mockResolvedValueOnce([
-				makeParticipant({
-					conversationId: 5,
-					userId: 1,
-					conversation: existingConversation,
-				}),
-			]);
-			participantRepo.findOne.mockResolvedValueOnce(
-				makeParticipant({
-					conversationId: 5,
-					userId: 2,
-					conversation: existingConversation,
-				}),
-			);
+		it("should return the existing dm conversation when one already exists (by dmKey)", async () => {
+			const existingConversation = makeConversation({
+				id: 5,
+				dmKey: "1:2",
+			});
+			conversationRepo.findOne.mockResolvedValueOnce(existingConversation);
 
 			const result = await service.getOrCreateDirectConversation(1, 2);
 
+			expect(conversationRepo.findOne).toHaveBeenCalledWith({
+				where: { dmKey: "1:2" },
+			});
 			expect(result.id).toBe(5);
 			expect(conversationRepo.manager.transaction).not.toHaveBeenCalled();
 		});
 
+		it("should look up the same dmKey regardless of argument order", async () => {
+			const existingConversation = makeConversation({
+				id: 5,
+				dmKey: "1:2",
+			});
+			conversationRepo.findOne.mockResolvedValueOnce(existingConversation);
+
+			await service.getOrCreateDirectConversation(2, 1);
+
+			expect(conversationRepo.findOne).toHaveBeenCalledWith({
+				where: { dmKey: "1:2" },
+			});
+		});
+
 		it("should return the existing dm conversation even when the users are no longer friends", async () => {
-			const existingConversation = makeConversation({ id: 5 });
-			participantRepo.find.mockResolvedValueOnce([
-				makeParticipant({
-					conversationId: 5,
-					userId: 1,
-					conversation: existingConversation,
-				}),
-			]);
-			participantRepo.findOne.mockResolvedValueOnce(
-				makeParticipant({
-					conversationId: 5,
-					userId: 2,
-					conversation: existingConversation,
-				}),
-			);
+			const existingConversation = makeConversation({
+				id: 5,
+				dmKey: "1:2",
+			});
+			conversationRepo.findOne.mockResolvedValueOnce(existingConversation);
 			friendsService.areFriends.mockResolvedValueOnce(false);
 
 			const result = await service.getOrCreateDirectConversation(1, 2);
@@ -249,8 +246,39 @@ describe("ChatService", () => {
 			expect(result.type).toBe("dm");
 		});
 
+		it("should re-read and return the winner's conversation on a concurrent dmKey race (Bug Audit M3)", async () => {
+			userRepo.findOne.mockResolvedValueOnce(makeUser({ id: 2 }));
+			const raceWinner = makeConversation({ id: 7, dmKey: "1:2" });
+			// First findOne (the initial lookup) finds nothing; the transaction
+			// then fails with a unique-violation because a concurrent call won
+			// the race; the retry findOne must return that winner's row.
+			conversationRepo.findOne
+				.mockResolvedValueOnce(null)
+				.mockResolvedValueOnce(raceWinner);
+			conversationRepo.manager.transaction.mockRejectedValueOnce(
+				Object.assign(new Error("duplicate key"), { code: "23505" }),
+			);
+
+			const result = await service.getOrCreateDirectConversation(1, 2);
+
+			expect(result).toBe(raceWinner);
+			expect(conversationRepo.findOne).toHaveBeenCalledTimes(2);
+		});
+
+		it("should rethrow a non-unique-violation error from the transaction", async () => {
+			userRepo.findOne.mockResolvedValueOnce(makeUser({ id: 2 }));
+			conversationRepo.findOne.mockResolvedValueOnce(null);
+			conversationRepo.manager.transaction.mockRejectedValueOnce(
+				new Error("connection lost"),
+			);
+
+			await expect(
+				service.getOrCreateDirectConversation(1, 2),
+			).rejects.toThrow(InternalServerErrorException);
+		});
+
 		it("should throw InternalServerErrorException when the repository fails", async () => {
-			participantRepo.find.mockRejectedValueOnce(new Error("DB down"));
+			conversationRepo.findOne.mockRejectedValueOnce(new Error("DB down"));
 
 			await expect(
 				service.getOrCreateDirectConversation(1, 2),

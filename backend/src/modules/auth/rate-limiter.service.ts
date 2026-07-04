@@ -55,11 +55,18 @@ export class RateLimiterService {
 	}
 
 	private getIp(req: Request): string {
-		// Respect X-Forwarded-For set by the Nginx reverse proxy.
-		const forwarded = req.headers["x-forwarded-for"];
-		if (typeof forwarded === "string")
-			return forwarded.split(",")[0].trim();
-		return req.socket?.remoteAddress ?? "unknown";
+		// Do NOT parse X-Forwarded-For manually: nginx appends the real
+		// client IP via `$proxy_add_x_forwarded_for`, but the left-most
+		// token is fully attacker-controlled (a client can send its own
+		// `X-Forwarded-For` header). Reading `forwarded.split(",")[0]`
+		// lets an attacker rotate a fake first token per request and
+		// bypass the limiter entirely (Bug Audit C1).
+		//
+		// `app.set("trust proxy", 1)` in main.ts tells Express to trust
+		// exactly one hop (the nginx reverse proxy) and derive `req.ip`
+		// from the right-most XFF entry it appended, which reflects the
+		// real socket peer nginx saw and cannot be spoofed by the client.
+		return req.ip ?? req.socket?.remoteAddress ?? "unknown";
 	}
 
 	/**

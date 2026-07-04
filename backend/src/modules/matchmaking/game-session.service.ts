@@ -138,8 +138,14 @@ export class GameSessionService implements OnModuleInit {
 				}
 
 				if (!abandoned) {
+					// Reward eligibility is based on the recorded match outcome, not
+					// the player's live socket state. A win/loss/draw was already
+					// persisted to `match_players` above for every player in this
+					// (non-abandoned) match, so a socket that blips right as the
+					// final scoring input lands must not cost the player their
+					// XP/coins/card drop (Bug Audit M6). Abandon-driven forfeits are
+					// handled separately via `abandon()` with `abandoned = true`.
 					for (const player of room.players) {
-						if (!player.connected) continue;
 						const user = await this.usersService.findById(player.user.id);
 						if (!user || user.isGuest) continue;
 						await this.gameResultsService.submitResult(user, {
@@ -189,16 +195,21 @@ export class GameSessionService implements OnModuleInit {
 			ratings.push(rating);
 		}
 
+		// Snapshot every player's pre-match rating before any updates are
+		// applied. Reading `ratings[j].rating` inside the loop below would
+		// pick up already-mutated values for players processed earlier in
+		// the same match, making each player's expected score (and thus the
+		// whole match) order-dependent and no longer zero-sum (Bug Audit H1).
+		const preMatchRatings = ratings.map((r) => r.rating);
+
 		for (let i = 0; i < room.players.length; i++) {
 			const player = room.players[i];
 			const rating = ratings[i];
 			const won = player.side === winnerSide;
 			const score = won ? 1 : 0;
-			const playerRating = rating.rating;
+			const playerRating = preMatchRatings[i];
 
-			const opponentRatings = ratings
-				.filter((_, j) => j !== i)
-				.map((r) => r.rating);
+			const opponentRatings = preMatchRatings.filter((_, j) => j !== i);
 			const opponentRating =
 				opponentRatings.reduce((sum, r) => sum + r, 0) /
 				opponentRatings.length;

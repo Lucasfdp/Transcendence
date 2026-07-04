@@ -117,6 +117,18 @@ export class FriendsService {
 			) {
 				throw err;
 			}
+			// Two near-simultaneous sendRequest calls for the same pair can both
+			// pass the check-then-insert's `existing` lookup before either write
+			// commits; the DB-level unique index on (requesterId, addresseeId)
+			// then rejects the loser with a 23505, which — unmapped — used to
+			// surface as a generic 500 instead of the intended 409
+			// (Bug Audit M5).
+			const pg = err as { code?: string };
+			if (pg?.code === "23505") {
+				throw new ConflictException(
+					"Friend request already exists or users are already friends",
+				);
+			}
 			throw new InternalServerErrorException(
 				"Failed to send friend request",
 			);
@@ -207,8 +219,15 @@ export class FriendsService {
 	 * already exists.  The blocking user always becomes the requester so the
 	 * blocked user cannot see the row from their side.
 	 *
+	 * The delete-then-insert runs atomically inside a transaction (Bug Audit
+	 * M5): un-transacted, a concurrent operation on the same pair could
+	 * observe the brief window between the delete committing and the insert
+	 * committing (e.g. a friend request racing a block).
+	 *
 	 * Pass `manager` to run inside an existing transaction (e.g. report+block
-	 * as one atomic unit); otherwise the default repository is used.
+	 * as one atomic unit) — the delete+insert then joins that transaction
+	 * instead of opening a nested one; otherwise a new transaction is opened
+	 * on the default repository's manager.
 	 */
 	async block(
 		blockerId: number,
@@ -220,22 +239,27 @@ export class FriendsService {
 				throw new BadRequestException("You cannot block yourself");
 			}
 
-			const repo = manager
-				? manager.getRepository(Friendship)
-				: this.friendshipRepo;
+			const doBlock = async (em: EntityManager): Promise<void> => {
+				const repo = em.getRepository(Friendship);
+				// Remove any existing row in either direction first, then insert block
+				await repo.delete([
+					{ requesterId: blockerId, addresseeId: blockedId },
+					{ requesterId: blockedId, addresseeId: blockerId },
+				]);
+				await repo.save(
+					repo.create({
+						requesterId: blockerId,
+						addresseeId: blockedId,
+						status: "blocked",
+					}),
+				);
+			};
 
-			// Remove any existing row in either direction first, then insert block
-			await repo.delete([
-				{ requesterId: blockerId, addresseeId: blockedId },
-				{ requesterId: blockedId, addresseeId: blockerId },
-			]);
-			await repo.save(
-				repo.create({
-					requesterId: blockerId,
-					addresseeId: blockedId,
-					status: "blocked",
-				}),
-			);
+			if (manager) {
+				await doBlock(manager);
+			} else {
+				await this.friendshipRepo.manager.transaction(doBlock);
+			}
 		} catch (err) {
 			if (err instanceof BadRequestException) throw err;
 			throw new InternalServerErrorException("Failed to block user");

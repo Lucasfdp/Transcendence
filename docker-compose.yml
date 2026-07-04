@@ -111,6 +111,11 @@ services:
             - REDIS_HOST=redis
             - REDIS_PORT=6379
             - JWT_EXPIRY=${JWT_EXPIRY:-3600}
+            # Demo account is only ever seeded outside production, or in
+            # production when ENABLE_DEMO_ACCOUNT=true AND both DEMO_USERNAME
+            # and DEMO_PASSWORD are overridden from their defaults below
+            # (see AuthService.seedDemoAccount — Bug Audit M2).
+            - ENABLE_DEMO_ACCOUNT=${ENABLE_DEMO_ACCOUNT:-false}
             - DEMO_USERNAME=${DEMO_USERNAME:-KameMaster}
             - DEMO_PASSWORD=${DEMO_PASSWORD:-KameMaster42}
             - FORTYTWO_CALLBACK_URL=${FORTYTWO_CALLBACK_URL:-https://localhost:42424/api/auth/42/callback}

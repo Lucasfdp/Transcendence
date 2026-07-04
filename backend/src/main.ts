@@ -6,6 +6,7 @@ import { json, urlencoded } from "express";
 import { AppModule } from "./app.module";
 import { MetricsInterceptor } from "./modules/metrics/metrics.interceptor";
 import { MetricsService } from "./modules/metrics/metrics.service";
+import { isAllowedOrigin } from "./cors.util";
 
 async function bootstrap() {
 	const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -29,7 +30,7 @@ async function bootstrap() {
 		origin(origin, callback) {
 			if (!origin) return callback(null, true);
 			const allowed = process.env.ALLOWED_ORIGINS?.split(",") ?? [];
-			if (allowed.some((o) => origin.startsWith(o.trim()))) return callback(null, true);
+			if (isAllowedOrigin(origin, allowed)) return callback(null, true);
 			if (process.env.NODE_ENV !== "production") return callback(null, true);
 			callback(new Error("Not allowed by CORS"));
 		},

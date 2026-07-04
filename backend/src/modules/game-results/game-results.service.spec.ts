@@ -470,4 +470,54 @@ describe("GameResultsService", () => {
 		expect(user.profile.totalWins).toBe(2);
 		expect(user.profile.totalLosses).toBe(1);
 	});
+
+	// ── Bug Audit M4: achievement coin rewards reflected in the response ────────
+
+	it("should include a coins-reward achievement's bonus in newCoins", async () => {
+		const user = makeUser({ coins: 100 });
+		usersService.save.mockResolvedValueOnce(user);
+		// Simulate AchievementsService.applyReward: it mutates the *same* user
+		// object reference and persists it internally, independent of
+		// GameResultsService's own save.
+		achievementsService.evaluateForUser.mockImplementationOnce(async (u) => {
+			u.coins += 500;
+			return [];
+		});
+
+		const result = await service.submitResult(user, {
+			gameId: "test-game",
+			outcome: "win",
+		});
+
+		// Pre-fix, this would have been `100 + COINS_PER_WIN` (stale — missing
+		// the achievement's +500), even though `user.coins` itself was correct.
+		expect(result.newCoins).toBe(100 + COINS_PER_WIN + 500);
+		expect(user.coins).toBe(result.newCoins);
+	});
+
+	it("should return the plain match-reward balance when no achievement unlocks a coin reward", async () => {
+		const user = makeUser({ coins: 100 });
+		usersService.save.mockResolvedValueOnce(user);
+
+		const result = await service.submitResult(user, {
+			gameId: "test-game",
+			outcome: "win",
+		});
+
+		expect(result.newCoins).toBe(100 + COINS_PER_WIN);
+	});
+
+	// ── Bug Audit L4: missing profile guard ─────────────────────────────────────
+
+	it("should throw a clear InternalServerErrorException when user.profile is missing", async () => {
+		// `makeUser`'s `??` fallback means passing `profile: null` in overrides
+		// doesn't stick — set it directly on the built user instead.
+		const user = makeUser();
+		user.profile = null as unknown as Profile;
+
+		await expect(
+			service.submitResult(user, { gameId: "test-game", outcome: "win" }),
+		).rejects.toThrow(InternalServerErrorException);
+		expect(usersService.save).not.toHaveBeenCalled();
+	});
 });

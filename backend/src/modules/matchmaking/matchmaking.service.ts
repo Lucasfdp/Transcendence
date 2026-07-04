@@ -91,12 +91,20 @@ export class MatchmakingService {
 		const match = await this.matchRepo.save(
 			this.matchRepo.create({ gameId, mode, status: "pending" }),
 		);
+		// Each queued player may have requested a different `powerupsEnabled`
+		// value; the room needs one resolved setting. The first player to join
+		// the queue (players[0], since `players` was spliced off the front in
+		// join order) acts as the room's effective host and decides the
+		// setting for everyone matched into their queue slot (Bug Audit M1 —
+		// this was previously hard-coded to `true` and silently ignored
+		// every player's preference, including their own).
+		const resolvedPowerupsEnabled = players[0].powerupsEnabled;
 		const room = this.roomService.createRoom(
 			match.id,
 			gameId,
 			mode,
 			players,
-			{ powerupsEnabled: true },
+			{ powerupsEnabled: resolvedPowerupsEnabled },
 		);
 		await this.matchPlayerRepo.save(
 			room.players.map((player) =>

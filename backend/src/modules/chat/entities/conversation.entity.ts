@@ -2,6 +2,7 @@ import {
 	Column,
 	CreateDateColumn,
 	Entity,
+	Index,
 	ManyToOne,
 	PrimaryGeneratedColumn,
 	UpdateDateColumn,
@@ -38,6 +39,18 @@ export class Conversation {
 
 	@Column({ nullable: true, default: null })
 	ownerId: number | null;
+
+	/**
+	 * Canonical `min(userId):max(userId)` pair key — set only for "dm"
+	 * conversations, always null for "group". A unique index on this column
+	 * (see migration `20260704010000-add-conversations-dmkey`) is the DB-level
+	 * guarantee that two concurrent `getOrCreateDirectConversation` calls for
+	 * the same pair can never both succeed in creating a conversation
+	 * (Bug Audit M3).
+	 */
+	@Index("UQ_conversations_dmKey", { unique: true })
+	@Column({ type: "varchar", length: 64, nullable: true, default: null })
+	dmKey: string | null;
 
 	@Column({ type: "timestamptz", nullable: true, default: null })
 	lastMessageAt: Date | null;

@@ -67,7 +67,17 @@ export class GameResultsService {
 			const coins = user.coins + coinsGained;
 
 			// ── Profile stats ──────────────────────────────────────────────────────
+			// Every user is created with a Profile row (see UsersService.create), so
+			// a missing `profile` here means the caller loaded the user without the
+			// relation, or the row is an orphaned data-integrity edge case (partial
+			// migration). Fail with a clear, actionable error instead of a raw
+			// TypeError on the mutation below (Bug Audit L4).
 			const profile = user.profile;
+			if (!profile) {
+				throw new InternalServerErrorException(
+					`Cannot submit game result: user ${user.id} has no profile loaded`,
+				);
+			}
 			if (isWin) {
 				profile.totalWins += 1;
 			} else if (isLoss) {
@@ -101,12 +111,26 @@ export class GameResultsService {
 				cardDrop = null;
 			}
 
+			// Bug Audit M4: `evaluateForUser` can unlock a coins-reward
+			// achievement, which mutates `user.coins` (same object reference)
+			// and persists it with its own `usersRepo.save(user)` call. The
+			// local `coins` const captured above is the match-reward-only
+			// balance from *before* that happened, so the response must read
+			// `user.coins` now to reflect the final, actually-persisted total —
+			// otherwise the client's balance/animation is wrong until the next
+			// refetch.
+			// TODO(#game-results-atomicity): submitResult persists the user row
+			// twice (once here, once inside AchievementsService.applyReward when
+			// a coins achievement unlocks). Folding both into a single
+			// transaction would remove the extra write without changing
+			// behavior; deferred since it touches AchievementsService's public
+			// save path used elsewhere.
 			return {
 				xpGained,
 				coinsGained,
 				newXp: xp,
 				newLevel: level,
-				newCoins: coins,
+				newCoins: user.coins,
 				leveledUp,
 				unlockedAchievements,
 				cardDrop,

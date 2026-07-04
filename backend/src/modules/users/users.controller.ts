@@ -263,6 +263,13 @@ export class UsersController {
 	 * Counts only wins (mp.outcome = 'win') from matches created within the
 	 * requested time window.  Uses a left join so players with zero period wins
 	 * still appear, sorted to the bottom.
+	 *
+	 * IMPORTANT (Bug Audit H2): the period cutoff (`m."createdAt" >= $1`) lives
+	 * in the `matches` JOIN condition, not a WHERE clause, so `match_players`
+	 * rows for out-of-window matches are still joined — just with `m` = NULL.
+	 * Both aggregates must therefore explicitly require `m.id IS NOT NULL` /
+	 * `COUNT(m.id)` so out-of-window rows don't leak into "weekly"/"monthly"
+	 * totals and silently degrade them into all-time numbers again.
 	 */
 	private async queryPeriod(
 		period: "monthly" | "weekly",
@@ -300,9 +307,9 @@ export class UsersController {
         u.avatar,
         u.level,
         COALESCE(SUM(
-          CASE WHEN mp.outcome = 'win' THEN 1 ELSE 0 END
+          CASE WHEN mp.outcome = 'win' AND m.id IS NOT NULL THEN 1 ELSE 0 END
         ), 0)::int                                                          AS wins,
-        COALESCE(COUNT(mp.id), 0)::int                                      AS "gamesPlayed"
+        COALESCE(COUNT(m.id), 0)::int                                       AS "gamesPlayed"
       FROM users u
       LEFT JOIN match_players mp ON mp."userId" = u.id
       LEFT JOIN matches       m  ON m.id = mp."matchId"
