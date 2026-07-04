@@ -24,7 +24,7 @@ export function buildReturnButton(
 		.text(bx + BW / 2, by + BH / 2, "RETURN TO HUB", {
 			fontSize: "20px",
 			color: THEME.text,
-			fontFamily: THEME.fontUrbanStone,
+			fontFamily: THEME.font,
 			fontStyle: "bold",
 		})
 		.setOrigin(0.5)

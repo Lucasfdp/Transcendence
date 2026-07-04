@@ -1,16 +1,4 @@
 @font-face {
-	font-family: "ThirstyCaps";
-	src: url("../assets/fonts/ThirstyCaps.otf") format("opentype");
-	font-display: swap;
-}
-
-@font-face {
-	font-family: "DirtyBrush";
-	src: url("../assets/fonts/DirtyBrush.ttf") format("truetype");
-	font-display: swap;
-}
-
-@font-face {
 	font-family: "Blowbrush";
 	src: url("../assets/fonts/blowbrush.otf") format("opentype");
 	font-display: swap;
@@ -32,12 +20,8 @@
 	--muted: #b3a996;
 	--accent: #f1d391;
 	--accent-strong: #e88a3d;
-	--thirsty-caps-font: "ThirstyCaps", var(--display-font);
-	--dirty-brush-font: "DirtyBrush", var(--display-font);
 	--blowbrush-font: "Blowbrush", var(--display-font);
 	--rowdy-font: "Rowdy", "Palatino Linotype", "Book Antiqua", Palatino, serif;
-	--urban-stone-font: var(--rowdy-font);
-	--choose-mode-font: var(--dirty-brush-font);
 	--display-font: var(--rowdy-font);
 	--body-font: var(--rowdy-font);
 	--mono-font: "IBM Plex Mono", "Cascadia Code", "Fira Code", Consolas,
@@ -1229,7 +1213,7 @@ input {
 	position: relative;
 	z-index: 1;
 	color: rgba(75, 49, 25, 0.92);
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: clamp(0.9rem, 1.25vw, 1.08rem);
 	font-weight: 400;
 	letter-spacing: 0.04em;
@@ -1474,7 +1458,7 @@ input {
 	padding: 0;
 	background: transparent;
 	color: #fff3c6;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: clamp(1.21rem, 1.79vw, 1.56rem);
 	font-weight: 400;
 	font-variant-numeric: tabular-nums;
@@ -1543,7 +1527,7 @@ input {
 
 .hub-page__clock-debug-label {
 	color: #f1d391;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 1.55rem;
 	font-weight: 400;
 	line-height: 0.9;
@@ -1883,7 +1867,7 @@ input {
 	background: transparent;
 	background-clip: padding-box;
 	color: #b9c4a5;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 1.89rem;
 	font-weight: 400;
 	line-height: 0.9;
@@ -2149,7 +2133,7 @@ input {
 		linear-gradient(180deg, rgba(33, 37, 24, 0.9), rgba(8, 18, 11, 0.94)),
 		rgba(7, 10, 16, 0.88);
 	color: #d8ff9f;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 0.84rem;
 	font-weight: 700;
 	letter-spacing: 0.04em;
@@ -2186,7 +2170,7 @@ input {
 }
 
 .hub-modal__cosmetic-grid article > button {
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-weight: 700;
 	letter-spacing: 0.04em;
 }
@@ -2281,7 +2265,7 @@ input {
 
 .hub-modal__cosmetic-balance strong {
 	color: #d8ff9f;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 1.1rem;
 	letter-spacing: 0.04em;
 }
@@ -2424,7 +2408,7 @@ input {
 
 .hub-modal__cosmetic-preview--mystery span {
 	color: rgba(255, 243, 198, 0.78);
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: clamp(3rem, 7vw, 4.6rem);
 	font-weight: 900;
 	line-height: 1;
@@ -2501,7 +2485,7 @@ input {
 
 .hub-modal__shell-placeholder {
 	color: rgba(255, 243, 198, 0.82);
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 3.8rem;
 	font-weight: 900;
 	line-height: 1;
@@ -2510,7 +2494,7 @@ input {
 
 .hub-modal__shell-card strong {
 	color: #f8dfaa;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 0.92rem;
 	letter-spacing: 0.03em;
 	line-height: 1.12;
@@ -2568,7 +2552,7 @@ input {
 
 .hub-modal__shell-detail-card > strong {
 	color: #f8dfaa;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 1.2rem;
 	letter-spacing: 0.04em;
 }
@@ -2622,7 +2606,7 @@ input {
 
 .hub-modal__dojo-tag-copy strong {
 	color: #f8dfaa;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 0.92rem;
 	letter-spacing: 0.04em;
 }
@@ -2691,7 +2675,7 @@ input {
 .hub-modal__cosmetic-alter-copy strong,
 .hub-cards__name {
 	color: #f8dfaa;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 1.05rem;
 	font-weight: 700;
 	letter-spacing: 0.04em;
@@ -2804,7 +2788,7 @@ input {
 	border-radius: 0.55rem;
 	background: rgba(9, 22, 12, 0.84);
 	color: #d8ff9f;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 0.82rem;
 	font-weight: 700;
 	letter-spacing: 0.04em;
@@ -2834,7 +2818,7 @@ input {
 }
 
 .hub-modal__list--achievements small {
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 0.86rem;
 	font-weight: 700;
 	letter-spacing: 0.04em;
@@ -2913,7 +2897,7 @@ input {
 	background: transparent;
 	background-clip: padding-box;
 	color: #fff3c6;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: clamp(1.32rem, 1.96vw, 1.62rem);
 	font-weight: 400;
 	line-height: 0.85;
@@ -3364,7 +3348,7 @@ input {
 	margin: 1.2rem auto 0;
 	max-width: 55rem;
 	color: rgba(255, 247, 230, 0.82);
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-weight: 700;
 	line-height: 1.45;
 	text-align: center;
@@ -3420,7 +3404,7 @@ input {
 
 .power-picker-page__powerups h2,
 .power-card strong {
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 }
 
 .power-picker-page__powerups h2 {
@@ -3448,7 +3432,7 @@ input {
 	border-radius: 0.8rem;
 	background: linear-gradient(180deg, rgba(17, 18, 23, 0.92), rgba(8, 8, 12, 0.94));
 	color: var(--text);
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	text-align: center;
 	box-shadow:
 		inset 0 1px 0 rgba(255, 255, 255, 0.05),
@@ -3560,7 +3544,7 @@ img.power-card__orb {
 .power-picker-page__mode-card p {
 	margin: 0;
 	color: rgba(255, 247, 230, 0.82);
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: clamp(0.82rem, 1vw, 0.92rem);
 	line-height: 1.32;
 	text-align: center;
@@ -4344,7 +4328,7 @@ img.power-card__orb {
 }
 
 .hub-modal__replay-tab {
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 0.9rem;
 	font-weight: 700;
 	letter-spacing: 0.04em;
@@ -4371,7 +4355,7 @@ img.power-card__orb {
 .hub-modal__replay-section h3,
 .hub-modal__replay-viewer h3 {
 	margin: 0;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 1rem;
 	font-weight: 700;
 	letter-spacing: 0.06em;
@@ -4407,7 +4391,7 @@ img.power-card__orb {
 }
 
 .hub-modal__replay-copy strong {
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 0.98rem;
 	letter-spacing: 0.03em;
 }
@@ -5046,7 +5030,7 @@ img.power-card__orb {
 }
 
 .hub-cards__store-info strong {
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 0.95rem;
 	letter-spacing: 0.04em;
 }
@@ -5060,7 +5044,7 @@ img.power-card__orb {
 	padding: 10px 18px;
 	border: 1px solid rgba(123, 183, 111, 0.68);
 	border-radius: 0.72rem;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-weight: 700;
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
@@ -5118,7 +5102,7 @@ img.power-card__orb {
 	border-radius: 0.72rem;
 	background: rgba(9, 22, 12, 0.72);
 	color: #d8ff9f;
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-weight: 700;
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
@@ -5182,7 +5166,7 @@ img.power-card__orb {
 }
 
 .hub-cards__set-progress {
-	font-family: var(--urban-stone-font);
+	font-family: var(--rowdy-font);
 	font-size: 0.82rem;
 	opacity: 0.7;
 }

@@ -65,6 +65,12 @@ export class PowerPickupManager {
 		this.draw();
 	}
 
+	setPickups(pickups: PowerPickup[]): void {
+		this.pickups.length = 0;
+		this.pickups.push(...pickups.map((pickup) => ({ ...pickup })));
+		this.draw();
+	}
+
 	destroy(): void {
 		this.clearImages();
 		this.pickups.length = 0;

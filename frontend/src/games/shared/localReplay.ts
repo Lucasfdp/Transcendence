@@ -31,6 +31,7 @@ export function buildLocalReplayPlayers(
 			index === 0
 				? (user?.turtleName ?? user?.username ?? "Player 1")
 				: `Player ${index + 1}`,
+		turtleName: index === 0 ? (user?.turtleName ?? null) : null,
 		connected: true,
 		ready: true,
 		reconnectExpiresAt: null,

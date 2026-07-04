@@ -73,6 +73,7 @@ import {
 } from "../../shared/mechanics/player-trails";
 import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
 import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
+import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
 import {
 	getGameSocket,
 	type BellClashSnapshot,
@@ -86,6 +87,7 @@ import {
 	PLAYER_HEX_COLOURS,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
+import { hudPlayerLabel } from "../../shared/player-labels";
 import {
 	buildLocalReplayPlayerUserIds,
 	buildLocalReplayPlayers,
@@ -998,7 +1000,7 @@ export class BellClashScene extends ResponsiveScene {
 			.text(this.scale.width / 2, 48, "", {
 				fontSize: "13px",
 				color: THEME.textGold,
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 			})
 			.setOrigin(0.5, 0)
@@ -1118,6 +1120,7 @@ export class BellClashScene extends ResponsiveScene {
 		)
 			? (event.power as PowerType)
 			: PowerType.NONE;
+		this.spawnOnlineChildBalls(power, ball, event.side);
 		applyBallPower(power, ball, this.arena);
 		if (event.side === this.onlineMatch.side) {
 			this.onlineLocalShotNumber = event.shotNumber;
@@ -1132,6 +1135,22 @@ export class BellClashScene extends ResponsiveScene {
 			);
 		}
 		this.drawBalls();
+	}
+
+	private spawnOnlineChildBalls(
+		power: PowerType,
+		ball: BallState,
+		player: number,
+	): void {
+		if (power === PowerType.SPLITTER) {
+			const children = createSplitBalls(ball);
+			this.powerBalls.push(
+				{ ball: children[0], player },
+				{ ball: children[2], player },
+			);
+		} else if (power === PowerType.MIRROR) {
+			this.powerBalls.push({ ball: createMirrorBall(ball, this.arena), player });
+		}
 	}
 
 	private updateOnline(delta: number): void {
@@ -1365,7 +1384,7 @@ export class BellClashScene extends ResponsiveScene {
 			.text(x, y - 34 * this.arena.scale, `POWER UP\n${type.toUpperCase()}`, {
 				fontSize: `${Math.max(18, 28 * this.arena.scale)}px`,
 				color: "#fff7d6",
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 				align: "center",
 				stroke: "#171008",
@@ -1443,7 +1462,7 @@ export class BellClashScene extends ResponsiveScene {
 			showRoundInfo: false,
 			playerColours: PLAYER_COLOUR_VALUES,
 			playerHexColours: PLAYER_HEX_COLOURS,
-			playerLabel: (player) => `P${player + 1}`,
+			playerLabel: (player) => this.hudPlayerLabel(player),
 		});
 		this.updateScoreHud();
 
@@ -1485,6 +1504,19 @@ export class BellClashScene extends ResponsiveScene {
 		if (this.localPlayerCount > 1)
 			return `ROUND ${this.currentShot + 1}/${SHOTS_TOTAL}  P${this.currentPlayerIndex() + 1} TURN`;
 		return `SHELL ${this.currentShot + 1}/${SHOTS_TOTAL}`;
+	}
+
+	private hudPlayerLabel(player: number): string {
+		return hudPlayerLabel({
+			player,
+			localUser: this.registry.get("user") as
+				| { username?: string; turtleName?: string | null }
+				| undefined,
+			onlinePlayers:
+				this.onlineMatch?.snapshot?.gameId === "bell-clash"
+					? this.onlineMatch.snapshot.players
+					: undefined,
+		});
 	}
 
 	private formatScoreText(): string {
@@ -2230,9 +2262,12 @@ export class BellClashScene extends ResponsiveScene {
 				: snapshot.winnerSide === this.onlineMatch?.side
 					? "YOU WIN!"
 					: "YOU LOSE";
-		this.overlay = showGameEndModal(this, this.overlay, {
+		this.overlay = showOnlineRematchEndModal(this, this.overlay, {
 			title: "BELL CLASH",
 			result: titleText,
+			matchId: snapshot.matchId,
+			side: this.onlineMatch?.side ?? 0,
+			sceneKey: "BellClashScene",
 			players: [...snapshot.players]
 				.sort((a, b) => a.side - b.side)
 				.map((player) => ({
@@ -2244,16 +2279,10 @@ export class BellClashScene extends ResponsiveScene {
 					score: snapshot.score[player.side] ?? 0,
 					color: this.playerHexColour(player.side),
 				})),
-			actions: [
-				{
-					label: "RETURN",
-					onClick: () => {
-						this.registry.remove("onlineMatch");
-						this.cleanupSceneResources();
-						this.scene.start("HubScene");
-					},
-				},
-			],
+			onReturn: () => this.cleanupSceneResources(),
+			onOverlay: (overlay) => {
+				this.overlay = overlay;
+			},
 			depth: DEPTH_OVERLAY,
 		});
 	}

@@ -185,7 +185,7 @@ export class SidePanel {
 					{
 						fontSize: "16px",
 						color: THEME.textGold,
-						fontFamily: THEME.fontUrbanStone,
+						fontFamily: THEME.font,
 						fontStyle: "bold",
 					},
 				)
@@ -291,7 +291,7 @@ export class SidePanel {
 			.text(textX, y + 2, row.label, {
 				fontSize: row.labelFontSize ?? "14px",
 				color: labelColor,
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 			})
 			.setDepth(this.depth + 1)
@@ -304,7 +304,7 @@ export class SidePanel {
 				.text(textX, y + 17, row.subtitle, {
 					fontSize: "11px",
 					color: THEME.textMutedHex,
-					fontFamily: THEME.fontUrbanStone,
+					fontFamily: THEME.font,
 				})
 				.setDepth(this.depth + 1);
 			this.texts.push(sub);
@@ -317,7 +317,7 @@ export class SidePanel {
 			.text(valueX, y + 2, row.value, {
 				fontSize: row.valueFontSize ?? "14px",
 				color: valueColor,
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 			})
 			.setOrigin(1, 0)

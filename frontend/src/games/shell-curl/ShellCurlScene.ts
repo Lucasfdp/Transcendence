@@ -71,6 +71,7 @@ import {
 } from "../../shared/mechanics/player-trails";
 import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
 import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
+import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
 import {
 	getGameSocket,
 	type CurlingSnapshot,
@@ -84,6 +85,7 @@ import {
 	PLAYER_HEX_COLOURS,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
+import { hudPlayerLabel } from "../../shared/player-labels";
 import {
 	buildLocalReplayPlayerUserIds,
 	buildLocalReplayPlayers,
@@ -388,7 +390,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			showRoundInfo: false,
 			playerColours: PLAYER_COLOUR_VALUES,
 			playerHexColours: PLAYER_COLOURS,
-			playerLabel: (player) => `P${player + 1}`,
+			playerLabel: (player) => this.hudPlayerLabel(player),
 			minPlayerCount: this.turnManager.state.score.length,
 		});
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
@@ -888,7 +890,7 @@ export class ShellCurlScene extends ResponsiveScene {
 				{
 					fontSize: `${Math.max(18, 26 * this.arena.scale)}px`,
 					color: THEME.textGold,
-					fontFamily: THEME.fontUrbanStone,
+					fontFamily: THEME.font,
 					fontStyle: "bold",
 					align: "center",
 					stroke: "#171008",
@@ -972,7 +974,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			.text(x, y - 42 * this.arena.scale, "SPLIT!", {
 				fontSize: `${Math.max(18, 30 * this.arena.scale)}px`,
 				color: "#fff7d6",
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 				stroke: "#171008",
 				strokeThickness: 4,
@@ -1478,6 +1480,19 @@ export class ShellCurlScene extends ResponsiveScene {
 		);
 	}
 
+	private hudPlayerLabel(player: number): string {
+		return hudPlayerLabel({
+			player,
+			localUser: this.registry.get("user") as
+				| { username?: string; turtleName?: string | null }
+				| undefined,
+			onlinePlayers:
+				this.onlineMatch?.snapshot?.gameId === "temple-curling"
+					? this.onlineMatch.snapshot.players
+					: undefined,
+		});
+	}
+
 	private readStoneTrail(stoneId: number): Array<{ x: number; y: number }> {
 		const trail = this.stoneTrails.get(stoneId);
 		if (!trail?.length) return [];
@@ -1733,7 +1748,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			.text(this.scale.width / 2, 18, "", {
 				fontSize: "13px",
 				color: "#d4a843",
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 			})
 			.setOrigin(0.5, 0)
@@ -1796,12 +1811,15 @@ export class ShellCurlScene extends ResponsiveScene {
 					: snapshot.winnerSide === this.onlineMatch.side
 						? "YOU WIN!"
 						: "YOU LOSE";
-			this.overlayContainer = showGameEndModal(
+			this.overlayContainer = showOnlineRematchEndModal(
 				this,
 				this.overlayContainer,
 				{
 					title: "TEMPLE CURLING",
 					result: winner,
+					matchId: snapshot.matchId,
+					side: this.onlineMatch.side,
+					sceneKey: "ShellCurlScene",
 					players: [...snapshot.players]
 						.sort((a, b) => a.side - b.side)
 						.map((player) => ({
@@ -1813,16 +1831,12 @@ export class ShellCurlScene extends ResponsiveScene {
 							score: snapshot.score[player.side] ?? 0,
 							color: this.playerHexColour(player.side),
 						})),
-					actions: [
-						{
-							label: "RETURN",
-							onClick: () => {
-								this.overlayContainer = null;
-								this.registry.remove("onlineMatch");
-								this.scene.start("HubScene");
-							},
-						},
-					],
+					onReturn: () => {
+						this.overlayContainer = null;
+					},
+					onOverlay: (overlay) => {
+						this.overlayContainer = overlay;
+					},
 					depth: DEPTH_OVERLAY,
 				},
 			);
@@ -2222,7 +2236,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			.text(x, y - 34 * this.arena.scale, `POWER UP\n${def.label}`, {
 				fontSize: `${Math.max(18, 28 * this.arena.scale)}px`,
 				color: "#fff7d6",
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 				align: "center",
 				stroke: "#171008",

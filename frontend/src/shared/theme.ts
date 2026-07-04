@@ -23,5 +23,4 @@ export const THEME = {
 
 	font: "Rowdy",
 	fontBlowbrush: "Blowbrush",
-	fontUrbanStone: "Rowdy",
 };

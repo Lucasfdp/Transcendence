@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
-import { api } from "../features/hub/api";
+import { api, type User } from "../features/hub/api";
 import { RETURN_TO_HUB_EVENT } from "../features/hub/ReturnToHubScene";
 import type { ShellSmashStartData } from "../lib/createShellSmashGame";
 import { createShellSmashGame } from "../lib/createShellSmashGame";
@@ -80,6 +80,7 @@ export default function GamePage(): JSX.Element {
 	const [hubBackground, setHubBackground] = useState<string | null>(null);
 	const [hubBackgroundAlter, setHubBackgroundAlter] = useState<string | null>(null);
 	const [shellSkin, setShellSkin] = useState("base");
+	const [currentUser, setCurrentUser] = useState<User | null>(null);
 	const [launchData, setLaunchData] = useState<ShellSmashStartData | null>(null);
 
 	const sceneData = useMemo(() => {
@@ -102,6 +103,7 @@ export default function GamePage(): JSX.Element {
 			.getMe()
 			.then((user) => {
 				if (!cancelled) {
+					setCurrentUser(user);
 					setHubBackground(user.hubBackground);
 					setHubBackgroundAlter(user.hubBackgroundAlter);
 					setShellSkin(user.shellSkin || "base");
@@ -141,8 +143,9 @@ export default function GamePage(): JSX.Element {
 				hubBackground={hubBackground}
 				hubBackgroundAlter={hubBackgroundAlter}
 					onBack={() => navigate("/?view=normal", { replace: true })}
-				onLaunch={setLaunchData}
+					onLaunch={setLaunchData}
 				shellSkin={shellSkin}
+				currentUser={currentUser}
 			/>
 		);
 	}
@@ -167,6 +170,7 @@ function PowerupMatchmakingPanel({
 	onBack,
 	onLaunch,
 	shellSkin,
+	currentUser,
 }: {
 	sceneData: {
 		gameId: string;
@@ -180,6 +184,7 @@ function PowerupMatchmakingPanel({
 	onBack: () => void;
 	onLaunch: (data: ShellSmashStartData) => void;
 	shellSkin: string;
+	currentUser: User | null;
 }): JSX.Element {
 	const gameId = sceneData.gameId as GameId;
 	const location = useLocation();
@@ -257,6 +262,7 @@ function PowerupMatchmakingPanel({
 			onLaunch({
 				gameId,
 				targetScene: sceneData.targetScene,
+				user: currentUser ?? undefined,
 				shellSelection: buildEmptyShellSelection(payload.snapshot.players.length),
 				onlineMatch: {
 					matchId: payload.matchId,
@@ -275,6 +281,7 @@ function PowerupMatchmakingPanel({
 			onLaunch({
 				gameId,
 				targetScene: sceneData.targetScene,
+				user: currentUser ?? undefined,
 				shellSelection: buildEmptyShellSelection(payload.snapshot.players.length),
 				onlineMatch: {
 					matchId: payload.matchId,
@@ -321,7 +328,7 @@ function PowerupMatchmakingPanel({
 			socket.off("queue:error");
 			socket.off("queue:left");
 		};
-	}, [gameId, onLaunch, sceneData.targetScene]);
+	}, [currentUser, gameId, onLaunch, sceneData.targetScene]);
 
 	const backgroundClass = hubBackgroundClass(
 		"game-host",
@@ -382,6 +389,7 @@ function PowerupMatchmakingPanel({
 		onLaunch({
 			gameId,
 			targetScene: sceneData.targetScene,
+			user: currentUser ?? undefined,
 			shellSelection: Object.fromEntries(
 				Array.from({ length: playerCount }, (_value, index) => [
 					`player${index}`,
@@ -458,6 +466,7 @@ function PowerupMatchmakingPanel({
 		onLaunch({
 			gameId: activeMatchStatus.gameId as GameId,
 			targetScene,
+			user: currentUser ?? undefined,
 			shellSelection: { player0: [], player1: [] },
 			onlineMatch: {
 				matchId: activeMatchStatus.matchId,
@@ -528,6 +537,7 @@ function PowerupMatchmakingPanel({
 			onLaunch({
 				gameId,
 				targetScene: sceneData.targetScene,
+				user: currentUser ?? undefined,
 				shellSelection: { player0: [], player1: [] },
 				onlineMatch: { matchId: snapshot.matchId, side, snapshot } satisfies OnlineMatchContext,
 			});

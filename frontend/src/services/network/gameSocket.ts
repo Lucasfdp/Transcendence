@@ -27,6 +27,7 @@ export interface CurlingSnapshot {
 		side: number;
 		userId: number | null;
 		username: string;
+		turtleName?: string | null;
 		connected: boolean;
 		ready: boolean;
 		reconnectExpiresAt: number | null;
@@ -87,6 +88,7 @@ export interface SnapshotPlayer {
 	side: number;
 	userId: number | null;
 	username: string;
+	turtleName?: string | null;
 	connected: boolean;
 	ready: boolean;
 	reconnectExpiresAt: number | null;
@@ -117,6 +119,17 @@ export interface BambooBashSnapshot {
 	nextBambooId: number;
 	spawnAccMs: number;
 	lastBambooUpdateAt: number | null;
+	usedPowersBySide: string[][];
+	lastPowerBySide: string[];
+	lastPowerPickupIdBySide: Array<number | null>;
+	powerPickups: Array<{
+		id: number;
+		type: string;
+		nx: number;
+		ny: number;
+	}>;
+	nextPowerPickupId: number;
+	powerPickupAccMs: number;
 	players: SnapshotPlayer[];
 	balls: BallSnapshotData[];
 	entities?: ReplayFrameSnapshotEntity[];

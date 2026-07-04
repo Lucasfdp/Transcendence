@@ -255,10 +255,12 @@ export function initializeArenaReplayBall(
 	side: number,
 	vx: number,
 	vy: number,
+	position?: { x?: number; y?: number },
 ): void {
 	const spawn = getArenaBallSpawn(snapshot, side);
 	upsertArenaBall(snapshot, side, {
-		...spawn,
+		x: position?.x ?? spawn.x,
+		y: position?.y ?? spawn.y,
 		vx: Number.isFinite(vx) ? vx : 0,
 		vy: Number.isFinite(vy) ? vy : 0,
 		rotation: 0,

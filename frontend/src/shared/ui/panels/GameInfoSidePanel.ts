@@ -366,7 +366,7 @@ export class GameInfoSidePanel {
 			this.addText(r.x + PAD, sectionY, details.summaryTitle, {
 				fontSize: "13px",
 				color: THEME.textGold,
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 			}).setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
 			sectionY += SECTION_H;
@@ -375,7 +375,7 @@ export class GameInfoSidePanel {
 				this.addText(r.x + PAD, sectionY, line, {
 					fontSize: "10px",
 					color: THEME.text,
-					fontFamily: THEME.fontUrbanStone,
+					fontFamily: THEME.font,
 					wordWrap: { width: r.width - PAD * 2 },
 				});
 				sectionY += SUMMARY_LINE_H;
@@ -389,13 +389,13 @@ export class GameInfoSidePanel {
 			this.addText(r.x + PAD, y, row.label, {
 				fontSize: "12px",
 				color: row.labelColor ?? THEME.textJade,
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 			}).setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
 			this.addText(r.x + r.width - PAD, y, row.value, {
 				fontSize: "13px",
 				color: row.valueColor ?? THEME.textGold,
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 			})
 				.setOrigin(1, 0)
@@ -406,7 +406,7 @@ export class GameInfoSidePanel {
 		this.addText(r.x + PAD, sectionY, "AVAILABLE POWERS", {
 			fontSize: "13px",
 			color: THEME.textGold,
-			fontFamily: THEME.fontUrbanStone,
+			fontFamily: THEME.font,
 			fontStyle: "bold",
 		}).setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
 
@@ -512,7 +512,7 @@ export class GameInfoSidePanel {
 					{
 						fontSize: "12px",
 						color: labelColor,
-						fontFamily: THEME.fontUrbanStone,
+						fontFamily: THEME.font,
 						fontStyle: isSel && !isUsed ? "bold" : "normal",
 					},
 					dim,
@@ -576,14 +576,14 @@ export class GameInfoSidePanel {
 		this.addText(r.x + PAD, footerY + 10, POWER_LABELS[descPower], {
 			fontSize: "14px",
 			color: THEME.textGold,
-			fontFamily: THEME.fontUrbanStone,
+			fontFamily: THEME.font,
 			fontStyle: "bold",
 		});
 
 		this.addText(r.x + PAD, footerY + 28, POWER_DESC[descPower], {
 			fontSize: "10px",
 			color: THEME.text,
-			fontFamily: THEME.fontUrbanStone,
+			fontFamily: THEME.font,
 			wordWrap: { width: r.width - PAD * 2 },
 		});
 
@@ -599,7 +599,7 @@ export class GameInfoSidePanel {
 			this.addText(r.x + PAD, rewardY, "MATCH REWARDS", {
 				fontSize: "12px",
 				color: THEME.textGold,
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 			});
 
@@ -608,12 +608,12 @@ export class GameInfoSidePanel {
 				this.addText(r.x + PAD, y, row.label, {
 					fontSize: "10px",
 					color: row.labelColor ?? THEME.textMutedHex,
-					fontFamily: THEME.fontUrbanStone,
+					fontFamily: THEME.font,
 				});
 				this.addText(r.x + r.width - PAD, y, row.value, {
 					fontSize: "10px",
 					color: row.valueColor ?? THEME.textGold,
-					fontFamily: THEME.fontUrbanStone,
+					fontFamily: THEME.font,
 					fontStyle: "bold",
 				})
 					.setOrigin(1, 0)

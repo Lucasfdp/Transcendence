@@ -27,6 +27,7 @@ export abstract class BaseEngine {
 			side: player.side,
 			userId: player.user.id,
 			username: player.user.username,
+			turtleName: player.user.turtleName ?? null,
 			connected: player.connected,
 			ready: player.ready,
 			reconnectExpiresAt: player.reconnectExpiresAt ?? null,

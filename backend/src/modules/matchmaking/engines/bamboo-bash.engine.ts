@@ -16,11 +16,23 @@ import { GameEngine, GameEngineCreateContext } from "./game-engine";
 const TOTAL_ROUNDS = 3;
 const ROUND_TIME_MS = 30_000;
 const SPAWN_EVERY_MS = 1800;
+const POWER_PICKUP_EVERY_MS = 7000;
 const MAX_BAMBOO = 6;
 const START_BAMBOO = 2;
 const GROW_INTERVAL_MS = 5000;
 const MAX_STAGE = 3;
 const STAGE_POINTS: Record<number, number> = { 1: 100, 2: 150, 3: 250 };
+const POWER_POOL = [
+	"heavy",
+	"splitter",
+	"spinning",
+	"rocket",
+	"giant",
+	"tiny",
+	"mirror",
+	"phantom",
+];
+const ALLOWED_POWERS = new Set(["none", ...POWER_POOL]);
 
 @Injectable()
 export class BambooBashEngine extends BaseEngine implements GameEngine {
@@ -52,6 +64,15 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 			nextBambooId: 1,
 			spawnAccMs: 0,
 			lastBambooUpdateAt: null,
+			usedPowersBySide: Array.from({ length: roomPlayers.length }, () => []),
+			lastPowerBySide: Array.from({ length: roomPlayers.length }, () => "none"),
+			lastPowerPickupIdBySide: Array.from(
+				{ length: roomPlayers.length },
+				() => null,
+			),
+			powerPickups: [],
+			nextPowerPickupId: 1,
+			powerPickupAccMs: 0,
 			players: roomPlayers.map((player) => this.toSnapshotPlayer(player)),
 			balls: [],
 			activeBallIdBySide: [],
@@ -83,6 +104,8 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 			return this.applyBambooHit(room, userId, input.payload ?? {});
 		if (input.action === "bamboo:sync")
 			return this.applyBambooSync(room, userId, input.payload ?? {});
+		if (input.action === "bamboo:power-pickup")
+			return this.applyPowerPickup(room, userId, input.payload ?? {});
 		if (input.action !== "round:score") return room;
 		const state = room.state as BambooBashSnapshot;
 		this.updateSharedBamboos(state);
@@ -122,6 +145,21 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 			{ length: room.players.length },
 			() => 0,
 		);
+		state.usedPowersBySide = Array.from(
+			{ length: room.players.length },
+			() => [],
+		);
+		state.lastPowerBySide = Array.from(
+			{ length: room.players.length },
+			() => "none",
+		);
+		state.lastPowerPickupIdBySide = Array.from(
+			{ length: room.players.length },
+			() => null,
+		);
+		state.powerPickups = [];
+		state.nextPowerPickupId = 1;
+		state.powerPickupAccMs = 0;
 		state.roundScores = Array.from(
 			{ length: room.players.length },
 			() => null,
@@ -149,11 +187,21 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 		if (state.roundScores[player.side] !== null) return null;
 
 		const roundNumber = Math.floor(Number(payload.roundNumber));
+		const x = Number(payload.x);
+		const y = Number(payload.y);
 		const vx = Number(payload.vx);
 		const vy = Number(payload.vy);
 		if (roundNumber !== state.roundNumber) return null;
-		if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
-		initializeArenaReplayBall(state, player.side, vx, vy);
+		if (
+			!Number.isFinite(x) ||
+			!Number.isFinite(y) ||
+			!Number.isFinite(vx) ||
+			!Number.isFinite(vy)
+		)
+			return null;
+		const power = this.consumePower(state, player.side, payload.power);
+		initializeArenaReplayBall(state, player.side, vx, vy, { x, y });
+		state.lastPowerBySide[player.side] = power;
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;
@@ -213,6 +261,36 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 		return room;
 	}
 
+	private applyPowerPickup(
+		room: MatchRoom,
+		userId: number,
+		payload: Record<string, unknown> = {},
+	): MatchRoom | null {
+		const state = room.state as BambooBashSnapshot;
+		const player = room.players.find(
+			(candidate) => candidate.user.id === userId,
+		);
+		if (!player || room.status !== "active" || state.phase !== "active")
+			return null;
+		if (state.roundScores[player.side] !== null) return null;
+		this.updateSharedBamboos(state);
+		const roundNumber = Math.floor(Number(payload.roundNumber));
+		const pickupId = Math.floor(Number(payload.pickupId));
+		if (roundNumber !== state.roundNumber || !Number.isFinite(pickupId))
+			return null;
+		const index = state.powerPickups.findIndex(
+			(pickup) => pickup.id === pickupId,
+		);
+		if (index < 0) return room;
+		state.lastPowerBySide[player.side] = state.powerPickups[index].type;
+		state.lastPowerPickupIdBySide[player.side] = pickupId;
+		state.powerPickups.splice(index, 1);
+		syncArenaReplayBallFromPayload(state, player.side, payload);
+		state.seq = ++room.seq;
+		this.refreshSnapshotPlayers(room);
+		return room;
+	}
+
 	abandon(room: MatchRoom, abandonedPlayer: RoomPlayer): number | null {
 		const state = room.state as BambooBashSnapshot;
 		const connectedScores = room.players
@@ -244,11 +322,20 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 		playerCount: number,
 	): void {
 		state.liveRoundScores = Array.from({ length: playerCount }, () => 0);
+		state.usedPowersBySide = Array.from({ length: playerCount }, () => []);
+		state.lastPowerBySide = Array.from({ length: playerCount }, () => "none");
+		state.lastPowerPickupIdBySide = Array.from({ length: playerCount }, () => null);
+		state.powerPickups = [];
+		state.nextPowerPickupId = 1;
+		state.powerPickupAccMs = 0;
 		state.bamboos = [];
 		state.nextBambooId = 1;
 		state.spawnAccMs = 0;
 		state.lastBambooUpdateAt = Date.now();
 		for (let i = 0; i < START_BAMBOO; i++) this.spawnBamboo(state);
+		if (state.powerupsEnabled) {
+			for (let i = 0; i < playerCount; i++) this.spawnPowerPickup(state);
+		}
 	}
 
 	private updateSharedBamboos(state: BambooBashSnapshot): void {
@@ -270,6 +357,14 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 			state.spawnAccMs -= SPAWN_EVERY_MS;
 			if (state.bamboos.length < MAX_BAMBOO) this.spawnBamboo(state);
 		}
+
+		if (state.powerupsEnabled) {
+			state.powerPickupAccMs += delta;
+			while (state.powerPickupAccMs >= POWER_PICKUP_EVERY_MS) {
+				state.powerPickupAccMs -= POWER_PICKUP_EVERY_MS;
+				this.spawnPowerPickup(state);
+			}
+		}
 	}
 
 	private spawnUpToLimit(state: BambooBashSnapshot): void {
@@ -286,6 +381,31 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 			stage: 1,
 			ageMs: 0,
 		});
+	}
+
+	private spawnPowerPickup(state: BambooBashSnapshot): void {
+		const spot = this.randomPowerPickupSpot(state);
+		if (!spot) return;
+		state.powerPickups.push({
+			id: state.nextPowerPickupId++,
+			type: POWER_POOL[Math.floor(Math.random() * POWER_POOL.length)] ?? "heavy",
+			nx: spot.nx,
+			ny: spot.ny,
+		});
+	}
+
+	private consumePower(
+		state: BambooBashSnapshot,
+		side: number,
+		value: unknown,
+	): string {
+		if (!state.powerupsEnabled) return "none";
+		const power = String(value ?? "none");
+		if (power === "none" || !ALLOWED_POWERS.has(power)) return "none";
+		state.usedPowersBySide[side] ??= [];
+		if (state.usedPowersBySide[side].includes(power)) return "none";
+		state.usedPowersBySide[side].push(power);
+		return power;
 	}
 
 	private randomSpot(
@@ -306,6 +426,37 @@ export class BambooBashEngine extends BaseEngine implements GameEngine {
 					(candidate) =>
 						Math.hypot(candidate.nx - nx, candidate.ny - ny) <
 						minSep,
+				)
+			)
+				continue;
+			return { nx, ny };
+		}
+		return null;
+	}
+
+	private randomPowerPickupSpot(
+		state: BambooBashSnapshot,
+	): { nx: number; ny: number } | null {
+		const maxRadius = 0.88;
+		const clearOfCentre = 0.14;
+		const minPickupSep = 0.16;
+		const minBambooSep = 0.15;
+
+		for (let attempt = 0; attempt < 80; attempt++) {
+			const r = Math.sqrt(Math.random()) * maxRadius;
+			const t = Math.random() * Math.PI * 2;
+			const nx = r * Math.cos(t);
+			const ny = r * Math.sin(t);
+			if (Math.hypot(nx, ny) < clearOfCentre) continue;
+			if (
+				state.powerPickups.some(
+					(pickup) => Math.hypot(pickup.nx - nx, pickup.ny - ny) < minPickupSep,
+				)
+			)
+				continue;
+			if (
+				state.bamboos.some(
+					(bamboo) => Math.hypot(bamboo.nx - nx, bamboo.ny - ny) < minBambooSep,
 				)
 			)
 				continue;

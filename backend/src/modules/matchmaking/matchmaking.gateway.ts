@@ -24,6 +24,7 @@ import {
 } from "./private-lobbies.service";
 import {
 	BambooBashThrowEvent,
+	BambooBashSnapshot,
 	BellClashThrowEvent,
 	CurlingThrowEvent,
 	GameInputPayload,
@@ -104,6 +105,7 @@ export class MatchmakingGateway
 			const socketUser = {
 				id: user.id,
 				username: user.username,
+				turtleName: user.turtleName ?? null,
 				isGuest: user.isGuest,
 			};
 			this.presence.connect(socket.id, socketUser);
@@ -193,7 +195,8 @@ export class MatchmakingGateway
 		@MessageBody() payload: QueueJoinPayload,
 	): Promise<void> {
 		try {
-			const user = socket.data.user;
+			const user = this.resolveSocketUser(socket);
+			if (!user) throw new Error("Authentication required");
 			const result = await this.matchmaking.joinQueue(
 				socket.id,
 				user,
@@ -232,9 +235,19 @@ export class MatchmakingGateway
 		}
 	}
 
+	private resolveSocketUser(socket: Socket): SocketUser | null {
+		return (
+			(socket.data.user as SocketUser | undefined) ??
+			this.presence.getUser(socket.id) ??
+			null
+		);
+	}
+
 	@SubscribeMessage("queue:leave")
 	onQueueLeave(@ConnectedSocket() socket: Socket): void {
-		this.matchmaking.leaveQueue(socket.data.user.id);
+		const user = this.resolveSocketUser(socket);
+		if (!user) return;
+		this.matchmaking.leaveQueue(user.id);
 		socket.emit("queue:left");
 	}
 
@@ -243,9 +256,11 @@ export class MatchmakingGateway
 		@ConnectedSocket() socket: Socket,
 		@MessageBody() payload?: { away?: boolean },
 	): void {
+		const user = this.resolveSocketUser(socket);
+		if (!user) return;
 		if (payload?.away) {
 			const room = this.rooms.markAway(
-				socket.data.user.id,
+				user.id,
 				socket.id,
 				(timedOutRoom, player) =>
 					void this.finishAbandonedMatch(timedOutRoom, player),
@@ -258,7 +273,12 @@ export class MatchmakingGateway
 
 	@SubscribeMessage("match:rejoin")
 	onMatchRejoin(@ConnectedSocket() socket: Socket): void {
-		const room = this.rooms.reconnect(socket.id, socket.data.user);
+		const user = this.resolveSocketUser(socket);
+		if (!user) {
+			this.emitUserMatchStatus(socket);
+			return;
+		}
+		const room = this.rooms.reconnect(socket.id, user);
 		if (!room) {
 			this.emitUserMatchStatus(socket);
 			return;
@@ -271,9 +291,11 @@ export class MatchmakingGateway
 
 	@SubscribeMessage("match:abandon")
 	async onMatchAbandon(@ConnectedSocket() socket: Socket): Promise<void> {
-		const room = this.rooms.getRoomForUser(socket.data.user.id);
+		const user = this.resolveSocketUser(socket);
+		if (!user) return;
+		const room = this.rooms.getRoomForUser(user.id);
 		const player = room?.players.find(
-			(candidate) => candidate.user.id === socket.data.user.id,
+			(candidate) => candidate.user.id === user.id,
 		);
 		if (!room || !player) {
 			this.emitUserMatchStatus(socket);
@@ -282,12 +304,58 @@ export class MatchmakingGateway
 		await this.finishAbandonedMatch(room, player);
 	}
 
+	@SubscribeMessage("match:play-again")
+	async onMatchPlayAgain(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { matchId?: string },
+	): Promise<void> {
+		const user = this.resolveSocketUser(socket);
+		if (!user || !payload.matchId) return;
+		const room = this.rooms.getRoom(payload.matchId);
+		const player = room?.players.find(
+			(candidate) => candidate.user.id === user.id,
+		);
+		if (!room || !player || room.status !== "finished") return;
+
+		room.rematchReadyUserIds ??= new Set<number>();
+		room.rematchLeftUserIds ??= new Set<number>();
+		room.rematchReadyUserIds.add(user.id);
+		room.rematchLeftUserIds.delete(user.id);
+		socket.join(room.matchId);
+		this.emitRematchStatus(room);
+		await this.startRematchIfReady(room);
+	}
+
+	@SubscribeMessage("match:leave-finished")
+	async onMatchLeaveFinished(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { matchId?: string },
+	): Promise<void> {
+		const user = this.resolveSocketUser(socket);
+		if (!user || !payload.matchId) return;
+		const room = this.rooms.getRoom(payload.matchId);
+		const player = room?.players.find(
+			(candidate) => candidate.user.id === user.id,
+		);
+		if (!room || !player || room.status !== "finished") return;
+
+		room.rematchReadyUserIds ??= new Set<number>();
+		room.rematchLeftUserIds ??= new Set<number>();
+		room.rematchReadyUserIds.delete(user.id);
+		room.rematchLeftUserIds.add(user.id);
+		socket.leave(room.matchId);
+		this.emitRematchStatus(room);
+		await this.startRematchIfReady(room);
+	}
+
 	@SubscribeMessage("room:ready")
 	async onRoomReady(
 		@ConnectedSocket() socket: Socket,
 		@MessageBody() payload: { matchId: string },
 	): Promise<void> {
-		const room = this.rooms.setReady(payload.matchId, socket.data.user.id);
+		const user = this.resolveSocketUser(socket);
+		if (!user) return;
+		const room = this.rooms.setReady(payload.matchId, user.id);
 		if (!room) return;
 		this.emitState(room.matchId);
 		const started = await this.sessions.startIfReady(room.matchId);
@@ -299,7 +367,9 @@ export class MatchmakingGateway
 		@ConnectedSocket() socket: Socket,
 		@MessageBody() payload: GameInputPayload,
 	): Promise<void> {
-		const room = this.sessions.handleInput(socket.data.user.id, payload);
+		const user = this.resolveSocketUser(socket);
+		if (!user) return;
+		const room = this.sessions.handleInput(user.id, payload);
 		if (!room) return;
 
 		if (
@@ -336,22 +406,23 @@ export class MatchmakingGateway
 			"roundNumber" in room.state
 		) {
 			const player = room.players.find(
-				(candidate) => candidate.user.id === socket.data.user.id,
+				(candidate) => candidate.user.id === user.id,
 			);
 			if (player) {
+				const state = room.state as BambooBashSnapshot;
 				const ball =
 					"balls" in room.state
 						? room.state.balls.find((candidate) => candidate.side === player.side)
 						: null;
 				const throwEvent: BambooBashThrowEvent = {
 					matchId: room.matchId,
-					roundNumber: room.state.roundNumber,
+					roundNumber: state.roundNumber,
 					side: player.side,
 					x: ball?.x ?? 0,
 					y: ball?.y ?? 0,
 					vx: Number(payload.payload?.vx ?? 0),
 					vy: Number(payload.payload?.vy ?? 0),
-					power: String(payload.payload?.power ?? "none"),
+					power: state.lastPowerBySide[player.side] ?? "none",
 				};
 				this.replays.recordEvent(
 					room,
@@ -367,13 +438,42 @@ export class MatchmakingGateway
 		}
 
 		if (
+			payload.action === "bamboo:power-pickup" &&
+			room.gameId === "bamboo-bash" &&
+			"roundNumber" in room.state
+		) {
+			const player = room.players.find(
+				(candidate) => candidate.user.id === user.id,
+			);
+			const pickupId = Math.floor(Number(payload.payload?.pickupId));
+			const state = room.state as BambooBashSnapshot;
+			const wasAccepted =
+				Number.isFinite(pickupId) &&
+				state.lastPowerPickupIdBySide[player?.side ?? -1] === pickupId;
+			if (player && wasAccepted) {
+				this.server.to(room.matchId).emit("game:bamboo-power-pickup", {
+					matchId: room.matchId,
+					roundNumber: state.roundNumber,
+					side: player.side,
+					x: Number(payload.payload?.x ?? 0),
+					y: Number(payload.payload?.y ?? 0),
+					vx: Number(payload.payload?.vx ?? 0),
+					vy: Number(payload.payload?.vy ?? 0),
+					power: state.lastPowerBySide[player.side] ?? "none",
+				});
+			}
+			this.emitState(room.matchId);
+			return;
+		}
+
+		if (
 			payload.action === "release" &&
 			room.gameId === "kame-knock" &&
 			"roundNumber" in room.state &&
 			"turnNumber" in room.state
 		) {
 			const player = room.players.find(
-				(candidate) => candidate.user.id === socket.data.user.id,
+				(candidate) => candidate.user.id === user.id,
 			);
 			if (player) {
 				const ball =
@@ -411,7 +511,7 @@ export class MatchmakingGateway
 			"shotCounts" in room.state
 		) {
 			const player = room.players.find(
-				(candidate) => candidate.user.id === socket.data.user.id,
+				(candidate) => candidate.user.id === user.id,
 			);
 			if (player) {
 				const ball =
@@ -812,6 +912,68 @@ export class MatchmakingGateway
 		}
 	}
 
+	private emitRematchStatus(room: MatchRoom): void {
+		const readyUserIds = [...(room.rematchReadyUserIds ?? new Set<number>())];
+		const leftUserIds = [...(room.rematchLeftUserIds ?? new Set<number>())];
+		const waitingUserIds = room.players
+			.map((player) => player.user.id)
+			.filter(
+				(userId) =>
+					!readyUserIds.includes(userId) && !leftUserIds.includes(userId),
+			);
+		this.server.to(room.matchId).emit("match:rematch-status", {
+			matchId: room.matchId,
+			readyUserIds,
+			leftUserIds,
+			waitingUserIds,
+		});
+	}
+
+	private async startRematchIfReady(room: MatchRoom): Promise<void> {
+		if (room.rematchStartedMatchId) return;
+		const ready = room.rematchReadyUserIds ?? new Set<number>();
+		const left = room.rematchLeftUserIds ?? new Set<number>();
+		const remaining = room.players.filter(
+			(player) => !left.has(player.user.id),
+		);
+		if (remaining.length < 2) {
+			this.server.to(room.matchId).emit("match:rematch-cancelled", {
+				matchId: room.matchId,
+				reason: "Not enough players for a rematch.",
+			});
+			return;
+		}
+		if (!remaining.every((player) => ready.has(player.user.id))) return;
+
+		const rematch = await this.matchmaking.createRematch(room, remaining);
+		room.rematchStartedMatchId = rematch.matchId;
+		for (const player of rematch.players) {
+			for (const sid of this.presence.getSocketIds(player.user.id)) {
+				const s = this.server.sockets.sockets.get(sid);
+				if (s) {
+					s.leave(room.matchId);
+					s.join(rematch.matchId);
+				}
+			}
+			this.rooms.setReady(rematch.matchId, player.user.id);
+		}
+		const started = await this.sessions.startIfReady(rematch.matchId);
+		const activeRoom = started ?? rematch;
+		this.syncRoomPresence(activeRoom);
+		this.emitState(activeRoom.matchId);
+
+		for (const player of activeRoom.players) {
+			for (const sid of this.presence.getSocketIds(player.user.id)) {
+				this.server.to(sid).emit("match:rematch-start", {
+					matchId: activeRoom.matchId,
+					side: player.side,
+					gameId: activeRoom.gameId,
+					snapshot: activeRoom.state,
+				});
+			}
+		}
+	}
+
 	/**
 	 * Keep PresenceService's in-game markers in sync with a room's lifecycle.
 	 * Players in an active/pending room are marked in-game; once the room is
@@ -829,7 +991,12 @@ export class MatchmakingGateway
 	}
 
 	private emitUserMatchStatus(socket: Socket): void {
-		const status = this.rooms.getUserMatchStatus(socket.data.user.id);
+		const user = this.resolveSocketUser(socket);
+		if (!user) {
+			socket.emit("match:status", { inMatch: false });
+			return;
+		}
+		const status = this.rooms.getUserMatchStatus(user.id);
 		if (!status) {
 			socket.emit("match:status", { inMatch: false });
 			return;

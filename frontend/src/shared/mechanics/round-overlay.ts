@@ -53,7 +53,7 @@ export function showRoundTransitionOverlay(
 			.text(0, messageY, options.message, {
 				fontSize: "24px",
 				color: THEME.text,
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 				align: "center",
 				wordWrap: { width: panelW - 56 },
@@ -89,7 +89,7 @@ export function showRoundTransitionOverlay(
 				.text(0, buttonY, buttonLabel, {
 					fontSize: "18px",
 					color: THEME.textGold,
-					fontFamily: THEME.fontUrbanStone,
+					fontFamily: THEME.font,
 					fontStyle: "bold",
 				})
 				.setOrigin(0.5)

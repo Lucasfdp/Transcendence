@@ -5,6 +5,7 @@ import { ShellsService } from "../shells/shells.service";
 import { Match, MatchMode } from "./entities/match.entity";
 import { MatchPlayer } from "./entities/match-player.entity";
 import { QueueJoinPayload, SocketUser } from "./matchmaking.types";
+import type { MatchRoom, RoomPlayer } from "./matchmaking.types";
 import { RoomService } from "./room.service";
 
 interface QueueEntry {
@@ -110,6 +111,42 @@ export class MatchmakingService {
 		);
 
 		return { matched: true, roomMatchId: match.id };
+	}
+
+	async createRematch(
+		previousRoom: MatchRoom,
+		players: RoomPlayer[],
+	): Promise<MatchRoom> {
+		const match = await this.matchRepo.save(
+			this.matchRepo.create({
+				gameId: previousRoom.gameId,
+				mode: previousRoom.mode,
+				status: "pending",
+			}),
+		);
+		const room = this.roomService.createRoom(
+			match.id,
+			previousRoom.gameId,
+			previousRoom.mode,
+			players.map((player) => ({
+				socketId: player.socketId,
+				user: player.user,
+				shellSelection: player.shellSelection,
+			})),
+			{ powerupsEnabled: previousRoom.state.powerupsEnabled },
+		);
+		await this.matchPlayerRepo.save(
+			room.players.map((player) =>
+				this.matchPlayerRepo.create({
+					matchId: match.id,
+					userId: player.user.id,
+					side: player.side,
+					outcome: null,
+					shellSelection: player.shellSelection,
+				}),
+			),
+		);
+		return room;
 	}
 
 	leaveQueue(userId: number): void {

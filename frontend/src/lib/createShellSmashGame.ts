@@ -15,6 +15,12 @@ export interface ShellSmashStartData {
 	targetScene: string;
 	shellSelection: Record<string, string[]>;
 	shellSkins?: Record<string, string>;
+	user?: {
+		id?: number;
+		username?: string;
+		turtleName?: string | null;
+		isGuest?: boolean;
+	};
 	localMode?: "solo" | "versus";
 	localPlayerCount?: number;
 	localPowerupsEnabled?: boolean;
@@ -52,6 +58,8 @@ export function createShellSmashGame(
 	if (initialScene) {
 		game.registry.set("shellSelection", initialScene.shellSelection);
 		game.registry.set("shellSkins", initialScene.shellSkins ?? {});
+		if (initialScene.user) game.registry.set("user", initialScene.user);
+		else game.registry.remove("user");
 		game.registry.set("localMode", initialScene.localMode ?? "solo");
 		game.registry.set("localPlayerCount", initialScene.localPlayerCount ?? 1);
 		game.registry.set(

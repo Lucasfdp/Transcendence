@@ -82,6 +82,7 @@ import {
 } from "../../shared/mechanics/player-trails";
 import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
 import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
+import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
 import {
 	BOMB_RADIUS_SRC,
 	REPEL_RADIUS_SRC,
@@ -99,6 +100,7 @@ import {
 	PLAYER_HEX_COLOURS,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
+import { hudPlayerLabel } from "../../shared/player-labels";
 import {
 	buildLocalReplayPlayerUserIds,
 	buildLocalReplayPlayers,
@@ -924,7 +926,7 @@ export class KameKnockScene extends ResponsiveScene {
 			.text(this.scale.width / 2, 78, "", {
 				fontSize: "13px",
 				color: THEME.textGold,
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 			})
 			.setOrigin(0.5, 0)
@@ -1038,6 +1040,7 @@ export class KameKnockScene extends ResponsiveScene {
 		)
 			? (event.power as PowerType)
 			: PowerType.NONE;
+		this.spawnOnlineChildBalls(power, ball);
 		applyBallPower(power, ball, this.arena);
 		this.powerSidePanel?.hide();
 		this.updateScoreHud();
@@ -1046,6 +1049,15 @@ export class KameKnockScene extends ResponsiveScene {
 				? "Your throw..."
 				: `P${event.side + 1} throw...`,
 		);
+	}
+
+	private spawnOnlineChildBalls(power: PowerType, ball: BallState): void {
+		if (power === PowerType.SPLITTER) {
+			const children = createSplitBalls(ball);
+			this.powerBalls.push(children[0], children[2]);
+		} else if (power === PowerType.MIRROR) {
+			this.powerBalls.push(createMirrorBall(ball, this.arena));
+		}
 	}
 
 	private reportOnlineTargetHit(
@@ -1117,9 +1129,12 @@ export class KameKnockScene extends ResponsiveScene {
 				: snapshot.winnerSide === this.onlineMatch?.side
 					? "YOU WIN!"
 					: "YOU LOSE";
-		this.overlay = showGameEndModal(this, this.overlay, {
+		this.overlay = showOnlineRematchEndModal(this, this.overlay, {
 			title: "KAME KNOCK",
 			result: title,
+			matchId: snapshot.matchId,
+			side: this.onlineMatch?.side ?? 0,
+			sceneKey: "KameKnockScene",
 			players: [...snapshot.players]
 				.sort((a, b) => a.side - b.side)
 				.map((player) => ({
@@ -1131,15 +1146,9 @@ export class KameKnockScene extends ResponsiveScene {
 					score: snapshot.score[player.side] ?? 0,
 					color: this.playerHexColour(player.side),
 				})),
-			actions: [
-				{
-					label: "RETURN",
-					onClick: () => {
-						this.registry.remove("onlineMatch");
-						this.scene.start("HubScene");
-					},
-				},
-			],
+			onOverlay: (overlay) => {
+				this.overlay = overlay;
+			},
 			depth: DEPTH_OVERLAY,
 		});
 	}
@@ -1456,7 +1465,7 @@ export class KameKnockScene extends ResponsiveScene {
 			.text(x, y - 34 * this.arena.scale, `POWER UP\n${type.toUpperCase()}`, {
 				fontSize: `${Math.max(18, 28 * this.arena.scale)}px`,
 				color: "#fff7d6",
-				fontFamily: THEME.fontUrbanStone,
+				fontFamily: THEME.font,
 				fontStyle: "bold",
 				align: "center",
 				stroke: "#171008",
@@ -1544,9 +1553,22 @@ export class KameKnockScene extends ResponsiveScene {
 				scoring: "SCORE",
 				gameover: "GAME OVER",
 			},
-			playerLabel: (player) => `P${player + 1}`,
+			playerLabel: (player) => this.hudPlayerLabel(player),
 		});
 		this.updateScoreHud();
+	}
+
+	private hudPlayerLabel(player: number): string {
+		return hudPlayerLabel({
+			player,
+			localUser: this.registry.get("user") as
+				| { username?: string; turtleName?: string | null }
+				| undefined,
+			onlinePlayers:
+				this.onlineMatch?.snapshot?.gameId === "kame-knock"
+					? this.onlineMatch.snapshot.players
+					: undefined,
+		});
 	}
 
 	private resolveArena(): ArenaPixels {

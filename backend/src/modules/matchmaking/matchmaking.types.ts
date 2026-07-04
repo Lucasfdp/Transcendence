@@ -4,6 +4,7 @@ import { GameMap } from "./game-map";
 export interface SocketUser {
 	id: number;
 	username: string;
+	turtleName?: string | null;
 	isGuest: boolean;
 }
 
@@ -25,6 +26,7 @@ export interface GameInputPayload {
 		| "round:score"
 		| "bamboo:hit"
 		| "bamboo:sync"
+		| "bamboo:power-pickup"
 		| "target:hit"
 		| "bell:hit";
 	payload?: Record<string, unknown>;
@@ -170,6 +172,7 @@ export interface SnapshotPlayer {
 	side: number;
 	userId: number | null;
 	username: string;
+	turtleName?: string | null;
 	connected: boolean;
 	ready: boolean;
 	reconnectExpiresAt: number | null;
@@ -200,6 +203,17 @@ export interface BambooBashSnapshot {
 	nextBambooId: number;
 	spawnAccMs: number;
 	lastBambooUpdateAt: number | null;
+	usedPowersBySide: string[][];
+	lastPowerBySide: string[];
+	lastPowerPickupIdBySide: Array<number | null>;
+	powerPickups: Array<{
+		id: number;
+		type: string;
+		nx: number;
+		ny: number;
+	}>;
+	nextPowerPickupId: number;
+	powerPickupAccMs: number;
 	players: SnapshotPlayer[];
 	balls: BallSnapshotData[];
 	activeBallIdBySide: Array<number | null>;
@@ -296,6 +310,9 @@ export interface MatchRoom {
 	seq: number;
 	state: GameSnapshot;
 	rewardsGranted?: boolean;
+	rematchReadyUserIds?: Set<number>;
+	rematchLeftUserIds?: Set<number>;
+	rematchStartedMatchId?: string;
 	replayFrames: Array<{
 		seq: number;
 		recordedAt: string;
