@@ -46,6 +46,10 @@ async function bootstrap() {
 			.setDescription("Gaming hub API")
 			.setVersion("1.0")
 			.addBearerAuth()
+			.addApiKey(
+				{ type: "apiKey", name: "X-API-Key", in: "header" },
+				"x-api-key",
+			)
 			.build();
 		const document = SwaggerModule.createDocument(app, config);
 		SwaggerModule.setup("api/docs", app, document);

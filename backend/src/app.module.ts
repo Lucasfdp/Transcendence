@@ -19,6 +19,7 @@ import { MatchmakingModule } from "./modules/matchmaking/matchmaking.module";
 import { LeaderboardModule } from "./modules/leaderboard/leaderboard.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { ReportsModule } from "./modules/reports/reports.module";
+import { PublicApiModule } from "./modules/public-api/public-api.module";
 import { AppController } from "./app.controller";
 
 @Module({
@@ -65,6 +66,7 @@ import { AppController } from "./app.controller";
 		LeaderboardModule,
 		NotificationsModule,
 		ReportsModule,
+		PublicApiModule,
 
 		// Observability — must come after TypeOrmModule so DataSource is available
 		MetricsModule,

@@ -9,6 +9,7 @@ import { GithubStrategy } from "./strategies/github.strategy";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { UsersModule } from "../users/users.module";
 import { RateLimiterService } from "./rate-limiter.service";
+import { RedisRateLimiterService } from "./redis-rate-limiter.service";
 import { GuestCleanupService } from "./guest-cleanup.service";
 import { GuestGuard } from "./guards/guest.guard";
 import { TokenDenyListService } from "./token-deny-list.service";
@@ -36,11 +37,17 @@ import { TokenDenyListService } from "./token-deny-list.service";
 		FortyTwoStrategy,
 		GithubStrategy,
 		RateLimiterService,
+		RedisRateLimiterService,
 		GuestCleanupService,
 		GuestGuard,
 		TokenDenyListService,
 	],
 	controllers: [AuthController],
-	exports: [AuthService, GuestGuard, RateLimiterService],
+	exports: [
+		AuthService,
+		GuestGuard,
+		RateLimiterService,
+		RedisRateLimiterService,
+	],
 })
 export class AuthModule {}

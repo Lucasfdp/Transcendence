@@ -3,6 +3,7 @@
 ## Reglas Base
 - El idioma de respuesta debe ser siempre el idioma del usuario. Si hay duda real, usa ingles.
 - Si un cambio modifica reglas de trabajo, flujos o convenciones reflejadas aqui, actualiza `AGENTS.md` en la misma tarea.
+- Cualquier cambio en el proyecto debe revisar `docs/modules-progress.md` para comprobar si se completo algun avance de modulo y, si aplica, actualizar ese archivo para reflejar el nuevo progreso.
 - Todo documento nuevo del proyecto debe guardarse en `docs/`.
 - Antes de redactar o investigar, prioriza `docs/`. El enunciado principal esta en `docs/en.subject.md` y su version PDF en `docs/en.subject.pdf`.
 - `docs/deprecated/` y `docs/old_docs/` son archivo historico. No deben usarse como fuente principal para entender el proyecto ni para tomar decisiones actuales, salvo peticion explicita del usuario.

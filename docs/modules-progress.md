@@ -68,7 +68,7 @@ Faltas para completarse:
 - Sin chat, no se puede reclamar el modulo completo.
 
 ### Major: Public API for database interaction
-Estado: `En progreso`
+Estado: `Hecho`
 
 Desglose del enunciado:
 - API key segura.
@@ -81,11 +81,14 @@ Evidencia:
 - Hay multiples endpoints REST en `auth`, `users`, `friends`, `matches`, `leaderboard`.
 - Hay rate limiting parcial en autenticacion y minijuegos.
 - Hay Swagger en backend.
+- API publica dedicada en `backend/src/modules/public-api/` protegida por `X-API-Key`.
+- Endpoints publicos documentados: `GET /api/public/users`, `GET /api/public/users/:username`, `POST /api/public/users/query`, `PUT /api/public/users/:username`, `DELETE /api/public/users/:username/avatar`.
+- `PUBLIC_API_KEY` documentada en `.env.example` y registrada en Swagger.
+- Rate limiting compartido en Redis para la API publica mediante `backend/src/modules/auth/redis-rate-limiter.service.ts`.
+- Ejemplos de consumo en `docs/public-api.md`.
 
 Faltas para completarse:
-- No hay capa clara de API publica separada con API key.
-- No se ve un `PUT` publico definido; predomina `PATCH`.
-- Falta cerrar y documentar el contrato como modulo evaluable.
+- El resto de buckets legacy (`auth`, `casino`) sigue usando el limitador en memoria; solo la API publica usa el compartido en Redis.
 
 ### Minor: ORM for database
 Estado: `Hecho`
