@@ -24,7 +24,6 @@ import {
 	DEFAULT_CURL_BIAS,
 	stepStone,
 	resolveStoneCollision,
-	drawStone,
 } from "../../shared/mechanics/stone";
 import {
 	PowerType,
@@ -60,7 +59,7 @@ import {
 } from "../../shared/ui/panels/side-panel";
 import {
 	destroyIngamePlayerTexture,
-	drawIngamePlayerTexture,
+	drawIngameShellTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
 import {
@@ -265,6 +264,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	// ── Per-player power pools (read from registry, set in create()) ──────────
 	private playerPowers: PowerType[][] = [FALLBACK_POWERS, FALLBACK_POWERS];
+	private activePower: PowerType = PowerType.NONE;
 
 	// ── Per-player used-power tracking (powers are one-shot per game) ────────────
 	private powerUsed: Array<Set<PowerType>> = [new Set(), new Set()];
@@ -301,6 +301,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.localReplayLastCaptureMs = 0;
 		this.localReplayCaptureAccMs = 0;
 		this.pendingReplayPersist = null;
+		this.activePower = PowerType.NONE;
 		this.powerUsed = Array.from({ length: 5 }, () => new Set<PowerType>());
 		this.arena = this.resolveArena();
 		const registryLocalMode = this.registry.get("localMode") as
@@ -488,7 +489,6 @@ export class ShellCurlScene extends ResponsiveScene {
 			for (const s of this.allStones) {
 				if (!s.stopped) stepStone(s, delta, this.arena);
 			}
-			this.collectPowerPickup(this.activeStone);
 			if (this.activeStone?.splitterPending) {
 				this.activeStone.splitterPending = false;
 				this.spawnSplitStones(this.activeStone);
@@ -655,8 +655,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		this.scoreHud.update(state);
 		this.addActiveRing(stone);
-		this.spawnPowerPickup();
-		this.drawPowerPickups();
+		this.powerPickups?.clear();
 		this.updateSidePanels();
 
 		this.turnManager.setPhase("aiming");
@@ -668,10 +667,13 @@ export class ShellCurlScene extends ResponsiveScene {
 			return;
 
 		if (this.onlineMatch) {
-			const power = PowerType.NONE;
+			const power = this.activePower;
 			// game:throw transports source px/s; clients convert to their local canvas scale.
 			const sourceVx = vx / this.arena.scale;
 			const sourceVy = vy / this.arena.scale;
+			if (power !== PowerType.NONE)
+				this.currentPowerUsed().add(power);
+			this.activePower = PowerType.NONE;
 			getGameSocket().emit("game:input", {
 				matchId: this.onlineMatch.matchId,
 				action: "release",
@@ -704,10 +706,15 @@ export class ShellCurlScene extends ResponsiveScene {
 			return;
 		}
 
-		this.activeStone.power = PowerType.NONE;
-
+		const power = this.activePower;
 		this.activeStone.vx = vx;
 		this.activeStone.vy = vy;
+		this.activeStone.r = STONE_SRC_R * this.arena.scale;
+		this.activeStone.power = power;
+		this.powerRegistry.get(power).onApply(this.activeStone, this.arena);
+		if (power !== PowerType.NONE)
+			this.currentPowerUsed().add(power);
+		this.activePower = PowerType.NONE;
 		this.activeStone.stopped = false;
 		this.stoneTrails.set(this.activeStone.id, [
 			{ x: this.activeStone.x, y: this.activeStone.y },
@@ -2046,7 +2053,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		isActive: boolean,
 	): void {
 		if (
-			!drawIngamePlayerTexture(
+			!drawIngameShellTexture(
 				this,
 				`shell-curl-player-${stone.id}`,
 				stone,
@@ -2054,7 +2061,7 @@ export class ShellCurlScene extends ResponsiveScene {
 				this.playerShellSkins[stone.teamId],
 			)
 		) {
-			drawStone(gfx, stone, isActive);
+			this.drawShellFallback(gfx, stone, isActive);
 			return;
 		}
 
@@ -2074,6 +2081,36 @@ export class ShellCurlScene extends ResponsiveScene {
 				stone.y - stone.r * 0.62,
 				Math.max(4, stone.r * 0.18),
 			);
+		}
+	}
+
+	private drawShellFallback(
+		gfx: Phaser.GameObjects.Graphics,
+		stone: StoneState,
+		isActive: boolean,
+	): void {
+		const { x, y, r } = stone;
+		gfx.clear();
+		if (isActive) {
+			gfx.lineStyle(3, 0xd4a843, 0.6);
+			gfx.strokeCircle(x, y, r * 1.45);
+		}
+
+		gfx.fillStyle(0x000000, 0.22);
+		gfx.fillEllipse(x + r * 0.22, y + r * 0.34, r * 2.25, r * 0.72);
+		gfx.fillStyle(0x6f8f3d, 1);
+		gfx.fillEllipse(x, y, r * 2.05, r * 1.72);
+		gfx.lineStyle(Math.max(2, r * 0.1), 0x26320f, 0.85);
+		gfx.strokeEllipse(x, y, r * 2.05, r * 1.72);
+		gfx.lineStyle(Math.max(1, r * 0.055), 0xd4a843, 0.78);
+		gfx.beginPath();
+		gfx.arc(x, y, r * 0.68, Math.PI * 0.12, Math.PI * 0.88);
+		gfx.strokePath();
+		gfx.lineBetween(x, y - r * 0.82, x, y + r * 0.8);
+
+		if (stone.frozen) {
+			gfx.fillStyle(0x88ccff, 0.3);
+			gfx.fillCircle(x, y, r * 1.15);
 		}
 	}
 
@@ -2385,34 +2422,45 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.updateScoreLogPanel();
 	}
 
-	/** Show available powers as information only; pickups activate them during play. */
+	private selectPower(type: PowerType): void {
+		if (!this.powerupsEnabled || this.turnManager.state.phase !== "aiming")
+			return;
+		if (this.currentPowerUsed().has(type)) return;
+		this.activePower = this.activePower === type ? PowerType.NONE : type;
+		this.updatePowerPanel();
+		this.updateScoreLogPanel();
+	}
+
 	private showPowerPanel(): void {
 		const layout = this.resolveLayout();
 		if (!this.powerSidePanel) {
 			this.powerSidePanel = new GameInfoSidePanel(
 				this,
-				() => {},
+				(type) => this.selectPower(type),
 				DEPTH_HUD,
 				"TEMPLE CURLING",
-				true,
+				false,
 				() => [],
 				() => GAME_INFO_PANEL_DETAILS["temple-curling"],
 			);
 		}
 
 		const powers = this.powerupsEnabled
-			? GAME_POWERS["temple-curling"]
+			? this.currentTeamPowers().filter((power) => power !== PowerType.NONE)
 			: [PowerType.NONE];
+		const selected = this.powerupsEnabled ? this.activePower : PowerType.NONE;
+		const usedPowers = this.currentPowerUsed();
 		if (!layout.leftPanel) {
 			this.powerSidePanel.showCollapsible(
 				"left",
 				powers,
-				PowerType.NONE,
+				selected,
+				usedPowers,
 			);
 			return;
 		}
 
-		this.powerSidePanel.show(layout.leftPanel, powers, PowerType.NONE);
+		this.powerSidePanel.show(layout.leftPanel, powers, selected, usedPowers);
 	}
 
 	/** Refresh the power panel on resize — preserves the current selection. */
@@ -2496,11 +2544,14 @@ export class ShellCurlScene extends ResponsiveScene {
 			},
 			{
 				label: "ACTIVE POWER",
-				value: this.activeStone?.power
+				value: this.activeStone?.power && this.activeStone.power !== PowerType.NONE
 					? ALL_POWERS[this.activeStone.power].label
+					: this.activePower !== PowerType.NONE
+						? ALL_POWERS[this.activePower].label
 					: "None",
 				valueColor:
-					this.activeStone?.power && this.activeStone.power !== PowerType.NONE
+					(this.activeStone?.power && this.activeStone.power !== PowerType.NONE) ||
+					this.activePower !== PowerType.NONE
 						? THEME.textGold
 						: undefined,
 				labelFontSize: "13px",

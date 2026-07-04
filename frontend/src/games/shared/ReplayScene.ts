@@ -16,10 +16,10 @@ import type {
 import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
 	type ArenaPixels,
-	arenaPlayableToScreenInRect,
 	layoutOvalArenaSkin,
 	OVAL_ARENA_SKIN,
 	preloadOvalArenaSkin,
+	texturedOvalArenaToScreenInRect,
 } from "../../shared/arenas/arena";
 import { CURL_SHEET } from "../../shared/arenas/curl-sheet";
 import {
@@ -250,7 +250,7 @@ export class ReplayScene extends ResponsiveScene {
 		}
 
 		this.curlArena = null;
-		this.arena = arenaPlayableToScreenInRect(
+		this.arena = texturedOvalArenaToScreenInRect(
 			ARENA_01,
 			18,
 			18,

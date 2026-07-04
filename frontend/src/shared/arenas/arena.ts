@@ -90,6 +90,28 @@ export function arenaPlayableToScreenInRect(
 	};
 }
 
+/** Fit the oval arena so its full border texture stays inside a rectangle. */
+export function texturedOvalArenaToScreenInRect(
+	def: ArenaDef,
+	rectX: number,
+	rectY: number,
+	rectW: number,
+	rectH: number,
+): ArenaPixels {
+	const texturedW =
+		def.rx * 2 * (OVAL_ARENA_SKIN.width / OVAL_ARENA_SKIN.playableW);
+	const texturedH =
+		def.ry * 2 * (OVAL_ARENA_SKIN.height / OVAL_ARENA_SKIN.playableH);
+	const scale = Math.min(rectW / texturedW, rectH / texturedH);
+	return {
+		cx: rectX + rectW / 2,
+		cy: rectY + rectH / 2,
+		rx: def.rx * scale,
+		ry: def.ry * scale,
+		scale,
+	};
+}
+
 // ── Boundary maths ────────────────────────────────────────────────────────────
 
 /** True if the point (px, py) is inside the elliptical ring. */

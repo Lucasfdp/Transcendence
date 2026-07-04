@@ -78,6 +78,40 @@ export function drawIngamePlayerTexture(
 	return true;
 }
 
+export function drawIngameShellTexture(
+	scene: Phaser.Scene,
+	name: string,
+	state: PlayerVisualState,
+	depth: number,
+	shellSkin?: string | null,
+): boolean {
+	const shellAsset = resolveShellSkinAsset(shellSkin);
+	if (!scene.textures.exists(shellAsset.key)) {
+		hideIngamePlayerTexture(scene, name);
+		return false;
+	}
+
+	const body = scene.children.getByName(`${name}-body`);
+	if (body instanceof Phaser.GameObjects.Image) body.setVisible(false);
+
+	const shell = getOrCreatePlayerImage(
+		scene,
+		`${name}-shell`,
+		shellAsset.key,
+		state,
+	);
+	if (shell.texture.key !== shellAsset.key) shell.setTexture(shellAsset.key);
+	updateIngamePlayerRoll(shell, state);
+
+	shell
+		.setVisible(true)
+		.setPosition(state.x, state.y)
+		.setDepth(depth + 0.01)
+		.setRotation(isPlayerMoving(state) ? shell.rotation : 0)
+		.setDisplaySize(state.r * 2.35, state.r * 2.35);
+	return true;
+}
+
 function getOrCreatePlayerImage(
 	scene: Phaser.Scene,
 	name: string,

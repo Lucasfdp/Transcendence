@@ -14,10 +14,10 @@ import { ResponsiveScene } from "../../shared/responsive-scene";
 import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
 	ArenaPixels,
-	arenaPlayableToScreenInRect,
 	layoutOvalArenaSkin,
 	OVAL_ARENA_SKIN,
 	preloadOvalArenaSkin,
+	texturedOvalArenaToScreenInRect,
 } from "../../shared/arenas/arena";
 import {
 	BallState,
@@ -1778,7 +1778,7 @@ export class BellClashScene extends ResponsiveScene {
 			this.scale.width,
 			this.scale.height,
 		).contentRect;
-		return arenaPlayableToScreenInRect(
+		return texturedOvalArenaToScreenInRect(
 			ARENA_01,
 			content.x,
 			content.y,

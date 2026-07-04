@@ -57,6 +57,7 @@ export interface StoneState {
 	// ── Power extension flags (set by power-system) ───────────────────────────
 	hasSplit?: boolean;
 	splitterPending?: boolean;
+	mirrorPending?: boolean;
 	ghostUsed?: boolean;
 	frozen?: boolean;
 	frictionOverride?: number; // SLICK sets this
