@@ -312,5 +312,57 @@ describe("CardsService", () => {
 				service.grantMatchDrop(makeUser(), seq(PULL_STONE_NO_FOIL)),
 			).rejects.toBeInstanceOf(InternalServerErrorException);
 		});
+
+		// ── Bug Audit L5: concurrent first-copy grant race ───────────────────────
+
+		it("should re-read and increment instead of losing the drop when a concurrent grant wins the first-copy race", async () => {
+			// The initial `existing` lookup finds nothing (this player has never
+			// owned the card), but the insert then loses a race against another
+			// concurrent match-completion grant for the same card and hits the
+			// unique index on (user, cardId).
+			cardsRepo.findOne
+				.mockResolvedValueOnce(null) // initial "existing" lookup
+				.mockResolvedValueOnce(makeUserCard("power-heavy", 1, 0)); // re-read after 23505
+			cardsRepo.save.mockRejectedValueOnce(
+				Object.assign(new Error("duplicate key"), { code: "23505" }),
+			);
+
+			const pull = await service.grantMatchDrop(
+				makeUser(),
+				seq(PULL_STONE_NO_FOIL),
+			);
+
+			expect(pull.isNew).toBe(false);
+			expect(cardsRepo.findOne).toHaveBeenCalledTimes(2);
+			// Second save() call increments the re-read row rather than retrying the insert.
+			expect(cardsRepo.save).toHaveBeenCalledTimes(2);
+			const incremented = cardsRepo.save.mock.calls[1][0] as {
+				count: number;
+			};
+			expect(incremented.count).toBe(2);
+		});
+
+		it("should rethrow when the race-winner row can't be found after a 23505", async () => {
+			cardsRepo.findOne
+				.mockResolvedValueOnce(null)
+				.mockResolvedValueOnce(null); // re-read somehow still finds nothing
+			cardsRepo.save.mockRejectedValueOnce(
+				Object.assign(new Error("duplicate key"), { code: "23505" }),
+			);
+
+			await expect(
+				service.grantMatchDrop(makeUser(), seq(PULL_STONE_NO_FOIL)),
+			).rejects.toBeInstanceOf(InternalServerErrorException);
+		});
+
+		it("should rethrow a non-unique-violation save failure without retrying", async () => {
+			cardsRepo.findOne.mockResolvedValueOnce(null);
+			cardsRepo.save.mockRejectedValueOnce(new Error("connection lost"));
+
+			await expect(
+				service.grantMatchDrop(makeUser(), seq(PULL_STONE_NO_FOIL)),
+			).rejects.toBeInstanceOf(InternalServerErrorException);
+			expect(cardsRepo.findOne).toHaveBeenCalledTimes(1);
+		});
 	});
 });

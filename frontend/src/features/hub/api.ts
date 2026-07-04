@@ -98,15 +98,36 @@ function withCsrfHeader(
 
 // ── Core fetch helper ─────────────────────────────────────────────────────────
 
+interface ApiFetchOptions extends RequestInit {
+	/**
+	 * Vouches that this endpoint is idempotent/safe to repeat, so a single
+	 * bounded retry on a transient 5xx (502/503/504) is allowed for non-GET
+	 * methods too — the same treatment GET already gets (Bug Audit L1).
+	 *
+	 * Only set this for state-scoped mutations that no-op when already
+	 * applied — see `acceptFriendRequest`, `declineOrCancelFriendRequest`,
+	 * `removeFriend`, `blockUser`, and `markConversationReadRest` below.
+	 * Do NOT set this for side-effecting actions like casino spins, chat
+	 * sends, or match-result submission: a transient 5xx there can't be
+	 * distinguished from "the backend already processed this and the
+	 * response was lost in transit", so retrying risks double-spending
+	 * coins or double-counting a match result.
+	 */
+	idempotent?: boolean;
+}
+
 async function apiFetch<T>(
 	path: string,
-	options: RequestInit = {},
+	{ idempotent, ...options }: ApiFetchOptions = {},
 ): Promise<T> {
 	const method = (options.method ?? "GET").toUpperCase();
 	const baseHeaders: Record<string, string> = {
 		"Content-Type": "application/json",
 		...(options.headers as Record<string, string>),
 	};
+	// GET is always safe to retry; non-GET only retries when the caller has
+	// explicitly opted in via `idempotent: true`.
+	const retryableOnTransient = method === "GET" || idempotent === true;
 
 	const runFetch = () =>
 		fetch(`${API_BASE}${path}`, {
@@ -128,7 +149,7 @@ async function apiFetch<T>(
 		const message = await readErrorMessage(res, `${res.status} on ${path}`);
 		if (
 			TRANSIENT_HTTP_STATUSES.has(res.status) &&
-			method === "GET"
+			retryableOnTransient
 		) {
 			await sleep(TRANSIENT_RETRY_DELAY_MS);
 			try {
@@ -206,6 +227,10 @@ async function apiUploadFile<T>(
 			throw new AuthError(res.status, message);
 		}
 	}
+	// Mirror apiFetch's empty-body guard (Bug Audit L2): works today because
+	// avatar upload always returns JSON, but any future empty-body upload
+	// response (e.g. a 204) would otherwise throw a JSON parse error here.
+	if (res.status === 204) return {} as T;
 	return res.json() as Promise<T>;
 }
 
@@ -1028,11 +1053,19 @@ export const api = {
 		apiFetch<void>("/friends/accept", {
 			method: "POST",
 			body: JSON.stringify({ userId }),
+			// Scoped to status="pending" server-side (see AcceptRequest) — a
+			// retry after a real success just finds no pending row and 404s,
+			// rather than double-accepting or double-notifying.
+			idempotent: true,
 		}),
 
 	/** Remove an established (accepted) friend. Use declineOrCancelFriendRequest for pending requests. */
 	removeFriend: (userId: number): Promise<void> =>
-		apiFetch<void>(`/friends/${userId}`, { method: "DELETE" }),
+		apiFetch<void>(`/friends/${userId}`, {
+			method: "DELETE",
+			// Delete scoped to status="accepted" — repeating it is a no-op.
+			idempotent: true,
+		}),
 
 	/**
 	 * Decline an incoming pending request, or cancel your own outgoing one.
@@ -1044,6 +1077,7 @@ export const api = {
 		apiFetch<void>("/friends/decline", {
 			method: "POST",
 			body: JSON.stringify({ userId }),
+			idempotent: true,
 		}),
 
 	/** Block a user by userId. */
@@ -1051,6 +1085,9 @@ export const api = {
 		apiFetch<void>("/friends/block", {
 			method: "POST",
 			body: JSON.stringify({ userId }),
+			// Delete-then-insert to the same "blocked" end state — repeating
+			// it lands in the same place (Bug Audit M5 made this atomic too).
+			idempotent: true,
 		}),
 
 	// ── Chat ───────────────────────────────────────────────────────────────────
@@ -1141,6 +1178,8 @@ export const api = {
 	markConversationReadRest: (conversationId: number): Promise<void> =>
 		apiFetch<void>(`/chat/conversations/${conversationId}/read`, {
 			method: "POST",
+			// Sets lastReadAt to "now" — repeating it is harmless.
+			idempotent: true,
 		}),
 
 	// ── Reports ────────────────────────────────────────────────────────────────
