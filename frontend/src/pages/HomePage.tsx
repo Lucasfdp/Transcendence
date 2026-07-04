@@ -24,9 +24,12 @@ import {
 	Achievement,
 	api,
 	AuthError,
+	type ChatMessageView,
+	type ConversationSummaryView,
 	Cosmetic,
 	FriendView,
 	GameLeaderboardEntry,
+	type GifSearchResult,
 	MiniGameDefinition,
 	NotificationView,
 	OverallLeaderboardEntry,
@@ -37,6 +40,7 @@ import {
 	ReplayDetail,
 	ReplaySummary,
 	type LeaderboardScope,
+	type UnreadConversationView,
 	type User,
 } from "../features/hub/api";
 import { TURTLE_TAGS } from "../shared/turtle-tags";
@@ -53,6 +57,15 @@ import {
 	upsertById,
 } from "../features/social/friendsOps";
 import { buildFriendCode } from "../features/social/friendCode";
+import {
+	addUnread,
+	conversationTitle,
+	parseGifMetadata,
+	removeUnread,
+	sortConversationsByRecency,
+	unreadIdsFromInbox,
+	upsertConversationPreview,
+} from "../features/chat/chatOps";
 import { filterFriends } from "../features/social/friendFilter";
 import { createProfileCardCache } from "../features/social/profileCard/cache";
 import { debounce } from "../features/social/profileCard/debounce";
@@ -73,6 +86,10 @@ const FRIEND_REMOVAL_UNDO_MS = 5000;
 
 /** Delay before a hover/focus on a friend's name triggers a profile fetch. */
 const PROFILE_HOVER_DEBOUNCE_MS = 300;
+
+/** Delay before a gif picker search query triggers a fetch, and its minimum length. */
+const GIF_SEARCH_DEBOUNCE_MS = 350;
+const GIF_SEARCH_MIN_LENGTH = 2;
 
 type HubView = "choose" | "normal" | "gambit";
 type InfoModal = { title: string; description: string } | null;
@@ -610,6 +627,27 @@ function HomeMenu(): JSX.Element {
 	const [friendUsername, setFriendUsername] = useState("");
 	const [friendActionLoading, setFriendActionLoading] = useState(false);
 	const { showToast } = useToast();
+
+	// ── Chat ─────────────────────────────────────────────────────────────────
+	const [conversations, setConversations] = useState<ConversationSummaryView[] | null>(null);
+	const [unreadConversationIds, setUnreadConversationIds] = useState<Set<number>>(
+		new Set(),
+	);
+	const [activeConversationId, setActiveConversationId] = useState<number | null>(
+		null,
+	);
+	/** Oldest → newest, for display top-to-bottom in the thread view. */
+	const [chatMessages, setChatMessages] = useState<ChatMessageView[]>([]);
+	const [chatMessageDraft, setChatMessageDraft] = useState("");
+	const [chatThreadLoading, setChatThreadLoading] = useState(false);
+	const [chatActionLoading, setChatActionLoading] = useState(false);
+	const [isNewGroupOpen, setIsNewGroupOpen] = useState(false);
+	const [newGroupName, setNewGroupName] = useState("");
+	const [newGroupMemberIds, setNewGroupMemberIds] = useState<Set<number>>(new Set());
+	const [isGifPickerOpen, setIsGifPickerOpen] = useState(false);
+	const [gifSearchQuery, setGifSearchQuery] = useState("");
+	const [gifResults, setGifResults] = useState<GifSearchResult[]>([]);
+	const [gifSearchLoading, setGifSearchLoading] = useState(false);
 	/** Pending friend-removal timers keyed by userId; cleared on Undo. */
 	const removalTimers = useRef(
 		new Map<number, ReturnType<typeof setTimeout>>(),
@@ -776,6 +814,66 @@ function HomeMenu(): JSX.Element {
 			socket.off("lobby:matched", onLobbyMatched);
 		};
 	}, []);
+
+	// Mirrors activeConversationId into a ref so the chat socket effect below
+	// doesn't need to resubscribe every time the open thread changes.
+	const activeConversationIdRef = useRef<number | null>(null);
+	useEffect(() => {
+		activeConversationIdRef.current = activeConversationId;
+	}, [activeConversationId]);
+
+	// Subscribe to chat events on the shared game socket — kept separate from
+	// the notification/lobby effect above for isolation.
+	useEffect(() => {
+		const socket = getGameSocket();
+
+		const onChatMessage = (message: ChatMessageView) => {
+			if (activeConversationIdRef.current === message.conversationId) {
+				setChatMessages((prev) => [...prev, message]);
+			}
+			setConversations((prev) =>
+				prev
+					? sortConversationsByRecency(
+							upsertConversationPreview(prev, {
+								conversationId: message.conversationId,
+								lastMessageAt: message.createdAt,
+								lastMessagePreview: message.body,
+							}),
+						)
+					: prev,
+			);
+		};
+
+		const onChatUnreadInbox = (entries: UnreadConversationView[]) => {
+			setUnreadConversationIds(unreadIdsFromInbox(entries));
+		};
+
+		const onChatUnread = (entry: UnreadConversationView) => {
+			setUnreadConversationIds((prev) => addUnread(prev, entry.conversationId));
+		};
+
+		const onChatReadSync = (data: { conversationId: number }) => {
+			setUnreadConversationIds((prev) => removeUnread(prev, data.conversationId));
+		};
+
+		const onChatError = (data: { message: string }) => {
+			showToast({ message: data.message, variant: "error" });
+		};
+
+		socket.on("chat:message", onChatMessage);
+		socket.on("chat:unread-inbox", onChatUnreadInbox);
+		socket.on("chat:unread", onChatUnread);
+		socket.on("chat:read-sync", onChatReadSync);
+		socket.on("chat:error", onChatError);
+
+		return () => {
+			socket.off("chat:message", onChatMessage);
+			socket.off("chat:unread-inbox", onChatUnreadInbox);
+			socket.off("chat:unread", onChatUnread);
+			socket.off("chat:read-sync", onChatReadSync);
+			socket.off("chat:error", onChatError);
+		};
+	}, [showToast]);
 
 	const unreadCount = notifications.length;
 
@@ -1116,22 +1214,208 @@ function HomeMenu(): JSX.Element {
 		setBlockConfirmUserId(null);
 		setReportTarget(null);
 		setSocialLoading(true);
+		setActiveConversationId(null);
+		setChatMessages([]);
+		setIsNewGroupOpen(false);
+		setNewGroupName("");
+		setNewGroupMemberIds(new Set());
+		setIsGifPickerOpen(false);
+		setGifSearchQuery("");
+		setGifResults([]);
 		try {
-			const [nextFriends, nextPending, nextOutgoing, nextSuggestions] =
+			const [nextFriends, nextPending, nextOutgoing, nextSuggestions, nextConversations] =
 				await Promise.all([
 					api.getFriends(),
 					api.getPendingRequests(),
 					api.getOutgoingRequests(),
 					api.getFriendSuggestions(),
+					api.getConversations(),
 				]);
 			setFriends(nextFriends);
 			setPendingRequests(nextPending);
 			setOutgoingRequests(nextOutgoing);
 			setSuggestions(nextSuggestions);
+			setConversations(sortConversationsByRecency(nextConversations));
 		} catch {
 			setModalError("Could not load social data. Try again later.");
 		} finally {
 			setSocialLoading(false);
+		}
+	};
+
+	/** Re-fetch just the conversation list — used after starting a dm/group or leaving one. */
+	const refreshConversations = async (): Promise<void> => {
+		try {
+			const next = await api.getConversations();
+			setConversations(sortConversationsByRecency(next));
+		} catch {
+			// Leave the current state in place; the user can reopen Social to retry.
+		}
+	};
+
+	const handleOpenConversation = async (conversationId: number): Promise<void> => {
+		setActiveConversationId(conversationId);
+		setChatMessages([]);
+		setIsGifPickerOpen(false);
+		setGifSearchQuery("");
+		setGifResults([]);
+		setChatThreadLoading(true);
+		try {
+			const messages = await api.getChatMessages(conversationId);
+			// Server returns newest-first for pagination; display oldest-first.
+			setChatMessages([...messages].reverse());
+			getGameSocket().emit("chat:read", { conversationId });
+			setUnreadConversationIds((prev) => removeUnread(prev, conversationId));
+		} catch (err: unknown) {
+			showToast({
+				message: err instanceof Error ? err.message : "Could not load messages.",
+				variant: "error",
+			});
+			setActiveConversationId(null);
+		} finally {
+			setChatThreadLoading(false);
+		}
+	};
+
+	const handleCloseConversation = (): void => {
+		setActiveConversationId(null);
+		setChatMessages([]);
+		setChatMessageDraft("");
+		setIsGifPickerOpen(false);
+		setGifSearchQuery("");
+		setGifResults([]);
+	};
+
+	const handleStartDirectMessage = async (friend: { userId: number }): Promise<void> => {
+		if (chatActionLoading) return;
+		setChatActionLoading(true);
+		try {
+			await api.getCsrfToken();
+			const conversation = await api.startDirectMessage(friend.userId);
+			await refreshConversations();
+			await handleOpenConversation(conversation.id);
+		} catch (err: unknown) {
+			showToast({
+				message: err instanceof Error ? err.message : "Could not start conversation.",
+				variant: "error",
+			});
+		} finally {
+			setChatActionLoading(false);
+		}
+	};
+
+	const handleSendChatMessage = (): void => {
+		const trimmed = chatMessageDraft.trim();
+		if (!trimmed || !activeConversationId) return;
+		getGameSocket().emit("chat:send", {
+			conversationId: activeConversationId,
+			body: trimmed,
+		});
+		setChatMessageDraft("");
+	};
+
+	/** Run a gif search and populate gifResults — called (debounced) as the user types. */
+	const runGifSearch = async (query: string): Promise<void> => {
+		const trimmed = query.trim();
+		if (trimmed.length < GIF_SEARCH_MIN_LENGTH) {
+			setGifResults([]);
+			setGifSearchLoading(false);
+			return;
+		}
+		setGifSearchLoading(true);
+		try {
+			const results = await api.searchGifs(trimmed);
+			setGifResults(results);
+		} catch {
+			// Non-fatal — an empty grid with no error toast is enough feedback here.
+			setGifResults([]);
+		} finally {
+			setGifSearchLoading(false);
+		}
+	};
+
+	const gifSearchDebounce = useRef(
+		debounce((query: string) => void runGifSearch(query), GIF_SEARCH_DEBOUNCE_MS),
+	).current;
+
+	const handleGifSearchChange = (value: string): void => {
+		setGifSearchQuery(value);
+		gifSearchDebounce.run(value);
+	};
+
+	const handleToggleGifPicker = (): void => {
+		setIsGifPickerOpen((prev) => {
+			const next = !prev;
+			if (!next) {
+				gifSearchDebounce.cancel();
+				setGifSearchQuery("");
+				setGifResults([]);
+			}
+			return next;
+		});
+	};
+
+	const handleSendGif = (gif: GifSearchResult): void => {
+		if (!activeConversationId) return;
+		getGameSocket().emit("chat:send-gif", {
+			conversationId: activeConversationId,
+			slug: gif.slug,
+		});
+		setIsGifPickerOpen(false);
+		setGifSearchQuery("");
+		setGifResults([]);
+	};
+
+	const handleToggleNewGroupMember = (userId: number): void => {
+		setNewGroupMemberIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(userId)) next.delete(userId);
+			else next.add(userId);
+			return next;
+		});
+	};
+
+	const handleCreateGroup = async (): Promise<void> => {
+		const trimmedName = newGroupName.trim();
+		if (!trimmedName || newGroupMemberIds.size === 0 || chatActionLoading) return;
+		setChatActionLoading(true);
+		try {
+			await api.getCsrfToken();
+			const conversation = await api.createGroupChat(trimmedName, [
+				...newGroupMemberIds,
+			]);
+			setIsNewGroupOpen(false);
+			setNewGroupName("");
+			setNewGroupMemberIds(new Set());
+			await refreshConversations();
+			await handleOpenConversation(conversation.id);
+			showToast({ message: `Created ${trimmedName}`, variant: "success" });
+		} catch (err: unknown) {
+			showToast({
+				message: err instanceof Error ? err.message : "Could not create group.",
+				variant: "error",
+			});
+		} finally {
+			setChatActionLoading(false);
+		}
+	};
+
+	const handleLeaveGroup = async (conversationId: number): Promise<void> => {
+		if (chatActionLoading) return;
+		setChatActionLoading(true);
+		try {
+			await api.getCsrfToken();
+			await api.leaveGroupChat(conversationId);
+			handleCloseConversation();
+			await refreshConversations();
+			showToast({ message: "Left group", variant: "info" });
+		} catch (err: unknown) {
+			showToast({
+				message: err instanceof Error ? err.message : "Could not leave group.",
+				variant: "error",
+			});
+		} finally {
+			setChatActionLoading(false);
 		}
 	};
 
@@ -1598,6 +1882,14 @@ function HomeMenu(): JSX.Element {
 					</>
 				) : (
 					<>
+						<button
+							type="button"
+							className="hub-modal__social-message-btn"
+							disabled={chatActionLoading}
+							onClick={() => void handleStartDirectMessage(friend)}
+						>
+							Message
+						</button>
 						{friend.isOnline && !activeLobby && (
 							<button
 								type="button"
@@ -1802,6 +2094,7 @@ function HomeMenu(): JSX.Element {
 						</NineSliceButton>
 						<NineSliceButton type="button" className="hub-panel__button" onClick={() => void openSocial()}>
 							SOCIAL
+							{unreadConversationIds.size > 0 ? ` (${unreadConversationIds.size})` : ""}
 						</NineSliceButton>
 						<NineSliceButton
 							type="button"
@@ -2624,6 +2917,251 @@ function HomeMenu(): JSX.Element {
 
 					{socialLoading ? <p>Loading…</p> : (
 						<>
+							<section className="hub-modal__social-section hub-modal__chat-section">
+								<div className="hub-modal__chat-header">
+									<h3>Messages</h3>
+									{!activeConversationId ? (
+										<button
+											type="button"
+											className="hub-modal__save-button"
+											onClick={() => setIsNewGroupOpen((prev) => !prev)}
+										>
+											{isNewGroupOpen ? "Cancel" : "New group"}
+										</button>
+									) : null}
+								</div>
+
+								{isNewGroupOpen && !activeConversationId ? (
+									<div className="hub-modal__chat-new-group">
+										<input
+											className="hub-modal__field-input"
+											type="text"
+											placeholder="Group name"
+											maxLength={60}
+											value={newGroupName}
+											onChange={(e) => setNewGroupName(e.target.value)}
+										/>
+										<p className="hub-modal__chat-new-group-hint">Add friends:</p>
+										<ul className="hub-modal__social-list">
+											{(friends ?? []).map((friend) => (
+												<li key={friend.userId} className="hub-modal__chat-member-row">
+													<label>
+														<input
+															type="checkbox"
+															checked={newGroupMemberIds.has(friend.userId)}
+															onChange={() => handleToggleNewGroupMember(friend.userId)}
+														/>
+														{friend.turtleName ?? friend.username}
+													</label>
+												</li>
+											))}
+										</ul>
+										<button
+											type="button"
+											className="hub-modal__save-button"
+											disabled={
+												chatActionLoading ||
+												!newGroupName.trim() ||
+												newGroupMemberIds.size === 0
+											}
+											onClick={() => void handleCreateGroup()}
+										>
+											Create group
+										</button>
+									</div>
+								) : null}
+
+								{activeConversationId ? (
+									<div className="hub-modal__chat-thread">
+										<div className="hub-modal__chat-thread-header">
+											<button type="button" onClick={handleCloseConversation}>
+												← Back
+											</button>
+											<span className="hub-modal__chat-thread-title">
+												{conversationTitle(
+													conversations?.find((c) => c.id === activeConversationId) ?? {
+														name: null,
+														type: "dm",
+													},
+												)}
+											</span>
+											{conversations?.find((c) => c.id === activeConversationId)?.type ===
+											"group" ? (
+												<button
+													type="button"
+													className="hub-modal__social-block-btn"
+													disabled={chatActionLoading}
+													onClick={() => void handleLeaveGroup(activeConversationId)}
+												>
+													Leave group
+												</button>
+											) : null}
+										</div>
+
+										{chatThreadLoading ? (
+											<p>Loading…</p>
+										) : (
+											<ul className="hub-modal__chat-message-list">
+												{chatMessages.map((message) => {
+													const gif =
+														message.type === "gif"
+															? parseGifMetadata(message.metadata)
+															: null;
+													return (
+														<li
+															key={message.id}
+															className={
+																message.type === "system"
+																	? "hub-modal__chat-message hub-modal__chat-message--system"
+																	: "hub-modal__chat-message"
+															}
+														>
+															{message.type === "system" ? (
+																<span>{message.body}</span>
+															) : message.type === "gif" && gif ? (
+																<>
+																	<span className="hub-modal__chat-message-sender">
+																		{message.senderUsername}
+																	</span>
+																	<img
+																		className="hub-modal__chat-gif-image"
+																		src={gif.url}
+																		alt={message.body}
+																		width={gif.width}
+																		height={gif.height}
+																		loading="lazy"
+																	/>
+																	<span className="hub-modal__chat-message-time">
+																		{formatRelativeTime(message.createdAt)}
+																	</span>
+																</>
+															) : (
+																<>
+																	<span className="hub-modal__chat-message-sender">
+																		{message.senderUsername}
+																	</span>
+																	<span className="hub-modal__chat-message-body">
+																		{message.body}
+																	</span>
+																	<span className="hub-modal__chat-message-time">
+																		{formatRelativeTime(message.createdAt)}
+																	</span>
+																</>
+															)}
+														</li>
+													);
+												})}
+											</ul>
+										)}
+
+										{isGifPickerOpen ? (
+											<div className="hub-modal__chat-gif-picker">
+												<input
+													className="hub-modal__field-input"
+													type="text"
+													placeholder="Search gifs…"
+													maxLength={200}
+													value={gifSearchQuery}
+													onChange={(e) => handleGifSearchChange(e.target.value)}
+													autoFocus
+												/>
+												{gifSearchLoading ? (
+													<p className="hub-modal__chat-gif-status">Searching…</p>
+												) : gifResults.length > 0 ? (
+													<ul className="hub-modal__chat-gif-grid">
+														{gifResults.map((gif) => (
+															<li key={gif.slug}>
+																<button
+																	type="button"
+																	className="hub-modal__chat-gif-thumb"
+																	onClick={() => handleSendGif(gif)}
+																>
+																	<img
+																		src={gif.previewUrl}
+																		alt={gif.title}
+																		loading="lazy"
+																	/>
+																</button>
+															</li>
+														))}
+													</ul>
+												) : gifSearchQuery.trim().length >= GIF_SEARCH_MIN_LENGTH ? (
+													<p className="hub-modal__chat-gif-status">No gifs found.</p>
+												) : (
+													<p className="hub-modal__chat-gif-status">
+														Type to search for gifs.
+													</p>
+												)}
+											</div>
+										) : null}
+
+										<div className="hub-modal__chat-composer">
+											<input
+												className="hub-modal__field-input"
+												type="text"
+												placeholder="Message…"
+												maxLength={2000}
+												value={chatMessageDraft}
+												onChange={(e) => setChatMessageDraft(e.target.value)}
+												onKeyDown={(e) => {
+													if (e.key === "Enter") handleSendChatMessage();
+												}}
+											/>
+											<button
+												type="button"
+												className={
+													isGifPickerOpen
+														? "hub-modal__chat-gif-toggle hub-modal__chat-gif-toggle--active"
+														: "hub-modal__chat-gif-toggle"
+												}
+												onClick={handleToggleGifPicker}
+												aria-pressed={isGifPickerOpen}
+											>
+												GIF
+											</button>
+											<button
+												type="button"
+												className="hub-modal__save-button"
+												disabled={!chatMessageDraft.trim()}
+												onClick={handleSendChatMessage}
+											>
+												Send
+											</button>
+										</div>
+									</div>
+								) : (
+									<ul className="hub-modal__social-list">
+										{conversations && conversations.length > 0 ? (
+											conversations.map((conversation) => (
+												<li key={conversation.id} className="hub-modal__social-row">
+													<button
+														type="button"
+														className="hub-modal__chat-conversation-btn"
+														onClick={() => void handleOpenConversation(conversation.id)}
+													>
+														<span className="hub-modal__social-name">
+															{conversationTitle(conversation)}
+															{unreadConversationIds.has(conversation.id) ? (
+																<span
+																	className="hub-modal__chat-unread-dot"
+																	role="img"
+																	aria-label="Unread"
+																/>
+															) : null}
+														</span>
+														<small className="hub-modal__chat-preview">
+															{conversation.lastMessagePreview ?? "No messages yet"}
+														</small>
+													</button>
+												</li>
+											))
+										) : (
+											<p>No conversations yet — message a friend to get started.</p>
+										)}
+									</ul>
+								)}
+							</section>
+
 							{pendingRequests && pendingRequests.length > 0 ? (
 								<section className="hub-modal__social-section">
 									<h3>Pending requests</h3>

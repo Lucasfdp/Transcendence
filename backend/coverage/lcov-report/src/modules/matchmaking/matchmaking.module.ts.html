@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/29</span>
+                <span class='fraction'>0/33</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/27</span>
+                <span class='fraction'>0/31</span>
             </div>
         
             
@@ -126,7 +126,19 @@
 <a name='L61'></a><a href='#L61'>61</a>
 <a name='L62'></a><a href='#L62'>62</a>
 <a name='L63'></a><a href='#L63'>63</a>
-<a name='L64'></a><a href='#L64'>64</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -162,7 +174,11 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -193,6 +209,7 @@
 <span class="cstat-no" title="statement not covered" >import { JwtModule } from "@nestjs/jwt";</span>
 <span class="cstat-no" title="statement not covered" >import { TypeOrmModule } from "@nestjs/typeorm";</span>
 <span class="cstat-no" title="statement not covered" >import { ConfigModule, ConfigService } from "@nestjs/config";</span>
+<span class="cstat-no" title="statement not covered" >import { ChatModule } from "../chat/chat.module";</span>
 <span class="cstat-no" title="statement not covered" >import { FriendsModule } from "../friends/friends.module";</span>
 <span class="cstat-no" title="statement not covered" >import { GameResultsModule } from "../game-results/game-results.module";</span>
 <span class="cstat-no" title="statement not covered" >import { NotificationsModule } from "../notifications/notifications.module";</span>
@@ -201,6 +218,8 @@
 <span class="cstat-no" title="statement not covered" >import { UsersModule } from "../users/users.module";</span>
 <span class="cstat-no" title="statement not covered" >import { Match } from "./entities/match.entity";</span>
 <span class="cstat-no" title="statement not covered" >import { MatchPlayer } from "./entities/match-player.entity";</span>
+<span class="cstat-no" title="statement not covered" >import { MatchReplay } from "./entities/match-replay.entity";</span>
+<span class="cstat-no" title="statement not covered" >import { MatchReplaySave } from "./entities/match-replay-save.entity";</span>
 <span class="cstat-no" title="statement not covered" >import { MatchSpectator } from "./entities/match-spectator.entity";</span>
 <span class="cstat-no" title="statement not covered" >import { UserRating } from "./entities/user-rating.entity";</span>
 <span class="cstat-no" title="statement not covered" >import { BellClashEngine } from "./engines/bell-clash.engine";</span>
@@ -213,6 +232,7 @@
 <span class="cstat-no" title="statement not covered" >import { MatchmakingGateway } from "./matchmaking.gateway";</span>
 <span class="cstat-no" title="statement not covered" >import { MatchmakingService } from "./matchmaking.service";</span>
 <span class="cstat-no" title="statement not covered" >import { PrivateLobbiesService } from "./private-lobbies.service";</span>
+<span class="cstat-no" title="statement not covered" >import { ReplayService } from "./replay.service";</span>
 <span class="cstat-no" title="statement not covered" >import { RoomService } from "./room.service";</span>
 &nbsp;
 @Module({
@@ -220,6 +240,8 @@
 		TypeOrmModule.forFeature([
 			Match,
 			MatchPlayer,
+			MatchReplay,
+			MatchReplaySave,
 			MatchSpectator,
 			UserRating,
 		]),
@@ -236,6 +258,7 @@
 		GameResultsModule,
 		NotificationsModule,
 		FriendsModule,
+		ChatModule,
 	],
 	controllers: [MatchesController],
 	providers: [
@@ -247,6 +270,7 @@
 		GameEngineRegistry,
 		RoomService,
 		PrivateLobbiesService,
+		ReplayService,
 		GameSessionService,
 		MatchmakingGateway,
 	],
@@ -259,7 +283,7 @@ export <span class="cstat-no" title="statement not covered" >class <span class="
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-28T00:30:56.404Z
+                at 2026-07-04T04:46:37.318Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

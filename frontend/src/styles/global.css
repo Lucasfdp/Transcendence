@@ -4321,6 +4321,200 @@ img.power-card__orb {
 	color: var(--muted);
 }
 
+.hub-modal__social-message-btn {
+	color: var(--accent);
+}
+
+/* ── Chat (Messages section within the Social modal) ── */
+.hub-modal__chat-section {
+	margin-top: 0.75rem;
+	padding-top: 0.75rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.hub-modal__chat-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 0.4rem;
+}
+.hub-modal__chat-header h3 {
+	margin: 0;
+}
+.hub-modal__chat-new-group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	margin-bottom: 0.6rem;
+	padding: 0.5rem 0.6rem;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.04);
+}
+.hub-modal__chat-new-group-hint {
+	margin: 0.2rem 0 0;
+	font-size: 0.72rem;
+	color: var(--muted);
+}
+.hub-modal__chat-member-row {
+	list-style: none;
+	font-size: 0.85rem;
+}
+.hub-modal__chat-member-row label {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+.hub-modal__chat-conversation-btn {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.15rem;
+	width: 100%;
+	background: none;
+	border: none;
+	padding: 0;
+	text-align: left;
+	color: inherit;
+	cursor: pointer;
+	font-family: inherit;
+}
+.hub-modal__chat-preview {
+	opacity: 0.6;
+	font-size: 0.75rem;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.hub-modal__chat-unread-dot {
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	margin-left: 0.35rem;
+	border-radius: 50%;
+	background: var(--accent-strong, #d4af37);
+}
+.hub-modal__chat-thread {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+.hub-modal__chat-thread-header {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+.hub-modal__chat-thread-title {
+	flex: 1;
+	font-weight: 600;
+}
+.hub-modal__chat-message-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	max-height: 260px;
+	overflow-y: auto;
+}
+.hub-modal__chat-message {
+	display: flex;
+	align-items: baseline;
+	gap: 0.4rem;
+	padding: 0.3rem 0.5rem;
+	border-radius: 4px;
+	background: rgba(255, 255, 255, 0.05);
+	font-size: 0.85rem;
+}
+.hub-modal__chat-message--system {
+	justify-content: center;
+	opacity: 0.6;
+	font-size: 0.75rem;
+	font-style: italic;
+	background: none;
+}
+.hub-modal__chat-message-sender {
+	font-weight: 600;
+	opacity: 0.8;
+}
+.hub-modal__chat-message-body {
+	flex: 1;
+	word-break: break-word;
+}
+.hub-modal__chat-message-time {
+	font-size: 0.68rem;
+	color: var(--muted);
+	white-space: nowrap;
+}
+.hub-modal__chat-composer {
+	display: flex;
+	gap: 0.5rem;
+}
+.hub-modal__chat-composer .hub-modal__field-input {
+	flex: 1;
+}
+.hub-modal__chat-gif-image {
+	max-width: 180px;
+	max-height: 180px;
+	border-radius: 6px;
+	display: block;
+}
+.hub-modal__chat-gif-toggle {
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: rgba(255, 255, 255, 0.05);
+	color: inherit;
+	border-radius: 4px;
+	padding: 0.35rem 0.6rem;
+	font-size: 0.75rem;
+	font-weight: 700;
+	cursor: pointer;
+}
+.hub-modal__chat-gif-toggle--active {
+	background: var(--accent-strong, #d4af37);
+	color: #1a1a1a;
+	border-color: transparent;
+}
+.hub-modal__chat-gif-picker {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	padding: 0.5rem 0.6rem;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.04);
+}
+.hub-modal__chat-gif-status {
+	margin: 0;
+	font-size: 0.75rem;
+	color: var(--muted);
+	text-align: center;
+}
+.hub-modal__chat-gif-grid {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 0.4rem;
+	max-height: 220px;
+	overflow-y: auto;
+}
+.hub-modal__chat-gif-thumb {
+	width: 100%;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	overflow: hidden;
+	cursor: pointer;
+	background: rgba(255, 255, 255, 0.05);
+	line-height: 0;
+}
+.hub-modal__chat-gif-thumb img {
+	width: 100%;
+	height: 70px;
+	object-fit: cover;
+	display: block;
+}
+
 .hub-modal__replays {
 	display: grid;
 	grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);

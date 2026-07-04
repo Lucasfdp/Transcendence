@@ -592,6 +592,56 @@ export interface PendingView {
 	isOnline: boolean;
 }
 
+// ── Chat ─────────────────────────────────────────────────────────────────────
+
+export type ConversationType = "dm" | "group";
+
+export interface ConversationSummaryView {
+	id: number;
+	type: ConversationType;
+	/** Group name, or the other participant's username for a dm. */
+	name: string | null;
+	/** The other participant's id, for a dm. Null for groups. */
+	otherUserId: number | null;
+	/** The other participant's avatar, for a dm. Null for groups. */
+	avatar: string | null;
+	lastMessageAt: string | null;
+	lastMessagePreview: string | null;
+}
+
+export type ChatMessageType = "text" | "system" | "gif" | "game_invite";
+
+export interface ChatMessageView {
+	id: number;
+	conversationId: number;
+	senderId: number;
+	senderUsername: string;
+	type: ChatMessageType;
+	body: string;
+	metadata: Record<string, unknown> | null;
+	createdAt: string;
+}
+
+/** A single Klipy gif search result, from GET /chat/gifs/search. */
+export interface GifSearchResult {
+	slug: string;
+	title: string;
+	url: string;
+	previewUrl: string;
+	width: number;
+	height: number;
+}
+
+/** A conversation with unread messages — pushed live over the socket, never fetched via REST. */
+export interface UnreadConversationView {
+	conversationId: number;
+	type: ConversationType;
+	/** Group name, or the sender's username for a dm. */
+	title: string;
+	preview: string | null;
+	lastMessageAt: string;
+}
+
 /** Per-game ELO leaderboard entry returned by GET /api/leaderboard?gameId=… */
 export interface GameLeaderboardEntry {
 	rank: number;
@@ -1001,6 +1051,96 @@ export const api = {
 		apiFetch<void>("/friends/block", {
 			method: "POST",
 			body: JSON.stringify({ userId }),
+		}),
+
+	// ── Chat ───────────────────────────────────────────────────────────────────
+
+	/** List every conversation the current user belongs to, most recent first. */
+	getConversations: (): Promise<ConversationSummaryView[]> =>
+		apiFetch<ConversationSummaryView[]>("/chat/conversations"),
+
+	/** Get or create a dm with a friend. Rejects if the two are not friends. */
+	startDirectMessage: (userId: number): Promise<{ id: number }> =>
+		apiFetch<{ id: number }>("/chat/conversations/direct", {
+			method: "POST",
+			body: JSON.stringify({ userId }),
+		}),
+
+	/** Create a group. Every member must be a friend of the creator. */
+	createGroupChat: (
+		name: string,
+		memberUserIds: number[],
+	): Promise<{ id: number }> =>
+		apiFetch<{ id: number }>("/chat/conversations/group", {
+			method: "POST",
+			body: JSON.stringify({ name, memberUserIds }),
+		}),
+
+	/**
+	 * Paginated message history for a conversation, newest first. Pass
+	 * `before` (an ISO timestamp — the oldest message's createdAt seen so
+	 * far) to load the previous page.
+	 */
+	getChatMessages: (
+		conversationId: number,
+		before?: string,
+	): Promise<ChatMessageView[]> =>
+		apiFetch<ChatMessageView[]>(
+			`/chat/conversations/${conversationId}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`,
+		),
+
+	/**
+	 * Send a message over REST. The live path is the `chat:send` socket
+	 * event (see gameSocket) — this is a fallback for when the socket is
+	 * unavailable.
+	 */
+	sendChatMessageRest: (
+		conversationId: number,
+		body: string,
+	): Promise<ChatMessageView> =>
+		apiFetch<ChatMessageView>(`/chat/conversations/${conversationId}/messages`, {
+			method: "POST",
+			body: JSON.stringify({ body }),
+		}),
+
+	/** Search gifs via the backend's Klipy proxy. An empty/blank query returns []. */
+	searchGifs: (query: string): Promise<GifSearchResult[]> =>
+		apiFetch<GifSearchResult[]>(`/chat/gifs/search?q=${encodeURIComponent(query)}`),
+
+	/**
+	 * Send a gif message over REST. The live path is the `chat:send-gif`
+	 * socket event (see gameSocket) — this is a fallback, mirroring
+	 * sendChatMessageRest for text.
+	 */
+	sendGifMessageRest: (
+		conversationId: number,
+		slug: string,
+	): Promise<ChatMessageView> =>
+		apiFetch<ChatMessageView>(`/chat/conversations/${conversationId}/messages/gif`, {
+			method: "POST",
+			body: JSON.stringify({ slug }),
+		}),
+
+	/** Add a friend to an existing group. Caller must be a participant and a friend of userId. */
+	addGroupMember: (conversationId: number, userId: number): Promise<void> =>
+		apiFetch<void>(`/chat/conversations/${conversationId}/members`, {
+			method: "POST",
+			body: JSON.stringify({ userId }),
+		}),
+
+	/** Leave a group. There is no "remove member" action — leaving is self-service only. */
+	leaveGroupChat: (conversationId: number): Promise<void> =>
+		apiFetch<void>(`/chat/conversations/${conversationId}/leave`, {
+			method: "POST",
+		}),
+
+	/**
+	 * Mark a conversation read over REST. The live path is the `chat:read`
+	 * socket event — this is a fallback for when the socket is unavailable.
+	 */
+	markConversationReadRest: (conversationId: number): Promise<void> =>
+		apiFetch<void>(`/chat/conversations/${conversationId}/read`, {
+			method: "POST",
 		}),
 
 	// ── Reports ────────────────────────────────────────────────────────────────

@@ -62,10 +62,10 @@ Evidencia:
 - Perfiles y actualizacion: `backend/src/modules/users/`
 - Amigos y bloqueos: `backend/src/modules/friends/`
 - Estado online por sockets: `backend/src/modules/presence/`
+- Chat de dm's y grupos (solo entre amigos, con historial persistido, envio de GIFs via Klipy): `backend/src/modules/chat/`, wiring de sockets en `matchmaking.gateway.ts`, UI en la seccion "Messages" del modal Social (`frontend/src/pages/HomePage.tsx`).
 
 Faltas para completarse:
-- Falta chat basico entre usuarios.
-- Sin chat, no se puede reclamar el modulo completo.
+- Ninguna pendiente para el chat basico.
 
 ### Major: Public API for database interaction
 Estado: `Hecho`

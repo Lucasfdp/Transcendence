@@ -12,6 +12,7 @@ import {
 } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
 import { COOKIE_NAME } from "../auth/auth.service";
+import { ChatService, chatRoomName } from "../chat/chat.service";
 import { FriendsService } from "../friends/friends.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UsersService } from "../users/users.service";
@@ -79,11 +80,13 @@ export class MatchmakingGateway
 		private readonly privateLobbies: PrivateLobbiesService,
 		private readonly friendsService: FriendsService,
 		private readonly replays: ReplayService,
+		private readonly chatService: ChatService,
 	) {}
 
-	/** Wire the Socket.io server into NotificationsService for real-time push. */
+	/** Wire the Socket.io server into NotificationsService/ChatService for real-time push. */
 	afterInit(server: Server): void {
 		this.notificationsService.setServer(server);
+		this.chatService.setServer(server);
 	}
 
 	async handleConnection(socket: Socket): Promise<void> {
@@ -140,6 +143,11 @@ export class MatchmakingGateway
 			// Push unread notification inbox — guests have no persistent notifications
 			if (!socketUser.isGuest) {
 				void this.notificationsService.pushInboxToSocket(
+					socket.id,
+					socketUser.id,
+				);
+				void this.joinChatRooms(socket, socketUser.id);
+				void this.chatService.pushUnreadInboxToSocket(
 					socket.id,
 					socketUser.id,
 				);
@@ -845,6 +853,92 @@ export class MatchmakingGateway
 		const user = socket.data.user as { id: number; isGuest: boolean } | undefined;
 		if (!user || user.isGuest) return;
 		await this.notificationsService.markAllRead(user.id).catch(() => undefined);
+	}
+
+	/**
+	 * Send a chat message. Thin wrapper — all persistence, membership, and
+	 * (from Batch 3) friendship/block checks live in ChatService; this just
+	 * translates the socket event into a service call and broadcasts the
+	 * result to the conversation's room.
+	 */
+	@SubscribeMessage("chat:send")
+	async onChatSend(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { conversationId: number; body: string },
+	): Promise<void> {
+		const user = socket.data.user as SocketUser | undefined;
+		if (!user) return;
+		try {
+			const message = await this.chatService.sendMessage(
+				payload.conversationId,
+				user.id,
+				payload.body,
+			);
+			this.server
+				.to(chatRoomName(payload.conversationId))
+				.emit("chat:message", message);
+		} catch (err) {
+			socket.emit("chat:error", {
+				message: err instanceof Error ? err.message : "Failed to send message",
+			});
+		}
+	}
+
+	/**
+	 * Send a gif message. Same thin-wrapper shape as onChatSend — the payload
+	 * only ever carries an opaque `slug`; ChatService.sendGifMessage re-fetches
+	 * the trusted gif data from Klipy before persisting/broadcasting anything.
+	 */
+	@SubscribeMessage("chat:send-gif")
+	async onChatSendGif(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { conversationId: number; slug: string },
+	): Promise<void> {
+		const user = socket.data.user as SocketUser | undefined;
+		if (!user) return;
+		try {
+			const message = await this.chatService.sendGifMessage(
+				payload.conversationId,
+				user.id,
+				payload.slug,
+			);
+			this.server
+				.to(chatRoomName(payload.conversationId))
+				.emit("chat:message", message);
+		} catch (err) {
+			socket.emit("chat:error", {
+				message: err instanceof Error ? err.message : "Failed to send gif",
+			});
+		}
+	}
+
+	/** Move the caller's read cursor to now for a conversation. */
+	@SubscribeMessage("chat:read")
+	async onChatRead(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { conversationId: number },
+	): Promise<void> {
+		const user = socket.data.user as SocketUser | undefined;
+		if (!user) return;
+		await this.chatService
+			.markRead(payload.conversationId, user.id)
+			.catch(() => undefined);
+	}
+
+	/**
+	 * Join every conversation room the user already belongs to, so live
+	 * `chat:message` broadcasts reach this socket immediately. Non-fatal on
+	 * failure — worst case the client falls back to REST for history.
+	 */
+	private async joinChatRooms(socket: Socket, userId: number): Promise<void> {
+		try {
+			const conversations = await this.chatService.listConversations(userId);
+			for (const conversation of conversations) {
+				socket.join(chatRoomName(conversation.id));
+			}
+		} catch {
+			// Non-fatal — worst case the client re-syncs via REST on next reconnect.
+		}
 	}
 
 	private emitState(matchId: string): void {

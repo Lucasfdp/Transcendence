@@ -1,6 +1,7 @@
 import { JwtService } from "@nestjs/jwt";
 import { Test, TestingModule } from "@nestjs/testing";
 import type { Socket } from "socket.io";
+import { ChatService } from "../chat/chat.service";
 import { FriendsService } from "../friends/friends.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UsersService } from "../users/users.service";
@@ -86,6 +87,13 @@ describe("MatchmakingGateway", () => {
 	let privateLobbies: { removeLobbyForUser: jest.Mock; joinLobby: jest.Mock };
 	let sessions: { startIfReady: jest.Mock };
 	let replays: { captureFrame: jest.Mock };
+	let chatService: {
+		sendMessage: jest.Mock;
+		sendGifMessage: jest.Mock;
+		markRead: jest.Mock;
+		listConversations: jest.Mock;
+		pushUnreadInboxToSocket: jest.Mock;
+	};
 
 	beforeEach(async () => {
 		presence = makePresenceMock();
@@ -103,6 +111,13 @@ describe("MatchmakingGateway", () => {
 		};
 		sessions = { startIfReady: jest.fn() };
 		replays = { captureFrame: jest.fn() };
+		chatService = {
+			sendMessage: jest.fn(),
+			sendGifMessage: jest.fn(),
+			markRead: jest.fn().mockResolvedValue(undefined),
+			listConversations: jest.fn().mockResolvedValue([]),
+			pushUnreadInboxToSocket: jest.fn().mockResolvedValue(undefined),
+		};
 
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
@@ -117,6 +132,7 @@ describe("MatchmakingGateway", () => {
 				{ provide: PrivateLobbiesService, useValue: privateLobbies },
 				{ provide: FriendsService, useValue: {} },
 				{ provide: ReplayService, useValue: replays },
+				{ provide: ChatService, useValue: chatService },
 			],
 		}).compile();
 
@@ -340,6 +356,177 @@ describe("MatchmakingGateway", () => {
 			});
 			expect(rooms.setReady).not.toHaveBeenCalled();
 			expect(sessions.startIfReady).not.toHaveBeenCalled();
+		});
+	});
+
+	// ── chat:send / chat:read — thin gateway glue added in Batch 2 ────────────
+
+	describe("onChatSend", () => {
+		const makeConnSocket = (userId: number): Socket =>
+			({
+				id: "socket-1",
+				data: { user: { id: userId, username: `user${userId}`, isGuest: false } },
+				emit: jest.fn(),
+			}) as unknown as Socket & { emit: jest.Mock };
+
+		const installFakeServer = () => {
+			const roomEmit = jest.fn();
+			(gateway as unknown as { server: unknown }).server = {
+				to: jest.fn().mockReturnValue({ emit: roomEmit }),
+			};
+			return { roomEmit };
+		};
+
+		it("should persist the message and broadcast it to the conversation room", async () => {
+			const socket = makeConnSocket(1);
+			const { roomEmit } = installFakeServer();
+			const message = { id: 1, conversationId: 10, body: "hey" };
+			chatService.sendMessage.mockResolvedValue(message);
+
+			await gateway.onChatSend(socket, { conversationId: 10, body: "hey" });
+
+			expect(chatService.sendMessage).toHaveBeenCalledWith(10, 1, "hey");
+			expect(roomEmit).toHaveBeenCalledWith("chat:message", message);
+		});
+
+		it("should emit chat:error instead of throwing when the service rejects", async () => {
+			const socket = makeConnSocket(1);
+			installFakeServer();
+			chatService.sendMessage.mockRejectedValue(
+				new Error("You are not a participant in this conversation"),
+			);
+
+			await gateway.onChatSend(socket, { conversationId: 10, body: "hey" });
+
+			expect(socket.emit).toHaveBeenCalledWith("chat:error", {
+				message: "You are not a participant in this conversation",
+			});
+		});
+
+		it("should do nothing when the socket has no authenticated user", async () => {
+			const socket = { id: "socket-1", data: {}, emit: jest.fn() } as unknown as Socket;
+			installFakeServer();
+
+			await gateway.onChatSend(socket, { conversationId: 10, body: "hey" });
+
+			expect(chatService.sendMessage).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("onChatSendGif", () => {
+		const makeConnSocket = (userId: number): Socket =>
+			({
+				id: "socket-1",
+				data: { user: { id: userId, username: `user${userId}`, isGuest: false } },
+				emit: jest.fn(),
+			}) as unknown as Socket & { emit: jest.Mock };
+
+		const installFakeServer = () => {
+			const roomEmit = jest.fn();
+			(gateway as unknown as { server: unknown }).server = {
+				to: jest.fn().mockReturnValue({ emit: roomEmit }),
+			};
+			return { roomEmit };
+		};
+
+		it("should resolve the gif and broadcast it to the conversation room", async () => {
+			const socket = makeConnSocket(1);
+			const { roomEmit } = installFakeServer();
+			const message = { id: 1, conversationId: 10, type: "gif", body: "Hello" };
+			chatService.sendGifMessage.mockResolvedValue(message);
+
+			await gateway.onChatSendGif(socket, { conversationId: 10, slug: "hello-hi-662" });
+
+			expect(chatService.sendGifMessage).toHaveBeenCalledWith(10, 1, "hello-hi-662");
+			expect(roomEmit).toHaveBeenCalledWith("chat:message", message);
+		});
+
+		it("should emit chat:error instead of throwing when the service rejects", async () => {
+			const socket = makeConnSocket(1);
+			installFakeServer();
+			chatService.sendGifMessage.mockRejectedValue(new Error("GIF not found"));
+
+			await gateway.onChatSendGif(socket, { conversationId: 10, slug: "missing" });
+
+			expect(socket.emit).toHaveBeenCalledWith("chat:error", {
+				message: "GIF not found",
+			});
+		});
+
+		it("should do nothing when the socket has no authenticated user", async () => {
+			const socket = { id: "socket-1", data: {}, emit: jest.fn() } as unknown as Socket;
+			installFakeServer();
+
+			await gateway.onChatSendGif(socket, { conversationId: 10, slug: "hello-hi-662" });
+
+			expect(chatService.sendGifMessage).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("onChatRead", () => {
+		const makeConnSocket = (userId: number): Socket =>
+			({
+				id: "socket-1",
+				data: { user: { id: userId, username: `user${userId}`, isGuest: false } },
+				emit: jest.fn(),
+			}) as unknown as Socket;
+
+		it("should mark the conversation read for the authenticated user", async () => {
+			await gateway.onChatRead(makeConnSocket(1), { conversationId: 10 });
+
+			expect(chatService.markRead).toHaveBeenCalledWith(10, 1);
+		});
+
+		it("should not throw when markRead rejects (non-fatal)", async () => {
+			chatService.markRead.mockRejectedValue(new Error("db down"));
+
+			await expect(
+				gateway.onChatRead(makeConnSocket(1), { conversationId: 10 }),
+			).resolves.toBeUndefined();
+		});
+
+		it("should do nothing when the socket has no authenticated user", async () => {
+			const socket = { id: "socket-1", data: {}, emit: jest.fn() } as unknown as Socket;
+
+			await gateway.onChatRead(socket, { conversationId: 10 });
+
+			expect(chatService.markRead).not.toHaveBeenCalled();
+		});
+	});
+
+	// ── joinChatRooms (private, invoked on connect) ───────────────────────────
+
+	describe("joinChatRooms", () => {
+		const callJoinChatRooms = (socket: Socket, userId: number): Promise<void> =>
+			(
+				gateway as unknown as {
+					joinChatRooms: (s: Socket, id: number) => Promise<void>;
+				}
+			).joinChatRooms(socket, userId);
+
+		it("should join the socket to every conversation room the user belongs to", async () => {
+			chatService.listConversations.mockResolvedValue([
+				{ id: 1 },
+				{ id: 2 },
+			]);
+			const socket = { id: "socket-1", join: jest.fn() } as unknown as Socket & {
+				join: jest.Mock;
+			};
+
+			await callJoinChatRooms(socket, 1);
+
+			expect(socket.join).toHaveBeenCalledWith("chat:1");
+			expect(socket.join).toHaveBeenCalledWith("chat:2");
+		});
+
+		it("should not throw when listConversations rejects (non-fatal)", async () => {
+			chatService.listConversations.mockRejectedValue(new Error("db down"));
+			const socket = { id: "socket-1", join: jest.fn() } as unknown as Socket & {
+				join: jest.Mock;
+			};
+
+			await expect(callJoinChatRooms(socket, 1)).resolves.toBeUndefined();
+			expect(socket.join).not.toHaveBeenCalled();
 		});
 	});
 });

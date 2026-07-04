@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/104</span>
+                <span class='fraction'>0/110</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/45</span>
+                <span class='fraction'>0/49</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/94</span>
+                <span class='fraction'>0/99</span>
             </div>
         
             
@@ -302,7 +302,12 @@
 <a name='L237'></a><a href='#L237'>237</a>
 <a name='L238'></a><a href='#L238'>238</a>
 <a name='L239'></a><a href='#L239'>239</a>
-<a name='L240'></a><a href='#L240'>240</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<a name='L240'></a><a href='#L240'>240</a>
+<a name='L241'></a><a href='#L241'>241</a>
+<a name='L242'></a><a href='#L242'>242</a>
+<a name='L243'></a><a href='#L243'>243</a>
+<a name='L244'></a><a href='#L244'>244</a>
+<a name='L245'></a><a href='#L245'>245</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -363,6 +368,10 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -506,6 +515,7 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -601,6 +611,10 @@ export <span class="cstat-no" title="statement not covered" >class <span class="
 <span class="cstat-no" title="statement not covered" >				throw new ForbiddenException("Parent background is not owned");</span>
 <span class="cstat-no" title="statement not covered" >			user.hubBackground = parentCosmetic.id;</span>
 <span class="cstat-no" title="statement not covered" >			user.hubBackgroundAlter = cosmetic.id;</span>
+		} else <span class="cstat-no" title="statement not covered" >if (cosmetic.type === "dojo_tag") {</span>
+<span class="cstat-no" title="statement not covered" >			<span class="missing-if-branch" title="if path not taken" >I</span>if (!user.profile)</span>
+<span class="cstat-no" title="statement not covered" >				throw new BadRequestException("User profile is missing");</span>
+<span class="cstat-no" title="statement not covered" >			user.profile.tag = cosmetic.id;</span>
 		} else <span class="cstat-no" title="statement not covered" >throw new BadRequestException("Cosmetic is not equippable");</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >		await this.usersRepo.save(user);</span>
@@ -736,7 +750,7 @@ export <span class="cstat-no" title="statement not covered" >class <span class="
 &nbsp;
 	private <span class="fstat-no" title="function not covered" >isEquipped(</span>user: User, cosmetic: CosmeticDefinition): boolean {
 <span class="cstat-no" title="statement not covered" >		<span class="missing-if-branch" title="if path not taken" >I</span>if (cosmetic.type === "shell_skin")</span>
-<span class="cstat-no" title="statement not covered" >			return (user.shellSkin ?? "kanagawa") === cosmetic.id;</span>
+<span class="cstat-no" title="statement not covered" >			return (user.shellSkin ?? "base") === cosmetic.id;</span>
 <span class="cstat-no" title="statement not covered" >		<span class="missing-if-branch" title="if path not taken" >I</span>if (cosmetic.type === "hub_background")</span>
 <span class="cstat-no" title="statement not covered" >			return (</span>
 				normalizeCosmeticId(user.hubBackground ?? "night_bg") === cosmetic.id
@@ -745,6 +759,7 @@ export <span class="cstat-no" title="statement not covered" >class <span class="
 <span class="cstat-no" title="statement not covered" >			return (</span>
 				normalizeCosmeticId(user.hubBackgroundAlter ?? "") === cosmetic.id
 			);
+<span class="cstat-no" title="statement not covered" >		<span class="missing-if-branch" title="if path not taken" >I</span>if (cosmetic.type === "dojo_tag") <span class="cstat-no" title="statement not covered" >return user.profile?.tag === cosmetic.id;</span></span>
 <span class="cstat-no" title="statement not covered" >		return false;</span>
 	}
 &nbsp;
@@ -787,7 +802,7 @@ export <span class="cstat-no" title="statement not covered" >class <span class="
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-28T00:30:56.404Z
+                at 2026-07-04T04:46:37.318Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

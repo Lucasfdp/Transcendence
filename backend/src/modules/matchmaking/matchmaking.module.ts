@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { ConfigModule, ConfigService } from "@nestjs/config";
+import { ChatModule } from "../chat/chat.module";
 import { FriendsModule } from "../friends/friends.module";
 import { GameResultsModule } from "../game-results/game-results.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -50,6 +51,7 @@ import { RoomService } from "./room.service";
 		GameResultsModule,
 		NotificationsModule,
 		FriendsModule,
+		ChatModule,
 	],
 	controllers: [MatchesController],
 	providers: [

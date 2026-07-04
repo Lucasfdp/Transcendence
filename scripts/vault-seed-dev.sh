@@ -90,6 +90,7 @@ DEEPSEEK_CLIENT_ID=
 DEEPSEEK_CLIENT_SECRET=
 PERPLEXITY_CLIENT_ID=
 PERPLEXITY_CLIENT_SECRET=
+KLIPY_APP_KEY=
 EOF
     chmod 600 "${SEED_FILE}"
     echo "[vault-seed] Created ${SEED_FILE}. Fill OAuth credentials there if needed, then rerun this target."
@@ -131,6 +132,7 @@ ${COMPOSE} exec -T \
     -e DEEPSEEK_CLIENT_SECRET="${DEEPSEEK_CLIENT_SECRET}" \
     -e PERPLEXITY_CLIENT_ID="${PERPLEXITY_CLIENT_ID}" \
     -e PERPLEXITY_CLIENT_SECRET="${PERPLEXITY_CLIENT_SECRET}" \
+    -e KLIPY_APP_KEY="${KLIPY_APP_KEY}" \
     vault sh -lc '
         vault secrets enable -path=kv kv-v2 >/dev/null 2>&1 || true
         vault auth enable approle >/dev/null 2>&1 || true
@@ -162,6 +164,7 @@ ${COMPOSE} exec -T \
             DEEPSEEK_CLIENT_SECRET="$DEEPSEEK_CLIENT_SECRET" \
             PERPLEXITY_CLIENT_ID="$PERPLEXITY_CLIENT_ID" \
             PERPLEXITY_CLIENT_SECRET="$PERPLEXITY_CLIENT_SECRET" \
+            KLIPY_APP_KEY="$KLIPY_APP_KEY" \
             METRICS_TOKEN="$METRICS_TOKEN" \
             POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
             REDIS_PASSWORD="$REDIS_PASSWORD"

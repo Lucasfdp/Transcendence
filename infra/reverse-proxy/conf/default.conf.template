@@ -18,7 +18,9 @@ server {
     # unsafe-eval required by Phaser 3 shader pipeline (see https://phaser.io/phaser3 known limitations)
     # unsafe-inline (script-src) required until nonce-based CSP is implemented — tracked TODO(#csp-nonce)
     # unsafe-inline (style-src) required until CSS-in-JS is replaced with external stylesheets — tracked TODO(#csp-nonce)
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:3000 https://localhost:3000 https://localhost:42424 ws://localhost:3000 wss://localhost:3000 ws://localhost wss://localhost wss://localhost:42424;" always;
+    # img-src allows static.klipy.com for chat GIFs (see backend/src/modules/chat/gif.service.ts) —
+    # scoped to that exact host, not a wildcard, since it's the only third-party image origin we render.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://static.klipy.com; font-src 'self' data:; connect-src 'self' http://localhost:3000 https://localhost:3000 https://localhost:42424 ws://localhost:3000 wss://localhost:3000 ws://localhost wss://localhost wss://localhost:42424;" always;
 
     location / {
         modsecurity off;
