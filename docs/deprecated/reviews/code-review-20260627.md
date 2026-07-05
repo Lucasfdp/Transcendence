@@ -145,7 +145,7 @@ Legend: ✅ confident · 🟡 contestable / verify in demo · ❌ not implemente
 | Gaming | **Advanced 3D** (Three.js/Babylon) | ❌ | 0 | Phaser is 2D. |
 | Gaming | Minor: **Advanced chat** | ❌ | 0 | Depends on basic chat, which is absent. |
 | Gaming | Minor: **Tournament** | ❌ | 0 | No tournament/bracket code found. |
-| Gaming | Minor: **Game customization** | ✅ | 1 | Shells, cosmetics, card packs, maps; defaults exist. |
+| Gaming | Minor: **Game customisation** | ✅ | 1 | Shells, cosmetics, card packs, maps; defaults exist. |
 | Gaming | Minor: **Gamification** | ✅ | 1 | Achievements + XP/levels + leaderboard + coins/cards (≥3). |
 | Gaming | Minor: **Spectator mode** | ✅ | 1 | `spectator:join/leave` + live state push; verify spectators get real-time updates. |
 | AI | AI opponent / RAG / LLM | ❌ | 0 | None found (only "aiming" false positives). |

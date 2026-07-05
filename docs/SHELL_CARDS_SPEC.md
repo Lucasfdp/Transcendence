@@ -43,13 +43,13 @@ Most card subjects reuse entities that already exist in the codebase, so "art"
 is a procedurally-drawn frame around an existing icon/thumbnail (see §6).
 `character` cards may instead supply static art via an optional `imageUrl`.
 
-Catalog families (`CardFamily`) and current counts:
+Catalogue families (`CardFamily`) and current counts:
 
 - **`power_shell`** — one per `PowerType` (21: HEAVY, BOMB, GHOST, MAGNET,
   VORTEX, …). Subject art = the icon already drawn in `ShellPickerScene`.
 - **`shrine`** — one per minigame (5: Kame Knock, Bell Clash, Temple Curling,
   Bamboo Bash, River Rush).
-- **`shell_skin`** — drawn from the existing cosmetics catalog
+- **`shell_skin`** — drawn from the existing cosmetics catalogue
   (3: `customization.constants` `COSMETICS`, `shell_skin` entries).
 - **`character`** — lore/character cards, the rare chase. Shipped with the
   inaugural legendary **Shinigame, the Shell Reaper** (`char-reaper`, gold),
@@ -68,14 +68,14 @@ Catalog families (`CardFamily`) and current counts:
   `imageUrl: /assets/character/demon-turtle.png`), **Kishi, the Knight
   Shell** (`char-knight`, gold, `imageUrl: /assets/character/knight-turtle.png`),
   and **Irie Kame, the Roots Shell** (`char-rasta`, gold,
-  `imageUrl: /assets/character/rasta-turtle.png`). Total catalog:
+  `imageUrl: /assets/character/rasta-turtle.png`). Total catalogue:
   **37 cards**.
 
 ### Rarity & foils
 
 - Rarity ladder, dojo-themed: **Stone → Bronze → Jade → Gold** (4 tiers).
 - Every card can also appear as a **foil** variant (shimmer/tint overlay). Foils
-  are the chase; they are a flag on an owned card, not separate catalog entries.
+  are the chase; they are a flag on an owned card, not separate catalogue entries.
 - Rarity and foil are **cosmetic only** — they do not affect gameplay or grant
   any in-match advantage.
 
@@ -114,7 +114,7 @@ No crafting/dust. A duplicate increments the card's `count` (foil dupes incremen
 
 ## 5. Backend shape (mirrors the existing `customization` module)
 
-- `cards.constants.ts` — `CARDS` catalog (`id`, `family`, `rarity`, `name`,
+- `cards.constants.ts` — `CARDS` catalogue (`id`, `family`, `rarity`, `name`,
   `flavor`, `sourceRef` → powerType/cosmeticId/gameId, optional `imageUrl`),
   plus rarity odds, pack size, pack price, dupe-refund constants. Also the view
   types (`CardView`, `BinderView`, `PackPull`, `PackResult`).
@@ -147,9 +147,9 @@ No crafting/dust. A duplicate increments the card's `count` (foil dupes incremen
 
 - Replace the placeholder `setInfoModal({ title: "Shell Cards", … })` in
   `HomePage.tsx` with a real **Pabellón de cartas** view (Phaser scene or React
-  modal — match whatever the other Dojo Extras use; Customization is the model).
+  modal — match whatever the other Dojo Extras use; Customisation is the model).
 - **Binder grid**: grouped by set, locked slots as `???` silhouettes, owned cards
-  in rarity-colored frames, foils shimmer, per-set progress (`7/12`).
+  in rarity-coloured frames, foils shimmer, per-set progress (`7/12`).
 - **Pack store**: shows coin balance, pack price, "Open pack" button.
 - **Pack-opening animation**: the headline fun moment — cards flip/reveal one by
   one, rarity flash, foil sparkle. This is where polish budget goes.
@@ -164,7 +164,7 @@ No crafting/dust. A duplicate increments the card's `count` (foil dupes incremen
 
 ### MVP (first pass — build this)
 
-1. `CARDS` catalog (power-shells + shrines + skins) + rarity odds/constants.
+1. `CARDS` catalogue (power-shells + shrines + skins) + rarity odds/constants.
 2. `UserCard` entity + migration-safe (`synchronize` outside prod).
 3. `GET /cards` binder view (owned + locked + set progress).
 4. Match-end card drop (earn-by-playing, the basic roll).
@@ -223,7 +223,7 @@ failure) paths.
 Each batch is independently testable and reviewed before the next begins (TDD
 within each).
 
-- **Batch 1 — Catalog & constants.** `CARDS`, rarity odds (sum-to-1 test), pack
+- **Batch 1 — Catalogue & constants.** `CARDS`, rarity odds (sum-to-1 test), pack
   price/size/refund constants.
 - **Batch 2 — Persistence.** `UserCard` entity + repo wiring.
 - **Batch 3 — Binder read.** `listBinder` + `GET /cards` (owned/locked/progress).
@@ -265,7 +265,7 @@ Design decisions locked for this batch:
   (`GUARANTEED_SLOT_INDEX = PACK_SIZE - 1` in `cards.constants.ts`), rolled
   via `rollGuaranteedCard` — a variant of `rollCard` restricted to rarities
   at or above the guaranteed minimum, so the guarantee holds under any RNG
-  sequence, not just "usually." Fixed slot was chosen over a randomized slot
+  sequence, not just "usually." Fixed slot was chosen over a randomised slot
   for simplicity of both the implementation and its tests.
 - **Pack size and duplicate refunds stay tier-independent.** Every tier
   still yields exactly `PACK_SIZE` (5) cards, and `DUPLICATE_COIN_REFUND` is
@@ -305,7 +305,7 @@ Design decisions locked for this batch:
   its name, a full odds/foil/guarantee summary, its own afford-state, and an
   "Opening..." state scoped to that tier. `RevealOverlay` needed no changes.
 - `styles/global.css` — `.hub-cards__pack-tier*`; the legendary tier reuses
-  the gold rarity accent color as a "this pack is special" visual cue.
+  the gold rarity accent colour as a "this pack is special" visual cue.
 
 ---
 
@@ -314,7 +314,7 @@ Design decisions locked for this batch:
 _Added 2026-07-05. See
 `docs/handoff-shell-cards-prismatic-and-characters.md` for the brainstorm
 this implements. Landed alongside 4 new gold character cards (§3), an
-unrelated catalog extension._
+unrelated catalogue extension._
 
 **Prismatic is not a 5th rarity tier.** The rarity ladder stays
 Stone → Bronze → Jade → Gold (4 tiers). Prismatic is a rarer, flashier

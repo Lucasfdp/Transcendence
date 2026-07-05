@@ -27,7 +27,7 @@
 - Game Statistics (Minor) = 1
 - OAuth (Minor) = 1
 - Advanced Permissions (Major) = 2
-- Organization System (Major) = 2
+- Organisation System (Major) = 2
 - 2FA (Minor) = 1
 - User Analytics (Minor) = 1
 
@@ -52,7 +52,7 @@
 - 3D Graphics (Major) = 2
 - Advanced Chat (Minor) = 1
 - Tournament System (Minor) = 1
-- Game Customization (Minor) = 1
+- Game Customisation (Minor) = 1
 - Gamification (Minor) = 1
 - Spectator Mode (Minor) = 1
 

@@ -22,7 +22,7 @@ import {
 	type BinderSortOrder,
 } from "./binderFilters";
 
-/** Keys that activate a card slot, mirroring native button behavior. */
+/** Keys that activate a card slot, mirroring native button behaviour. */
 const ACTIVATION_KEYS = new Set(["Enter", " "]);
 
 /** Selector for elements that can receive keyboard focus, used by the lightbox's focus trap. */
@@ -30,8 +30,8 @@ const FOCUSABLE_SELECTOR =
 	'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * Distinct shapes per rarity, layered on top of the existing border-color
- * accent so rarity reads even without color perception (colorblind-safe).
+ * Distinct shapes per rarity, layered on top of the existing border-colour
+ * accent so rarity reads even without colour perception (colorblind-safe).
  */
 const RARITY_GLYPH: Record<CardRarity, string> = {
 	stone: "▪",
@@ -62,7 +62,7 @@ function shineBadgeText(foilCount: number, prismaticCount: number): string | nul
 	return null;
 }
 
-/** Small shape badge reinforcing a card's rarity beyond its border color. */
+/** Small shape badge reinforcing a card's rarity beyond its border colour. */
 function CardRarityBadge({ rarity }: { rarity: CardRarity }): JSX.Element {
 	return (
 		<span className="hub-cards__rarity-badge" aria-hidden="true">

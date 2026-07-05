@@ -116,7 +116,7 @@ export class GifService {
 		// Request a single slug, so trust whatever Klipy returns as *the* match
 		// rather than re-comparing item.slug === slug: Klipy has been observed
 		// not always echoing back the exact slug string that was queried (e.g.
-		// case/normalization differences), which previously caused every gif
+		// case/normalisation differences), which previously caused every gif
 		// send to fail with a false "GIF not found". We already fully control
 		// the requested slug and only ever ask for one, so trusting items[0] is
 		// safe — this never lets a client choose what gets persisted.

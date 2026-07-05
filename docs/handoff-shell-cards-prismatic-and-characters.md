@@ -2,7 +2,7 @@
 
 This is a handoff, not a finished feature — the brainstorm already happened
 (via clarifying questions to the user), the decisions below are **locked**,
-and the character flavor text is **already drafted**. What's left is
+and the character flavour text is **already drafted**. What's left is
 TDD implementation, following this repo's brainstorm → TDD → execute-plan
 process (see `CLAUDE.md` / the `superpowers` skill).
 
@@ -12,7 +12,7 @@ Shell Cards feature (`backend/src/modules/cards/`,
 gameplay — cards stay purely cosmetic (locked decision from the original
 spec, `docs/SHELL_CARDS_SPEC.md` §1). Don't re-architect the binder read,
 the pack-tier system (`docs/SHELL_CARDS_SPEC.md` §11), the transactional
-coin spend, or the pack-opening UI — you're adding a catalog extension and
+coin spend, or the pack-opening UI — you're adding a catalogue extension and
 one new orthogonal card attribute on top of all of that.
 
 ---
@@ -66,7 +66,7 @@ Two things this batch adds on top of that, independently:
 
 1. **4 new character cards** — art already exists at
    `public/assets/character/{godly,demon,knight,rasta}-turtle.png` (added by
-   the user directly, confirmed present). They just need catalog entries.
+   the user directly, confirmed present). They just need catalogue entries.
 2. **A "Prismatic" tier** — a rarer-than-foil state that only a gold-rarity
    card can reach. Not a new value in the rarity ladder (`stone → bronze →
    jade → gold` stays 4 tiers) — it's layered on top of the existing foil
@@ -83,7 +83,7 @@ Two things this batch adds on top of that, independently:
 | How rare is it? | **10% of foil-gold pulls become prismatic**, applied only when the roll already landed gold + foil. This is a flat, tier-independent fraction (`PRISMATIC_CHANCE_FRACTION = 0.1`) — the effective end-to-end rate still scales per pack tier for free, because it's conditioned on `tier.foilChance`, which already differs per tier (basic 5% → effective 0.5%; deluxe 8% → effective 0.8%; legendary 15% → effective 1.5%). |
 | Does prismatic get its own duplicate-refund tier? | **No.** Same refund as a regular gold-foil duplicate (`DUPLICATE_COIN_REFUND.gold`). Purely a rarer, flashier cosmetic flex — no economy change. |
 | How do we track ownership? | **New `prismaticCount` column/field**, nested inside the existing ones: `prismaticCount ≤ foilCount ≤ count`. A prismatic pull increments both `foilCount` and `prismaticCount`. |
-| Name | **"Prismatic"** (e.g. badge text, tier label). Exact glyph/wording is your call — the existing badge language is spare Unicode glyphs, not emoji (rarity: `▪ ◆ ⬡ ★`, foil: `✦ foil`), so something like `✵ Prismatic` fits better than a colorful emoji, but this is a nitpick, not a locked decision. |
+| Name | **"Prismatic"** (e.g. badge text, tier label). Exact glyph/wording is your call — the existing badge language is spare Unicode glyphs, not emoji (rarity: `▪ ◆ ⬡ ★`, foil: `✦ foil`), so something like `✵ Prismatic` fits better than a colourful emoji, but this is a nitpick, not a locked decision. |
 | New character rarity | **All 4 new characters are gold**, matching every existing character card. |
 | New character names/lore | **Already drafted below (§4)** — use as-is, or treat as a first draft the user can tweak. |
 
@@ -166,7 +166,7 @@ Mirror the existing `foilBadgeText()` helper's shape
 
 `CardLightbox` already has a "hybrid holo layer" for **any** gold + foil
 card (`card.rarity === "gold" && card.foilCount > 0`), and this exact
-behavior is locked in by three existing, passing tests in
+behaviour is locked in by three existing, passing tests in
 `CardLightbox.test.tsx`:
 
 - `should render the hybrid holo layer for a gold card with at least one foil`
@@ -271,12 +271,12 @@ following the exact shape of the existing 6 entries:
 Note on the rasta card: deliberately leaned on upbeat, universal
 "peace/rhythm/chill confidence" traits rather than any religious iconography
 or caricature, consistent with how the existing roster treats its other
-culturally-flavored characters (Santa, samurai, pirate) as archetypes, not
+culturally-flavoured characters (Santa, samurai, pirate) as archetypes, not
 parody. If the user wants a different angle, this is the one to sanity-check
-with them first before finalizing.
+with them first before finalising.
 
-This brings the catalog from 33 to **37 cards**. Update the count in
-`docs/SHELL_CARDS_SPEC.md` §3 ("Total catalog: 33 cards" → 37) and add 4
+This brings the catalogue from 33 to **37 cards**. Update the count in
+`docs/SHELL_CARDS_SPEC.md` §3 ("Total catalogue: 33 cards" → 37) and add 4
 tests to `cards.constants.spec.ts` mirroring the 6 existing per-character
 tests (e.g. `should include the Kamigame godly character card with static
 art`), asserting `family`, `rarity`, and `imageUrl` for each.
@@ -289,7 +289,7 @@ art`), asserting `family`, `rarity`, and `imageUrl` for each.
 
 - 4 new tests for the character cards (§4), mirroring the existing 6.
 - `should keep PRISMATIC_CHANCE_FRACTION within (0, 1)`.
-- Catalog-count assertions (`CARDS.length`) will need bumping from 33 → 37
+- Catalogue-count assertions (`CARDS.length`) will need bumping from 33 → 37
   wherever hardcoded (check `docs/SHELL_CARDS_SPEC.md` and any test that
   asserts an exact count — most just assert `.length > 0`, so check before
   assuming a hardcoded number needs a bump).
@@ -306,7 +306,7 @@ art`), asserting `family`, `rarity`, and `imageUrl` for each.
 - `should not mark a gold+foil pull as prismatic when the prismatic draw is
   at or above PRISMATIC_CHANCE_FRACTION`.
 - `should not consume an extra rng draw for a non-gold or non-foil roll`
-  (regression test for §3.1 — assert the draw-count/cycling behavior is
+  (regression test for §3.1 — assert the draw-count/cycling behaviour is
   unchanged for a stone pull, e.g. by checking a subsequent `rollCard` call
   on the same `rng` sees the expected next value).
 - `rollGuaranteedCard`: same 4 prismatic-related tests, since its eligible
@@ -346,8 +346,8 @@ standard.
 
 ## 6. Build order & checkpoints
 
-1. **Batch 1 — Character catalog.** Add the 4 cards (§4) + their
-   `cards.constants.spec.ts` tests + the catalog-count doc update. Small,
+1. **Batch 1 — Character catalogue.** Add the 4 cards (§4) + their
+   `cards.constants.spec.ts` tests + the catalogue-count doc update. Small,
    independent, no roll-math risk. → review.
 2. **Batch 2 — Prismatic roll math.** `PRISMATIC_CHANCE_FRACTION`,
    `RolledCard.prismatic`, the conditional-4th-draw change to `rollCard`
@@ -361,7 +361,7 @@ standard.
 4. **Batch 4 — Frontend.** `api.ts` types, badge priority (§3.3), the new
    prismatic shimmer layer (§3.4), reveal-overlay tag, fixture updates
    across all 4 test files listed in §3.5. → review.
-5. **Batch 5 — Docs.** Update `docs/SHELL_CARDS_SPEC.md`: bump the catalog
+5. **Batch 5 — Docs.** Update `docs/SHELL_CARDS_SPEC.md`: bump the catalogue
    count, add the 4 characters to §3, add a new section documenting
    Prismatic (mirror how §11 documented pack tiers).
 
@@ -372,7 +372,7 @@ Do not start a batch until the previous one's tests are green and reviewed.
 ## 7. Acceptance criteria
 
 - All 4 new character cards appear in the binder, gold rarity, with their
-  static art, and are covered by catalog tests.
+  static art, and are covered by catalogue tests.
 - A gold-rarity foil pull has a `PRISMATIC_CHANCE_FRACTION` (10%) chance of
   additionally becoming prismatic; no other rarity can ever be prismatic.
 - `prismaticCount ≤ foilCount ≤ count` holds for every `UserCard` row,
@@ -386,5 +386,5 @@ Do not start a batch until the previous one's tests are green and reviewed.
 - Backend: `npx jest cards game-results` green, `tsc --noEmit` clean.
 - Frontend: `tsc --noEmit` clean; **the user has confirmed a real `npm run
   test:run` green** before this is called done (see §0's caveat).
-- `docs/SHELL_CARDS_SPEC.md` updated: catalog count, the 4 characters, and a
+- `docs/SHELL_CARDS_SPEC.md` updated: catalogue count, the 4 characters, and a
   new Prismatic section.

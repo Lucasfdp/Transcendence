@@ -8,7 +8,7 @@ import {
 import { User } from "../../users/entities/user.entity";
 
 /**
- * A player's ownership of a single Shell Card (catalog id `cardId`).
+ * A player's ownership of a single Shell Card (catalogue id `cardId`).
  *
  * One row per (user, card). `count` is the TOTAL copies owned; `foilCount` is
  * how many of those copies are the shiny foil variant (foilCount ≤ count).

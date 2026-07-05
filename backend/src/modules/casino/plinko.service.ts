@@ -21,7 +21,7 @@ import {
  *
  * The player picks a risk tier (row-count); the engine draws one independent
  * roll per row and {@link evaluateDrop} resolves the binomial bucket the shell
- * lands in. Center buckets pay less than the stake, edges pay big — the shared
+ * lands in. Centre buckets pay less than the stake, edges pay big — the shared
  * {@link CasinoEngine} handles all coin movement and the audit row; this
  * service validates the row-count and stake and supplies the per-spin decision.
  */

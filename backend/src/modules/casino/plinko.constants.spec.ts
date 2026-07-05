@@ -24,7 +24,7 @@ describe("plinko.constants", () => {
 	});
 
 	describe("PLINKO_RISK_BASE", () => {
-		it("should be greater than 1 so edge buckets weigh more than center", () => {
+		it("should be greater than 1 so edge buckets weigh more than centre", () => {
 			expect(PLINKO_RISK_BASE).toBeGreaterThan(1);
 		});
 	});
@@ -91,7 +91,7 @@ describe("plinko.constants", () => {
 	});
 
 	describe("bucketMultiplier", () => {
-		it("should pay more at the edges than the center for every row-count", () => {
+		it("should pay more at the edges than the centre for every row-count", () => {
 			for (const rows of PLINKO_ROWS_OPTIONS) {
 				const center = bucketMultiplier(rows, Math.floor(rows / 2));
 				const edge = bucketMultiplier(rows, 0);
@@ -110,7 +110,7 @@ describe("plinko.constants", () => {
 			}
 		});
 
-		it("should never pay zero — variance comes from center vs edge, not total loss", () => {
+		it("should never pay zero — variance comes from centre vs edge, not total loss", () => {
 			for (const rows of PLINKO_ROWS_OPTIONS) {
 				for (let k = 0; k <= rows; k++) {
 					expect(bucketMultiplier(rows, k)).toBeGreaterThan(0);
@@ -134,7 +134,7 @@ describe("plinko.constants", () => {
 			expect(result.multiplier).toBeCloseTo(bucketMultiplier(8, 8), 10);
 		});
 
-		it("should resolve a mixed drop to the matching center bucket", () => {
+		it("should resolve a mixed drop to the matching centre bucket", () => {
 			const rolls = [0, 0, 0, 0, 0.5, 0.5, 0.5, 0.5]; // 4 right → bucket 4
 			const result = evaluateDrop(8, rolls);
 			expect(result.outcomeId).toBe("bucket-4");

@@ -63,7 +63,7 @@ const POWER_DESC: Record<PowerType, string> = {
 	[PowerType.BOMB]: "Explodes on first hit, scattering nearby shells",
 	[PowerType.SPLITTER]: "Splits into 3 smaller shells when picked up",
 	[PowerType.GHOST]: "Passes through opponent shells without deflecting",
-	[PowerType.MAGNET]: "Pulls nearby enemy shells toward your delivery",
+	[PowerType.MAGNET]: "Pulls nearby enemy shells towards your delivery",
 	[PowerType.SPINNING]: "Follows an unpredictable curved path",
 	[PowerType.BOUNCER]: "Bounces off bumpers with an extra speed boost",
 	[PowerType.SHIELD]: "Immune to all enemy power effects this throw",

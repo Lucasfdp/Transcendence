@@ -139,7 +139,7 @@ Notes / gotchas for the implementer:
 - `startIfReady` early-returns unless `room.status === "pending"` and all players
   ready — so calling it once, after both `setReady`s, is correct and idempotent.
 - This mirrors the existing `onRoomReady` path
-  (`matchmaking.gateway.ts:281-291`), so behavior stays consistent with normal
+  (`matchmaking.gateway.ts:281-291`), so behaviour stays consistent with normal
   matchmaking (replay recording, DB `startedAt`, etc. all handled by
   `startIfReady`).
 - Consider whether replay/`startedAt` side-effects should fire for private
@@ -186,7 +186,7 @@ Where: `frontend/src/games/shell-curl/ShellCurlScene.ts`.
   `applyOnlineSnapshot` (`ShellCurlScene.ts:1673-1677`) still calls
   `updateSidePanels()` (or that panels were already built in `create()`), so the
   "Waiting for opponent…" state shows a full HUD.
-- This is defense-in-depth; with Task A the invite path launches active, but this
+- This is defence-in-depth; with Task A the invite path launches active, but this
   removes the phase coupling that made the bug visible and protects the
   reconnect/spectator paths.
 

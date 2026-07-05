@@ -1,18 +1,18 @@
-Implementa fondos vectoriales preset desbloqueables/equipables para el Hub desde la pantalla de customization.
+Implementa fondos vectoriales preset desbloqueables/equipables para el Hub desde la pantalla de customisation.
 
 Contexto:
 - El fondo del Hub se dibuja actualmente de forma procedural/vectorial en Phaser dentro de:
   srcs/requirements/frontend/src/src/hub/HubScene.ts
 - La función relevante es drawBackground(), que dibuja el fondo actual completo.
-- Actualmente existe un sistema de customization/cosmetics para shell skins.
+- Actualmente existe un sistema de customisation/cosmetics para shell skins.
 - Backend relevante:
-  srcs/requirements/backend/src/src/customization/customization.constants.ts
-  srcs/requirements/backend/src/src/customization/customization.service.ts
+  srcs/requirements/backend/src/src/customisation/customisation.constants.ts
+  srcs/requirements/backend/src/src/customisation/customisation.service.ts
   srcs/requirements/backend/src/src/users/entities/user.entity.ts
 - Frontend API/types relevante:
   srcs/requirements/frontend/src/src/hub/api.ts
 - El objetivo NO es permitir dibujo libre por parte del usuario.
-- El objetivo es que nosotros definamos varios fondos vectoriales preset, que el usuario pueda desbloquear mediante achievements u otros mecanismos, y equipar desde customization.
+- El objetivo es que nosotros definamos varios fondos vectoriales preset, que el usuario pueda desbloquear mediante achievements u otros mecanismos, y equipar desde customisation.
 
 Objetivo principal:
 Añadir un nuevo tipo de cosmetic llamado hub_background, persistir el fondo equipado en el usuario y hacer que HubScene dibuje un preset vectorial distinto según el fondo equipado.
@@ -26,9 +26,9 @@ Requisitos funcionales:
    - snow_dojo
    - cyber_dojo
    - champion_dojo
-4. Permitir equipar fondos desde el modal/panel de customization.
+4. Permitir equipar fondos desde el modal/panel de customisation.
 5. Los fondos deben comportarse como cosmetics normales:
-   - aparecen en customization;
+   - aparecen en customisation;
    - solo se pueden equipar si el usuario los tiene/desbloqueó;
    - el estado equipado se refleja correctamente;
    - se persisten en backend.
@@ -54,7 +54,7 @@ Plan técnico backend:
      - shell_skin contra user.shellSkin.
      - hub_background contra user.hubBackground.
 6. Mantener compatibilidad con el flujo actual de compra/equipado.
-7. Añadir o actualizar tests backend si el proyecto ya tiene tests para customization:
+7. Añadir o actualizar tests backend si el proyecto ya tiene tests para customisation:
    - equipar shell_skin sigue funcionando.
    - equipar hub_background funciona.
    - equipped se calcula correctamente para ambos tipos.
@@ -74,7 +74,7 @@ Plan técnico frontend:
    - composición general del Hub;
    - zonas visuales donde están los hotspots/botones;
    - escala/resize actual.
-5. Actualizar el modal de customization:
+5. Actualizar el modal de customisation:
    - agrupar cosméticos por categoría, mínimo:
      - Shell Skins
      - Hub Backgrounds
@@ -98,7 +98,7 @@ Diseño de presets:
 
 Criterios de aceptación:
 1. El Hub carga con default_dojo por defecto.
-2. Desde customization se ve una categoría/sección de Hub Backgrounds.
+2. Desde customisation se ve una categoría/sección de Hub Backgrounds.
 3. El usuario puede equipar un fondo hub_background desbloqueado.
 4. Al equiparlo, el fondo del Hub cambia visualmente.
 5. Al recargar/reentrar, el fondo equipado persiste.
@@ -116,12 +116,12 @@ Restricciones:
 - Mantener el estilo existente del proyecto.
 
 Orden recomendado de implementación:
-1. Revisar cómo se modelan User, Cosmetic y customization actualmente.
+1. Revisar cómo se modelan User, Cosmetic y customisation actualmente.
 2. Implementar backend: CosmeticType, catálogo, user.hubBackground, equip(), toViews().
 3. Actualizar frontend API/types.
 4. Refactorizar drawBackground() conservando el fondo actual como default_dojo.
 5. Añadir sunset_dojo como segundo preset.
-6. Actualizar customization UI para mostrar/equipar hub_background.
+6. Actualizar customisation UI para mostrar/equipar hub_background.
 7. Verificar manualmente:
    - login/entrada al Hub;
    - cambio de fondo;

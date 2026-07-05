@@ -2,7 +2,7 @@
  * game/shell-curl/ShellCurlScene.ts — Shell Curl minigame.
  *
  * A local and online curling game. Turtle shells slide across an ice sheet
- * toward a target house; players deliver stones until all are played
+ * towards a target house; players deliver stones until all are played
  * then score by counting stones in the house.
  */
 
@@ -2203,7 +2203,7 @@ export class ShellCurlScene extends ResponsiveScene {
 				// Reflect velocity along collision normal
 				const dot = s.vx * nx + s.vy * ny;
 				if (dot < 0) {
-					// Only reflect if moving toward the bumper
+					// Only reflect if moving towards the bumper
 					s.vx = (s.vx - 2 * dot * nx) * BUMPER_BOOST;
 					s.vy = (s.vy - 2 * dot * ny) * BUMPER_BOOST;
 					s.stopped = false;

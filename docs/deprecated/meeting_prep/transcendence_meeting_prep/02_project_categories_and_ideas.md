@@ -19,7 +19,7 @@
   - Card Games
 - Strategy Games
   - Risk-style
-  - Tower Defense
+  - Tower Defence
   - Resource Management
 
 ## Social Platform

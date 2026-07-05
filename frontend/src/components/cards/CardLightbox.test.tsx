@@ -20,7 +20,7 @@ function makeCard(overrides: Partial<CardView> = {}): CardView {
 }
 
 describe("CardLightbox", () => {
-	it("should render the card's name, flavor text, and rarity", () => {
+	it("should render the card's name, flavour text, and rarity", () => {
 		render(<CardLightbox card={makeCard()} onClose={() => undefined} />);
 
 		expect(screen.getByText("Turtle Shrine")).toBeInTheDocument();

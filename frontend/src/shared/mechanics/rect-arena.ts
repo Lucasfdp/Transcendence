@@ -2,8 +2,8 @@
  * game/mechanics/rect-arena.ts — rectangular arena geometry and rendering.
  *
  * Supports two orientations:
- *   'vertical'   — stone delivered from the top, travels DOWN toward house at bottom.
- *   'horizontal' — stone delivered from the left, travels RIGHT toward house at right.
+ *   'vertical'   — stone delivered from the top, travels DOWN towards house at bottom.
+ *   'horizontal' — stone delivered from the left, travels RIGHT towards house at right.
  *
  * All coordinates in RectArenaPixels are canvas pixels after letterbox-fitting.
  */

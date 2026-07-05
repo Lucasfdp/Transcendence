@@ -41,7 +41,7 @@ Requisitos funcionales:
    - shell skins
    - hub backgrounds
 6. Preparar el modelo para recompensas de monedas.
-7. Preparar el modelo para recompensas de títulos, preferiblemente integrando `title` como un nuevo tipo de cosmetic/customization si encaja limpio.
+7. Preparar el modelo para recompensas de títulos, preferiblemente integrando `title` como un nuevo tipo de cosmetic/customisation si encaja limpio.
 8. No implementar un sistema complejo de i18n ni traducciones.
 9. Mantener la UI de achievements dinámica.
 10. Mostrar el `rewardLabel` real en la UI, no un texto fijo tipo `Reward: skin`.

@@ -110,7 +110,7 @@ Para el preview estático en React (sección del selector) puedes usar directame
 
 Gemini (como la mayoría de modelos de generación de imagen) entrega **fondo sólido**, no transparencia real en el PNG, incluso si le pides "transparent background" — a veces lo intenta y queda con halos o imperfecciones. Plan B siempre disponible:
 
-1. Pide el asset con fondo **blanco liso** o de color sólido contrastante (más confiable que pedir transparencia directa)
+1. Pide el asset con fondo **blanco liso** o de colour sólido contrastante (más confiable que pedir transparencia directa)
 2. Usa una herramienta de remoción de fondo (remove.bg, Photoshop's "Select Subject", o Photopea gratis) para obtener el PNG transparente real antes de subirlo al proyecto
 
 Esto te ahorra reintentos de prompt tratando de forzar transparencia que el modelo no siempre entrega de forma limpia.

@@ -34,7 +34,7 @@ describe("cards.constants", () => {
 		});
 	});
 
-	describe("CARDS catalog", () => {
+	describe("CARDS catalogue", () => {
 		it("should contain at least one card", () => {
 			expect(CARDS.length).toBeGreaterThan(0);
 		});
@@ -51,7 +51,7 @@ describe("cards.constants", () => {
 			}
 		});
 
-		it("should give every card a non-empty name, flavor and sourceRef", () => {
+		it("should give every card a non-empty name, flavour and sourceRef", () => {
 			for (const card of CARDS) {
 				expect(card.name.length).toBeGreaterThan(0);
 				expect(card.flavor.length).toBeGreaterThan(0);

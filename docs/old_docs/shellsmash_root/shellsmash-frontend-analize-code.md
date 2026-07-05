@@ -39,7 +39,7 @@
 - Code areas inspected:
     - bootstrap and scene registration
     - login / guest / OAuth entry points
-    - hub scene lifecycle, resize and modal behavior
+    - hub scene lifecycle, resize and modal behaviour
     - shell selection flow and registry handoff
     - profile panel and leaderboard rendering
     - frontend API client and auth boundary assumptions
@@ -104,7 +104,7 @@ From a product-quality perspective, the landing/auth experience is functional bu
     - Recommended fix: use a real `<form>`, add `<label>` elements, give errors `role="alert"` or `aria-live`, and convert text-action paragraphs into buttons or links with visible focus states.
 
 - Title: Core UI flows are concentrated in oversized scene classes
-    - Why it matters: the app is already compensating for lifecycle complexity with many stale-run and resize guards. Keeping most behavior inside a few giant files raises regression risk, makes onboarding expensive, and discourages isolated tests.
+    - Why it matters: the app is already compensating for lifecycle complexity with many stale-run and resize guards. Keeping most behaviour inside a few giant files raises regression risk, makes onboarding expensive, and discourages isolated tests.
     - Evidence:
         - `HubScene.ts` is 1,960 lines and mixes auth refresh, hub rendering, overlays, leaderboard, shop, achievements and scene navigation: `shellsmash/srcs/requirements/frontend/src/src/hub/HubScene.ts:1`
         - `LandingScene.ts`, `ShellPickerScene.ts`, and `ProfilePanel.ts` add another 1,640 lines around the same flow surface
@@ -204,21 +204,21 @@ From a product-quality perspective, the landing/auth experience is functional bu
     - CSRF token attached for state-changing standard auth calls
     - explicit logout path using `DELETE`
 - Frontend-only limits:
-    - authorization enforcement on game data, progression and customization was not fully audited server-side
-    - cookie flags and reverse-proxy behavior were only inferred from the auth controller, not verified at runtime
+    - authorisation enforcement on game data, progression and customisation was not fully audited server-side
+    - cookie flags and reverse-proxy behaviour were only inferred from the auth controller, not verified at runtime
 
 ## Cross-cutting improvements
 
 - Introduce a thin application service layer around auth, hub data, and profile data so scenes stop mixing fetch logic with rendering and navigation.
 - Replace ad hoc scene payload objects and `any` usage with typed DTOs shared from `hub/api.ts`.
-- Standardize interaction components for both DOM and Phaser controls:
+- Standardise interaction components for both DOM and Phaser controls:
     - button semantics
-    - focus behavior
+    - focus behaviour
     - disabled/loading states
     - analytics / logging hooks if needed
 - Gate incomplete auth features behind server-confirmed capability flags rather than frontend env toggles alone.
 
-## Prioritized action plan
+## Prioritised action plan
 
 1. Immediate fixes
     - Convert dev login to `POST` + CSRF.

@@ -230,7 +230,7 @@ Stop and get a review checkpoint after Koi Dice.
 ## 3. Game spec — Shell Drop (Plinko, multi-roll)
 
 A shell falls through `R` rows of pegs; at each row a roll sends it left or
-right. It lands in one of `R + 1` buckets — center buckets pay less than the
+right. It lands in one of `R + 1` buckets — centre buckets pay less than the
 stake, edge buckets pay big. The bucket distribution is binomial, and the payout
 multipliers are derived so the expected return is exactly 1.0.
 
@@ -247,8 +247,8 @@ multipliers are derived so the expected return is exactly 1.0.
   (edges weigh more; `PLINKO_RISK_BASE > 1`, e.g. `1.6`), then normalise:
   - `Z = Σ_k p_k · w_k`
   - `M_k = w_k / Z`  ⟹  `Σ_k p_k · M_k = 1.0` exactly, for any base and any `R`.
-  - This naturally makes center buckets pay `< 1×` and edges pay big. No bucket
-    is a total loss (all `M_k > 0`); variance comes from center-vs-edge. Round
+  - This naturally makes centre buckets pay `< 1×` and edges pay big. No bucket
+    is a total loss (all `M_k > 0`); variance comes from centre-vs-edge. Round
     only for display; the server and the config send the **exact** `M_k` so
     verification matches.
 - `outcomeId = "bucket-<k>"`, `multiplier = M_k`. Payout = `floor(stake × M_k)`.
@@ -295,8 +295,8 @@ multipliers are derived so the expected return is exactly 1.0.
   `k = 0..R`, sum `bucketProbability(R,k) · bucketMultiplier(R,k)`, assert
   `≈ 1.0` (and within `[0.99, 1.0]`). Optionally also enumerate all `2**8` paths
   for `R = 8` to confirm the path→bucket distribution equals the binomial.
-- Service: a center vs edge bucket pays its multiplier; `fairness.rolls` has
-  length `R`; win credits `totalCoinsEarned`; loss (center `< 1×`) doesn't;
+- Service: a centre vs edge bucket pays its multiplier; `fairness.rolls` has
+  length `R`; win credits `totalCoinsEarned`; loss (centre `< 1×`) doesn't;
   audit row tagged `game: "drop"`, `segmentId: "bucket-<k>"`; out-of-bounds
   stake / bad rows / insufficient coins rejected. (Seed-find a jackpot/edge
   bucket with a `computeRolls`-based helper, like `slots`' `seedForJackpot`.)

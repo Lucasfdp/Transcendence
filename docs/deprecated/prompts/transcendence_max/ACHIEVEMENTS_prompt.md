@@ -17,7 +17,7 @@ El backend ya registra resultados de partidas mediante `POST /game-results`. Ese
 El frontend ya llama a `api.submitGameResult(...)` desde las escenas de juego al terminar una partida.
 
 Decisión:
-Empezar por Achievements porque tiene datos reales disponibles y puede apoyarse en la progresión ya implementada. Shell Cards y Customization quedan para después porque requieren decisiones adicionales de inventario, economía, rarezas, assets y desbloqueos.
+Empezar por Achievements porque tiene datos reales disponibles y puede apoyarse en la progresión ya implementada. Shell Cards y Customisation quedan para después porque requieren decisiones adicionales de inventario, economía, rarezas, assets y desbloqueos.
 
 Alcance del MVP:
 Crear un sistema mínimo pero extensible de achievements con:
@@ -135,6 +135,6 @@ Criterios de aceptación:
 Restricciones:
 - Mantener cambios pequeños y coherentes con la arquitectura actual.
 - No introducir inventario, tienda, cartas ni cosméticos todavía.
-- No añadir complejidad de recompensas reales hasta que Customization o Shell Cards estén definidos.
+- No añadir complejidad de recompensas reales hasta que Customisation o Shell Cards estén definidos.
 - Evitar crear abstracciones grandes prematuras.
 - Preservar el estilo visual existente del Hub.

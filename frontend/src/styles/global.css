@@ -4716,14 +4716,7 @@ img.power-card__orb {
 	}
 }
 
-/* ── Leaderboard controls (game dropdown + scope toggle) ─────────────────── */
-
-.hub-leaderboard-controls {
-	display: flex;
-	flex-direction: column;
-	gap: 0.5rem;
-	margin-bottom: 0.75rem;
-}
+/* ── Shared select style (invite picker, report reason picker) ───────────── */
 
 .hub-leaderboard-select {
 	width: 100%;
@@ -4746,40 +4739,101 @@ img.power-card__orb {
 	outline: 1px solid #d8ff9f;
 }
 
-.hub-leaderboard-scope {
+/* ── Ranking controls (game tab bar + scope toggle) ───────────────────────── */
+
+.hub-ranking-controls {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+	margin-bottom: 0.75rem;
+}
+
+.hub-ranking-tabs {
 	display: grid;
-	grid-template-columns: 1fr 1fr;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	width: 100%;
+	overflow: hidden;
+	border: 1px solid rgba(241, 211, 145, 0.22);
+	border-radius: 0.7rem;
+	background: rgba(5, 9, 12, 0.72);
 }
 
-.hub-leaderboard-scope__btn {
-	padding: 0.3rem 0;
-	background: rgba(9, 22, 12, 0.58);
-	border: 1px solid rgba(123, 183, 111, 0.42);
-	color: rgba(234, 255, 200, 0.68);
-	font-family: var(--body-font);
-	font-size: 0.8rem;
+.hub-ranking-tab {
+	min-height: 2.7rem;
+	border: 0;
+	border-right: 1px solid rgba(241, 211, 145, 0.18);
+	border-radius: 0;
+	background: rgba(7, 12, 15, 0.74);
+	color: #b8db86;
+	font-family: var(--blowbrush-font);
+	font-size: clamp(0.82rem, 1.35vw, 1.1rem);
+	font-weight: 900;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	-webkit-text-stroke: 0.35px rgba(3, 8, 6, 0.82);
+	text-shadow: 0 2px 0 rgba(5, 28, 18, 0.7);
 	cursor: pointer;
-	transition: background 0.15s, color 0.15s;
+	transition:
+		background 160ms ease,
+		color 160ms ease;
 }
 
-.hub-leaderboard-scope__btn:first-child {
-	border-radius: 4px 0 0 4px;
+.hub-ranking-tab:last-child {
+	border-right: 0;
 }
 
-.hub-leaderboard-scope__btn:last-child {
-	border-radius: 0 4px 4px 0;
-	border-left: none;
+.hub-ranking-tab:hover,
+.hub-ranking-tab--active {
+	background: linear-gradient(180deg, rgba(43, 67, 35, 0.9), rgba(13, 38, 18, 0.94));
+	color: #e4f5b9;
 }
 
-.hub-leaderboard-scope__btn.is-active {
+.hub-ranking-scope-toggle {
+	align-self: flex-start;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+	padding: 0.4rem 1.1rem;
+	border: 1px solid rgba(123, 183, 111, 0.42);
+	border-radius: 0.7rem;
 	background: linear-gradient(180deg, rgba(43, 67, 35, 0.9), rgba(13, 38, 18, 0.94));
 	color: #eaffc8;
+	font-family: var(--body-font);
+	font-size: 0.8rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	cursor: pointer;
+	transition:
+		background 0.15s ease,
+		color 0.15s ease,
+		border-color 0.15s ease;
+}
+
+.hub-ranking-scope-toggle:hover {
+	background: rgba(24, 44, 24, 0.74);
 	border-color: rgba(216, 255, 159, 0.72);
 }
 
-.hub-leaderboard-scope__btn:hover:not(.is-active) {
-	background: rgba(24, 44, 24, 0.74);
-	color: #d8ff9f;
+.hub-ranking-scope-toggle:focus-visible {
+	outline: 1px solid #d8ff9f;
+}
+
+.hub-ranking-scope-toggle__icon {
+	font-size: 0.9rem;
+	opacity: 0.8;
+}
+
+@media (max-width: 780px) {
+	.hub-ranking-tabs {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 520px) {
+	.hub-ranking-tabs {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
 }
 
 .hub-ranking-list__rank {
@@ -5551,8 +5605,8 @@ img.power-card__orb {
 	background: rgba(0, 0, 0, 0.6);
 }
 
-/* Rarity glyph — reinforces --card-accent with a shape, not just a color,
-   so rarity still reads for colorblind players. */
+/* Rarity glyph — reinforces --card-accent with a shape, not just a colour,
+   so rarity still reads for colourblind players. */
 .hub-cards__rarity-badge {
 	position: absolute;
 	top: 6px;
@@ -7105,10 +7159,15 @@ img.power-card__orb {
 .hub-drop__board {
 	position: relative;
 	width: 100%;
-	height: 120px;
+	height: 220px;
 	border-radius: 12px;
 	border: 2px solid var(--line);
-	background: repeating-linear-gradient(
+	background: radial-gradient(
+			ellipse at 50% 0%,
+			color-mix(in srgb, var(--accent-strong) 16%, transparent) 0%,
+			transparent 55%
+		),
+		repeating-linear-gradient(
 			0deg,
 			rgba(255, 255, 255, 0.03) 0,
 			rgba(255, 255, 255, 0.03) 1px,
@@ -7118,24 +7177,12 @@ img.power-card__orb {
 		rgba(0, 0, 0, 0.35);
 	overflow: hidden;
 }
-.hub-drop__shell {
+.hub-drop__canvas {
 	position: absolute;
-	top: 6px;
-	left: var(--drop-x, 50%);
-	transform: translateX(-50%);
-	font-size: 1.6rem;
-	transition: left 0.2s ease;
-}
-.hub-drop__shell.is-dropping {
-	animation: hub-drop-fall var(--drop-fall, 1.4s) ease-in forwards;
-}
-@keyframes hub-drop-fall {
-	0% {
-		top: 6px;
-	}
-	100% {
-		top: 86px;
-	}
+	inset: 0;
+	display: block;
+	width: 100%;
+	height: 100%;
 }
 .hub-drop__buckets {
 	position: absolute;
@@ -7336,11 +7383,6 @@ img.power-card__orb {
 	font-size: 0.8rem;
 	text-align: center;
 	margin: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-	.hub-drop__shell.is-dropping {
-		animation: none !important;
-	}
 }
 
 /* ── Toast notifications ─────────────────────────────────────────────────── */

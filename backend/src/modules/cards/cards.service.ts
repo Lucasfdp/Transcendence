@@ -179,7 +179,7 @@ export class CardsService {
 		rolled: RolledCard,
 		repo: Repository<UserCard>,
 	): Promise<{ pull: PackPull; refund: number }> {
-		// rolled.cardId always comes from the catalog via rollCard.
+		// rolled.cardId always comes from the catalogue via rollCard.
 		const card = findCard(rolled.cardId);
 		if (!card)
 			throw new InternalServerErrorException("Rolled an unknown card");
@@ -254,7 +254,7 @@ export class CardsService {
 		};
 	}
 
-	/** Owned UserCard rows for a user, keyed by catalog cardId. */
+	/** Owned UserCard rows for a user, keyed by catalogue cardId. */
 	private async findOwnedRows(
 		userId: number,
 		repo: Repository<UserCard> = this.userCardsRepo,

@@ -150,7 +150,7 @@ describe("PlinkoService", () => {
 			expect(result.net).toBeGreaterThan(0);
 		});
 
-		it("should pay the center bucket's multiplier (< stake) on a balanced drop", async () => {
+		it("should pay the centre bucket's multiplier (< stake) on a balanced drop", async () => {
 			usersRepo.findOne.mockResolvedValue(makeUser({ coins: 100_000 }));
 			const serverSeed = seedForBucket(8, 4);
 
@@ -187,7 +187,7 @@ describe("PlinkoService", () => {
 			);
 		});
 
-		it("should not change totalCoinsEarned on a center-bucket loss", async () => {
+		it("should not change totalCoinsEarned on a centre-bucket loss", async () => {
 			usersRepo.findOne.mockResolvedValue(makeUser({ coins: 100_000 }));
 			const serverSeed = seedForBucket(8, 4);
 

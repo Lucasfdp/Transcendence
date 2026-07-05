@@ -89,7 +89,7 @@ describe("cards.roll", () => {
 			expect(result.foil).toBe(false);
 		});
 
-		it("should always pick a real catalog card across many seeded rolls", () => {
+		it("should always pick a real catalogue card across many seeded rolls", () => {
 			const rng = mulberry32(99);
 			for (let i = 0; i < 1000; i++) {
 				const result = rollCard(rng, basic);

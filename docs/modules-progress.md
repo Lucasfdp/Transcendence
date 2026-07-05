@@ -318,7 +318,7 @@ Evidencia:
 Faltas para completarse:
 - Todo el modulo.
 
-### Minor: Game customization options
+### Minor: Game customisation options
 Estado: `En progreso`
 
 Desglose del enunciado:

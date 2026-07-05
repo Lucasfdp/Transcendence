@@ -19,7 +19,7 @@ Major remote players
 Major Multiplayer game 3+
 Major add another game
 Minor tounament system
-Minor game customization options (pending)
+Minor game customisation options (pending)
 Minor gamification system
 Minor spectator mode
 Major Monitoring system

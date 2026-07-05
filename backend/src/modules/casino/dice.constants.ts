@@ -1,5 +1,5 @@
 /**
- * Koi Dice — catalog & economy constants.
+ * Koi Dice — catalogue & economy constants.
  *
  * A clean provably-fair dice game where the player sets their own odds: they
  * pick a target line 0–99 and bet the single roll lands "under" or "over" it.

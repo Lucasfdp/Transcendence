@@ -515,7 +515,7 @@ export interface SlotsView {
 export interface PlinkoBucketView {
 	/** Bucket index — count of right moves (0..rows). */
 	index: number;
-	/** Net-neutral payout multiplier (< 1 in the center, > 1 at the edges). */
+	/** Net-neutral payout multiplier (< 1 in the centre, > 1 at the edges). */
 	multiplier: number;
 	/** Probability of landing here. */
 	probability: number;

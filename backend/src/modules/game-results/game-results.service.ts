@@ -123,7 +123,7 @@ export class GameResultsService {
 			// twice (once here, once inside AchievementsService.applyReward when
 			// a coins achievement unlocks). Folding both into a single
 			// transaction would remove the extra write without changing
-			// behavior; deferred since it touches AchievementsService's public
+			// behaviour; deferred since it touches AchievementsService's public
 			// save path used elsewhere.
 			return {
 				xpGained,

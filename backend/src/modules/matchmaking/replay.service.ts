@@ -436,7 +436,7 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 			}
 			if (frame.seq !== index) {
 				throw new BadRequestException(
-					`Replay frame ${index} has non-normalized sequence`,
+					`Replay frame ${index} has non-normalised sequence`,
 				);
 			}
 			if (!this.isFiniteNonNegative(frame.recordedAtMs)) {

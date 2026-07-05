@@ -1,5 +1,5 @@
 /**
- * Shell Cards — catalog & economy constants.
+ * Shell Cards — catalogue & economy constants.
  *
  * Cards are PURELY COSMETIC collectibles. Nothing here affects gameplay
  * balance. Card subjects reuse entities that already exist in the game
@@ -13,7 +13,7 @@ export type CardRarity = "stone" | "bronze" | "jade" | "gold";
 export type CardFamily = "power_shell" | "shrine" | "shell_skin" | "character";
 
 export interface CardDefinition {
-	/** Globally unique catalog id, e.g. "power-heavy", "shrine-kame-knock". */
+	/** Globally unique catalogue id, e.g. "power-heavy", "shrine-kame-knock". */
 	id: string;
 	family: CardFamily;
 	rarity: CardRarity;
@@ -28,7 +28,7 @@ export interface CardDefinition {
 	imageUrl?: string;
 }
 
-/** A catalog card enriched with the requesting user's ownership state. */
+/** A catalogue card enriched with the requesting user's ownership state. */
 export interface CardView extends CardDefinition {
 	owned: boolean;
 	/** Total copies owned (0 when not owned). */
@@ -72,7 +72,7 @@ export interface PackResult {
 export interface BinderView {
 	cards: CardView[];
 	sets: CardSetProgress[];
-	/** Overall distinct-card progress across the whole catalog. */
+	/** Overall distinct-card progress across the whole catalogue. */
 	totals: { owned: number; total: number };
 	/** Every pack tier the player can buy, server-authoritative and fully transparent. */
 	packTiers: readonly PackTierView[];
@@ -122,7 +122,7 @@ export const CARD_FAMILIES: readonly CardFamily[] = [
 /**
  * Probability a single roll lands on each rarity tier. MUST sum to 1
  * (asserted in cards.constants.spec.ts). A card of the rolled rarity is then
- * chosen uniformly, so the catalog must contain ≥1 card per rarity.
+ * chosen uniformly, so the catalogue must contain ≥1 card per rarity.
  */
 export const RARITY_ODDS: Readonly<Record<CardRarity, number>> = {
 	stone: 0.6,
@@ -147,7 +147,7 @@ export const PACK_SIZE = 5;
 /**
  * The 0-indexed pack slot that carries a tier's guaranteed-minimum-rarity
  * roll, when `PackTierDefinition.guaranteedMinRarity` is set. Fixed (not
- * randomized) for simplicity — the last card in the pack.
+ * randomised) for simplicity — the last card in the pack.
  */
 export const GUARANTEED_SLOT_INDEX = PACK_SIZE - 1;
 
@@ -237,7 +237,7 @@ export const PACK_TIER_IDS: readonly PackTierId[] = PACK_TIERS.map(
 	(tier) => tier.id,
 );
 
-// ── Catalog ──────────────────────────────────────────────────────────────────
+// ── Catalogue ──────────────────────────────────────────────────────────────────
 
 const POWER_SHELL_CARDS: readonly CardDefinition[] = [
 	{
@@ -387,7 +387,7 @@ const POWER_SHELL_CARDS: readonly CardDefinition[] = [
 		family: "power_shell",
 		rarity: "jade",
 		name: "Vortex Shell",
-		flavor: "Spirals inward toward the heart of the house.",
+		flavor: "Spirals inward towards the heart of the house.",
 		sourceRef: "vortex",
 	},
 	{

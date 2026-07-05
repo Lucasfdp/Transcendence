@@ -57,7 +57,7 @@ describe("replayVisuals", () => {
 		expect(resolveActiveReplaySide({ players }, 1)).toBe(1);
 	});
 
-	it("prefers player background alter and normalizes cycle_bg", () => {
+	it("prefers player background alter and normalises cycle_bg", () => {
 		expect(resolveActiveReplayBackground({ players }, 1)).toBe("night_cycle_bg");
 	});
 

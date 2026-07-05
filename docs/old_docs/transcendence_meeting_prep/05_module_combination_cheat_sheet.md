@@ -15,7 +15,7 @@ Competitive Pong with user accounts and tournaments.
 - AI Opponent (Major) = 2
 - OAuth (Minor) = 1
 - Tournament System (Minor) = 1
-- Game Customization (Minor) = 1
+- Game Customisation (Minor) = 1
 - ORM (Minor) = 1
 
 **Total: 14**
@@ -88,7 +88,7 @@ Competitive Pong with user accounts and tournaments.
 - Frameworks (Major) = 2
 - Real-Time Collaboration (Minor) = 1
 - User Interaction (Major) = 2
-- Organization System (Major) = 2
+- Organisation System (Major) = 2
 - Advanced Permissions (Major) = 2
 - File Upload (Minor) = 1
 - Notifications (Minor) = 1
@@ -108,7 +108,7 @@ Competitive Pong with user accounts and tournaments.
 
 - Frameworks (Major) = 2
 - User Interaction (Major) = 2
-- Organization System (Major) = 2
+- Organisation System (Major) = 2
 - Advanced Permissions (Major) = 2
 - File Upload (Minor) = 1
 - Analytics Dashboard (Major) = 2
@@ -189,14 +189,14 @@ Multiple games inside one platform.
 
 ### Goal
 
-Maximize chances of finishing on time.
+Maximise chances of finishing on time.
 
 ### Modules
 
 - Frameworks (Major) = 2
 - User Interaction (Major) = 2
 - Standard User Management (Major) = 2
-- Organization System (Major) = 2
+- Organisation System (Major) = 2
 - Real-Time Features (Major) = 2
 - OAuth (Minor) = 1
 - ORM (Minor) = 1

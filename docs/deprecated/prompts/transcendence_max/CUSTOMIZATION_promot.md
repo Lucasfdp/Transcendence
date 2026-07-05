@@ -1,8 +1,8 @@
-# Shell Smash — Customization, Rewards & Achievement Progress Implementation Prompt
+# Shell Smash — Customisation, Rewards & Achievement Progress Implementation Prompt
 
 ## Context
 
-You are a senior full-stack engineer implementing the first real customization/reward loop for **Shell Smash**, a Japanese-themed Phaser 3 hub minigame system built as a 42-school `ft_transcendence` project.
+You are a senior full-stack engineer implementing the first real customisation/reward loop for **Shell Smash**, a Japanese-themed Phaser 3 hub minigame system built as a 42-school `ft_transcendence` project.
 
 Read the current code before writing changes. Do not assume old prompt details are still accurate.
 
@@ -41,27 +41,27 @@ Frontend:
 
 ## Goal
 
-Implement the foundation for **Customization** so achievements and coins can unlock/equip cosmetic rewards.
+Implement the foundation for **Customisation** so achievements and coins can unlock/equip cosmetic rewards.
 
-This is not a cards feature yet. Shell Cards should remain a placeholder until the reward/customization loop is stable.
+This is not a cards feature yet. Shell Cards should remain a placeholder until the reward/customisation loop is stable.
 
 The final result should support:
 
-1. A backend cosmetic catalog.
+1. A backend cosmetic catalogue.
 2. User-owned cosmetic unlocks.
 3. Equipping an unlocked shell skin.
 4. Buying purchasable cosmetics with coins.
 5. Achievement definitions that can declare cosmetic rewards.
 6. Achievement progress returned from the backend instead of hardcoded in the frontend.
-7. A hub customization modal that lets the user view, buy, and equip shell skins.
+7. A hub customisation modal that lets the user view, buy, and equip shell skins.
 
 ---
 
 ## Product decisions
 
-### Prioritize customization before cards
+### Prioritise customisation before cards
 
-Customization is the next correct step because the project already has:
+Customisation is the next correct step because the project already has:
 
 - `coins`
 - `level`
@@ -73,7 +73,7 @@ Customization is the next correct step because the project already has:
 
 But it does not yet have:
 
-- cosmetic catalog
+- cosmetic catalogue
 - inventory/unlocks
 - equip endpoint
 - purchase endpoint
@@ -103,14 +103,14 @@ Do this before adding backend routes so the typo does not become part of the pro
 - All state-mutating endpoints must require cookie auth and CSRF.
 - All new backend endpoints must sit behind `JwtAuthGuard`.
 - Keep TypeScript types explicit. Avoid `any`.
-- Do not loosen auth, dev-login, CSRF, or guest-account behavior.
+- Do not loosen auth, dev-login, CSRF, or guest-account behaviour.
 - Do not build the cards feature in this prompt.
 
 ---
 
 ## Backend Implementation
 
-### 1. Add cosmetic catalog
+### 1. Add cosmetic catalogue
 
 Create a new backend feature module:
 

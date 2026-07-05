@@ -63,7 +63,7 @@ export class ShellsService {
 	 * inventory. Returns the validated array on success, throws BadRequestException
 	 * if anything is invalid.
 	 *
-	 * Max 3 special shells per game — 'none' does not count toward this limit.
+	 * Max 3 special shells per game — 'none' does not count towards this limit.
 	 * This method is read-only and safe to call multiple times.
 	 */
 	async validateSelection(

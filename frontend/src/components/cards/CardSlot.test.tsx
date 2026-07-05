@@ -89,7 +89,7 @@ describe("CardSlot", () => {
 		["jade", "⬡"],
 		["gold", "★"],
 	] as const)(
-		"should render a %s rarity badge glyph distinct from color alone",
+		"should render a %s rarity badge glyph distinct from colour alone",
 		(rarity, glyph) => {
 			const { container } = render(
 				<CardSlot card={makeCard({ rarity })} onSelect={vi.fn()} />,

@@ -56,9 +56,9 @@ re-architect any of that**. You're adding a tier dimension on top.
 - **Module scope:** `docs/modules-progress.md` has a "Module Boundary Rule"
   against adding functionality outside the chosen modules — this doesn't
   apply here because the user explicitly asked for this, and it's an
-  extension of the already-in-scope cosmetic customization/cards feature, not
+  extension of the already-in-scope cosmetic customisation/cards feature, not
   a new module. Still worth a glance at that file once you're done in case
-  the "Game customization options" entry needs a note.
+  the "Game customisation options" entry needs a note.
 
 ### Verification techniques available (learned the hard way — read this first)
 
@@ -90,12 +90,12 @@ Backend — `backend/src/modules/cards/`:
 
 | File | Purpose |
 |---|---|
-| `cards.constants.ts` | `CardRarity`, `CardFamily`, `CardDefinition`, `CardView`, `BinderView`, `PackPull`, `PackResult` types. `CARDS` catalog (33 cards). `RARITY_ODDS` (single fixed table, `stone .6 / bronze .27 / jade .1 / gold .03`, asserted sum-to-1). `FOIL_CHANCE = 0.05`. `PACK_SIZE = 5`. `PACK_PRICE_COINS = 100`. `DUPLICATE_COIN_REFUND` per rarity. **Everything here assumes exactly one pack — this is where the tier concept needs to be added.** |
+| `cards.constants.ts` | `CardRarity`, `CardFamily`, `CardDefinition`, `CardView`, `BinderView`, `PackPull`, `PackResult` types. `CARDS` catalogue (33 cards). `RARITY_ODDS` (single fixed table, `stone .6 / bronze .27 / jade .1 / gold .03`, asserted sum-to-1). `FOIL_CHANCE = 0.05`. `PACK_SIZE = 5`. `PACK_PRICE_COINS = 100`. `DUPLICATE_COIN_REFUND` per rarity. **Everything here assumes exactly one pack — this is where the tier concept needs to be added.** |
 | `cards.roll.ts` | `rollRarity(rng)` (walks `CARD_RARITIES` accumulating `RARITY_ODDS` — **hardcoded to the one table**), `rollCard(rng)` (rarity → uniform card in that rarity → foil check against the hardcoded `FOIL_CHANCE`). Pure, injectable `Rng = () => number`, fully unit-testable with a seeded sequence. |
 | `entities/user-card.entity.ts` | `UserCard`: `user`, `cardId`, `count`, `foilCount`, `firstObtainedAt`. One row per (user, card) — **no notion of which pack tier granted a card, and it doesn't need one** (a card looks the same regardless of which pack it came from; don't add a column for this unless the brainstorm decides you need pack-tier analytics). |
 | `cards.service.ts` | `getBinder(user)` → `BinderView` incl. `packPrice: PACK_PRICE_COINS`. `openPack(user, rng?)` → the **single hardcoded-tier** flow: charge `PACK_PRICE_COINS`, roll `PACK_SIZE` cards via `rollCard`, grant each (increment or create `UserCard`, refund dupes), all inside one `dataSource.transaction`. `grantMatchDrop(user, rng?)` → unrelated free match-end roll, do not touch. |
 | `cards.controller.ts` | `GET /cards` → binder. `POST /cards/packs/open` → **no body today** — this is the endpoint that needs a tier selector. Both guarded by `JwtAuthGuard`; the POST also by the reusable `CsrfGuard`. |
-| `cards.constants.spec.ts` | **Template for the tier catalog tests.** Currently asserts `RARITY_ODDS` sums to 1.0 and every rarity has positive probability (lines 17–29) — you'll need the same assertion, looped over every tier's own odds table. |
+| `cards.constants.spec.ts` | **Template for the tier catalogue tests.** Currently asserts `RARITY_ODDS` sums to 1.0 and every rarity has positive probability (lines 17–29) — you'll need the same assertion, looped over every tier's own odds table. |
 | `cards.roll.spec.ts` | Template for roll-function tests with a seeded RNG. |
 | `cards.service.spec.ts` | Template for service tests. Uses a `seq(values: number[])` deterministic RNG helper (line 41) and documented draw patterns like `PULL_STONE_NO_FOIL = [0, 0, 0.99]` (line 47) — reuse this pattern for tier-specific draw sequences, including one that proves a guarantee mechanic can't be beaten by an unlucky sequence. |
 
@@ -111,7 +111,7 @@ duplicate or fight the existing tilt/foil/lightbox work):
 | `cardTilt.test.ts`, `binderFilters.test.ts` | Pure-logic Vitest specs — these **do** run fine even where the full suite can't be started with a plain Node script, since they have no React/DOM dependency; good templates for any new pure pack-tier math you add on the frontend (e.g. a live "what am I likely to get" odds display). |
 | `CardSlot.test.tsx`, `CardLightbox.test.tsx`, `ShellCardsModal.test.tsx` | RTL specs. `ShellCardsModal.test.tsx` mocks the whole `api` module with `vi.mock("../../features/hub/api", () => ({ api: { getCards: vi.fn(), getCsrfToken: vi.fn(), openCardPack: vi.fn() } }))` — extend the mock binder fixture (`makeBinder()`) with whatever tier field you add, and update the `openCardPack` mock signature. |
 | `frontend/src/features/hub/api.ts` (§ "Shell Cards") | Typed REST client. `CardRarity`, `CardFamily`, `CardView`, `BinderView` (has `packPrice: number` — **this needs to become tier-aware**), `PackPull`, `PackResult`. `api.getCards()`, `api.openCardPack()` (**no params today**), `api.getCsrfToken()`. These types must stay in lockstep with the backend ones in `cards.constants.ts` — there's no shared package, it's manual mirroring, so double-check both sides after any change. |
-| `frontend/src/styles/global.css` (`.hub-cards__*` block, search for `hub-cards__store`) | `.hub-cards__store` / `.hub-cards__open-button` is the single buy-button styling — generalize into a tier list. Rarity accent colors and the `--foil-shine` custom property (per-rarity intensity) already exist — the legendary tier's card art in the picker could reuse the gold treatment as a "this pack is special" visual cue. |
+| `frontend/src/styles/global.css` (`.hub-cards__*` block, search for `hub-cards__store`) | `.hub-cards__store` / `.hub-cards__open-button` is the single buy-button styling — generalise into a tier list. Rarity accent colours and the `--foil-shine` custom property (per-rarity intensity) already exist — the legendary tier's card art in the picker could reuse the gold treatment as a "this pack is special" visual cue. |
 
 Also read `docs/SHELL_CARDS_SPEC.md` in full — it's short, and §4 (economy),
 §5 (backend shape), and §9 (conceptual test cases) are the direct model for
@@ -152,7 +152,7 @@ card's rarity, not by which pack tier granted it, and that's fine as-is.
   test) or a randomly-chosen slot (more "surprise," slightly more complex)?
   Recommend fixed slot for the first pass.
 - Should tier odds/prices be shown to the player (transparent, matching how
-  the casino module discloses RTP), or kept as flavor text ("higher rarity
+  the casino module discloses RTP), or kept as flavour text ("higher rarity
   chance")? Recommend full transparency — it's consistent with this
   codebase's existing provably-fair ethos and is good practice for anything
   gacha-shaped.
@@ -181,7 +181,7 @@ card's rarity, not by which pack tier granted it, and that's fine as-is.
   cleaner but is a breaking change to a type used in exactly one place on the
   frontend (see the table in §1), so it's a cheap removal, not a risky one.
 
-`cards.roll.ts` — parameterize instead of hardcoding:
+`cards.roll.ts` — parameterise instead of hardcoding:
 - `rollRarity(rng, odds: Readonly<Record<CardRarity, number>> = RARITY_ODDS)`.
 - `rollCard(rng, tier: PackTierDefinition)` — rolls rarity against
   `tier.rarityOdds` and foil against `tier.foilChance`.
@@ -259,13 +259,13 @@ tier, insufficient coins) paths, per this repo's testing standard.
 
 ## 5. Build order & checkpoints
 
-1. **Batch 1 — Tier catalog & roll math** (`cards.constants.ts`,
+1. **Batch 1 — Tier catalogue & roll math** (`cards.constants.ts`,
    `cards.roll.ts` + their spec files). → review.
 2. **Batch 2 — Service & controller** (`openPack` tier-aware, DTO, `BinderView.packTiers`) + tests. → review.
 3. **Batch 3 — Frontend** (`api.ts`, tier picker UI, CSS) + tests. → review.
 4. **Batch 4 — Docs**: update `docs/SHELL_CARDS_SPEC.md` with the shipped
    tier design (don't leave it describing only the single-tier MVP); check
-   `docs/modules-progress.md`'s "Game customization options" entry.
+   `docs/modules-progress.md`'s "Game customisation options" entry.
 
 Do not start a batch until the previous one's tests are green and reviewed.
 Get the user's sign-off on §2's numbers before Batch 1 starts.

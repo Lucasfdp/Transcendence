@@ -1,5 +1,5 @@
 /**
- * Three-Shell Monte — catalog & economy constants.
+ * Three-Shell Monte — catalogue & economy constants.
  *
  * A pearl hides under one of N shells; the player points at a shell and a single
  * provably-fair roll reveals where the pearl actually sat. A correct guess pays

@@ -254,7 +254,7 @@ describe("AchievementsService", () => {
 		);
 	});
 
-	it("lists the full catalog with locked and unlocked state", async () => {
+	it("lists the full catalogue with locked and unlocked state", async () => {
 		const user = makeUser();
 		repo.find.mockResolvedValueOnce([makeRecord(user, "matches-1-played")]);
 

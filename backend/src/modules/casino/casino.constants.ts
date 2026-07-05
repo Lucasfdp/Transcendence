@@ -1,5 +1,5 @@
 /**
- * Fortune Wheel — catalog & economy constants.
+ * Fortune Wheel — catalogue & economy constants.
  *
  * The wheel is the first attraction in the dojo's back-alley gambling den.
  * Players spend the same `coins` they earn from matches; nothing here grants a

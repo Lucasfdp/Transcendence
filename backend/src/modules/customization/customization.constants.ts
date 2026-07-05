@@ -36,7 +36,7 @@ export const COSMETICS: CosmeticDefinition[] = [
 		id: "base",
 		type: "shell_skin",
 		name: "Default Shell",
-		description: "The plain starter shell. No special color, no decoration, just the shell every player begins with.",
+		description: "The plain starter shell. No special colour, no decoration, just the shell every player begins with.",
 		price: 0,
 		defaultUnlocked: true,
 		accentColor: 0x1a3a5c,

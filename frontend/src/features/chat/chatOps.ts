@@ -99,7 +99,7 @@ export interface GifMetadata {
  * Defensively parse a message's `metadata` field into GifMetadata. The wire
  * type is a loosely-typed jsonb blob (`Record<string, unknown> | null`) — the
  * backend already validates it before persisting a gif message, but this is
- * defense in depth against a stale client, a future backend change, or a
+ * defence in depth against a stale client, a future backend change, or a
  * type/metadata mismatch. Returns null for anything that doesn't match
  * exactly, so callers can fall back to a plain-text rendering instead of
  * rendering a broken <img> or crashing.

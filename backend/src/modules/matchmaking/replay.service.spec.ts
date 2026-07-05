@@ -64,7 +64,7 @@ function makeImport(
 }
 
 describe("ReplayService import contract validation", () => {
-	it("normalizes imported frame timing and sequence before validation", () => {
+	it("normalises imported frame timing and sequence before validation", () => {
 		const service = makeService();
 		const frames = service.normalizeImportedFrames([
 			{

@@ -163,7 +163,7 @@ function getCosmeticDisplayName(cosmetic: Cosmetic): string {
 
 function getCosmeticDisplayDescription(cosmetic: Cosmetic): string {
 	if (cosmetic.id === "base") {
-		return "The plain starter shell. No special color, no decoration, just the shell every player begins with.";
+		return "The plain starter shell. No special colour, no decoration, just the shell every player begins with.";
 	}
 	return cosmetic.description;
 }
@@ -550,6 +550,9 @@ function HomeMenu(): JSX.Element {
 	const [minigames, setMinigames] = useState<MiniGameDefinition[]>([]);
 	const [leaderboardGame, setLeaderboardGame] = useState<string>("overall");
 	const [leaderboardScope, setLeaderboardScope] = useState<LeaderboardScope>("global");
+	const toggleLeaderboardScope = () => {
+		setLeaderboardScope((scope) => (scope === "global" ? "friends" : "global"));
+	};
 	const [gameLeaderboard, setGameLeaderboard] = useState<GameLeaderboardEntry[]>([]);
 	const [overallLeaderboard, setOverallLeaderboard] = useState<OverallLeaderboardEntry[]>([]);
 	const [leaderboardLoading, setLeaderboardLoading] = useState(false);
@@ -1119,7 +1122,7 @@ function HomeMenu(): JSX.Element {
 		try {
 			setCosmetics(await api.getCustomization());
 		} catch {
-			setModalError("Could not load customization. Try again later.");
+			setModalError("Could not load customisation. Try again later.");
 		}
 	};
 
@@ -1164,7 +1167,7 @@ function HomeMenu(): JSX.Element {
 				});
 			}
 		} catch {
-			setModalError("Could not update customization.");
+			setModalError("Could not update customisation.");
 		}
 	};
 
@@ -2083,7 +2086,7 @@ function HomeMenu(): JSX.Element {
 							className="hub-panel__button"
 							onClick={openCustomization}
 						>
-							CUSTOMIZATION
+							CUSTOMISATION
 						</NineSliceButton>
 						<NineSliceButton
 							type="button"
@@ -2512,33 +2515,40 @@ function HomeMenu(): JSX.Element {
 			{activeModal === "rankings" ? (
 				<HubModal title="Rankings" onClose={() => setActiveModal(null)} variant="wide">
 					<div className="hub-modal__rankings">
-						<div className="hub-leaderboard-controls">
-							<select
-								className="hub-leaderboard-select"
-								value={leaderboardGame}
-								onChange={(e) => setLeaderboardGame(e.target.value)}
-								aria-label="Select game leaderboard"
-							>
-								<option value="overall">Overall (Total Wins)</option>
+						<div className="hub-ranking-controls">
+							<nav className="hub-ranking-tabs" aria-label="Select game leaderboard">
+								<button
+									type="button"
+									className={`hub-ranking-tab${leaderboardGame === "overall" ? " hub-ranking-tab--active" : ""}`}
+									onClick={() => setLeaderboardGame("overall")}
+								>
+									Total
+								</button>
 								{RANKED_GAMES.map((g) => (
-									<option key={g.id} value={g.id}>{g.label}</option>
+									<button
+										key={g.id}
+										type="button"
+										className={`hub-ranking-tab${leaderboardGame === g.id ? " hub-ranking-tab--active" : ""}`}
+										onClick={() => setLeaderboardGame(g.id)}
+									>
+										{g.label}
+									</button>
 								))}
-							</select>
+							</nav>
 
-							<div className="hub-leaderboard-scope" role="group" aria-label="Leaderboard scope">
-								<button
-									className={`hub-leaderboard-scope__btn${leaderboardScope === "global" ? " is-active" : ""}`}
-									onClick={() => setLeaderboardScope("global")}
-								>
-									Global
-								</button>
-								<button
-									className={`hub-leaderboard-scope__btn${leaderboardScope === "friends" ? " is-active" : ""}`}
-									onClick={() => setLeaderboardScope("friends")}
-								>
-									Friends
-								</button>
-							</div>
+							<button
+								type="button"
+								className="hub-ranking-scope-toggle"
+								onClick={toggleLeaderboardScope}
+								aria-label={`Currently showing ${leaderboardScope} rankings. Click to switch to ${
+									leaderboardScope === "global" ? "friends" : "global"
+								}.`}
+							>
+								<span className="hub-ranking-scope-toggle__icon" aria-hidden="true">
+									⇄
+								</span>
+								{leaderboardScope === "global" ? "Global" : "Friends"}
+							</button>
 						</div>
 
 						{leaderboardLoading ? (
@@ -2660,7 +2670,7 @@ function HomeMenu(): JSX.Element {
 							) : (
 								<span className="hub-panel__muted">No dojo tag selected.</span>
 							)}
-							<small>Choose and unlock dojo tags from Customization.</small>
+							<small>Choose and unlock dojo tags from Customisation.</small>
 						</div>
 						<span className="hub-modal__field-label">Achievement showcase</span>
 						<div className="hub-modal__showcase-slots">
@@ -3251,7 +3261,7 @@ function HomeMenu(): JSX.Element {
 							) : null}
 
 							{/*
-							 * No list virtualization here (e.g. react-window): this is a niche
+							 * No list virtualisation here (e.g. react-window): this is a niche
 							 * 4-player mini-game hub, not a large social network — friend counts
 							 * are expected to stay in the tens, not hundreds. Suggestions are
 							 * already capped server-side (SUGGESTIONS_LIMIT = 20), and pending/
@@ -3431,7 +3441,7 @@ function HomeMenu(): JSX.Element {
 
 			{activeModal === "customization" ? (
 				<HubModal
-					title="Customization"
+					title="Customisation"
 					onClose={() => setActiveModal(null)}
 					variant="wide"
 					headerAddon={
@@ -3446,7 +3456,7 @@ function HomeMenu(): JSX.Element {
 					{cosmetics ? (
 						<div className="hub-modal__cosmetics">
 							<div className="hub-modal__cosmetic-topbar">
-								<nav className="hub-modal__cosmetic-tabs" aria-label="Customization categories">
+								<nav className="hub-modal__cosmetic-tabs" aria-label="Customisation categories">
 									{COSMETIC_TABS.map((tab) => (
 										<button
 											key={tab.id}
@@ -3670,7 +3680,7 @@ function HomeMenu(): JSX.Element {
 							) : null}
 						</div>
 					) : (
-						<p>Loading customization...</p>
+						<p>Loading customisation...</p>
 					)}
 				</HubModal>
 			) : null}

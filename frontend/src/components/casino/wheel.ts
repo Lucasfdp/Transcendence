@@ -7,14 +7,10 @@
  * between "rotation applied" and "which slice is under the pointer" and are kept
  * free of React/DOM so the maths can be verified in isolation.
  */
+import { mod360, spinToAngle } from "./spin-rotation";
 
 /** Full turns added on top of the landing offset, for a satisfying spin. */
 export const SPIN_TURNS = 5;
-
-/** Normalise any angle to the [0, 360) range. */
-function mod360(angle: number): number {
-	return ((angle % 360) + 360) % 360;
-}
 
 /**
  * The slice index currently under the top pointer for a wheel rotated clockwise
@@ -29,7 +25,9 @@ export function segmentAtTop(rotation: number, count: number): number {
 /**
  * Absolute rotation (degrees) that lands `segmentIndex` centred under the top
  * pointer, always advancing clockwise from `previous` by at least `turns` full
- * spins so a CSS transition animates forward.
+ * spins so a CSS transition animates forward. Thin wrapper around the shared
+ * {@link spinToAngle} — the wheel-specific part is just "what angle centres
+ * this segment under the pointer".
  */
 export function nextRotation(
 	previous: number,
@@ -39,10 +37,7 @@ export function nextRotation(
 ): number {
 	const sliceDeg = 360 / count;
 	const centerFromTop = (segmentIndex + 0.5) * sliceDeg;
-	const targetMod = mod360(-centerFromTop);
-	const previousMod = mod360(previous);
-	const delta = mod360(targetMod - previousMod);
-	return previous + turns * 360 + delta;
+	return spinToAngle(previous, -centerFromTop, turns);
 }
 
 /** Minimal shape needed to resolve a roll to a segment. */

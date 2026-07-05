@@ -4,7 +4,7 @@ import type { CardRarity } from "../../features/hub/api";
 export const MAX_TILT_DEG = 16;
 
 export interface CardTilt {
-	/** Rotation around the X axis — tilts the top of the card toward/away from the viewer. */
+	/** Rotation around the X axis — tilts the top of the card towards/away from the viewer. */
 	rotateX: number;
 	/** Rotation around the Y axis — tilts the card left/right. */
 	rotateY: number;
@@ -16,7 +16,7 @@ export interface CardTilt {
 
 /**
  * Computes a 3D tilt + shine-highlight position from a pointer's position
- * within a card, normalized to 0..1 on both axes (0,0 = top-left corner,
+ * within a card, normalised to 0..1 on both axes (0,0 = top-left corner,
  * 1,1 = bottom-right corner). Pure and DOM-free so both the grid `CardSlot`
  * and the enlarged lightbox view can share — and unit test — the same math.
  */
@@ -36,7 +36,7 @@ export function computeCardTilt(
 	};
 }
 
-/** Clamps a value to 0..1, defaulting to the center (0.5) for non-finite input. */
+/** Clamps a value to 0..1, defaulting to the centre (0.5) for non-finite input. */
 function clamp01(value: number): number {
 	if (!Number.isFinite(value)) return 0.5;
 	return Math.min(1, Math.max(0, value));

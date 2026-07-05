@@ -1,7 +1,7 @@
 # Shell Smash 🐢
 
 **A sumo-turtle gaming hub.** Players take on the role of sumo turtle
-warriors, customizing their shell and competing in a growing collection
+warriors, customising their shell and competing in a growing collection
 of arcade minigames set in a Japanese temple courtyard.
 
 ## Concept
@@ -16,7 +16,7 @@ built.
 Players have:
 
 - A persistent profile (level, XP, win/loss record)
-- A customizable turtle (`turtleName`, `shellSkin`)
+- A customisable turtle (`turtleName`, `shellSkin`)
 - A spot on the Dojo Rankings leaderboard
 
 ## Stack

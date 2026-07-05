@@ -299,7 +299,7 @@ The `while` loop that appends numeric suffixes to colliding OAuth usernames quer
 
 #### L4 — Stale `shellsmash/` directory at repo root
 
-The `shellsmash/` directory contains an old copy of the project with `node_modules/`, `dist/`, and compiled artifacts — all gitignored but physically present. While `.gitignore` correctly excludes it, its presence is confusing and wastes disk space. It should be fully removed from disk.
+The `shellsmash/` directory contains an old copy of the project with `node_modules/`, `dist/`, and compiled artefacts — all gitignored but physically present. While `.gitignore` correctly excludes it, its presence is confusing and wastes disk space. It should be fully removed from disk.
 
 ---
 
@@ -339,7 +339,7 @@ No frontend tests exist. No e2e tests for critical flows (login → queue → ma
 | 11 | Game statistics & match history | User Mgmt — Minor | ✅ UserGameStats entity, per-game breakdown, leaderboard | 1 |
 | 12 | Gamification system | Gaming — Minor | ✅ XP, levels, coins, 35+ achievements, cosmetic unlocks | 1 |
 | 13 | Spectator mode | Gaming — Minor | ✅ spectator:join/leave, live state stream | 1 |
-| 14 | Game customization options | Gaming — Minor | ✅ Shell skins, hub backgrounds, alter arts | 1 |
+| 14 | Game customisation options | Gaming — Minor | ✅ Shell skins, hub backgrounds, alter arts | 1 |
 | 15 | 2FA | User Mgmt — Minor | ❌ Not implemented | 0 |
 | 16 | Tournament system | Gaming — Minor | ❌ Not implemented | 0 |
 
@@ -381,7 +381,7 @@ Block/unblock, bidirectional lookup, live online status integration — all impl
 **Grade: A−**
 Startup validation of cosmetic reward references is a nice touch. `evaluateForUser` correctly handles duplicate-key races (23505). No tests.
 
-### Customization (`customization.service.ts`)
+### Customisation (`customization.service.ts`)
 **Grade: A−**
 The `buy` transaction is correctly wrapped in `dataSource.transaction()`. Achievement-locked items are enforced server-side. No tests.
 

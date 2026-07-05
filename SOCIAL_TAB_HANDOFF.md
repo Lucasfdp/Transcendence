@@ -231,7 +231,7 @@ nets to *added-then-removed*. See the notification drawer in `HomePage.tsx` (~li
   (reuse the send-request + optimistic flow). TDD the service exclusion logic carefully.
 
 ### Batch 5 — Polish & coverage verification
-- **List virtualization** only if row counts warrant (>~50). The social list is in a modal; a
+- **List virtualisation** only if row counts warrant (>~50). The social list is in a modal; a
   simple windowing or `react-window` (needs user `npm install`). If lists stay small, document
   why it was skipped rather than adding a dep.
 - **A11y pass:** focus management on modal open/close, aria on group headings, keyboard access

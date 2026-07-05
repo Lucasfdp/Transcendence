@@ -27,7 +27,7 @@ const GIF_FALLBACK_TITLE = "GIF";
 /** Default page size for paginated message history fetches. */
 const DEFAULT_MESSAGE_PAGE_SIZE = 50;
 
-/** Length of the preview text denormalized onto the conversation for list views. */
+/** Length of the preview text denormalised onto the conversation for list views. */
 const MESSAGE_PREVIEW_MAX_LENGTH = 120;
 
 /** Socket.IO room name for a conversation — shared with MatchmakingGateway. */
@@ -471,7 +471,7 @@ export class ChatService {
 	}
 
 	/**
-	 * Persist a message and denormalize it onto the conversation
+	 * Persist a message and denormalise it onto the conversation
 	 * (`lastMessageAt` / `lastMessagePreview`) for cheap list sorting and
 	 * unread derivation (see Batch 4).
 	 *
@@ -593,7 +593,7 @@ export class ChatService {
 	 * width/height/title are re-fetched from Klipy here via
 	 * GifService.getBySlug, then handed to the same sendMessage() used for
 	 * text — so gif sends get the exact same membership/friend-gating,
-	 * denormalization, and unread-transition behavior for free.
+	 * denormalisation, and unread-transition behaviour for free.
 	 */
 	async sendGifMessage(
 		conversationId: number,

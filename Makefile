@@ -19,7 +19,7 @@ CERT_DIR		:= secrets/nginx_ssl
 VAULT_INIT_FILE	:= secrets/vault/init.txt
 VAULT_SEED_FILE	:= secrets/vault/dev-seed.env
 
-# --- COLOR DEFINITON ---
+# --- COLOUR DEFINITON ---
 ifeq ($(shell tput colors 2>/dev/null),)
 	GREEN   :=
 	RED     :=

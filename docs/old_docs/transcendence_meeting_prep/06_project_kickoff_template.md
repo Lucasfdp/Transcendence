@@ -71,7 +71,7 @@ Choose one:
 - [ ] Finish as safely as possible
 - [ ] Learn as much as possible
 - [ ] Build something impressive
-- [ ] Maximize evaluation score
+- [ ] Maximise evaluation score
 - [ ] Portfolio-focused
 
 ---

@@ -116,7 +116,7 @@ describe("CardsService", () => {
 	});
 
 	describe("getBinder", () => {
-		it("should list every catalog card as unowned when the user owns nothing", async () => {
+		it("should list every catalogue card as unowned when the user owns nothing", async () => {
 			const binder = await service.getBinder(makeUser());
 
 			expect(binder.cards).toHaveLength(CARDS.length);
@@ -154,12 +154,12 @@ describe("CardsService", () => {
 			expect(binder.sets).toHaveLength(CARD_FAMILIES.length);
 		});
 
-		it("should expose the full, server-authoritative pack tier catalog", async () => {
+		it("should expose the full, server-authoritative pack tier catalogue", async () => {
 			const binder = await service.getBinder(makeUser());
 			expect(binder.packTiers).toEqual(PACK_TIERS);
 		});
 
-		it("should compute overall totals across the whole catalog", async () => {
+		it("should compute overall totals across the whole catalogue", async () => {
 			cardsRepo.find.mockResolvedValue([
 				makeUserCard(CARDS[0].id, 1),
 				makeUserCard(CARDS[1].id, 5),
@@ -171,7 +171,7 @@ describe("CardsService", () => {
 			expect(binder.totals.total).toBe(CARDS.length);
 		});
 
-		it("should not count an unknown owned cardId toward catalog totals", async () => {
+		it("should not count an unknown owned cardId towards catalogue totals", async () => {
 			cardsRepo.find.mockResolvedValue([makeUserCard("ghost-card-xyz", 1)]);
 
 			const binder = await service.getBinder(makeUser());

@@ -7,7 +7,7 @@ import {
 } from "./localReplay";
 
 describe("localReplay", () => {
-	it("normalizes imported frames to contract v1 timing", () => {
+	it("normalises imported frames to contract v1 timing", () => {
 		const frames = normalizeReplayImportFrames([
 			{
 				seq: 10,

@@ -28,7 +28,7 @@ This is a minigame for **Shell Smash** (ft_transcendence), a Phaser 3 Japanese-t
 
 ### Game: Shell Curl (`game/shell-curl/ShellCurlScene.ts`)
 
-A two-player **curling** minigame where turtle shells are slid across an ice sheet toward a scoring target (the "house"). Teams alternate delivering shells; after all shells are delivered the score is counted and a new "end" begins. The game is designed for two players at the same machine (hot-seat), but the turn/input layer must be architected so network turns could be dropped in later.
+A two-player **curling** minigame where turtle shells are slid across an ice sheet towards a scoring target (the "house"). Teams alternate delivering shells; after all shells are delivered the score is counted and a new "end" begins. The game is designed for two players at the same machine (hot-seat), but the turn/input layer must be architected so network turns could be dropped in later.
 
 ---
 
@@ -261,7 +261,7 @@ export const ALL_POWERS: Record<PowerType, PowerDef>;
 - **BOMB**: `onStop` → iterate `allStones`, compute distance; any stone within `BOMB_RADIUS_SRC * scale` gets a radial velocity impulse `BOMB_IMPULSE_SRC * scale`. Play a screen-shake tween (`scene.cameras.main.shake(300, 0.012)`). Draw an expanding orange ring overlay via a short-lived Graphics tween.
 - **SPLITTER**: `onCollide` (first hit only; guard with a `hasSplit` flag on the stone) → remove original stone, spawn 3 `StoneState` objects with radii `stone.r * 0.65` at ±15° and 0° from the collision normal.
 - **GHOST**: `onCollide` → skip `resolveStoneCollision` for the first collision (guard with `ghostUsed` flag); the stone passes through, then becomes NONE.
-- **MAGNET**: `onStop` → for every other stone inside `MAGNET_RANGE_SRC * scale` of the house centre, gently slide them toward this stone's position (set small velocity `MAGNET_PULL_SRC * scale` toward magnet). Visualise with dotted lines from each affected stone to the magnet for 1.5 s.
+- **MAGNET**: `onStop` → for every other stone inside `MAGNET_RANGE_SRC * scale` of the house centre, gently slide them towards this stone's position (set small velocity `MAGNET_PULL_SRC * scale` towards magnet). Visualise with dotted lines from each affected stone to the magnet for 1.5 s.
 - **SPINNING**: `onApply` → `stone.curlBias = 0.22` (≈5× normal). The stone will arc visibly. Show a spiral trail using a particle emitter (ice-blue dots, short lifetime).
 - **BOUNCER**: in `stepStone` wall-bounce logic check for BOUNCER and skip the `BOUNCE_DAMP` factor.
 - **SHIELD**: `onStop` (and each frame via `onUpdate`) → if stone would exit house ring, clamp its position to `houseRadii[0]` from house centre with zero velocity.

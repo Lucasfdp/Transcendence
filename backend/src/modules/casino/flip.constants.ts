@@ -1,5 +1,5 @@
 /**
- * Shell Flip — catalog & economy constants.
+ * Shell Flip — catalogue & economy constants.
  *
  * The simplest attraction in the gambling den: the player calls a shell side —
  * gold ("heads") or jade ("tails") — and one provably-fair roll decides which

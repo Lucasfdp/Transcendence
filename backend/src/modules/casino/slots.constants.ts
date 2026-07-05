@@ -1,5 +1,5 @@
 /**
- * Shrine Slots — catalog & economy constants.
+ * Shrine Slots — catalogue & economy constants.
  *
  * Three reels share one symbol set; each reel is rolled independently from the
  * same provably-fair spin. A win pays by the resulting combination — for now,

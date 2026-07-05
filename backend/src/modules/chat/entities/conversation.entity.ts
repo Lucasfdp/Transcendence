@@ -14,7 +14,7 @@ export type ConversationType = "dm" | "group";
 /**
  * A chat conversation — either a 1:1 direct message or a named group.
  *
- * `lastMessageAt` / `lastMessagePreview` are denormalized from the most
+ * `lastMessageAt` / `lastMessagePreview` are denormalised from the most
  * recent `Message` row so the conversation list can sort/preview without a
  * join, and so unread state can later be derived cheaply as
  * `lastMessageAt > participant.lastReadAt` (see ChatService / Batch 4 —

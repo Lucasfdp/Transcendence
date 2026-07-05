@@ -68,11 +68,11 @@ Implementación deseada:
      - `description`
      - `price`
      - `unlockRequirement` si aplica
-     - datos visuales mínimos necesarios para render/preview, por ejemplo color/theme/background si ya se usan en frontend.
+     - datos visuales mínimos necesarios para render/preview, por ejemplo colour/theme/background si ya se usan en frontend.
    - No mover cosméticos a DB todavía, salvo que el código actual lo haga muy costoso. La solución preferida es catálogo centralizado en backend.
 
 3. Frontend: eliminar duplicación innecesaria de cosméticos
-   - Revisar `shared/cosmetics.ts` y el modal de customization en `HubScene.ts`.
+   - Revisar `shared/cosmetics.ts` y el modal de customisation en `HubScene.ts`.
    - Si hay colores/previews hardcodeados que pueden venir desde `GET /customization`, moverlos al contrato del backend.
    - Actualizar tipos en:
      `srcs/requirements/frontend/src/src/hub/api.ts`

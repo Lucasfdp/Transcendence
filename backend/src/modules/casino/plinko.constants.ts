@@ -1,11 +1,11 @@
 /**
- * Shell Drop (Plinko) — catalog & economy constants.
+ * Shell Drop (Plinko) — catalogue & economy constants.
  *
  * A shell falls through `rows` rows of pegs; at each row a roll sends it left
  * or right. It lands in one of `rows + 1` buckets, indexed by how many times
- * it went right. The bucket distribution is binomial — center buckets are far
+ * it went right. The bucket distribution is binomial — centre buckets are far
  * more likely than edge buckets — so the payout multipliers are shaped to pay
- * less than the stake in the center and far more at the edges.
+ * less than the stake in the centre and far more at the edges.
  *
  * Economy design: for a chosen row-count R, give each bucket k a symmetric
  * U-shaped *shape weight* `w_k = PLINKO_RISK_BASE ^ |k - R/2|` (edges weigh
@@ -14,7 +14,7 @@
  *   M_k = w_k / Z
  * so that `Σ_k p_k · M_k = Σ_k p_k · w_k / Z = Z / Z = 1.0` exactly, for any
  * row-count and any base — net-neutral by construction, no tuning needed. No
- * bucket pays zero (every `w_k > 0`); variance comes from center-vs-edge, not
+ * bucket pays zero (every `w_k > 0`); variance comes from centre-vs-edge, not
  * from a chance of losing everything. The shared engine moves the coins; this
  * module owns only the binomial maths and the multiplier derivation.
  */
@@ -31,7 +31,7 @@ export const DEFAULT_ROWS: PlinkoRows = 8;
 /**
  * Base of the symmetric U-shaped shape weight used to derive bucket
  * multipliers. Must be > 1 so edge buckets (rarer, by the binomial
- * distribution) weigh — and therefore pay — more than center buckets.
+ * distribution) weigh — and therefore pay — more than centre buckets.
  */
 export const PLINKO_RISK_BASE = 1.6;
 
@@ -119,7 +119,7 @@ export function plinkoRtp(rows: number): number {
 export interface PlinkoBucketView {
 	/** Bucket index — count of right moves (0..rows). */
 	index: number;
-	/** Net-neutral payout multiplier (< 1 in the center, > 1 at the edges). */
+	/** Net-neutral payout multiplier (< 1 in the centre, > 1 at the edges). */
 	multiplier: number;
 	/** Probability of landing here = C(rows,index) / 2^rows. */
 	probability: number;

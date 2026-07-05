@@ -66,7 +66,7 @@ describe("MatchmakingService.joinQueue — powerupsEnabled resolution (Bug Audit
 		);
 	});
 
-	it("honors a single queuer's own preference (powerups on)", async () => {
+	it("honours a single queuer's own preference (powerups on)", async () => {
 		await service.joinQueue("socket-1", makeUser(1), {
 			gameId: "temple-curling",
 			mode: "casual",

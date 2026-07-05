@@ -5,7 +5,7 @@
  * `https://app.example.com` also match the attacker-controlled
  * `https://app.example.com.evil.io`, and (combined with `credentials: true`)
  * allow cross-origin requests carrying the user's session cookie (Bug Audit C2).
- * Both sides are parsed with `URL` and compared on the normalized `origin`
+ * Both sides are parsed with `URL` and compared on the normalised `origin`
  * (scheme + host + port) so trailing slashes/casing can't cause a bypass either.
  */
 export function isAllowedOrigin(

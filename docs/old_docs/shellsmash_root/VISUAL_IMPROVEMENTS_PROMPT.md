@@ -54,7 +54,7 @@ Apply this same change inside `applyResize()`. Remove the tree bounds guard
    alpha. Span the full canvas width. Height: ~30–40% of canvas from bottom.
 
 2. **Stone path** — a narrow quadrilateral (trapezoid) of `0x2a2218` starting
-   ~65% down the canvas, widening toward the bottom centre. Draw it ABOVE the
+   ~65% down the canvas, widening towards the bottom centre. Draw it ABOVE the
    mountain layer.
 
 3. **Hanging stone lanterns** — draw 3–4 procedural lanterns spaced along the

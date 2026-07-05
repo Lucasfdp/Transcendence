@@ -154,7 +154,7 @@ export class CasinoEngine {
 		current.coins = current.coins - resolveInput.paid + payout;
 		await usersRepo.save(current);
 
-		// Count positive net winnings toward the player's lifetime earnings.
+		// Count positive net winnings towards the player's lifetime earnings.
 		// Losses and pushes (net ≤ 0) never reduce the stat.
 		const earned = Math.max(0, net);
 		if (earned > 0) {

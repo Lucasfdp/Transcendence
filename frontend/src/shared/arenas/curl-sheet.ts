@@ -2,7 +2,7 @@
  * game/arenas/curl-sheet.ts — arena definition for Shell Curl.
  *
  * The sheet is landscape-oriented (wide) filling almost the full canvas.
- * Stones are delivered from the LEFT and travel RIGHTWARD toward the house.
+ * Stones are delivered from the LEFT and travel RIGHTWARD towards the house.
  * All measurements are in source pixels at 1920×1080 reference resolution.
  */
 

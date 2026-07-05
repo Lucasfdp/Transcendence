@@ -96,7 +96,7 @@ npx typeorm migration:run -d src/data-source.ts
 
 ### Sprint 3 — Friend Invites + Private Lobbies
 
-**Goal:** Let a player create a private casual lobby, invite one online friend, and drop both into a match when the invite is accepted. Invites expire after 2 minutes. Casual wins count toward the total-wins leaderboard but do **not** affect ELO.
+**Goal:** Let a player create a private casual lobby, invite one online friend, and drop both into a match when the invite is accepted. Invites expire after 2 minutes. Casual wins count towards the total-wins leaderboard but do **not** affect ELO.
 
 #### New backend files
 
@@ -161,7 +161,7 @@ They live for at most 2 minutes and serve no purpose after the match starts or i
 An invite to a game that expired 10 minutes ago is meaningless. Storing it would clutter the inbox with stale actions.
 
 **Why `mode: "casual"` for private lobbies?**  
-Prevents ELO sandbagging. Two friends could otherwise exploit private ranked matches to farm rating. Casual wins still count toward the total-wins leaderboard.
+Prevents ELO sandbagging. Two friends could otherwise exploit private ranked matches to farm rating. Casual wins still count towards the total-wins leaderboard.
 
 ---
 
@@ -186,6 +186,6 @@ Expected: **35 tests passing** (9 + 12 + 14).
 
 3. **Shell selection in lobbies** — currently passes `shellSelection: []`. If shell picker matters for private matches, wire up the existing `ShellPickerScene` flow before emitting `lobby:create`.
 
-4. **Casual wins → leaderboard** — private lobby wins count toward the overall leaderboard only if `GameResultsService.submitResult()` runs after the match ends. This should work automatically since `joinLobby` creates a real `Match` row, but confirm the `game:end` → `submitResult` path executes for casual matches.
+4. **Casual wins → leaderboard** — private lobby wins count towards the overall leaderboard only if `GameResultsService.submitResult()` runs after the match ends. This should work automatically since `joinLobby` creates a real `Match` row, but confirm the `game:end` → `submitResult` path executes for casual matches.
 
 5. **npm audit** — there are 51 pre-existing vulnerabilities in backend deps (unrelated to this sprint). Worth a separate triage.

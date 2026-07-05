@@ -27,7 +27,7 @@ export enum PowerType {
 	ROCKET = "rocket", // 2× launch speed, zero curl
 	GIANT = "giant", // 2× radius, slower delivery
 	TINY = "tiny", // 0.5× radius, faster, harder to hit
-	BOOMERANG = "boomerang", // curves back toward delivery point after 60% travel
+	BOOMERANG = "boomerang", // curves back towards delivery point after 60% travel
 	REPEL = "repel", // pushes all stones away on stop (inverse MAGNET)
 	STICKY = "sticky", // fuses with first stone it contacts; they coast together
 	LIGHTNING = "lightning", // on stop: teleports the nearest enemy stone off-sheet
@@ -186,7 +186,7 @@ const MAGNET_DEF: PowerDef = {
 	type: PowerType.MAGNET,
 	label: "Magnet Shell",
 	accentColour: 0xff44cc,
-	description: "Pulls nearby shells toward it when it stops.",
+	description: "Pulls nearby shells towards it when it stops.",
 	onApply() {
 		/* nothing at launch */
 	},
@@ -349,7 +349,7 @@ const BOOMERANG_DEF: PowerDef = {
 	type: PowerType.BOOMERANG,
 	label: "Boomerang Shell",
 	accentColour: 0xffcc44,
-	description: "Travels forward, then curves back toward the delivery point.",
+	description: "Travels forward, then curves back towards the delivery point.",
 	onApply(stone) {
 		const s = stone as unknown as BoomerangStone;
 		s.boomerangFlipped = false;

@@ -174,7 +174,7 @@ describe("GifService", () => {
 		});
 
 		// Regression test: Klipy has been observed not echoing back the exact
-		// slug string that was queried (e.g. normalization differences), which
+		// slug string that was queried (e.g. normalisation differences), which
 		// previously made every gif send fail with a false "GIF not found"
 		// because getBySlug re-compared item.slug === slug. It now trusts
 		// items[0] for a single-slug request instead.

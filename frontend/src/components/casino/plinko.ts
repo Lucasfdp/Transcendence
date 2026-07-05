@@ -8,8 +8,13 @@
  */
 import type { PlinkoBucketView } from "../../features/hub/api";
 
-/** Rolls strictly below this send the shell left; the rest send it right. */
-const RIGHT_THRESHOLD = 0.5;
+/**
+ * Rolls strictly below this send the shell left; the rest send it right.
+ * Exported so animation code (`drop-path.ts`) can derive the same per-row
+ * left/right direction without duplicating — and risking drift from — this
+ * threshold.
+ */
+export const RIGHT_THRESHOLD = 0.5;
 
 /** Map a set of per-row rolls in [0, 1) to the bucket index (matches the server). */
 export function bucketIndexFromRolls(rolls: readonly number[]): number {
