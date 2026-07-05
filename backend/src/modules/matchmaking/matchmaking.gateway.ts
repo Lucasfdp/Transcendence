@@ -502,6 +502,16 @@ export class MatchmakingGateway
 				this.server
 					.to(room.matchId)
 					.emit("game:kame-throw", throwEvent);
+				const power = String(payload.payload?.power ?? "none");
+				if (power !== "none") {
+					this.server.to(room.matchId).emit("game:kame-power-pickup", {
+						matchId: room.matchId,
+						roundNumber: room.state.roundNumber,
+						turnNumber: room.state.turnNumber,
+						side: player.side,
+						power,
+					});
+				}
 			}
 			this.emitState(room.matchId);
 			return;
@@ -540,6 +550,16 @@ export class MatchmakingGateway
 				this.server
 					.to(room.matchId)
 					.emit("game:bell-throw", throwEvent);
+				const power = String(payload.payload?.power ?? "none");
+				if (power !== "none") {
+					this.server.to(room.matchId).emit("game:bell-power-pickup", {
+						matchId: room.matchId,
+						roundNumber: room.state.roundNumber,
+						shotNumber: room.state.shotCounts[player.side] ?? 0,
+						side: player.side,
+						power,
+					});
+				}
 			}
 			this.emitState(room.matchId);
 			return;

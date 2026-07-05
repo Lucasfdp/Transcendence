@@ -96,6 +96,7 @@ import {
 	type KameKnockThrowEvent,
 	type SnapshotPlayer,
 	type OnlineMatchContext,
+	type ReplayFrameSnapshotEntity,
 } from "../../services/network/gameSocket";
 import {
 	PLAYER_COLOUR_VALUES,
@@ -112,6 +113,15 @@ import {
 	resolveReplayWinnerSide,
 	withPowerStateFlags,
 } from "../shared/localReplay";
+
+// Online ball state with powerup visual properties
+interface OnlineBallState extends BallState {
+	scale?: number;
+	alpha?: number;
+	power?: string;
+	trail?: Array<{ x: number; y: number }>;
+	stateFlags?: string[];
+}
 
 interface BallRoundConfig {
 	readonly totalTargets: number;
@@ -269,7 +279,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private onlineSettledSubmitted = false;
 	private onlineReleasePending = false;
 	private visibleBallSide = 0;
-	private onlineBalls = new Map<number, BallState>();
+	private onlineBalls = new Map<number, OnlineBallState>();
 	private ballTrails: PlayerTrailStore = new Map();
 	private completedTrailPlayers = new Map<number | string, number>();
 	private localMode: "solo" | "versus" = "solo";
@@ -293,6 +303,24 @@ export class KameKnockScene extends ResponsiveScene {
 
 	private readonly handleOnlineThrow = (event: KameKnockThrowEvent): void => {
 		this.playOnlineThrow(event);
+	};
+
+	private readonly handleOnlinePowerPickup = (event: {
+		matchId: string;
+		roundNumber: number;
+		turnNumber: number;
+		side: number;
+		power: string;
+	}): void => {
+		if (!this.onlineMatch || event.matchId !== this.onlineMatch.matchId || event.side === this.onlineMatch.side)
+			return;
+		const ball = this.onlineBalls.get(event.side);
+		if (ball) {
+			const power = event.power as PowerType;
+			if (power !== PowerType.NONE) {
+				applyBallPower(power, ball, this.arena);
+			}
+		}
 	};
 
 	constructor() {
@@ -868,9 +896,11 @@ export class KameKnockScene extends ResponsiveScene {
 		socket.off("game:state", this.handleOnlineState);
 		socket.off("game:end", this.handleOnlineState);
 		socket.off("game:kame-throw", this.handleOnlineThrow);
+		socket.off("game:kame-power-pickup", this.handleOnlinePowerPickup);
 		socket.on("game:state", this.handleOnlineState);
 		socket.on("game:end", this.handleOnlineState);
 		socket.on("game:kame-throw", this.handleOnlineThrow);
+		socket.on("game:kame-power-pickup", this.handleOnlinePowerPickup);
 		this.updateOnlineStatus("Connected to Kame Knock match.");
 	}
 
@@ -1852,11 +1882,13 @@ export class KameKnockScene extends ResponsiveScene {
 
 	private syncOnlineBalls(snapshot: KameKnockSnapshot): void {
 		if (!this.onlineMatch) return;
-		const next = new Map<number, BallState>();
+		const next = new Map<number, OnlineBallState>();
 		const players = [...snapshot.players].sort((a, b) => a.side - b.side);
 		players.forEach((player, index) => {
+			const isLocal = player.side === this.onlineMatch?.side;
+			const serverBall = snapshot.entities.find((ball) => (ball.side ?? ball.ownerSide) === player.side);
 			const ball =
-				player.side === this.onlineMatch?.side
+				isLocal
 					? this.ball
 					: (this.onlineBalls.get(player.side) ?? {
 							x: 0,
@@ -1867,6 +1899,14 @@ export class KameKnockScene extends ResponsiveScene {
 						});
 			if (!this.launchedThisBall || !this.isBallMoving(ball))
 				this.resetOnlineBall(ball, index, players.length);
+			// Sync powerup visual properties from server entity
+			if (serverBall) {
+				(ball as OnlineBallState).scale = serverBall.scale ?? 1;
+				(ball as OnlineBallState).alpha = serverBall.alpha ?? 1;
+				(ball as OnlineBallState).power = serverBall.power ?? "none";
+				(ball as OnlineBallState).trail = serverBall.trail ? serverBall.trail.map(p => ({ ...p })) : undefined;
+				(ball as OnlineBallState).stateFlags = serverBall.stateFlags ? [...serverBall.stateFlags] : [];
+			}
 			next.set(player.side, ball);
 		});
 		this.onlineBalls = next;
@@ -1939,20 +1979,31 @@ export class KameKnockScene extends ResponsiveScene {
 			? (this.onlineReplayThrower ?? this.visibleBallSide)
 			: this.onlineMatch.snapshot.currentTurn;
 		const ball = this.ballForOnlineSide(side);
+		const onlineBall = ball as OnlineBallState;
+		// Apply powerup scale to radius
+		const renderRadius = ball.r * (onlineBall.scale ?? 1);
+		const colour =
+			PLAYER_COLOUR_VALUES[side % PLAYER_COLOUR_VALUES.length] ?? THEME.gold;
 		if (
 			!drawIngamePlayerTexture(
 				this,
 				`kame-knock-player-${side}`,
-				ball,
+				{ ...ball, r: renderRadius },
 				DEPTH_BALL,
 				this.playerShellSkins[side],
 			)
-		)
-			drawShellBall(this.ballGfx, ball, false);
-		const colour =
-			PLAYER_COLOUR_VALUES[side % PLAYER_COLOUR_VALUES.length] ?? THEME.gold;
-		this.ballGfx.lineStyle(Math.max(2, ball.r * 0.14), colour, 0.95);
-		this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.08);
+		) {
+			// Apply alpha for translucent powers (ghost, phantom)
+			this.ballGfx.setAlpha(onlineBall.alpha ?? 1);
+			drawShellBall(this.ballGfx, { ...ball, r: renderRadius }, false);
+			this.ballGfx.setAlpha(1);
+		}
+		// Draw trail for spinning/other powers
+		if (onlineBall.trail?.length) {
+			this.drawBallTrail(onlineBall.trail, colour);
+		}
+		this.ballGfx.lineStyle(Math.max(2, renderRadius * 0.14), colour, 0.95);
+		this.ballGfx.strokeCircle(ball.x, ball.y, renderRadius * 1.08);
 		this.drawPowerBalls();
 	}
 
@@ -2040,6 +2091,17 @@ export class KameKnockScene extends ResponsiveScene {
 			...BALL_TRAIL_OPTIONS,
 			scale: this.arena.scale,
 		});
+	}
+
+	private drawBallTrail(trail: Array<{ x: number; y: number }>, colour: number): void {
+		const count = trail.length;
+		for (let i = 1; i < count; i++) {
+			const p0 = trail[i - 1];
+			const p1 = trail[i];
+			const alpha = (i / count) * 0.5;
+			this.ballGfx.lineStyle(4, colour, alpha);
+			this.ballGfx.lineBetween(p0.x, p0.y, p1.x, p1.y);
+		}
 	}
 
 	private archiveLocalTrail(): void {

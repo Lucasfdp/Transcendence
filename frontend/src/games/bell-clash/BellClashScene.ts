@@ -82,6 +82,7 @@ import {
 	type BellClashThrowEvent,
 	type GameSnapshot,
 	type OnlineMatchContext,
+	type ReplayFrameSnapshotEntity,
 	type SnapshotPlayer,
 } from "../../services/network/gameSocket";
 import {
@@ -99,6 +100,15 @@ import {
 	resolveReplayWinnerSide,
 	withPowerStateFlags,
 } from "../shared/localReplay";
+
+// Online ball state with powerup visual properties
+interface OnlineBallState extends BallState {
+	scale?: number;
+	alpha?: number;
+	power?: string;
+	trail?: Array<{ x: number; y: number }>;
+	stateFlags?: string[];
+}
 
 type ZoneKind = "red" | "yellow" | "green";
 
@@ -195,7 +205,7 @@ export class BellClashScene extends ResponsiveScene {
 	private onlineMatch: OnlineMatchContext | null = null;
 	private lastOnlineSeq = -1;
 	private onlineStatusText: Phaser.GameObjects.Text | null = null;
-	private onlineBalls = new Map<number, BallState>();
+	private onlineBalls = new Map<number, OnlineBallState>();
 	private ballTrails: PlayerTrailStore = new Map();
 	private onlineRoundNumber = 1;
 	private onlineTotalRounds = 3;
@@ -231,6 +241,24 @@ export class BellClashScene extends ResponsiveScene {
 
 	private readonly handleOnlineThrow = (event: BellClashThrowEvent): void => {
 		this.playOnlineThrow(event);
+	};
+
+	private readonly handleOnlinePowerPickup = (event: {
+		matchId: string;
+		roundNumber: number;
+		shotNumber: number;
+		side: number;
+		power: string;
+	}): void => {
+		if (!this.onlineMatch || event.matchId !== this.onlineMatch.matchId || event.side === this.onlineMatch.side)
+			return;
+		const ball = this.onlineBalls.get(event.side);
+		if (ball) {
+			const power = event.power as PowerType;
+			if (power !== PowerType.NONE) {
+				applyBallPower(power, ball, this.arena);
+			}
+		}
 	};
 
 	// ── Power state ──────────────────────────────────────────────────────────────
@@ -1025,9 +1053,11 @@ export class BellClashScene extends ResponsiveScene {
 		socket.off("game:state", this.handleOnlineState);
 		socket.off("game:end", this.handleOnlineState);
 		socket.off("game:bell-throw", this.handleOnlineThrow);
+		socket.off("game:bell-power-pickup", this.handleOnlinePowerPickup);
 		socket.on("game:state", this.handleOnlineState);
 		socket.on("game:end", this.handleOnlineState);
 		socket.on("game:bell-throw", this.handleOnlineThrow);
+		socket.on("game:bell-power-pickup", this.handleOnlinePowerPickup);
 		this.updateOnlineStatus("Connected to Bell Clash match.");
 	}
 
@@ -1310,11 +1340,13 @@ export class BellClashScene extends ResponsiveScene {
 		snapshot: BellClashSnapshot,
 		resetPositions: boolean,
 	): void {
-		const next = new Map<number, BallState>();
+		const next = new Map<number, OnlineBallState>();
 		const players = [...snapshot.players].sort((a, b) => a.side - b.side);
 		players.forEach((player, index) => {
+			const isLocal = player.side === this.onlineMatch?.side;
+			const serverBall = snapshot.entities.find((ball) => (ball.side ?? ball.ownerSide) === player.side);
 			const ball =
-				player.side === this.onlineMatch?.side
+				isLocal
 					? this.ball
 					: (this.onlineBalls.get(player.side) ?? {
 							x: 0,
@@ -1326,6 +1358,14 @@ export class BellClashScene extends ResponsiveScene {
 			if (resetPositions) {
 				this.resetOnlineBall(ball, index, players.length);
 				resetPlayerTrail(this.ballTrails, player.side, ball.x, ball.y);
+			}
+			// Sync powerup visual properties from server entity
+			if (serverBall) {
+				(ball as OnlineBallState).scale = serverBall.scale ?? 1;
+				(ball as OnlineBallState).alpha = serverBall.alpha ?? 1;
+				(ball as OnlineBallState).power = serverBall.power ?? "none";
+				(ball as OnlineBallState).trail = serverBall.trail ? serverBall.trail.map(p => ({ ...p })) : undefined;
+				(ball as OnlineBallState).stateFlags = serverBall.stateFlags ? [...serverBall.stateFlags] : [];
 			}
 			next.set(player.side, ball);
 		});
@@ -1706,6 +1746,17 @@ export class BellClashScene extends ResponsiveScene {
 			...BALL_TRAIL_OPTIONS,
 			scale: this.arena.scale,
 		});
+	}
+
+	private drawBallTrail(trail: Array<{ x: number; y: number }>, colour: number): void {
+		const count = trail.length;
+		for (let i = 1; i < count; i++) {
+			const p0 = trail[i - 1];
+			const p1 = trail[i];
+			const alpha = (i / count) * 0.5;
+			this.ballGfx.lineStyle(4, colour, alpha);
+			this.ballGfx.lineBetween(p0.x, p0.y, p1.x, p1.y);
+		}
 	}
 
 	private bellRadius(): number {
@@ -2129,23 +2180,34 @@ export class BellClashScene extends ResponsiveScene {
 		)) {
 			const colour =
 				PLAYER_COLOURS[side % PLAYER_COLOURS.length] ?? THEME.gold;
+			const onlineBall = ball as OnlineBallState;
+			// Apply powerup scale to radius
+			const renderRadius = ball.r * (onlineBall.scale ?? 1);
 			if (
 				!drawIngamePlayerTexture(
 					this,
 					`bell-clash-player-${side}`,
-					ball,
+					{ ...ball, r: renderRadius },
 					DEPTH_BALL,
 					this.playerShellSkins[side],
 				)
-			)
-				drawShellBall(this.ballGfx, ball, false);
-			this.ballGfx.lineStyle(Math.max(2, ball.r * 0.14), colour, 0.95);
-			this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.1);
+			) {
+				// Apply alpha for translucent powers (ghost, phantom)
+				this.ballGfx.setAlpha(onlineBall.alpha ?? 1);
+				drawShellBall(this.ballGfx, { ...ball, r: renderRadius }, false);
+				this.ballGfx.setAlpha(1);
+			}
+			// Draw trail for spinning/other powers
+			if (onlineBall.trail?.length) {
+				this.drawBallTrail(onlineBall.trail, colour);
+			}
+			this.ballGfx.lineStyle(Math.max(2, renderRadius * 0.14), colour, 0.95);
+			this.ballGfx.strokeCircle(ball.x, ball.y, renderRadius * 1.1);
 			this.ballGfx.fillStyle(colour, 0.95);
 			this.ballGfx.fillCircle(
 				ball.x,
-				ball.y - ball.r * 1.45,
-				Math.max(5, ball.r * 0.22),
+				ball.y - renderRadius * 1.45,
+				Math.max(5, renderRadius * 0.22),
 			);
 		}
 		this.drawPowerBalls();

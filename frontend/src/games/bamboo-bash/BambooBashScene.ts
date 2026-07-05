@@ -95,8 +95,8 @@ import {
 	type BambooBashSnapshot,
 	type BambooBashThrowEvent,
 	type GameSnapshot,
-	type GameStateDelta,
 	type OnlineMatchContext,
+	type ReplayFrameSnapshotEntity,
 	type SnapshotPlayer,
 } from "../../services/network/gameSocket";
 import {
@@ -114,6 +114,22 @@ import {
 	resolveReplayWinnerSide,
 	withPowerStateFlags,
 } from "../shared/localReplay";
+
+// Delta state update from server (entities only)
+interface GameStateDelta {
+	matchId: string;
+	seq: number;
+	entities: ReplayFrameSnapshotEntity[];
+}
+
+// Online ball state with powerup visual properties
+interface OnlineBallState extends BallState {
+	scale?: number;
+	alpha?: number;
+	power?: string;
+	trail?: Array<{ x: number; y: number }>;
+	stateFlags?: string[];
+}
 
 // Slingshot tuning in arena source px (scaled by the letterbox factor so the
 // game feels identical at 1080p, 4K, or a tiny window)
@@ -231,7 +247,7 @@ export class BambooBashScene extends ResponsiveScene {
 	private onlineRoundNumber = 1;
 	private onlineTotalRounds = 3;
 	private onlineScores: number[] = [];
-	private onlineBalls = new Map<number, BallState>();
+	private onlineBalls = new Map<number, OnlineBallState>();
 	private onlineBallStopped = new Map<number, boolean>();
 	private ballTrails: PlayerTrailStore = new Map();
 	private pendingOnlineBambooHits = new Set<number>();
@@ -1512,22 +1528,33 @@ export class BambooBashScene extends ResponsiveScene {
 				([a], [b]) => a - b,
 			)) {
 				const colour = LOCAL_PLAYER_COLOURS[side % LOCAL_PLAYER_COLOURS.length];
+				// Apply powerup scale to radius
+				const renderRadius = ball.r * (ball.scale ?? 1);
+				const onlineBall = ball as OnlineBallState;
 				if (
 					!drawIngamePlayerTexture(
 						this,
 						`bamboo-bash-player-${side}`,
-						ball,
+						{ ...ball, r: renderRadius },
 						DEPTH_HUD - 17,
 						this.playerShellSkins[side],
 					)
-				)
-					drawShellBall(this.ballGfx, ball, false);
+				) {
+					// Apply alpha for translucent powers (ghost, phantom)
+					this.ballGfx.setAlpha(onlineBall.alpha ?? 1);
+					drawShellBall(this.ballGfx, { ...ball, r: renderRadius }, false);
+					this.ballGfx.setAlpha(1);
+				}
+				// Draw trail for spinning/other powers
+				if (onlineBall.trail?.length) {
+					this.drawBallTrail(onlineBall.trail, colour);
+				}
 				this.ballGfx.lineStyle(
-					Math.max(2, ball.r * 0.14),
+					Math.max(2, renderRadius * 0.14),
 					colour,
 					0.95,
 				);
-				this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.08);
+				this.ballGfx.strokeCircle(ball.x, ball.y, renderRadius * 1.08);
 			}
 			this.drawPowerBalls();
 			return;
@@ -1622,7 +1649,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private syncOnlineBalls(snapshot: BambooBashSnapshot): void {
 		if (!this.onlineMatch) return;
-		const next = new Map<number, BallState>();
+		const next = new Map<number, OnlineBallState>();
 		const players = [...snapshot.players].sort((a, b) => a.side - b.side);
 		players.forEach((player, index) => {
 			const isLocal = player.side === this.onlineMatch?.side;
@@ -1649,6 +1676,14 @@ export class BambooBashScene extends ResponsiveScene {
 				existing.y = this.arena.cy + serverBall.y * this.arena.ry;
 				existing.vx = serverBall.vx * this.arena.scale;
 				existing.vy = serverBall.vy * this.arena.scale;
+			}
+			// Sync powerup visual properties from server entity
+			if (serverBall) {
+				(existing as OnlineBallState).scale = serverBall.scale ?? 1;
+				(existing as OnlineBallState).alpha = serverBall.alpha ?? 1;
+				(existing as OnlineBallState).power = serverBall.power ?? "none";
+				(existing as OnlineBallState).trail = serverBall.trail ? serverBall.trail.map(p => ({ ...p })) : undefined;
+				(existing as OnlineBallState).stateFlags = serverBall.stateFlags ? [...serverBall.stateFlags] : [];
 			}
 			this.onlineBallStopped.set(player.side, Boolean(serverBall?.stopped));
 			next.set(player.side, existing);
@@ -1809,6 +1844,17 @@ export class BambooBashScene extends ResponsiveScene {
 			...BALL_TRAIL_OPTIONS,
 			scale: this.arena.scale,
 		});
+	}
+
+	private drawBallTrail(trail: Array<{ x: number; y: number }>, colour: number): void {
+		const count = trail.length;
+		for (let i = 1; i < count; i++) {
+			const p0 = trail[i - 1];
+			const p1 = trail[i];
+			const alpha = (i / count) * 0.5;
+			this.ballGfx.lineStyle(4, colour, alpha);
+			this.ballGfx.lineBetween(p0.x, p0.y, p1.x, p1.y);
+		}
 	}
 
 	private isLocalVersus(): boolean {
