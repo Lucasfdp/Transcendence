@@ -71,6 +71,7 @@ describe("GameResultsService", () => {
 			sourceRef: "heavy",
 		},
 		foil: false,
+		prismatic: false,
 		isNew: true,
 	};
 

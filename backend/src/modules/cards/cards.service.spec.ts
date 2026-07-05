@@ -11,12 +11,19 @@ import { User } from "../users/entities/user.entity";
 import {
 	CARDS,
 	CARD_FAMILIES,
+	DUPLICATE_COIN_REFUND,
 	PACK_PRICE_COINS,
 	PACK_SIZE,
+	PACK_TIERS,
+	PRISMATIC_CHANCE_FRACTION,
 	cardsByFamily,
+	findPackTier,
 } from "./cards.constants";
 import { CardsService } from "./cards.service";
 import { UserCard } from "./entities/user-card.entity";
+
+const DELUXE_PRICE_COINS = findPackTier("deluxe")!.priceCoins;
+const LEGENDARY_PRICE_COINS = findPackTier("legendary")!.priceCoins;
 
 function makeUser(overrides: Partial<User> = {}): User {
 	const user = new User();
@@ -27,12 +34,18 @@ function makeUser(overrides: Partial<User> = {}): User {
 	return user;
 }
 
-function makeUserCard(cardId: string, count: number, foilCount = 0): UserCard {
+function makeUserCard(
+	cardId: string,
+	count: number,
+	foilCount = 0,
+	prismaticCount = 0,
+): UserCard {
 	const row = new UserCard();
 	row.id = 1;
 	row.cardId = cardId;
 	row.count = count;
 	row.foilCount = foilCount;
+	row.prismaticCount = prismaticCount;
 	row.firstObtainedAt = new Date("2026-01-01T00:00:00Z");
 	return row;
 }
@@ -47,6 +60,10 @@ function seq(values: number[]): () => number {
 const PULL_STONE_NO_FOIL = [0, 0, 0.99];
 // Draw pattern for one rollCard call → rarity=stone, index=0, foil.
 const PULL_STONE_FOIL = [0, 0, 0];
+// Draw pattern for one rollCard call → rarity=gold, index=0, foil, prismatic.
+const PULL_GOLD_PRISMATIC = [0.99, 0, 0, 0];
+// Draw pattern for one rollCard call → rarity=gold, index=0, foil, NOT prismatic.
+const PULL_GOLD_FOIL_NOT_PRISMATIC = [0.99, 0, 0, PRISMATIC_CHANCE_FRACTION];
 
 describe("CardsService", () => {
 	let service: CardsService;
@@ -137,9 +154,9 @@ describe("CardsService", () => {
 			expect(binder.sets).toHaveLength(CARD_FAMILIES.length);
 		});
 
-		it("should expose the server-authoritative pack price", async () => {
+		it("should expose the full, server-authoritative pack tier catalog", async () => {
 			const binder = await service.getBinder(makeUser());
-			expect(binder.packPrice).toBe(PACK_PRICE_COINS);
+			expect(binder.packTiers).toEqual(PACK_TIERS);
 		});
 
 		it("should compute overall totals across the whole catalog", async () => {
@@ -172,11 +189,29 @@ describe("CardsService", () => {
 	});
 
 	describe("openPack", () => {
+		it("should default to the basic tier when no tierId is given", async () => {
+			const user = makeUser({ coins: 500 });
+			usersRepo.findOne.mockResolvedValue(user);
+
+			const result = await service.openPack(
+				user,
+				undefined,
+				seq(PULL_STONE_NO_FOIL),
+			);
+
+			expect(result.pulls).toHaveLength(PACK_SIZE);
+			expect(result.coins).toBe(500 - PACK_PRICE_COINS);
+		});
+
 		it("should deduct exactly the pack price and grant PACK_SIZE new cards on success", async () => {
 			const user = makeUser({ coins: 500 });
 			usersRepo.findOne.mockResolvedValue(user);
 
-			const result = await service.openPack(user, seq(PULL_STONE_NO_FOIL));
+			const result = await service.openPack(
+				user,
+				"basic",
+				seq(PULL_STONE_NO_FOIL),
+			);
 
 			expect(result.pulls).toHaveLength(PACK_SIZE);
 			expect(result.coins).toBe(500 - PACK_PRICE_COINS);
@@ -185,12 +220,58 @@ describe("CardsService", () => {
 			expect(usersRepo.save).toHaveBeenCalledTimes(1);
 		});
 
+		it("should charge the selected tier's price, not the basic price, when opening a deluxe or legendary pack", async () => {
+			const deluxeUser = makeUser({ coins: DELUXE_PRICE_COINS });
+			usersRepo.findOne.mockResolvedValue(deluxeUser);
+			const deluxeResult = await service.openPack(
+				deluxeUser,
+				"deluxe",
+				seq(PULL_STONE_NO_FOIL),
+			);
+			expect(deluxeResult.coins).toBe(0);
+
+			const legendaryUser = makeUser({ coins: LEGENDARY_PRICE_COINS });
+			usersRepo.findOne.mockResolvedValue(legendaryUser);
+			cardsRepo.findOne.mockResolvedValue(null);
+			const legendaryResult = await service.openPack(
+				legendaryUser,
+				"legendary",
+				seq(PULL_STONE_NO_FOIL),
+			);
+			expect(legendaryResult.coins).toBe(0);
+		});
+
+		it("should reject an unknown tierId with a 400, spending no coins", async () => {
+			const user = makeUser({ coins: 5000 });
+			usersRepo.findOne.mockResolvedValue(user);
+
+			await expect(
+				service.openPack(
+					user,
+					"platinum" as unknown as "basic",
+					seq(PULL_STONE_NO_FOIL),
+				),
+			).rejects.toBeInstanceOf(BadRequestException);
+			expect(usersRepo.findOne).not.toHaveBeenCalled();
+			expect(usersRepo.save).not.toHaveBeenCalled();
+		});
+
 		it("should throw BadRequestException and not deduct coins when the user cannot afford a pack", async () => {
 			const user = makeUser({ coins: PACK_PRICE_COINS - 1 });
 			usersRepo.findOne.mockResolvedValue(user);
 
 			await expect(
-				service.openPack(user, seq(PULL_STONE_NO_FOIL)),
+				service.openPack(user, "basic", seq(PULL_STONE_NO_FOIL)),
+			).rejects.toBeInstanceOf(BadRequestException);
+			expect(usersRepo.save).not.toHaveBeenCalled();
+		});
+
+		it("should reject when coins are enough for basic but not for the selected legendary tier", async () => {
+			const user = makeUser({ coins: PACK_PRICE_COINS });
+			usersRepo.findOne.mockResolvedValue(user);
+
+			await expect(
+				service.openPack(user, "legendary", seq(PULL_STONE_NO_FOIL)),
 			).rejects.toBeInstanceOf(BadRequestException);
 			expect(usersRepo.save).not.toHaveBeenCalled();
 		});
@@ -199,7 +280,11 @@ describe("CardsService", () => {
 			usersRepo.findOne.mockResolvedValue(null);
 
 			await expect(
-				service.openPack(makeUser({ coins: 500 }), seq(PULL_STONE_NO_FOIL)),
+				service.openPack(
+					makeUser({ coins: 500 }),
+					"basic",
+					seq(PULL_STONE_NO_FOIL),
+				),
 			).rejects.toBeInstanceOf(ForbiddenException);
 		});
 
@@ -209,7 +294,11 @@ describe("CardsService", () => {
 			const existing = makeUserCard("power-heavy", 1, 0);
 			cardsRepo.findOne.mockResolvedValue(existing);
 
-			const result = await service.openPack(user, seq(PULL_STONE_NO_FOIL));
+			const result = await service.openPack(
+				user,
+				"basic",
+				seq(PULL_STONE_NO_FOIL),
+			);
 
 			// All 5 pulls are duplicates of the same stone card (refund 2 each).
 			expect(result.pulls.every((p) => p.isNew === false)).toBe(true);
@@ -223,8 +312,78 @@ describe("CardsService", () => {
 			const existing = makeUserCard("power-heavy", 1, 0);
 			cardsRepo.findOne.mockResolvedValue(existing);
 
-			await service.openPack(user, seq(PULL_STONE_FOIL));
+			await service.openPack(user, "basic", seq(PULL_STONE_FOIL));
 
+			expect(existing.foilCount).toBe(PACK_SIZE);
+		});
+
+		it("should set prismaticCount to 1 on a brand-new prismatic pull, and foilCount to 1 alongside it", async () => {
+			const user = makeUser({ coins: 500 });
+			usersRepo.findOne.mockResolvedValue(user);
+			cardsRepo.findOne.mockResolvedValue(null);
+
+			await service.openPack(user, "basic", seq(PULL_GOLD_PRISMATIC));
+
+			expect(cardsRepo.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					count: 1,
+					foilCount: 1,
+					prismaticCount: 1,
+				}),
+			);
+		});
+
+		it("should increment prismaticCount (not just foilCount) on a duplicate prismatic pull", async () => {
+			const user = makeUser({ coins: 500 });
+			usersRepo.findOne.mockResolvedValue(user);
+			const existing = makeUserCard("power-lightning", 1, 1, 0);
+			cardsRepo.findOne.mockResolvedValue(existing);
+
+			await service.openPack(user, "basic", seq(PULL_GOLD_PRISMATIC));
+
+			expect(existing.foilCount).toBe(1 + PACK_SIZE);
+			expect(existing.prismaticCount).toBe(PACK_SIZE);
+		});
+
+		it("should refund the same amount for a prismatic duplicate as a regular gold foil duplicate", async () => {
+			const user = makeUser({ coins: 500 });
+			usersRepo.findOne.mockResolvedValue(user);
+			const existing = makeUserCard("power-lightning", 1, 0, 0);
+			cardsRepo.findOne.mockResolvedValue(existing);
+
+			const result = await service.openPack(
+				user,
+				"basic",
+				seq(PULL_GOLD_PRISMATIC),
+			);
+
+			expect(result.coins).toBe(
+				500 - PACK_PRICE_COINS + DUPLICATE_COIN_REFUND.gold * PACK_SIZE,
+			);
+		});
+
+		it("should never report prismaticCount higher than foilCount across a mix of prismatic and non-prismatic gold-foil pulls", async () => {
+			const user = makeUser({ coins: 500 });
+			usersRepo.findOne.mockResolvedValue(user);
+			const existing = makeUserCard("power-lightning", 1, 0, 0);
+			cardsRepo.findOne.mockResolvedValue(existing);
+
+			// A concatenated sequence: first prismatic-eligible pull is prismatic,
+			// the rest land gold+foil but just miss the prismatic threshold.
+			const draws = [
+				...PULL_GOLD_PRISMATIC,
+				...PULL_GOLD_FOIL_NOT_PRISMATIC,
+				...PULL_GOLD_FOIL_NOT_PRISMATIC,
+				...PULL_GOLD_FOIL_NOT_PRISMATIC,
+				...PULL_GOLD_FOIL_NOT_PRISMATIC,
+			];
+			let i = 0;
+			await service.openPack(user, "basic", () => draws[i++]);
+
+			expect(existing.prismaticCount).toBeLessThanOrEqual(
+				existing.foilCount,
+			);
+			expect(existing.prismaticCount).toBe(1);
 			expect(existing.foilCount).toBe(PACK_SIZE);
 		});
 
@@ -233,7 +392,11 @@ describe("CardsService", () => {
 			usersRepo.findOne.mockResolvedValue(user);
 			cardsRepo.findOne.mockResolvedValue(null);
 
-			const result = await service.openPack(user, seq(PULL_STONE_NO_FOIL));
+			const result = await service.openPack(
+				user,
+				"basic",
+				seq(PULL_STONE_NO_FOIL),
+			);
 
 			expect(cardsRepo.create).toHaveBeenCalledWith(
 				expect.objectContaining({ cardId: "power-heavy", count: 1, foilCount: 0 }),
@@ -248,7 +411,19 @@ describe("CardsService", () => {
 			cardsRepo.save.mockRejectedValue(new Error("insert failed"));
 
 			await expect(
-				service.openPack(user, seq(PULL_STONE_NO_FOIL)),
+				service.openPack(user, "basic", seq(PULL_STONE_NO_FOIL)),
+			).rejects.toBeInstanceOf(InternalServerErrorException);
+			expect(usersRepo.save).not.toHaveBeenCalled();
+		});
+
+		it("should not double-spend coins when the grant step fails for a non-basic tier", async () => {
+			const user = makeUser({ coins: LEGENDARY_PRICE_COINS });
+			usersRepo.findOne.mockResolvedValue(user);
+			cardsRepo.findOne.mockResolvedValue(null);
+			cardsRepo.save.mockRejectedValue(new Error("insert failed"));
+
+			await expect(
+				service.openPack(user, "legendary", seq(PULL_STONE_NO_FOIL)),
 			).rejects.toBeInstanceOf(InternalServerErrorException);
 			expect(usersRepo.save).not.toHaveBeenCalled();
 		});
@@ -258,8 +433,35 @@ describe("CardsService", () => {
 			usersRepo.findOne.mockRejectedValue(new Error("db exploded"));
 
 			await expect(
-				service.openPack(user, seq(PULL_STONE_NO_FOIL)),
+				service.openPack(user, "basic", seq(PULL_STONE_NO_FOIL)),
 			).rejects.toBeInstanceOf(InternalServerErrorException);
+		});
+
+		it("should include a gold-or-better card among the pulls when opening a legendary pack, across several seeded sequences", async () => {
+			cardsRepo.findOne.mockResolvedValue(null);
+
+			// Every draw pattern below rolls "stone" (r=0) for the first four
+			// slots, which would never reach gold on its own — the guaranteed
+			// slot is what must still deliver a gold-or-better card.
+			const drawPatterns = [
+				[0, 0, 0.99],
+				[0, 0.5, 0.99],
+				[0, 0.999999, 0],
+			];
+
+			for (const pattern of drawPatterns) {
+				cardsRepo.save.mockClear();
+				const user = makeUser({ coins: LEGENDARY_PRICE_COINS });
+				usersRepo.findOne.mockResolvedValue(user);
+
+				const result = await service.openPack(
+					user,
+					"legendary",
+					seq(pattern),
+				);
+				const rarities = result.pulls.map((p) => p.card.rarity);
+				expect(rarities).toContain("gold");
+			}
 		});
 	});
 

@@ -336,6 +336,8 @@ export interface CardView {
 	owned: boolean;
 	count: number;
 	foilCount: number;
+	/** Always ≤ foilCount — prismatic is a rarer state layered on foil, gold-only. */
+	prismaticCount: number;
 }
 
 export interface CardSetProgress {
@@ -348,12 +350,31 @@ export interface BinderView {
 	cards: CardView[];
 	sets: CardSetProgress[];
 	totals: { owned: number; total: number };
-	packPrice: number;
+	packTiers: PackTierView[];
+}
+
+/** Stable identifiers for the purchasable pack tiers, cheapest to priciest. */
+export type PackTierId = "basic" | "deluxe" | "legendary";
+
+/**
+ * One purchasable pack tier, fully transparent: price, rarity odds (mirrors
+ * the backend's own display copy — sums to 1), foil chance, and an optional
+ * guaranteed minimum rarity for one slot in the pack.
+ */
+export interface PackTierView {
+	id: PackTierId;
+	name: string;
+	priceCoins: number;
+	rarityOdds: Record<CardRarity, number>;
+	foilChance: number;
+	guaranteedMinRarity?: CardRarity;
 }
 
 export interface PackPull {
-	card: Omit<CardView, "owned" | "count" | "foilCount">;
+	card: Omit<CardView, "owned" | "count" | "foilCount" | "prismaticCount">;
 	foil: boolean;
+	/** Always implies `foil: true`. */
+	prismatic: boolean;
 	isNew: boolean;
 }
 
@@ -899,9 +920,12 @@ export const api = {
 	/** Fetch the player's Shell Cards binder (owned + locked + set progress). */
 	getCards: (): Promise<BinderView> => apiFetch<BinderView>("/cards"),
 
-	/** Spend coins to open one card pack. Returns the pulls and new balance. */
-	openCardPack: (): Promise<PackResult> =>
-		apiFetch<PackResult>("/cards/packs/open", { method: "POST" }),
+	/** Spend coins to open one card pack of the given tier. Returns the pulls and new balance. */
+	openCardPack: (tierId: PackTierId): Promise<PackResult> =>
+		apiFetch<PackResult>("/cards/packs/open", {
+			method: "POST",
+			body: JSON.stringify({ tierId }),
+		}),
 
 	/** Fetch the Fortune Wheel layout, odds, bounds, balance and free-spin state. */
 	getWheel: (): Promise<WheelView> => apiFetch<WheelView>("/casino/wheel"),

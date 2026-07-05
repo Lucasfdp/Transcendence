@@ -1,4 +1,5 @@
 import {
+	Body,
 	Controller,
 	Get,
 	HttpCode,
@@ -13,6 +14,10 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UsersService } from "../users/users.service";
 import { type BinderView, type PackResult } from "./cards.constants";
 import { CardsService } from "./cards.service";
+import { OpenPackDto } from "./dto/open-pack.dto";
+
+/** Pack tier opened when the request body omits `tierId`. */
+const DEFAULT_PACK_TIER_ID = "basic" as const;
 
 @ApiTags("cards")
 @ApiBearerAuth()
@@ -34,15 +39,20 @@ export class CardsController {
 		return this.cardsService.getBinder(user);
 	}
 
-	/** POST /cards/packs/open — spend coins to open one pack (CSRF-protected). */
+	/**
+	 * POST /cards/packs/open — spend coins to open one pack of the requested
+	 * tier (CSRF-protected). `tierId` defaults to "basic" so older clients
+	 * calling this bare keep working unchanged.
+	 */
 	@Post("packs/open")
 	@HttpCode(200)
 	@UseGuards(CsrfGuard)
 	async openPack(
 		@Request() req: { user: { id: number } },
+		@Body() body: OpenPackDto,
 	): Promise<PackResult> {
 		const user = await this.usersService.findById(req.user.id);
 		if (!user) throw new UnauthorizedException();
-		return this.cardsService.openPack(user);
+		return this.cardsService.openPack(user, body.tierId ?? DEFAULT_PACK_TIER_ID);
 	}
 }

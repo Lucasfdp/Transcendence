@@ -60,10 +60,16 @@ Catalog families (`CardFamily`) and current counts:
   the Assassin Shell** (`char-assassin`, gold,
   `imageUrl: /assets/character/assassin-turtle.webp`), **Yurei, the
   Wandering Ghost Shell** (`char-ghost`, gold,
-  `imageUrl: /assets/character/ghost-turtle.webp`), and **Sumo, the
+  `imageUrl: /assets/character/ghost-turtle.webp`), **Sumo, the
   Immovable Shell** (`char-sumo`, gold,
-  `imageUrl: /assets/character/sumo-turtle.webp`). Total catalog:
-  **33 cards**.
+  `imageUrl: /assets/character/sumo-turtle.webp`), **Kamigame, the Godly
+  Shell** (`char-godly`, gold, `imageUrl: /assets/character/godly-turtle.png`),
+  **Akuma, the Demon Shell** (`char-demon`, gold,
+  `imageUrl: /assets/character/demon-turtle.png`), **Kishi, the Knight
+  Shell** (`char-knight`, gold, `imageUrl: /assets/character/knight-turtle.png`),
+  and **Irie Kame, the Roots Shell** (`char-rasta`, gold,
+  `imageUrl: /assets/character/rasta-turtle.png`). Total catalog:
+  **37 cards**.
 
 ### Rarity & foils
 
@@ -227,3 +233,149 @@ within each).
 
 Phase 2 batches (daily streak, discovery unlocks, lore cards) are planned after
 MVP review.
+
+---
+
+## 11. Pack tiers (shipped)
+
+_Added 2026-07-05, after the original MVP above shipped with a single pack.
+See `docs/handoff-shell-cards-pack-tiers.md` for the brainstorm this
+implements._
+
+The single 100-coin pack became three purchasable **tiers**, cheapest to
+priciest. Only price, rarity odds, foil chance, and (for the top tier) a
+guarantee differ between tiers — pack size (5 cards), the duplicate-refund
+table, and every downstream mechanic (transactional coin spend, grant/refund
+logic, the reveal animation) are unchanged and shared across all tiers.
+
+| Tier | Price (coins) | Rough cost in wins | Stone / Bronze / Jade / Gold | Foil chance | Guarantee |
+|---|---|---|---|---|---|
+| `basic` | 100 | 2 | 60% / 27% / 10% / 3% | 5% | none |
+| `deluxe` | 400 | 8 | 35% / 35% / 22% / 8% | 8% | none |
+| `legendary` | 1500 | 30 | 15% / 30% / 35% / 20% | 15% | **at least one gold-or-better card, every pack** |
+
+Design decisions locked for this batch:
+
+- **Odds are fully transparent to the player.** `GET /cards` returns
+  `packTiers`, and every tier's price, rarity odds, foil chance, and
+  guarantee (if any) are shown in the pack-picker UI — no hidden odds,
+  consistent with the casino module's provably-fair disclosure ethos.
+- **The guarantee is a fixed slot, not a random one.** The legendary tier's
+  guaranteed gold-or-better card always lands in the last pack slot
+  (`GUARANTEED_SLOT_INDEX = PACK_SIZE - 1` in `cards.constants.ts`), rolled
+  via `rollGuaranteedCard` — a variant of `rollCard` restricted to rarities
+  at or above the guaranteed minimum, so the guarantee holds under any RNG
+  sequence, not just "usually." Fixed slot was chosen over a randomized slot
+  for simplicity of both the implementation and its tests.
+- **Pack size and duplicate refunds stay tier-independent.** Every tier
+  still yields exactly `PACK_SIZE` (5) cards, and `DUPLICATE_COIN_REFUND` is
+  keyed by the rolled card's rarity, not by which tier granted it.
+- **`packPrice` was removed from `BinderView`** in favor of `packTiers`
+  (each tier carries its own `priceCoins`) — a clean breaking change since
+  the field had exactly one call site on the frontend.
+- **Match-end drops (`grantMatchDrop`) always roll against the basic tier's
+  odds**, unchanged from the original MVP — there is no "tier" to select for
+  a free, earn-by-playing drop.
+
+### Backend shape (tier additions)
+
+- `cards.constants.ts` — `PackTierId`, `PackTierDefinition`, `PackTierView`,
+  `PACK_TIERS` (the three rows above, each odds table a named constant),
+  `PACK_TIER_IDS`, `findPackTier(id)`, `GUARANTEED_SLOT_INDEX`,
+  `BASIC_PACK_TIER` (used by `grantMatchDrop`).
+- `cards.roll.ts` — `rollRarity(rng, odds?)` now takes an odds table
+  (defaults to the basic tier's `RARITY_ODDS`); `rollCard(rng, tier)` rolls
+  against a given tier's odds/foil chance; `rollGuaranteedCard(rng, tier,
+  minRarity)` restricts the rarity draw to `minRarity`-or-above.
+- `cards.service.ts` — `openPack(user, tierId = "basic", rng?)` looks up the
+  tier (400 `BadRequestException` if unknown, no coins spent), charges
+  `tier.priceCoins`, and rolls the guaranteed slot via `rollGuaranteedCard`
+  when the tier declares one. `getBinder` returns `packTiers` instead of
+  `packPrice`.
+- `cards.controller.ts` — `POST /cards/packs/open` takes an `OpenPackDto`
+  body (`{ tierId?: PackTierId }`, validated with `@IsIn(PACK_TIER_IDS)`),
+  defaulting to `"basic"` so a bare call keeps working.
+
+### Frontend shape (tier additions)
+
+- `features/hub/api.ts` — `PackTierId`, `PackTierView`, `BinderView.packTiers`,
+  `api.openCardPack(tierId)`.
+- `components/cards/ShellCardsModal.tsx` — the single "Open Pack" button
+  became a `.hub-cards__pack-tiers` picker, one card per tier, each showing
+  its name, a full odds/foil/guarantee summary, its own afford-state, and an
+  "Opening..." state scoped to that tier. `RevealOverlay` needed no changes.
+- `styles/global.css` — `.hub-cards__pack-tier*`; the legendary tier reuses
+  the gold rarity accent color as a "this pack is special" visual cue.
+
+---
+
+## 12. Prismatic — a rarer-than-foil tier for gold cards (shipped)
+
+_Added 2026-07-05. See
+`docs/handoff-shell-cards-prismatic-and-characters.md` for the brainstorm
+this implements. Landed alongside 4 new gold character cards (§3), an
+unrelated catalog extension._
+
+**Prismatic is not a 5th rarity tier.** The rarity ladder stays
+Stone → Bronze → Jade → Gold (4 tiers). Prismatic is a rarer, flashier
+cosmetic state layered on top of the existing foil flag, reachable only by
+gold-rarity cards. Modeled as two orthogonal booleans (`foil`, `prismatic`)
+rather than a 3-state enum — the smallest possible diff against the
+existing boolean `foil` field used throughout the codebase. `prismatic:
+true` always implies `foil: true`, and `prismaticCount ≤ foilCount ≤ count`
+holds for every owned card.
+
+- **Odds:** `PRISMATIC_CHANCE_FRACTION = 0.1` — 10% of foil-gold pulls
+  upgrade to prismatic, applied only after the roll already landed
+  gold + foil. This is a flat, tier-independent fraction, but the
+  end-to-end rate still scales per pack tier for free because it's
+  conditioned on that tier's own `foilChance` (basic 5% foil → effective
+  0.5% prismatic; deluxe 8% → effective 0.8%; legendary 15% → effective
+  1.5%).
+- **No new economy tier.** A prismatic duplicate refunds the same
+  `DUPLICATE_COIN_REFUND.gold` as any other gold-foil duplicate — purely a
+  rarer cosmetic flex, no crafting/dust, no bonus refund.
+- **Ownership tracking:** `UserCard.prismaticCount`, nested inside the
+  existing `foilCount`/`count` columns. A prismatic pull increments both
+  `foilCount` and `prismaticCount`.
+- **Badge/visual priority:** since prismatic always implies foil, the UI
+  shows exactly one shine badge per card — prismatic when owned
+  (`✵ Prismatic`, `×N` above one copy), otherwise the plain foil badge
+  (`✦ foil`), otherwise nothing. The existing gold+foil hybrid holo layer in
+  the card lightbox is untouched; prismatic adds an *additional* layer
+  (`.hub-cards__lightbox-prismatic` / `.is-prismatic`) on top of it, shown
+  only when the card has at least one prismatic copy, so a plain gold foil
+  keeps its existing holo look unchanged.
+
+### Backend shape (Prismatic additions)
+
+- `cards.constants.ts` — `PRISMATIC_CHANCE_FRACTION`; `CardView.prismaticCount`.
+- `cards.roll.ts` — `RolledCard.prismatic`; `rollCard`/`rollGuaranteedCard`
+  each consume a **conditional 4th draw** — only when the roll already
+  landed gold + foil — so every existing fixed-draw-sequence test (3 draws
+  per card for non-gold/non-foil rolls) keeps passing unmodified.
+- `cards.service.ts` — `PackPull.prismatic`; `grantCard`/`incrementExisting`
+  set/increment `prismaticCount` alongside `foilCount` whenever
+  `rolled.prismatic` is true. Duplicate refund logic is unchanged (still
+  keyed only by the card's rarity).
+- `entities/user-card.entity.ts` — `UserCard.prismaticCount` column
+  (int, default 0). Migration:
+  `migrations/20260705000000-add-user-cards-prismatic.ts` (prod-only;
+  `synchronize` covers the dev container). Note: there was already no
+  migration at all for the original `user_cards` table (`count`/`foilCount`
+  predate any migration) — a pre-existing gap, not backfilled here.
+
+### Frontend shape (Prismatic additions)
+
+- `features/hub/api.ts` — `CardView.prismaticCount`, `PackPull.prismatic`.
+- `components/cards/ShellCardsModal.tsx` — `prismaticBadgeText()` and
+  `shineBadgeText()` (picks prismatic-or-foil-or-none, never both);
+  `CardSlot` and `CardLightbox` add an `is-prismatic` class alongside
+  `is-foil`; `CardLightbox` adds the `.hub-cards__lightbox-prismatic` layer
+  gated on `rarity === "gold" && prismaticCount > 0`; `RevealOverlay`'s tag
+  shows "✵ Prismatic" in place of "✦ foil" for a prismatic pull.
+- `styles/global.css` — `.hub-cards__card.is-prismatic::after` (a faster,
+  rainbow-hued shimmer overriding the plain foil sweep) and
+  `.hub-cards__lightbox-prismatic` (an additional conic-gradient layer atop
+  the existing holo, spinning the opposite direction for visual distinction);
+  both respect `prefers-reduced-motion`.

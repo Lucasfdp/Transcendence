@@ -9,21 +9,33 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository } from "typeorm";
 import { User } from "../users/entities/user.entity";
 import {
+	BASIC_PACK_TIER,
 	CARDS,
 	CARD_FAMILIES,
 	DUPLICATE_COIN_REFUND,
-	PACK_PRICE_COINS,
+	GUARANTEED_SLOT_INDEX,
 	PACK_SIZE,
+	PACK_TIERS,
 	findCard,
+	findPackTier,
 	type BinderView,
 	type CardDefinition,
 	type CardSetProgress,
 	type CardView,
 	type PackPull,
 	type PackResult,
+	type PackTierId,
 } from "./cards.constants";
-import { type Rng, type RolledCard, rollCard } from "./cards.roll";
+import {
+	type Rng,
+	type RolledCard,
+	rollCard,
+	rollGuaranteedCard,
+} from "./cards.roll";
 import { UserCard } from "./entities/user-card.entity";
+
+/** Default pack tier opened when a caller doesn't specify one. */
+const DEFAULT_PACK_TIER_ID: PackTierId = "basic";
 
 /**
  * Shell Cards service — collectible binder reads and pack opening.
@@ -51,6 +63,7 @@ export class CardsService {
 				owned: owned !== undefined,
 				count: owned?.count ?? 0,
 				foilCount: owned?.foilCount ?? 0,
+				prismaticCount: owned?.prismaticCount ?? 0,
 			};
 		});
 
@@ -69,18 +82,30 @@ export class CardsService {
 			cards,
 			sets,
 			totals: { owned: ownedTotal, total: CARDS.length },
-			packPrice: PACK_PRICE_COINS,
+			packTiers: PACK_TIERS,
 		};
 	}
 
 	/**
-	 * Open one pack: spend PACK_PRICE_COINS and reveal PACK_SIZE server-rolled
-	 * cards, refunding coins for duplicates. The coin spend and all grants run
-	 * in one transaction — if anything fails, nothing is persisted.
+	 * Open one pack of the given tier: spend that tier's `priceCoins` and
+	 * reveal PACK_SIZE server-rolled cards (the tier's own rarity odds and
+	 * foil chance), refunding coins for duplicates. If the tier declares a
+	 * `guaranteedMinRarity`, the {@link GUARANTEED_SLOT_INDEX} slot is rolled
+	 * via `rollGuaranteedCard` instead of the normal roll. The coin spend and
+	 * all grants run in one transaction — if anything fails, nothing is
+	 * persisted.
 	 *
+	 * @param tierId which pack tier to open; defaults to "basic".
 	 * @param rng injectable randomness; defaults to Math.random in production.
 	 */
-	async openPack(user: User, rng: Rng = Math.random): Promise<PackResult> {
+	async openPack(
+		user: User,
+		tierId: PackTierId = DEFAULT_PACK_TIER_ID,
+		rng: Rng = Math.random,
+	): Promise<PackResult> {
+		const tier = findPackTier(tierId);
+		if (!tier) throw new BadRequestException(`Unknown pack tier: ${tierId}`);
+
 		try {
 			return await this.dataSource.transaction(async (manager) => {
 				const usersRepo = manager.getRepository(User);
@@ -91,14 +116,18 @@ export class CardsService {
 					relations: ["profile"],
 				});
 				if (!current) throw new ForbiddenException("User not found");
-				if (current.coins < PACK_PRICE_COINS)
+				if (current.coins < tier.priceCoins)
 					throw new BadRequestException("Not enough coins");
 
-				current.coins -= PACK_PRICE_COINS;
+				current.coins -= tier.priceCoins;
 
 				const pulls: PackPull[] = [];
 				for (let i = 0; i < PACK_SIZE; i++) {
-					const rolled = rollCard(rng);
+					const rolled =
+						tier.guaranteedMinRarity !== undefined &&
+						i === GUARANTEED_SLOT_INDEX
+							? rollGuaranteedCard(rng, tier, tier.guaranteedMinRarity)
+							: rollCard(rng, tier);
 					const { pull, refund } = await this.grantCard(
 						current.id,
 						rolled,
@@ -119,15 +148,16 @@ export class CardsService {
 
 	/**
 	 * Grant one free card as a match-completion reward and return the pull.
-	 * No coins are involved (the match itself awards coins). Callers should
-	 * treat this as best-effort — a cosmetic drop must never block recording a
-	 * match result.
+	 * No coins are involved (the match itself awards coins). Always rolls
+	 * against the basic tier's odds — match drops are earn-by-playing, not a
+	 * paid pack, so there's no tier to select. Callers should treat this as
+	 * best-effort — a cosmetic drop must never block recording a match result.
 	 *
 	 * @param rng injectable randomness; defaults to Math.random in production.
 	 */
 	async grantMatchDrop(user: User, rng: Rng = Math.random): Promise<PackPull> {
 		try {
-			const rolled = rollCard(rng);
+			const rolled = rollCard(rng, BASIC_PACK_TIER);
 			const { pull } = await this.grantCard(
 				user.id,
 				rolled,
@@ -170,10 +200,16 @@ export class CardsService {
 					cardId: rolled.cardId,
 					count: 1,
 					foilCount: rolled.foil ? 1 : 0,
+					prismaticCount: rolled.prismatic ? 1 : 0,
 				}),
 			);
 			return {
-				pull: { card, foil: rolled.foil, isNew: true },
+				pull: {
+					card,
+					foil: rolled.foil,
+					prismatic: rolled.prismatic,
+					isNew: true,
+				},
 				refund: 0,
 			};
 		} catch (err: unknown) {
@@ -204,10 +240,16 @@ export class CardsService {
 	): Promise<{ pull: PackPull; refund: number }> {
 		existing.count += 1;
 		if (rolled.foil) existing.foilCount += 1;
+		if (rolled.prismatic) existing.prismaticCount += 1;
 		await repo.save(existing);
 
 		return {
-			pull: { card, foil: rolled.foil, isNew: false },
+			pull: {
+				card,
+				foil: rolled.foil,
+				prismatic: rolled.prismatic,
+				isNew: false,
+			},
 			refund: DUPLICATE_COIN_REFUND[card.rarity],
 		};
 	}

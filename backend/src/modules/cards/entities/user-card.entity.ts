@@ -34,6 +34,13 @@ export class UserCard {
 	@Column({ type: "int", default: 0 })
 	foilCount: number;
 
+	/**
+	 * How many owned copies are the rarer "prismatic" state — gold-rarity
+	 * only, always a subset of the foil copies (0 ≤ prismaticCount ≤ foilCount).
+	 */
+	@Column({ type: "int", default: 0 })
+	prismaticCount: number;
+
 	@Column({ type: "timestamptz", default: () => "CURRENT_TIMESTAMP" })
 	firstObtainedAt: Date;
 }

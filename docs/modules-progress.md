@@ -329,6 +329,14 @@ Evidencia:
 - Powers y mecanicas en `frontend/src/shared/mechanics/`
 - `shell-curl` y otros juegos ya usan poderes y seleccion.
 - `backend/src/modules/customization/` cubre cosmeticos de usuario.
+- `backend/src/modules/cards/` (Shell Cards): binder coleccionable puramente
+  cosmetico, con multiples niveles de sobre (`basic`/`deluxe`/`legendary`,
+  cada uno con su propio precio y probabilidades — ver
+  `docs/SHELL_CARDS_SPEC.md` §11). Catalogo ampliado a 37 cartas (4 nuevos
+  personajes gold) y nuevo estado "Prismatic" — un tier mas raro que el
+  foil, exclusivo de cartas gold, sin cambios en la economia (ver
+  `docs/SHELL_CARDS_SPEC.md` §12). Refuerza, no sustituye, la separacion
+  pendiente entre personalizacion de gameplay y personalizacion cosmetica.
 
 Faltas para completarse:
 - Separar claramente personalizacion de gameplay de personalizacion cosmetica.

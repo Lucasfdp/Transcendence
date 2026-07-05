@@ -13,6 +13,7 @@ function makeCard(overrides: Partial<CardView> = {}): CardView {
 		owned: true,
 		count: 1,
 		foilCount: 0,
+		prismaticCount: 0,
 		...overrides,
 	};
 }

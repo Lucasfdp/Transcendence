@@ -12,6 +12,8 @@ import {
 	type CardRarity,
 	type CardView,
 	type PackPull,
+	type PackTierId,
+	type PackTierView,
 } from "../../features/hub/api";
 import { computeCardTilt } from "./cardTilt";
 import {
@@ -41,6 +43,23 @@ const RARITY_GLYPH: Record<CardRarity, string> = {
 /** Formats the "✦ foil" badge text, appending a ×N count above one copy. */
 function foilBadgeText(foilCount: number): string {
 	return foilCount > 1 ? `✦ foil ×${foilCount}` : "✦ foil";
+}
+
+/** Formats the "✵ Prismatic" badge text, appending a ×N count above one copy. */
+function prismaticBadgeText(prismaticCount: number): string {
+	return prismaticCount > 1 ? `✵ Prismatic ×${prismaticCount}` : "✵ Prismatic";
+}
+
+/**
+ * Picks the single fanciest shine badge a card should show: prismatic always
+ * implies foil (prismaticCount ≤ foilCount), so never render both badges —
+ * prismatic takes priority when owned, otherwise fall back to the plain foil
+ * badge, otherwise show nothing.
+ */
+function shineBadgeText(foilCount: number, prismaticCount: number): string | null {
+	if (prismaticCount > 0) return prismaticBadgeText(prismaticCount);
+	if (foilCount > 0) return foilBadgeText(foilCount);
+	return null;
 }
 
 /** Small shape badge reinforcing a card's rarity beyond its border color. */
@@ -82,6 +101,31 @@ function applyCardTiltStyle(event: MouseEvent<HTMLElement>): void {
 	element.style.setProperty("--shine-y", `${tilt.shineY}%`);
 }
 
+/** Display label for each rarity, used in the pack tier odds summary. */
+const RARITY_LABEL: Record<CardRarity, string> = {
+	stone: "Stone",
+	bronze: "Bronze",
+	jade: "Jade",
+	gold: "Gold",
+};
+
+/**
+ * Formats a tier's rarity odds, foil chance, and guarantee (if any) as a
+ * plain-language summary, e.g. "Stone 60% · Bronze 27% · Jade 10% · Gold 3%
+ * · 5% foil chance". Full transparency by design — no hidden odds.
+ */
+function formatTierOddsSummary(tier: PackTierView): string {
+	const oddsText = RARITY_ORDER.map(
+		(rarity) =>
+			`${RARITY_LABEL[rarity]} ${Math.round(tier.rarityOdds[rarity] * 100)}%`,
+	).join(" · ");
+	const foilText = `${Math.round(tier.foilChance * 100)}% foil chance`;
+	const guaranteeText = tier.guaranteedMinRarity
+		? ` · guaranteed ${RARITY_LABEL[tier.guaranteedMinRarity]}-or-better card`
+		: "";
+	return `${oddsText} · ${foilText}${guaranteeText}`;
+}
+
 /** Human-readable titles for each card set (family). */
 const FAMILY_LABELS: Record<CardFamily, string> = {
 	power_shell: "Power Shells",
@@ -119,6 +163,7 @@ export function CardSlot({
 		`hub-cards__card--${card.rarity}`,
 		card.owned ? "is-owned" : "is-locked",
 		card.foilCount > 0 ? "is-foil" : "",
+		card.prismaticCount > 0 ? "is-prismatic" : "",
 	]
 		.filter(Boolean)
 		.join(" ");
@@ -130,7 +175,11 @@ export function CardSlot({
 				"aria-label": [
 					card.name,
 					`${card.rarity} rarity`,
-					card.foilCount > 0 ? "foil" : "",
+					card.prismaticCount > 0
+						? "prismatic"
+						: card.foilCount > 0
+							? "foil"
+							: "",
 					card.count > 1 ? `${card.count} owned` : "",
 				]
 					.filter(Boolean)
@@ -173,9 +222,9 @@ export function CardSlot({
 			{card.owned && card.count > 1 ? (
 				<span className="hub-cards__count">×{card.count}</span>
 			) : null}
-			{card.foilCount > 0 ? (
+			{shineBadgeText(card.foilCount, card.prismaticCount) ? (
 				<span className="hub-cards__foil-badge">
-					{foilBadgeText(card.foilCount)}
+					{shineBadgeText(card.foilCount, card.prismaticCount)}
 				</span>
 			) : null}
 		</article>
@@ -239,6 +288,7 @@ function RevealOverlay({
 										"hub-cards__reveal-face",
 										"hub-cards__reveal-face--front",
 										pull.foil ? "is-foil" : "",
+										pull.prismatic ? "is-prismatic" : "",
 									]
 										.filter(Boolean)
 										.join(" ")}
@@ -257,7 +307,11 @@ function RevealOverlay({
 									<strong className="hub-cards__name">{pull.card.name}</strong>
 									<span className="hub-cards__tag">
 										{pull.isNew ? "NEW" : "dupe"}
-										{pull.foil ? " · ✦ foil" : ""}
+										{pull.prismatic
+											? " · ✵ Prismatic"
+											: pull.foil
+												? " · ✦ foil"
+												: ""}
 									</span>
 								</div>
 							</div>
@@ -334,6 +388,7 @@ export function CardLightbox({
 		`hub-cards__card--${card.rarity}`,
 		"is-owned",
 		card.foilCount > 0 ? "is-foil" : "",
+		card.prismaticCount > 0 ? "is-prismatic" : "",
 	]
 		.filter(Boolean)
 		.join(" ");
@@ -356,6 +411,12 @@ export function CardLightbox({
 				{card.rarity === "gold" && card.foilCount > 0 ? (
 					<span className="hub-cards__lightbox-holo" aria-hidden="true" />
 				) : null}
+				{card.rarity === "gold" && card.prismaticCount > 0 ? (
+					<span
+						className="hub-cards__lightbox-prismatic"
+						aria-hidden="true"
+					/>
+				) : null}
 				<CardRarityBadge rarity={card.rarity} />
 				<div className="hub-cards__art" aria-hidden="true">
 					{card.imageUrl ? (
@@ -370,7 +431,9 @@ export function CardLightbox({
 				<p className="hub-cards__lightbox-flavor">{card.flavor}</p>
 				<span className="hub-cards__lightbox-meta">
 					{card.rarity}
-					{card.foilCount > 0 ? ` · ${foilBadgeText(card.foilCount)}` : ""}
+					{shineBadgeText(card.foilCount, card.prismaticCount)
+						? ` · ${shineBadgeText(card.foilCount, card.prismaticCount)}`
+						: ""}
 					{card.count > 1 ? ` · ×${card.count}` : ""}
 				</span>
 			</div>
@@ -396,7 +459,8 @@ export function ShellCardsModal({
 	const [binder, setBinder] = useState<BinderView | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
-	const [opening, setOpening] = useState(false);
+	/** id of the tier currently mid-purchase, or null when no purchase is in flight. */
+	const [openingTierId, setOpeningTierId] = useState<PackTierId | null>(null);
 	const [reveal, setReveal] = useState<PackPull[] | null>(null);
 	const [selectedCard, setSelectedCard] = useState<CardView | null>(null);
 	const [rarityFilter, setRarityFilter] = useState<CardRarity | "all">("all");
@@ -422,22 +486,21 @@ export function ShellCardsModal({
 		};
 	}, []);
 
-	const canAfford = binder !== null && coins >= binder.packPrice;
-
-	const handleOpenPack = async (): Promise<void> => {
-		if (opening || reveal !== null || !binder || !canAfford) return;
-		setOpening(true);
+	const handleOpenPack = async (tier: PackTierView): Promise<void> => {
+		if (openingTierId !== null || reveal !== null || !binder) return;
+		if (coins < tier.priceCoins) return;
+		setOpeningTierId(tier.id);
 		setError("");
 		try {
 			await api.getCsrfToken();
-			const result = await api.openCardPack();
+			const result = await api.openCardPack(tier.id);
 			onCoinsChange(result.coins);
 			setReveal(result.pulls);
 			setBinder(await api.getCards());
 		} catch {
 			setError("Could not open pack. Try again.");
 		} finally {
-			setOpening(false);
+			setOpeningTierId(null);
 		}
 	};
 
@@ -462,22 +525,45 @@ export function ShellCardsModal({
 						{binder.totals.owned} / {binder.totals.total} cards
 					</span>
 				</div>
-				<button
-					type="button"
-					className="hub-cards__open-button"
-					disabled={opening || reveal !== null || !canAfford}
-					onClick={() => void handleOpenPack()}
-				>
-					{opening
-						? "Opening..."
-						: `Open Pack · ${binder.packPrice} ⬡`}
-				</button>
 			</div>
-			{!canAfford ? (
-				<p className="hub-cards__hint">
-					You need {binder.packPrice} coins to open a pack.
-				</p>
-			) : null}
+
+			<div className="hub-cards__pack-tiers" role="group" aria-label="Pack tiers">
+				{binder.packTiers.map((tier) => {
+					const affordable = coins >= tier.priceCoins;
+					const busy = openingTierId === tier.id;
+					return (
+						<div
+							key={tier.id}
+							className={[
+								"hub-cards__pack-tier",
+								`hub-cards__pack-tier--${tier.id}`,
+							].join(" ")}
+						>
+							<strong className="hub-cards__pack-tier-name">
+								{tier.name}
+							</strong>
+							<span className="hub-cards__pack-tier-odds">
+								{formatTierOddsSummary(tier)}
+							</span>
+							<button
+								type="button"
+								className="hub-cards__open-button"
+								disabled={openingTierId !== null || reveal !== null || !affordable}
+								onClick={() => void handleOpenPack(tier)}
+							>
+								{busy
+									? "Opening..."
+									: `Open ${tier.name} · ${tier.priceCoins} ⬡`}
+							</button>
+							{!affordable ? (
+								<p className="hub-cards__hint">
+									You need {tier.priceCoins} coins to open this pack.
+								</p>
+							) : null}
+						</div>
+					);
+				})}
+			</div>
 
 			<div className="hub-cards__toolbar">
 				<div

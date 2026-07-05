@@ -14,6 +14,7 @@ function makeCard(overrides: Partial<CardView> = {}): CardView {
 		owned: true,
 		count: 2,
 		foilCount: 1,
+		prismaticCount: 0,
 		...overrides,
 	};
 }
@@ -163,5 +164,46 @@ describe("CardLightbox", () => {
 		expect(
 			container.querySelector(".hub-cards__lightbox-holo"),
 		).not.toBeInTheDocument();
+	});
+
+	it("should render an additional prismatic shimmer layer for a gold card with at least one prismatic copy, without removing the existing holo layer", () => {
+		const { container } = render(
+			<CardLightbox
+				card={makeCard({ rarity: "gold", foilCount: 1, prismaticCount: 1 })}
+				onClose={() => undefined}
+			/>,
+		);
+		expect(
+			container.querySelector(".hub-cards__lightbox-holo"),
+		).toBeInTheDocument();
+		expect(
+			container.querySelector(".hub-cards__lightbox-prismatic"),
+		).toBeInTheDocument();
+	});
+
+	it("should not render the prismatic shimmer layer for a gold foil card with no prismatic copies", () => {
+		const { container } = render(
+			<CardLightbox
+				card={makeCard({ rarity: "gold", foilCount: 1, prismaticCount: 0 })}
+				onClose={() => undefined}
+			/>,
+		);
+		expect(
+			container.querySelector(".hub-cards__lightbox-holo"),
+		).toBeInTheDocument();
+		expect(
+			container.querySelector(".hub-cards__lightbox-prismatic"),
+		).not.toBeInTheDocument();
+	});
+
+	it("should show the prismatic badge instead of the plain foil badge in the meta line when prismaticCount > 0", () => {
+		render(
+			<CardLightbox
+				card={makeCard({ foilCount: 1, prismaticCount: 1 })}
+				onClose={() => undefined}
+			/>,
+		);
+		expect(screen.getByText(/Prismatic/)).toBeInTheDocument();
+		expect(screen.queryByText(/✦ foil/)).not.toBeInTheDocument();
 	});
 });

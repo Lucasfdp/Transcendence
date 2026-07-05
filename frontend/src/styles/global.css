@@ -5292,6 +5292,74 @@ img.power-card__orb {
 	opacity: 0.7;
 }
 
+/* ── Pack tier picker ──────────────────────────────────────────────────────── */
+
+.hub-cards__pack-tiers {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 12px;
+}
+
+.hub-cards__pack-tier {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 6px;
+	padding: 14px 16px;
+	border: 1px solid rgba(123, 183, 111, 0.32);
+	border-radius: 12px;
+	background: rgba(9, 22, 12, 0.58);
+}
+
+.hub-cards__pack-tier-name {
+	font-family: var(--rowdy-font);
+	font-size: 0.95rem;
+	letter-spacing: 0.04em;
+}
+
+.hub-cards__pack-tier-odds {
+	font-size: 0.76rem;
+	opacity: 0.75;
+	line-height: 1.4;
+}
+
+.hub-cards__pack-tier .hub-cards__open-button {
+	align-self: stretch;
+	margin-top: 4px;
+}
+
+.hub-cards__pack-tier .hub-cards__hint {
+	margin: 0;
+}
+
+/* Legendary tier reuses the gold card accent as a "this pack is special" cue. */
+.hub-cards__pack-tier--legendary {
+	border-color: rgba(230, 195, 74, 0.55);
+	background: linear-gradient(
+		160deg,
+		rgba(9, 22, 12, 0.58) 0%,
+		rgba(60, 47, 12, 0.42) 100%
+	);
+	box-shadow: 0 0 22px rgba(230, 195, 74, 0.14);
+}
+
+.hub-cards__pack-tier--legendary .hub-cards__pack-tier-name {
+	color: #e6c34a;
+}
+
+.hub-cards__pack-tier--legendary .hub-cards__open-button {
+	border-color: rgba(230, 195, 74, 0.75);
+	background: linear-gradient(135deg, #2c2410 0%, #b99a3a 100%);
+}
+
+.hub-cards__pack-tier--legendary .hub-cards__open-button:hover:not(:disabled) {
+	border-color: rgba(255, 226, 143, 0.9);
+	background: linear-gradient(135deg, #362c14 0%, #e6c34a 100%);
+	box-shadow:
+		0 10px 24px rgba(0, 0, 0, 0.28),
+		0 0 22px rgba(230, 195, 74, 0.32);
+}
+
 /* ── Filter / sort toolbar ─────────────────────────────────────────────────── */
 
 .hub-cards__toolbar {
@@ -5550,6 +5618,34 @@ img.power-card__orb {
 	opacity: 1;
 }
 
+/* Prismatic — an additional, more intense shimmer layered on top of the
+   existing foil sweep (never a replacement for it; prismatic always implies
+   foil, so both classes are present together — see is-prismatic usage in
+   ShellCardsModal.tsx). A faster, rainbow-hued sweep distinguishes it from
+   the cooler, slower plain foil shimmer above. */
+.hub-cards__card.is-prismatic::after {
+	background: linear-gradient(
+		115deg,
+		transparent 25%,
+		rgba(255, 130, 220, 0.4) 40%,
+		rgba(255, 230, 120, 0.4) 48%,
+		rgba(130, 255, 210, 0.4) 56%,
+		rgba(150, 170, 255, 0.4) 64%,
+		transparent 78%
+	);
+	background-size: 250% 250%;
+	animation: hub-cards-prismatic 2.1s linear infinite;
+}
+
+@keyframes hub-cards-prismatic {
+	0% {
+		background-position: 150% 0;
+	}
+	100% {
+		background-position: -150% 0;
+	}
+}
+
 /* ── Pack-opening reveal overlay ───────────────────────────────────────────── */
 
 .hub-cards__reveal {
@@ -5755,6 +5851,36 @@ img.power-card__orb {
 	}
 }
 
+/* Prismatic shimmer — an additional, faster-spinning, higher-contrast layer
+   shown ON TOP OF the hybrid holo above (never a replacement for it) when the
+   card has at least one prismatic copy. Gold-rarity only, matching the
+   gating on hub-cards__lightbox-holo. */
+.hub-cards__lightbox-prismatic {
+	position: absolute;
+	inset: -20%;
+	pointer-events: none;
+	background: conic-gradient(
+		from 0deg,
+		rgba(255, 120, 220, 0.4),
+		rgba(255, 230, 120, 0.4),
+		rgba(130, 255, 210, 0.4),
+		rgba(150, 170, 255, 0.4),
+		rgba(255, 120, 220, 0.4)
+	);
+	mix-blend-mode: screen;
+	opacity: 0.6;
+	animation: hub-cards-prismatic-spin 3s linear infinite reverse;
+}
+
+@keyframes hub-cards-prismatic-spin {
+	0% {
+		transform: rotate(0deg);
+	}
+	100% {
+		transform: rotate(360deg);
+	}
+}
+
 .hub-cards__lightbox-close {
 	padding: 8px 20px;
 	border: 1px solid rgba(123, 183, 111, 0.68);
@@ -5775,7 +5901,13 @@ img.power-card__orb {
 	.hub-cards__card.is-foil::before {
 		transition: none;
 	}
+	.hub-cards__card.is-prismatic::after {
+		animation: none;
+	}
 	.hub-cards__lightbox-holo {
+		animation: none;
+	}
+	.hub-cards__lightbox-prismatic {
 		animation: none;
 	}
 	.hub-cards__reveal-inner {

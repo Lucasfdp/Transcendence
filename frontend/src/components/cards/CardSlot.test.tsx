@@ -14,6 +14,7 @@ function makeCard(overrides: Partial<CardView> = {}): CardView {
 		owned: true,
 		count: 1,
 		foilCount: 0,
+		prismaticCount: 0,
 		...overrides,
 	};
 }
@@ -127,5 +128,37 @@ describe("CardSlot", () => {
 			<CardSlot card={makeCard({ foilCount: 0 })} onSelect={vi.fn()} />,
 		);
 		expect(screen.queryByText(/foil/)).not.toBeInTheDocument();
+	});
+
+	it("should show a prismatic badge instead of a plain foil badge when prismaticCount > 0", () => {
+		render(
+			<CardSlot
+				card={makeCard({ foilCount: 1, prismaticCount: 1 })}
+				onSelect={vi.fn()}
+			/>,
+		);
+		expect(screen.getByText(/Prismatic/)).toBeInTheDocument();
+		expect(screen.queryByText("✦ foil")).not.toBeInTheDocument();
+	});
+
+	it("should show the plain foil badge when foilCount > 0 but prismaticCount is 0", () => {
+		render(
+			<CardSlot
+				card={makeCard({ foilCount: 1, prismaticCount: 0 })}
+				onSelect={vi.fn()}
+			/>,
+		);
+		expect(screen.getByText("✦ foil")).toBeInTheDocument();
+		expect(screen.queryByText(/Prismatic/)).not.toBeInTheDocument();
+	});
+
+	it("should show the prismatic count when more than one prismatic copy is owned", () => {
+		render(
+			<CardSlot
+				card={makeCard({ foilCount: 3, prismaticCount: 3 })}
+				onSelect={vi.fn()}
+			/>,
+		);
+		expect(screen.getByText(/Prismatic ×3/)).toBeInTheDocument();
 	});
 });

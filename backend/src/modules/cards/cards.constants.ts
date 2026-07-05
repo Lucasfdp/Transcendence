@@ -35,6 +35,11 @@ export interface CardView extends CardDefinition {
 	count: number;
 	/** Foil copies owned (0 when none). */
 	foilCount: number;
+	/**
+	 * Prismatic copies owned (0 when none). Always ≤ foilCount — prismatic is
+	 * a rarer state layered on top of foil, gold-rarity only.
+	 */
+	prismaticCount: number;
 }
 
 /** Per-family ("set") collection progress. */
@@ -50,6 +55,8 @@ export interface CardSetProgress {
 export interface PackPull {
 	card: CardDefinition;
 	foil: boolean;
+	/** Always implies `foil: true` — see PRISMATIC_CHANCE_FRACTION. */
+	prismatic: boolean;
 	/** True if this was the player's first copy of the card. */
 	isNew: boolean;
 }
@@ -67,9 +74,35 @@ export interface BinderView {
 	sets: CardSetProgress[];
 	/** Overall distinct-card progress across the whole catalog. */
 	totals: { owned: number; total: number };
-	/** Server-authoritative pack price so the client need not hardcode it. */
-	packPrice: number;
+	/** Every pack tier the player can buy, server-authoritative and fully transparent. */
+	packTiers: readonly PackTierView[];
 }
+
+/** Stable identifiers for the purchasable pack tiers, cheapest to priciest. */
+export type PackTierId = "basic" | "deluxe" | "legendary";
+
+/**
+ * One purchasable pack tier: its own price, rarity odds (MUST sum to 1, see
+ * cards.constants.spec.ts), foil chance, and an optional guaranteed minimum
+ * rarity for one slot in the pack (see cards.roll.ts `rollGuaranteedCard`
+ * and `GUARANTEED_SLOT_INDEX`).
+ */
+export interface PackTierDefinition {
+	id: PackTierId;
+	name: string;
+	priceCoins: number;
+	rarityOdds: Readonly<Record<CardRarity, number>>;
+	foilChance: number;
+	guaranteedMinRarity?: CardRarity;
+}
+
+/**
+ * The tier view sent to the client. Odds/price/guarantee are shown to the
+ * player in full (transparency matches the casino module's provably-fair
+ * disclosure ethos) — so this is currently identical in shape to
+ * {@link PackTierDefinition}.
+ */
+export type PackTierView = PackTierDefinition;
 
 /** Rarity ladder, ordered common → rare (dojo-themed). */
 export const CARD_RARITIES: readonly CardRarity[] = [
@@ -101,8 +134,22 @@ export const RARITY_ODDS: Readonly<Record<CardRarity, number>> = {
 /** Chance a granted card is the shiny "foil" variant (cosmetic only). */
 export const FOIL_CHANCE = 0.05;
 
+/**
+ * Fraction of foil-gold pulls that upgrade to "prismatic" — the rarest
+ * cosmetic state, gold-rarity only. Scales naturally with pack tier because
+ * it's conditioned on the tier's own foilChance already having hit.
+ */
+export const PRISMATIC_CHANCE_FRACTION = 0.1;
+
 /** Cards yielded by opening one pack. */
 export const PACK_SIZE = 5;
+
+/**
+ * The 0-indexed pack slot that carries a tier's guaranteed-minimum-rarity
+ * roll, when `PackTierDefinition.guaranteedMinRarity` is set. Fixed (not
+ * randomized) for simplicity — the last card in the pack.
+ */
+export const GUARANTEED_SLOT_INDEX = PACK_SIZE - 1;
 
 /** Coin cost to open one pack (the coin sink). */
 export const PACK_PRICE_COINS = 100;
@@ -118,6 +165,78 @@ export const DUPLICATE_COIN_REFUND: Readonly<Record<CardRarity, number>> = {
 	gold: 30,
 };
 
+// ── Pack tiers ───────────────────────────────────────────────────────────────
+//
+// Three purchasable tiers: basic (the original, unchanged), deluxe, and
+// legendary. Only the tier's odds/price/foil-chance/guarantee differ — pack
+// size, the duplicate-refund table, and everything about how a card is
+// granted stay the same across every tier (see docs/SHELL_CARDS_SPEC.md).
+
+/** Deluxe tier's rarity odds — must sum to 1 (asserted in cards.constants.spec.ts). */
+const DELUXE_RARITY_ODDS: Readonly<Record<CardRarity, number>> = {
+	stone: 0.35,
+	bronze: 0.35,
+	jade: 0.22,
+	gold: 0.08,
+};
+
+/** Legendary tier's rarity odds — must sum to 1 (asserted in cards.constants.spec.ts). */
+const LEGENDARY_RARITY_ODDS: Readonly<Record<CardRarity, number>> = {
+	stone: 0.15,
+	bronze: 0.3,
+	jade: 0.35,
+	gold: 0.2,
+};
+
+const DELUXE_PACK_PRICE_COINS = 400;
+const LEGENDARY_PACK_PRICE_COINS = 1500;
+
+const DELUXE_FOIL_CHANCE = 0.08;
+const LEGENDARY_FOIL_CHANCE = 0.15;
+
+/**
+ * The legendary tier guarantees at least one card at or above this rarity in
+ * every pack (see `rollGuaranteedCard` and `GUARANTEED_SLOT_INDEX`).
+ */
+const LEGENDARY_GUARANTEED_MIN_RARITY: CardRarity = "gold";
+
+/** The default tier used wherever a caller doesn't pick a specific one (e.g. match-end drops). */
+export const BASIC_PACK_TIER: PackTierDefinition = {
+	id: "basic",
+	name: "Basic Pack",
+	priceCoins: PACK_PRICE_COINS,
+	rarityOdds: RARITY_ODDS,
+	foilChance: FOIL_CHANCE,
+};
+
+const DELUXE_PACK_TIER: PackTierDefinition = {
+	id: "deluxe",
+	name: "Deluxe Pack",
+	priceCoins: DELUXE_PACK_PRICE_COINS,
+	rarityOdds: DELUXE_RARITY_ODDS,
+	foilChance: DELUXE_FOIL_CHANCE,
+};
+
+const LEGENDARY_PACK_TIER: PackTierDefinition = {
+	id: "legendary",
+	name: "Legendary Pack",
+	priceCoins: LEGENDARY_PACK_PRICE_COINS,
+	rarityOdds: LEGENDARY_RARITY_ODDS,
+	foilChance: LEGENDARY_FOIL_CHANCE,
+	guaranteedMinRarity: LEGENDARY_GUARANTEED_MIN_RARITY,
+};
+
+/** Every purchasable pack tier, cheapest to priciest. */
+export const PACK_TIERS: readonly PackTierDefinition[] = [
+	BASIC_PACK_TIER,
+	DELUXE_PACK_TIER,
+	LEGENDARY_PACK_TIER,
+] as const;
+
+export const PACK_TIER_IDS: readonly PackTierId[] = PACK_TIERS.map(
+	(tier) => tier.id,
+);
+
 // ── Catalog ──────────────────────────────────────────────────────────────────
 
 const POWER_SHELL_CARDS: readonly CardDefinition[] = [
@@ -128,6 +247,7 @@ const POWER_SHELL_CARDS: readonly CardDefinition[] = [
 		name: "Heavy Shell",
 		flavor: "Dense as a temple stone — it shoves all in its path.",
 		sourceRef: "heavy",
+		imageUrl: "/assets/power-ups/heavyPower.png",
 	},
 	{
 		id: "power-slick",
@@ -144,6 +264,7 @@ const POWER_SHELL_CARDS: readonly CardDefinition[] = [
 		name: "Spinning Shell",
 		flavor: "Curls hard, like a top loosed by a master's hand.",
 		sourceRef: "spinning",
+		imageUrl: "/assets/power-ups/spinningPower.png",
 	},
 	{
 		id: "power-bouncer",
@@ -160,6 +281,7 @@ const POWER_SHELL_CARDS: readonly CardDefinition[] = [
 		name: "Tiny Shell",
 		flavor: "Small, swift, and maddeningly hard to strike.",
 		sourceRef: "tiny",
+		imageUrl: "/assets/power-ups/tinyPower.png",
 	},
 	{
 		id: "power-giant",
@@ -168,6 +290,7 @@ const POWER_SHELL_CARDS: readonly CardDefinition[] = [
 		name: "Giant Shell",
 		flavor: "A slow colossus that fills half the sheet.",
 		sourceRef: "giant",
+		imageUrl: "/assets/power-ups/giantPower.png",
 	},
 	{
 		id: "power-bomb",
@@ -184,6 +307,7 @@ const POWER_SHELL_CARDS: readonly CardDefinition[] = [
 		name: "Splitter Shell",
 		flavor: "Cracks into a fan of smaller shells mid-flight.",
 		sourceRef: "splitter",
+		imageUrl: "/assets/power-ups/splitterPower.png",
 	},
 	{
 		id: "power-magnet",
@@ -240,6 +364,7 @@ const POWER_SHELL_CARDS: readonly CardDefinition[] = [
 		name: "Rocket Shell",
 		flavor: "Twice the speed, none of the curl. Pure intent.",
 		sourceRef: "rocket",
+		imageUrl: "/assets/power-ups/rocketPower.png",
 	},
 	{
 		id: "power-boomerang",
@@ -280,6 +405,7 @@ const POWER_SHELL_CARDS: readonly CardDefinition[] = [
 		name: "Clone Shell",
 		flavor: "Casts a mirror-self down the opposite curl.",
 		sourceRef: "clone",
+		imageUrl: "/assets/power-ups/mirrorPower.png",
 	},
 	{
 		id: "power-phantom",
@@ -288,6 +414,7 @@ const POWER_SHELL_CARDS: readonly CardDefinition[] = [
 		name: "Phantom Shell",
 		flavor: "Unseen while it moves; revealed only at rest.",
 		sourceRef: "phantom",
+		imageUrl: "/assets/power-ups/phantomPower.png",
 	},
 ];
 
@@ -432,6 +559,46 @@ const CHARACTER_CARDS: readonly CardDefinition[] = [
 		sourceRef: "sumo-turtle",
 		imageUrl: "/assets/character/sumo-turtle.webp",
 	},
+	{
+		id: "char-godly",
+		family: "character",
+		rarity: "gold",
+		name: "Kamigame, the Godly Shell",
+		flavor:
+			"Ascended past mortal dojo rank, he doesn't play the odds — the odds play for him.",
+		sourceRef: "godly-turtle",
+		imageUrl: "/assets/character/godly-turtle.png",
+	},
+	{
+		id: "char-demon",
+		family: "character",
+		rarity: "gold",
+		name: "Akuma, the Demon Shell",
+		flavor:
+			"Cast out of the dojo for playing dirty. He came back anyway, fire and all.",
+		sourceRef: "demon-turtle",
+		imageUrl: "/assets/character/demon-turtle.png",
+	},
+	{
+		id: "char-knight",
+		family: "character",
+		rarity: "gold",
+		name: "Kishi, the Knight Shell",
+		flavor:
+			"Bound by an oath older than the dojo itself. His shell has never once turned from a challenge.",
+		sourceRef: "knight-turtle",
+		imageUrl: "/assets/character/knight-turtle.png",
+	},
+	{
+		id: "char-rasta",
+		family: "character",
+		rarity: "gold",
+		name: "Irie Kame, the Roots Shell",
+		flavor:
+			"Never in a hurry, never off the beat — he wins the same way he relaxes: with a slow smile and a steady groove.",
+		sourceRef: "rasta-turtle",
+		imageUrl: "/assets/character/rasta-turtle.png",
+	},
 ];
 
 export const CARDS: readonly CardDefinition[] = [
@@ -457,4 +624,12 @@ export function cardsByFamily(family: CardFamily): CardDefinition[] {
 
 export function cardsByRarity(rarity: CardRarity): CardDefinition[] {
 	return CARDS.filter((card) => card.rarity === rarity);
+}
+
+const PACK_TIERS_BY_ID: ReadonlyMap<PackTierId, PackTierDefinition> = new Map(
+	PACK_TIERS.map((tier) => [tier.id, tier]),
+);
+
+export function findPackTier(id: PackTierId): PackTierDefinition | undefined {
+	return PACK_TIERS_BY_ID.get(id);
 }
