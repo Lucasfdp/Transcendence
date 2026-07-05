@@ -55,3 +55,33 @@ export function diceWinChance(
 ): number {
 	return diceWinningOutcomes(direction, target) / DICE_RANGE;
 }
+
+/** Number of decoy values the odometer scrolls through before landing. */
+export const ODOMETER_SPIN_STEPS = 6;
+
+/**
+ * Stride (in dice values) between successive decoy values in the odometer
+ * strip. Coprime with `DICE_RANGE` (100) so consecutive decoys never repeat
+ * and never land on `landedValue` before the final row.
+ */
+const ODOMETER_DECOY_STRIDE = 37;
+
+/**
+ * Builds the vertical odometer strip for a roll animation: `steps` decoy
+ * values that appear to "spin through" before settling on `landedValue`,
+ * which is always the last entry. Deterministic (no randomness) so the same
+ * landed value always produces the same visible spin-through sequence, and
+ * so the sequence is trivially unit-testable. Framework-free — the caller
+ * (KoiDiceModal) owns turning this into animated DOM rows.
+ */
+export function buildOdometerStrip(
+	landedValue: number,
+	steps: number = ODOMETER_SPIN_STEPS,
+): number[] {
+	const strip: number[] = [];
+	for (let index = 1; index <= steps; index++) {
+		strip.push((landedValue + index * ODOMETER_DECOY_STRIDE) % DICE_RANGE);
+	}
+	strip.push(landedValue);
+	return strip;
+}

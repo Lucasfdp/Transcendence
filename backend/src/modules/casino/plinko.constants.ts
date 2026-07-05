@@ -20,7 +20,7 @@
  */
 
 /** Risk tiers: how many peg rows the shell falls through. */
-export const PLINKO_ROWS_OPTIONS = [8, 12, 16] as const;
+export const PLINKO_ROWS_OPTIONS = [8, 12, 16, 20] as const;
 
 /** A selectable row-count (risk tier). */
 export type PlinkoRows = (typeof PLINKO_ROWS_OPTIONS)[number];
@@ -68,7 +68,7 @@ export function bucketIndexFromRolls(rolls: readonly number[]): number {
  * The net-neutral multiplier for every bucket of a `rows`-row board, derived
  * by normalising the symmetric shape weight against the binomial bucket
  * probability (see the module doc). Computed once per call; `rows` is at most
- * 16 so this is cheap.
+ * 20 so this is cheap.
  */
 function bucketMultipliers(rows: number): number[] {
 	const weights: number[] = [];

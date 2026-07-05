@@ -6,15 +6,34 @@ import {
 	type SpinResolution,
 } from "../../features/hub/api";
 import {
+	type BoardStep,
+	easeOutCubic,
+	lerp,
+	runBoardAnimation,
+} from "./board-canvas";
+import {
+	buildOdometerStrip,
 	DICE_MAX_VALUE,
 	diceMultiplier,
 	diceValue,
 	diceWinChance,
 } from "./dice";
 import { type OutcomeFairnessCheck, verifyDice } from "./fairness";
+import { useReducedMotion } from "./useReducedMotion";
 
-/** Roll animation length — must match the CSS spin on the dice readout. */
-const ROLL_DURATION_MS = 1200;
+/**
+ * Total wall-clock time a roll animation takes — shared by the odometer
+ * digit-roll and the track marker's slide so they always finish together.
+ * Purely cosmetic: the server has already fully resolved the roll by the
+ * time this animation starts (see `runRoll`).
+ */
+const ROLL_DURATION_MS = 1650;
+
+/**
+ * Row height, in pixels, of one odometer strip entry — must match
+ * `.hub-dice__readout`'s height so exactly one row is visible at a time.
+ */
+const ODOMETER_ROW_PX = 150;
 
 /** The two betting directions offered, in display order. */
 const DIRECTIONS: readonly DiceDirection[] = ["under", "over"];
@@ -65,7 +84,38 @@ export function KoiDiceModal({
 	const [showFairness, setShowFairness] = useState(false);
 	const [verify, setVerify] = useState<OutcomeFairnessCheck | null>(null);
 	const [verifying, setVerifying] = useState(false);
-	const revealTimer = useRef<number | null>(null);
+	/**
+	 * The outcome the server already returned, held back from `result` (and
+	 * therefore from the reveal text / fairness panel) until the odometer +
+	 * track-marker animation finishes. Purely a presentation delay — see
+	 * `runRoll` and the animation effect below.
+	 */
+	const [pendingOutcome, setPendingOutcome] = useState<SpinResolution | null>(
+		null,
+	);
+	const odometerStripRef = useRef<HTMLDivElement | null>(null);
+	const landedMarkerRef = useRef<HTMLDivElement | null>(null);
+	const reducedMotion = useReducedMotion();
+
+	/**
+	 * `onCoinsChange` and `reducedMotion` mirrored into refs so the animation
+	 * effect below can read their latest values without listing them as
+	 * dependencies. `onCoinsChange` in particular is a fresh inline closure on
+	 * every `HomePage` render, not memoized — including it as a dependency
+	 * tears down and restarts the in-flight `requestAnimationFrame` loop on any
+	 * unrelated parent re-render (this exact bug shipped in Shell Drop's first
+	 * pass). Only a brand-new `pendingOutcome` should (re)start this effect.
+	 */
+	const onCoinsChangeRef = useRef(onCoinsChange);
+	const reducedMotionRef = useRef(reducedMotion);
+	useEffect(() => {
+		onCoinsChangeRef.current = onCoinsChange;
+	}, [onCoinsChange]);
+	useEffect(() => {
+		reducedMotionRef.current = reducedMotion;
+	}, [reducedMotion]);
+
+	const landedValue = result ? valueFromOutcome(result.outcomeId) : null;
 
 	useEffect(() => {
 		let cancelled = false;
@@ -88,11 +138,90 @@ export function KoiDiceModal({
 			});
 		return () => {
 			cancelled = true;
-			if (revealTimer.current !== null) {
-				globalThis.clearTimeout(revealTimer.current);
-			}
 		};
 	}, []);
+
+	// Resting frame: shows a single row in the odometer window (either "—"
+	// before any roll, or the landed value after one) and parks the landed
+	// marker at that value. Skipped while `pendingOutcome` is set — the
+	// animation effect below owns the strip and marker during an active roll.
+	useEffect(() => {
+		if (pendingOutcome) return;
+		const strip = odometerStripRef.current;
+		if (strip) {
+			strip.replaceChildren();
+			const row = document.createElement("div");
+			row.className = "hub-dice__readout-row";
+			const value = document.createElement("span");
+			value.className = "hub-dice__readout-value";
+			value.textContent = landedValue === null ? "—" : String(landedValue);
+			row.appendChild(value);
+			strip.appendChild(row);
+			strip.style.transform = "translateY(0)";
+		}
+		const marker = landedMarkerRef.current;
+		if (marker) {
+			marker.style.left = `${landedValue ?? 0}%`;
+		}
+	}, [pendingOutcome, landedValue]);
+
+	// Active roll animation: scrolls the odometer strip through a spin-through
+	// sequence and slides the track marker to the landed value, then reveals
+	// the result. `prefers-reduced-motion` short-circuits straight to the
+	// resolved value. Deliberately keyed on `pendingOutcome` alone — see the
+	// ref comment above for why `onCoinsChange`/`reducedMotion` aren't
+	// dependencies here.
+	useEffect(() => {
+		if (!pendingOutcome) return;
+		const landed = valueFromOutcome(pendingOutcome.outcomeId);
+		const strip = odometerStripRef.current;
+		const marker = landedMarkerRef.current;
+
+		const finish = (): void => {
+			setResult(pendingOutcome);
+			onCoinsChangeRef.current(pendingOutcome.coins);
+			setConfig((prev) =>
+				prev ? { ...prev, coins: pendingOutcome.coins } : prev,
+			);
+			setRolling(false);
+			setPendingOutcome(null);
+		};
+
+		if (reducedMotionRef.current || !strip || !marker) {
+			finish();
+			return;
+		}
+
+		const values = buildOdometerStrip(landed);
+		strip.replaceChildren();
+		for (const value of values) {
+			const row = document.createElement("div");
+			row.className = "hub-dice__readout-row";
+			const text = document.createElement("span");
+			text.className = "hub-dice__readout-value";
+			text.textContent = String(value);
+			row.appendChild(text);
+			strip.appendChild(row);
+		}
+		strip.style.transform = "translateY(0)";
+		marker.style.left = "0%";
+
+		const totalDistancePx = (values.length - 1) * ODOMETER_ROW_PX;
+		const steps: BoardStep<null>[] = [
+			{ durationMs: ROLL_DURATION_MS, data: null },
+		];
+		const cancel = runBoardAnimation(
+			steps,
+			(_data, progress) => {
+				const eased = easeOutCubic(progress);
+				strip.style.transform = `translateY(-${eased * totalDistancePx}px)`;
+				marker.style.left = `${lerp(0, landed, eased)}%`;
+			},
+			finish,
+		);
+
+		return () => cancel();
+	}, [pendingOutcome]);
 
 	const selectDirection = (next: DiceDirection): void => {
 		if (!config) return;
@@ -106,6 +235,7 @@ export function KoiDiceModal({
 		setError("");
 		setResult(null);
 		setVerify(null);
+		setPendingOutcome(null);
 		try {
 			await api.getCsrfToken();
 			const outcome = await api.dice(
@@ -114,12 +244,7 @@ export function KoiDiceModal({
 				target,
 				clientSeed || undefined,
 			);
-			revealTimer.current = globalThis.setTimeout(() => {
-				setResult(outcome);
-				onCoinsChange(outcome.coins);
-				setConfig((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
-				setRolling(false);
-			}, ROLL_DURATION_MS);
+			setPendingOutcome(outcome);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Roll failed. Try again.");
 			setRolling(false);
@@ -140,20 +265,14 @@ export function KoiDiceModal({
 	const canRoll = targetValid && stakeValid && coins >= stake && !rolling;
 	const winChance = targetValid ? diceWinChance(direction, target) : 0;
 	const payoutMultiplier = targetValid ? diceMultiplier(direction, target) : 0;
-	const landedValue = result ? valueFromOutcome(result.outcomeId) : null;
 
 	return (
 		<div className="hub-dice">
 			{error ? <p className="hub-modal__error">{error}</p> : null}
 
 			<div className="hub-dice__stage">
-				<div
-					className={`hub-dice__readout ${rolling ? "is-rolling" : ""}`}
-					aria-hidden="true"
-				>
-					<span className="hub-dice__readout-value">
-						{rolling ? "?" : (landedValue ?? "—")}
-					</span>
+				<div className="hub-dice__readout" aria-hidden="true">
+					<div className="hub-dice__readout-strip" ref={odometerStripRef} />
 				</div>
 				<div className="hub-dice__track">
 					<div
@@ -166,6 +285,13 @@ export function KoiDiceModal({
 					<div
 						className="hub-dice__track-marker"
 						style={{ left: `${target}%` }}
+					/>
+					<div
+						className={`hub-dice__track-landed ${
+							rolling || result ? "is-visible" : ""
+						}`}
+						ref={landedMarkerRef}
+						aria-hidden="true"
 					/>
 				</div>
 			</div>

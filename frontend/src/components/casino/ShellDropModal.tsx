@@ -43,10 +43,32 @@ const BOARD_HORIZONTAL_INSET_PX = 10;
 const BOARD_TOP_INSET_PX = 10;
 
 /** Radius, in pixels, of each drawn peg. */
-const PEG_RADIUS_PX = 3;
+const PEG_RADIUS_PX = 4;
 
 /** Font size, in pixels, the shell emoji token is drawn at. */
-const SHELL_FONT_PX = 22;
+const SHELL_FONT_PX = 26;
+
+/** Board height, in pixels, for the lowest (baseline) row-count tier. */
+const BOARD_BASE_HEIGHT_PX = 220;
+
+/** Row-count the baseline board height above is tuned for. */
+const BOARD_BASE_ROWS = 8;
+
+/**
+ * Extra board height, in pixels, added per peg row beyond the baseline tier —
+ * this is what makes higher-risk (more rows) tiers visibly extend the board
+ * downward with more layers of pins, instead of squeezing every tier's pegs
+ * into the same fixed height.
+ */
+const BOARD_HEIGHT_PER_EXTRA_ROW_PX = 14;
+
+/** Board height, in pixels, for a given row-count tier. */
+function boardHeightPx(rows: number): number {
+	return (
+		BOARD_BASE_HEIGHT_PX +
+		Math.max(0, rows - BOARD_BASE_ROWS) * BOARD_HEIGHT_PER_EXTRA_ROW_PX
+	);
+}
 
 /** The tier currently selected, falling back to the first available tier. */
 function tierFor(view: PlinkoView, rows: number): PlinkoTierView {
@@ -349,7 +371,10 @@ export function ShellDropModal({
 		<div className="hub-drop">
 			{error ? <p className="hub-modal__error">{error}</p> : null}
 
-			<div className="hub-drop__board">
+			<div
+				className="hub-drop__board"
+				style={{ height: boardHeightPx(tier.rows) }}
+			>
 				<canvas className="hub-drop__canvas" ref={boardCanvasRef} aria-hidden="true" />
 				<div className="hub-drop__buckets">
 					{tier.buckets.map((bucket) => (

@@ -5,20 +5,48 @@ import {
 	type FlipSide,
 	type SpinResolution,
 } from "../../features/hub/api";
+import {
+	type BoardStep,
+	easeOutBack,
+	easeOutCubic,
+	lerp,
+	runBoardAnimation,
+} from "./board-canvas";
 import { type OutcomeFairnessCheck, verifyFlip } from "./fairness";
 import { flipSideColor, flipSideLabel } from "./flip";
-
-/** Flip animation length — must match the CSS spin on the shell coin. */
-const FLIP_DURATION_MS = 1600;
+import { isBackFacing, sideAtAngle } from "./flip-rotation";
+import { mod360, spinToAngle } from "./spin-rotation";
+import { useReducedMotion } from "./useReducedMotion";
 
 /** The two sides offered, in display order. */
 const SIDES: readonly FlipSide[] = ["heads", "tails"];
 
-interface ShellFlipModalProps {
-	/** Current coin balance, used to gate wagers. */
-	coins: number;
-	/** Sync the player's coin balance up to the hub after a flip. */
-	onCoinsChange: (coins: number) => void;
+/**
+ * Minimum number of full 360° turns the coin spins forward before landing —
+ * deliberately a "handful", not Fortune Wheel's 5, so the flip reads as a
+ * quick, punchy action rather than a suspenseful one.
+ */
+const FLIP_TURNS = 3;
+
+/** Duration of the spinning phase, in milliseconds. */
+const FLIP_SPIN_DURATION_MS = 1300;
+
+/** Duration of the post-landing squash/settle bounce, in milliseconds. */
+const FLIP_SETTLE_DURATION_MS = 250;
+
+/**
+ * Scale the coin starts the settle bounce from before `easeOutBack` overshoots
+ * back past 1 and rests there — reads as a brief "thump" once the coin lands,
+ * kept on a separate `scale` transform so it never ambiguously reads as the
+ * rotation itself overshooting past the resolved face.
+ */
+const FLIP_SETTLE_SQUASH_SCALE = 0.85;
+
+/** One phase of the flip animation: the spin itself, or the landing settle. */
+interface FlipStepData {
+	kind: "spin" | "settle";
+	fromAngle: number;
+	toAngle: number;
 }
 
 /** A single shell-side choice button. */
@@ -47,6 +75,13 @@ function SideChoice({
 	);
 }
 
+interface ShellFlipModalProps {
+	/** Current coin balance, used to gate wagers. */
+	coins: number;
+	/** Sync the player's coin balance up to the hub after a flip. */
+	onCoinsChange: (coins: number) => void;
+}
+
 export function ShellFlipModal({
 	coins,
 	onCoinsChange,
@@ -58,11 +93,42 @@ export function ShellFlipModal({
 	const [stake, setStake] = useState(0);
 	const [clientSeed, setClientSeed] = useState("");
 	const [flipping, setFlipping] = useState(false);
+	const [rotation, setRotation] = useState(0);
 	const [result, setResult] = useState<SpinResolution | null>(null);
 	const [showFairness, setShowFairness] = useState(false);
 	const [verify, setVerify] = useState<OutcomeFairnessCheck | null>(null);
 	const [verifying, setVerifying] = useState(false);
-	const revealTimer = useRef<number | null>(null);
+	/**
+	 * The outcome the server already returned, held back from `result` (and
+	 * therefore from the reveal text / fairness panel) until the coin's spin +
+	 * settle animation finishes. Purely a presentation delay — see `runFlip`.
+	 */
+	const [pendingOutcome, setPendingOutcome] = useState<SpinResolution | null>(
+		null,
+	);
+	const coinRef = useRef<HTMLDivElement | null>(null);
+	const labelRef = useRef<HTMLSpanElement | null>(null);
+	const reducedMotion = useReducedMotion();
+
+	/**
+	 * `rotation` and `onCoinsChange` mirrored into refs so the animation effect
+	 * below can read their latest values without listing them as dependencies.
+	 * `onCoinsChange` in particular is a fresh inline closure on every
+	 * `HomePage` render (not memoized) — if it were a dependency, any
+	 * unrelated re-render of the hub page would tear down and restart the
+	 * in-flight `requestAnimationFrame` loop mid-flip. The effect is
+	 * deliberately keyed only on `pendingOutcome` (and `reducedMotion`, a real
+	 * user setting change worth reacting to), not on values that change for
+	 * unrelated reasons.
+	 */
+	const rotationRef = useRef(rotation);
+	const onCoinsChangeRef = useRef(onCoinsChange);
+	useEffect(() => {
+		rotationRef.current = rotation;
+	}, [rotation]);
+	useEffect(() => {
+		onCoinsChangeRef.current = onCoinsChange;
+	}, [onCoinsChange]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -82,11 +148,88 @@ export function ShellFlipModal({
 			});
 		return () => {
 			cancelled = true;
-			if (revealTimer.current !== null) {
-				globalThis.clearTimeout(revealTimer.current);
-			}
 		};
 	}, []);
+
+	// Active flip animation: spins the coin forward from its current resting
+	// angle to a deterministic landing angle for the already-known outcome,
+	// then plays a short scale "settle" bounce, and only reveals the result
+	// once both finish. `prefers-reduced-motion` short-circuits straight to
+	// the resolved face. Deliberately keyed on `pendingOutcome` (and
+	// `reducedMotion`) alone — see the ref-mirroring note above.
+	useEffect(() => {
+		if (!pendingOutcome) return;
+		const coinEl = coinRef.current;
+		const labelEl = labelRef.current;
+		if (!coinEl || !labelEl) return;
+
+		const startAngle = rotationRef.current;
+		const targetSide = pendingOutcome.outcomeId as FlipSide;
+		const targetAngle = spinToAngle(
+			startAngle,
+			targetSide === "heads" ? 0 : 180,
+			FLIP_TURNS,
+		);
+
+		const finish = (): void => {
+			setRotation(targetAngle);
+			setResult(pendingOutcome);
+			onCoinsChangeRef.current(pendingOutcome.coins);
+			setConfig((prev) =>
+				prev ? { ...prev, coins: pendingOutcome.coins } : prev,
+			);
+			setFlipping(false);
+			setPendingOutcome(null);
+		};
+
+		const paintFace = (angle: number, scale: number): void => {
+			const side = sideAtAngle(angle);
+			const mirrored = isBackFacing(angle);
+			coinEl.style.setProperty("--flip-face", flipSideColor(side));
+			coinEl.style.transform = `rotateY(${angle}deg) scale(${scale})`;
+			labelEl.style.transform = mirrored ? "scaleX(-1)" : "";
+		};
+
+		if (reducedMotion) {
+			paintFace(targetAngle, 1);
+			labelEl.textContent = flipSideLabel(targetSide);
+			finish();
+			return;
+		}
+
+		labelEl.textContent = "";
+		const steps: BoardStep<FlipStepData>[] = [
+			{
+				durationMs: FLIP_SPIN_DURATION_MS,
+				data: { kind: "spin", fromAngle: startAngle, toAngle: targetAngle },
+			},
+			{
+				durationMs: FLIP_SETTLE_DURATION_MS,
+				data: { kind: "settle", fromAngle: targetAngle, toAngle: targetAngle },
+			},
+		];
+
+		const cancel = runBoardAnimation(
+			steps,
+			(data, progress) => {
+				const angle =
+					data.kind === "spin"
+						? lerp(data.fromAngle, data.toAngle, easeOutCubic(progress))
+						: data.toAngle;
+				const scale =
+					data.kind === "settle"
+						? lerp(FLIP_SETTLE_SQUASH_SCALE, 1, easeOutBack(progress))
+						: 1;
+				paintFace(angle, scale);
+				if (data.kind === "settle") {
+					labelEl.textContent = flipSideLabel(sideAtAngle(angle));
+				}
+			},
+			finish,
+		);
+
+		return () => cancel();
+	}, [pendingOutcome, reducedMotion]);
 
 	const runFlip = async (): Promise<void> => {
 		if (flipping || !config) return;
@@ -94,17 +237,11 @@ export function ShellFlipModal({
 		setError("");
 		setResult(null);
 		setVerify(null);
+		setPendingOutcome(null);
 		try {
 			await api.getCsrfToken();
 			const outcome = await api.flip(stake, pick, clientSeed || undefined);
-			revealTimer.current = globalThis.setTimeout(() => {
-				setResult(outcome);
-				onCoinsChange(outcome.coins);
-				setConfig((prev) =>
-					prev ? { ...prev, coins: outcome.coins } : prev,
-				);
-				setFlipping(false);
-			}, FLIP_DURATION_MS);
+			setPendingOutcome(outcome);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Flip failed. Try again.");
 			setFlipping(false);
@@ -122,7 +259,13 @@ export function ShellFlipModal({
 	const canFlip = stakeValid && coins >= stake && !flipping;
 	const rtpPercent = Math.round(config.rtp * 100);
 	const landed = result ? (result.outcomeId as FlipSide) : null;
-	const faceSide = landed ?? pick;
+	// Resting (non-animating) face: once a result has landed, `rotation` was
+	// set to the exact angle `spinToAngle` computed for it, so deriving the
+	// side from that angle always agrees with `landed` by construction. Before
+	// any flip, `rotation` is 0 (no transform applied) and the coin just shows
+	// whichever side is currently picked.
+	const restSide: FlipSide = landed ?? pick;
+	const restMirrored = landed !== null && mod360(rotation) === 180;
 
 	return (
 		<div className="hub-flip">
@@ -130,14 +273,22 @@ export function ShellFlipModal({
 
 			<div className="hub-flip__stage">
 				<div
-					className={`hub-flip__coin ${flipping ? "is-flipping" : ""}`}
+					ref={coinRef}
+					className="hub-flip__coin"
 					style={
-						{ "--flip-face": flipSideColor(faceSide) } as React.CSSProperties
+						{
+							"--flip-face": flipSideColor(restSide),
+							transform: `rotateY(${rotation}deg)`,
+						} as React.CSSProperties
 					}
 					aria-hidden="true"
 				>
-					<span className="hub-flip__coin-label">
-						{flipping ? "" : flipSideLabel(faceSide)}
+					<span
+						ref={labelRef}
+						className="hub-flip__coin-label"
+						style={restMirrored ? { transform: "scaleX(-1)" } : undefined}
+					>
+						{flipping ? "" : flipSideLabel(restSide)}
 					</span>
 				</div>
 			</div>

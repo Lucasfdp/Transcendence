@@ -13,8 +13,8 @@ import {
 
 describe("plinko.constants", () => {
 	describe("PLINKO_ROWS_OPTIONS", () => {
-		it("should offer exactly the three risk tiers", () => {
-			expect([...PLINKO_ROWS_OPTIONS]).toEqual([8, 12, 16]);
+		it("should offer exactly the four risk tiers", () => {
+			expect([...PLINKO_ROWS_OPTIONS]).toEqual([8, 12, 16, 20]);
 		});
 
 		it("should default to the lowest-risk tier", () => {

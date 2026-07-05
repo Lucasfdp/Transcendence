@@ -5,17 +5,58 @@ import {
 	type WheelSegmentView,
 	type WheelView,
 } from "../../features/hub/api";
+import { easeOutCubic, lerp, runBoardAnimation } from "./board-canvas";
 import { type FairnessCheck, verifySpin } from "./fairness";
-import { nextRotation, segmentColor } from "./wheel";
+import { useReducedMotion } from "./useReducedMotion";
+import { nextRotation, segmentAtTop, segmentColor } from "./wheel";
 
 /** Wheel geometry (SVG user units). */
-const VIEWBOX = 320;
+const VIEWBOX = 380;
 const CENTER = VIEWBOX / 2;
-const RADIUS = 150;
+const RADIUS = 178;
 const LABEL_RADIUS = RADIUS * 0.66;
 
-/** Spin animation length — must match the CSS transition on the wheel group. */
+/**
+ * Spin animation length. The wheel itself only ever decelerates forward
+ * toward its final rotation — real prize wheels don't spin backward, so
+ * unlike an earlier version of this animation, nothing here ever reverses
+ * the wheel's direction. `easeOutCubic` gives it a heavy, weighted coast to
+ * a stop. The "catch" feeling instead comes from the pointer flex triggered
+ * on landing (see `LANDING_FLEX_CLASS`) — the small flexible part is what
+ * physically bounces, not the heavy wheel.
+ */
 const SPIN_DURATION_MS = 4200;
+
+/** Multiplier at/above which a landed segment gets the big-win glow treatment. */
+const BIG_WIN_MULTIPLIER_THRESHOLD = 3;
+
+/** Class toggled on the pointer for a brief pulse as a divider crosses it. */
+const TICK_PULSE_CLASS = "is-ticking";
+
+/**
+ * Class toggled on the pointer once for a bigger settle-flex when the wheel
+ * comes to rest — reads as the flapper catching the final divider and
+ * springing back, rather than the wheel itself rocking backward.
+ */
+const LANDING_FLEX_CLASS = "is-landing";
+
+/** Whether a landed segment's payout is showy enough to earn the glow flourish. */
+function isBigWinSegment(multiplier: number): boolean {
+	return multiplier >= BIG_WIN_MULTIPLIER_THRESHOLD;
+}
+
+/**
+ * (Re-)triggers a CSS pulse animation on the pointer, even if it's still
+ * mid-play from a previous trigger — removing then re-adding the class alone
+ * wouldn't restart the animation without a forced reflow in between. Used
+ * for both the small per-divider tick and the bigger landing flex.
+ */
+function pulsePointer(el: HTMLDivElement | null, className: string): void {
+	if (!el) return;
+	el.classList.remove(className);
+	void el.offsetWidth;
+	el.classList.add(className);
+}
 
 interface FortuneWheelModalProps {
 	/** Current coin balance, used to gate wagers. */
@@ -45,11 +86,9 @@ function slicePath(startDeg: number, endDeg: number): string {
 function WheelFace({
 	segments,
 	rotation,
-	spinning,
 }: {
 	segments: readonly WheelSegmentView[];
 	rotation: number;
-	spinning: boolean;
 }): JSX.Element {
 	const sliceDeg = 360 / segments.length;
 	return (
@@ -61,12 +100,7 @@ function WheelFace({
 		>
 			<g
 				className="hub-wheel__face"
-				style={{
-					transform: `rotate(${rotation}deg)`,
-					transition: spinning
-						? `transform ${SPIN_DURATION_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`
-						: "none",
-				}}
+				style={{ transform: `rotate(${rotation}deg)` }}
 			>
 				{segments.map((segment, index) => {
 					const start = index * sliceDeg;
@@ -93,7 +127,7 @@ function WheelFace({
 						</g>
 					);
 				})}
-				<circle cx={CENTER} cy={CENTER} r={26} className="hub-wheel__hub" />
+				<circle cx={CENTER} cy={CENTER} r={31} className="hub-wheel__hub" />
 			</g>
 		</svg>
 	);
@@ -114,7 +148,13 @@ export function FortuneWheelModal({
 	const [showFairness, setShowFairness] = useState(false);
 	const [verify, setVerify] = useState<FairnessCheck | null>(null);
 	const [verifying, setVerifying] = useState(false);
-	const revealTimer = useRef<number | null>(null);
+	const reducedMotion = useReducedMotion();
+	/** Cancels the in-flight rotation animation, if any (set only while spinning). */
+	const cancelSpinAnimation = useRef<(() => void) | null>(null);
+	/** Pointer element the tick pulse is toggled on directly, bypassing re-renders. */
+	const pointerRef = useRef<HTMLDivElement | null>(null);
+	/** Segment under the pointer as of the last animated frame, for tick detection. */
+	const lastSegmentRef = useRef(0);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -134,9 +174,7 @@ export function FortuneWheelModal({
 			});
 		return () => {
 			cancelled = true;
-			if (revealTimer.current !== null) {
-				window.clearTimeout(revealTimer.current);
-			}
+			cancelSpinAnimation.current?.();
 		};
 	}, []);
 
@@ -148,16 +186,23 @@ export function FortuneWheelModal({
 		setError("");
 		setResult(null);
 		setVerify(null);
+		cancelSpinAnimation.current?.();
 		try {
 			await api.getCsrfToken();
 			const spin = await produce();
 			const index = wheel.segments.findIndex(
 				(segment) => segment.id === spin.segment.id,
 			);
-			setRotation((prev) =>
-				nextRotation(prev, index < 0 ? 0 : index, wheel.segments.length),
-			);
-			revealTimer.current = window.setTimeout(() => {
+			const segmentCount = wheel.segments.length;
+			const from = rotation;
+			const to = nextRotation(from, index < 0 ? 0 : index, segmentCount);
+
+			const finish = (playLandingFlex: boolean): void => {
+				cancelSpinAnimation.current = null;
+				setRotation(to);
+				if (playLandingFlex) {
+					pulsePointer(pointerRef.current, LANDING_FLEX_CLASS);
+				}
 				setResult(spin);
 				onCoinsChange(spin.coins);
 				setWheel((prev) =>
@@ -173,7 +218,27 @@ export function FortuneWheelModal({
 						: prev,
 				);
 				setSpinning(false);
-			}, SPIN_DURATION_MS);
+			};
+
+			if (reducedMotion) {
+				finish(false);
+				return;
+			}
+
+			lastSegmentRef.current = segmentAtTop(from, segmentCount);
+			cancelSpinAnimation.current = runBoardAnimation(
+				[{ durationMs: SPIN_DURATION_MS, data: { from, to } }],
+				(data, progress) => {
+					const angle = lerp(data.from, data.to, easeOutCubic(progress));
+					setRotation(angle);
+					const currentSegment = segmentAtTop(angle, segmentCount);
+					if (currentSegment !== lastSegmentRef.current) {
+						lastSegmentRef.current = currentSegment;
+						pulsePointer(pointerRef.current, TICK_PULSE_CLASS);
+					}
+				},
+				() => finish(true),
+			);
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "Spin failed. Try again.",
@@ -192,18 +257,22 @@ export function FortuneWheelModal({
 		stake <= wheel.maxWager;
 	const canWager = stakeValid && coins >= stake && !spinning;
 	const rtpPercent = Math.round(wheel.rtp * 100);
+	const showBigWinGlow =
+		!spinning && result !== null && isBigWinSegment(result.segment.multiplier);
 
 	return (
 		<div className="hub-wheel">
 			{error ? <p className="hub-modal__error">{error}</p> : null}
 
-			<div className="hub-wheel__stage">
-				<div className="hub-wheel__pointer" aria-hidden="true" />
-				<WheelFace
-					segments={wheel.segments}
-					rotation={rotation}
-					spinning={spinning}
+			<div
+				className={`hub-wheel__stage ${showBigWinGlow ? "is-big-win" : ""}`}
+			>
+				<div
+					className="hub-wheel__pointer"
+					ref={pointerRef}
+					aria-hidden="true"
 				/>
+				<WheelFace segments={wheel.segments} rotation={rotation} />
 			</div>
 
 			{result ? (

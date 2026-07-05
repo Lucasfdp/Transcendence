@@ -5982,7 +5982,7 @@ img.power-card__orb {
 }
 .hub-wheel__stage {
 	position: relative;
-	width: min(380px, 82vw);
+	width: min(320px, 80vw);
 	aspect-ratio: 1;
 }
 .hub-wheel__svg {
@@ -5995,7 +5995,7 @@ img.power-card__orb {
 .hub-wheel__slice-label {
 	fill: #1b1208;
 	font-family: var(--display-font);
-	font-size: 18px;
+	font-size: 15px;
 	font-weight: 700;
 }
 .hub-wheel__hub {
@@ -6005,14 +6005,14 @@ img.power-card__orb {
 }
 .hub-wheel__pointer {
 	position: absolute;
-	top: -7px;
+	top: -6px;
 	left: 50%;
 	transform: translateX(-50%);
 	width: 0;
 	height: 0;
-	border-left: 15px solid transparent;
-	border-right: 15px solid transparent;
-	border-top: 26px solid var(--accent-strong);
+	border-left: 13px solid transparent;
+	border-right: 13px solid transparent;
+	border-top: 22px solid var(--accent-strong);
 	z-index: 2;
 	filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
 }
@@ -6030,38 +6030,6 @@ img.power-card__orb {
 	}
 	100% {
 		transform: translateX(-50%) scale(1);
-		filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
-	}
-}
-/*
- * The wheel itself never reverses direction — only this small flexible
- * pointer "catches" the final divider and springs back, like a real prize
- * wheel's flapper. A short decaying oscillation (scale + slight rotate)
- * reads as a physical spring settling rather than the whole wheel rocking.
- */
-.hub-wheel__pointer.is-landing {
-	animation: hub-wheel-land 520ms cubic-bezier(0.22, 0.8, 0.3, 1);
-}
-@keyframes hub-wheel-land {
-	0% {
-		transform: translateX(-50%) scale(1) rotate(0deg);
-		filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
-	}
-	15% {
-		transform: translateX(-50%) scale(1.5) rotate(-6deg);
-		filter: drop-shadow(0 0 8px rgba(241, 211, 145, 0.95));
-	}
-	35% {
-		transform: translateX(-50%) scale(0.92) rotate(4deg);
-	}
-	55% {
-		transform: translateX(-50%) scale(1.12) rotate(-2deg);
-	}
-	75% {
-		transform: translateX(-50%) scale(0.97) rotate(1deg);
-	}
-	100% {
-		transform: translateX(-50%) scale(1) rotate(0deg);
 		filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
 	}
 }
@@ -6084,7 +6052,7 @@ img.power-card__orb {
 }
 .hub-wheel__result {
 	font-family: var(--display-font);
-	font-size: 1.5rem;
+	font-size: 1.3rem;
 	font-weight: 700;
 	margin: 0;
 }
@@ -6255,8 +6223,7 @@ img.power-card__orb {
 	 * get their own reduced-motion opt-out: a static glow instead of a pulsing
 	 * one, and no pointer scale/brightness animation.
 	 */
-	.hub-wheel__pointer.is-ticking,
-	.hub-wheel__pointer.is-landing {
+	.hub-wheel__pointer.is-ticking {
 		animation: none !important;
 	}
 	.hub-wheel__stage.is-big-win {
@@ -6270,18 +6237,18 @@ img.power-card__orb {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 20px;
+	gap: 14px;
 }
 .hub-flip__stage {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	height: 200px;
+	height: 140px;
 	perspective: 600px;
 }
 .hub-flip__coin {
-	width: 160px;
-	height: 160px;
+	width: 110px;
+	height: 110px;
 	border-radius: 50%;
 	display: flex;
 	align-items: center;
@@ -6292,16 +6259,16 @@ img.power-card__orb {
 		color-mix(in srgb, var(--flip-face) 78%, white),
 		var(--flip-face)
 	);
-	border: 4px solid rgba(12, 17, 24, 0.85);
-	box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+	border: 3px solid rgba(12, 17, 24, 0.85);
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
 	transform-style: preserve-3d;
 }
 .hub-flip__coin-label {
 	font-family: var(--display-font);
-	font-size: 1.3rem;
+	font-size: 0.92rem;
 	font-weight: 700;
 	color: #1b1208;
-	padding: 0 8px;
+	padding: 0 6px;
 	display: inline-block;
 }
 .hub-flip__balance {
@@ -6310,7 +6277,7 @@ img.power-card__orb {
 }
 .hub-flip__result {
 	font-family: var(--display-font);
-	font-size: 1.6rem;
+	font-size: 1.3rem;
 	font-weight: 700;
 	margin: 0;
 }
@@ -6322,15 +6289,14 @@ img.power-card__orb {
 }
 .hub-flip__sides {
 	display: flex;
-	gap: 14px;
+	gap: 10px;
 }
 .hub-flip__side {
-	padding: 14px 22px;
+	padding: 10px 16px;
 	border-radius: 10px;
 	border: 2px solid var(--line);
 	background: rgba(0, 0, 0, 0.3);
 	color: var(--text);
-	font-size: 1.05rem;
 	font-weight: 700;
 	cursor: pointer;
 	transition: border-color 0.15s ease, transform 0.08s ease;
@@ -6363,20 +6329,18 @@ img.power-card__orb {
 	font-weight: 600;
 }
 .hub-flip__stake-input {
-	width: 110px;
-	padding: 10px 12px;
+	width: 96px;
+	padding: 8px 10px;
 	border-radius: 8px;
 	border: 1px solid var(--line);
 	background: rgba(0, 0, 0, 0.3);
 	color: var(--text);
 	font-family: var(--mono-font);
-	font-size: 1rem;
 }
 .hub-flip__flip-button {
-	padding: 13px 24px;
+	padding: 10px 18px;
 	border: 0;
 	border-radius: 10px;
-	font-size: 1rem;
 	font-weight: 700;
 	letter-spacing: 0.04em;
 	cursor: pointer;
@@ -6488,22 +6452,21 @@ img.power-card__orb {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 20px;
+	gap: 14px;
 }
 .hub-monte__row {
 	display: flex;
-	gap: 18px;
-	min-height: 132px;
+	gap: 14px;
+	min-height: 96px;
 	align-items: flex-end;
-	justify-content: center;
 }
 .hub-monte__canvas {
 	display: block;
 }
 .hub-monte__shell {
 	position: relative;
-	width: 102px;
-	height: 118px;
+	width: 72px;
+	height: 84px;
 	border: 0;
 	background: transparent;
 	cursor: pointer;
@@ -6518,7 +6481,7 @@ img.power-card__orb {
 }
 .hub-monte__shell-face {
 	width: 100%;
-	height: 80px;
+	height: 56px;
 	border-radius: 60% 60% 24% 24%;
 	background: radial-gradient(circle at 50% 20%, #c98f5a, #7c5230);
 	border: 2px solid rgba(12, 17, 24, 0.85);
@@ -6538,18 +6501,18 @@ img.power-card__orb {
 }
 .hub-monte__pearl {
 	position: absolute;
-	bottom: 36px;
-	width: 30px;
-	height: 30px;
+	bottom: 26px;
+	width: 22px;
+	height: 22px;
 	border-radius: 50%;
 	background: radial-gradient(circle at 35% 30%, #ffffff, #cbd5e1 70%, #94a3b8);
-	box-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+	box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
 }
 .hub-monte__shell-num {
-	margin-top: 8px;
+	margin-top: 6px;
 	color: var(--muted);
 	font-weight: 700;
-	font-size: 1rem;
+	font-size: 0.85rem;
 }
 .hub-monte__shell.is-pick .hub-monte__shell-num {
 	color: var(--accent);
@@ -6560,7 +6523,7 @@ img.power-card__orb {
 }
 .hub-monte__result {
 	font-family: var(--display-font);
-	font-size: 1.6rem;
+	font-size: 1.3rem;
 	font-weight: 700;
 	margin: 0;
 }
@@ -6577,12 +6540,11 @@ img.power-card__orb {
 	justify-content: center;
 }
 .hub-monte__tier {
-	padding: 11px 18px;
+	padding: 8px 14px;
 	border-radius: 10px;
 	border: 2px solid var(--line);
 	background: rgba(0, 0, 0, 0.3);
 	color: var(--text);
-	font-size: 1rem;
 	font-weight: 700;
 	cursor: pointer;
 	transition: border-color 0.15s ease, transform 0.08s ease;
@@ -6615,20 +6577,18 @@ img.power-card__orb {
 	font-weight: 600;
 }
 .hub-monte__stake-input {
-	width: 110px;
-	padding: 10px 12px;
+	width: 96px;
+	padding: 8px 10px;
 	border-radius: 8px;
 	border: 1px solid var(--line);
 	background: rgba(0, 0, 0, 0.3);
 	color: var(--text);
 	font-family: var(--mono-font);
-	font-size: 1rem;
 }
 .hub-monte__play-button {
-	padding: 13px 24px;
+	padding: 10px 18px;
 	border: 0;
 	border-radius: 10px;
-	font-size: 1rem;
 	font-weight: 700;
 	letter-spacing: 0.04em;
 	cursor: pointer;
@@ -6730,6 +6690,9 @@ img.power-card__orb {
 	margin: 0;
 }
 @media (prefers-reduced-motion: reduce) {
+	.hub-monte__row.is-shuffling {
+		animation: none !important;
+	}
 	.hub-monte__shell-face,
 	.hub-monte__shell.is-winner .hub-monte__shell-face {
 		transition: none !important;
@@ -6741,16 +6704,16 @@ img.power-card__orb {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 20px;
+	gap: 14px;
 }
 .hub-slots__reels {
 	display: flex;
-	gap: 18px;
+	gap: 12px;
 }
 .hub-slots__reel {
-	width: 108px;
-	height: 126px;
-	border-radius: 16px;
+	width: 72px;
+	height: 84px;
+	border-radius: 12px;
 	border: 2px solid var(--line);
 	background: rgba(0, 0, 0, 0.35);
 	display: flex;
@@ -6770,7 +6733,7 @@ img.power-card__orb {
 }
 .hub-slots__result {
 	font-family: var(--display-font);
-	font-size: 1.6rem;
+	font-size: 1.3rem;
 	font-weight: 700;
 	margin: 0;
 	text-align: center;
@@ -6798,20 +6761,18 @@ img.power-card__orb {
 	font-weight: 600;
 }
 .hub-slots__stake-input {
-	width: 110px;
-	padding: 10px 12px;
+	width: 96px;
+	padding: 8px 10px;
 	border-radius: 8px;
 	border: 1px solid var(--line);
 	background: rgba(0, 0, 0, 0.3);
 	color: var(--text);
 	font-family: var(--mono-font);
-	font-size: 1rem;
 }
 .hub-slots__spin-button {
-	padding: 13px 24px;
+	padding: 10px 18px;
 	border: 0;
 	border-radius: 10px;
-	font-size: 1rem;
 	font-weight: 700;
 	letter-spacing: 0.04em;
 	cursor: pointer;
@@ -6861,16 +6822,6 @@ img.power-card__orb {
 }
 .hub-slots__odds-table th {
 	color: var(--muted);
-}
-.hub-slots__odds-symbol {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-}
-.hub-slots__odds-icon {
-	width: 30px;
-	height: 30px;
-	object-fit: contain;
 }
 .hub-slots__fairness-grid {
 	margin: 8px 0 0;
@@ -6956,14 +6907,14 @@ img.power-card__orb {
 	width: 100%;
 }
 .hub-dice__readout {
-	width: 150px;
-	height: 150px;
-	border-radius: 22px;
+	width: 96px;
+	height: 96px;
+	border-radius: 16px;
 	position: relative;
 	overflow: hidden;
 	background: rgba(0, 0, 0, 0.35);
-	border: 3px solid var(--line);
-	box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
+	border: 2px solid var(--line);
+	box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 .hub-dice__readout-strip {
 	position: absolute;
@@ -6973,22 +6924,22 @@ img.power-card__orb {
 	will-change: transform;
 }
 .hub-dice__readout-row {
-	height: 150px;
+	height: 96px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
 .hub-dice__readout-value {
 	font-family: var(--display-font);
-	font-size: 3.2rem;
+	font-size: 2rem;
 	font-weight: 700;
 	color: var(--accent);
 }
 .hub-dice__track {
 	position: relative;
 	width: 100%;
-	height: 20px;
-	border-radius: 10px;
+	height: 10px;
+	border-radius: 6px;
 	background: rgba(0, 0, 0, 0.35);
 	border: 1px solid var(--line);
 	overflow: hidden;
@@ -7001,17 +6952,17 @@ img.power-card__orb {
 }
 .hub-dice__track-marker {
 	position: absolute;
-	top: -5px;
-	bottom: -5px;
-	width: 3px;
+	top: -3px;
+	bottom: -3px;
+	width: 2px;
 	background: var(--text);
 }
 .hub-dice__track-landed {
 	position: absolute;
-	top: -7px;
-	bottom: -7px;
-	width: 5px;
-	border-radius: 3px;
+	top: -5px;
+	bottom: -5px;
+	width: 3px;
+	border-radius: 2px;
 	background: var(--accent);
 	opacity: 0;
 	pointer-events: none;
@@ -7074,42 +7025,6 @@ img.power-card__orb {
 }
 .hub-dice__target input[type="range"] {
 	width: 100%;
-	height: 26px;
-	margin: 4px 0;
-	background: transparent;
-	cursor: pointer;
-	-webkit-appearance: none;
-	appearance: none;
-}
-.hub-dice__target input[type="range"]::-webkit-slider-runnable-track {
-	height: 16px;
-	border-radius: 8px;
-	background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.4));
-	border: 1px solid var(--line);
-}
-.hub-dice__target input[type="range"]::-moz-range-track {
-	height: 16px;
-	border-radius: 8px;
-	background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.4));
-	border: 1px solid var(--line);
-}
-.hub-dice__target input[type="range"]::-webkit-slider-thumb {
-	-webkit-appearance: none;
-	width: 28px;
-	height: 28px;
-	margin-top: -6px;
-	border-radius: 50%;
-	background: radial-gradient(circle at 35% 30%, #7fb8ff, #2f6fd6);
-	border: 2px solid rgba(12, 17, 24, 0.85);
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
-}
-.hub-dice__target input[type="range"]::-moz-range-thumb {
-	width: 28px;
-	height: 28px;
-	border-radius: 50%;
-	background: radial-gradient(circle at 35% 30%, #7fb8ff, #2f6fd6);
-	border: 2px solid rgba(12, 17, 24, 0.85);
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 .hub-dice__odds {
 	display: flex;
@@ -7258,10 +7173,6 @@ img.power-card__orb {
 .hub-drop__board {
 	position: relative;
 	width: 100%;
-	/* Actual height is set inline per row-count tier (see `boardHeightPx` in
-	   ShellDropModal.tsx) so higher-risk tiers with more peg rows visibly
-	   extend the board downward instead of squeezing every tier into the
-	   same fixed height. This is just the pre-JS/loading fallback. */
 	height: 220px;
 	border-radius: 12px;
 	border: 2px solid var(--line);
@@ -7336,8 +7247,6 @@ img.power-card__orb {
 .hub-drop__tiers {
 	display: flex;
 	gap: 10px;
-	flex-wrap: wrap;
-	justify-content: center;
 }
 .hub-drop__tier {
 	padding: 10px 16px;
