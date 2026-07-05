@@ -95,6 +95,7 @@ import {
 	type BambooBashSnapshot,
 	type BambooBashThrowEvent,
 	type GameSnapshot,
+	type GameStateDelta,
 	type OnlineMatchContext,
 	type SnapshotPlayer,
 } from "../../services/network/gameSocket";
@@ -586,6 +587,7 @@ export class BambooBashScene extends ResponsiveScene {
 			const socket = getGameSocket();
 			socket.off("game:state", this.handleOnlineState);
 			socket.off("game:end", this.handleOnlineState);
+			socket.off("game:state-delta", this.applyOnlineDelta);
 			socket.off("game:bamboo-throw", this.handleOnlineThrow);
 			socket.off("game:bamboo-power-pickup", this.handleOnlinePowerPickup);
 		}
@@ -786,7 +788,7 @@ export class BambooBashScene extends ResponsiveScene {
 			for (const b of this.bamboos) {
 				const pos = bambooPos(b, this.arena);
 				if (Math.hypot(pos.x - bx, pos.y - by) < blastR)
-					this.reportOnlineBambooHit(b);
+					this.reportOnlineBambooHit(b, this.ball);
 			}
 			return;
 		}
@@ -805,7 +807,7 @@ export class BambooBashScene extends ResponsiveScene {
 			for (const b of this.bamboos) {
 				const pos = bambooPos(b, this.arena);
 				if (Math.hypot(pos.x - bx, pos.y - by) < repelR)
-					this.reportOnlineBambooHit(b);
+					this.reportOnlineBambooHit(b, this.ball);
 			}
 			return;
 		}
@@ -847,7 +849,7 @@ export class BambooBashScene extends ResponsiveScene {
 			}
 
 			if (this.onlineMatch) {
-				this.reportOnlineBambooHit(b);
+				this.reportOnlineBambooHit(b, ball);
 				continue;
 			}
 
@@ -873,7 +875,7 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 	}
 
-	private reportOnlineBambooHit(bamboo: Bamboo): void {
+	private reportOnlineBambooHit(bamboo: Bamboo, ball: BallState): void {
 		if (
 			!this.onlineMatch ||
 			!("id" in bamboo) ||
@@ -888,6 +890,10 @@ export class BambooBashScene extends ResponsiveScene {
 			payload: {
 				roundNumber: this.onlineRoundNumber,
 				bambooId: bamboo.id,
+				x: (ball.x - this.arena.cx) / this.arena.rx,
+				y: (ball.y - this.arena.cy) / this.arena.ry,
+				vx: ball.vx / this.arena.scale,
+				vy: ball.vy / this.arena.scale,
 			},
 		});
 	}
@@ -924,10 +930,12 @@ export class BambooBashScene extends ResponsiveScene {
 		const socket = getGameSocket();
 		socket.off("game:state", this.handleOnlineState);
 		socket.off("game:end", this.handleOnlineState);
+		socket.off("game:state-delta", this.applyOnlineDelta);
 		socket.off("game:bamboo-throw", this.handleOnlineThrow);
 		socket.off("game:bamboo-power-pickup", this.handleOnlinePowerPickup);
 		socket.on("game:state", this.handleOnlineState);
 		socket.on("game:end", this.handleOnlineState);
+		socket.on("game:state-delta", this.applyOnlineDelta);
 		socket.on("game:bamboo-throw", this.handleOnlineThrow);
 		socket.on("game:bamboo-power-pickup", this.handleOnlinePowerPickup);
 		this.updateOnlineStatus("Connected to Bamboo Bash match.");
@@ -1006,6 +1014,31 @@ export class BambooBashScene extends ResponsiveScene {
 				`Round ${snapshot.roundNumber}/${snapshot.totalRounds}`,
 			);
 	}
+
+	private readonly applyOnlineDelta = (delta: GameStateDelta): void => {
+		if (
+			!this.onlineMatch ||
+			delta.matchId !== this.onlineMatch.matchId ||
+			delta.seq < this.lastOnlineSeq ||
+			!delta.entities
+		)
+			return;
+		this.lastOnlineSeq = delta.seq;
+		for (const entity of delta.entities) {
+			if (entity.type !== "projectile") continue;
+			const side = entity.side ?? entity.ownerSide;
+			if (side === undefined) continue;
+			const isLocal = side === this.onlineMatch.side;
+			const ball = isLocal
+				? this.ball
+				: this.onlineBalls.get(side);
+			if (!ball) continue;
+			ball.x = this.arena.cx + entity.x * this.arena.rx;
+			ball.y = this.arena.cy + entity.y * this.arena.ry;
+			ball.vx = entity.vx * this.arena.scale;
+			ball.vy = entity.vy * this.arena.scale;
+		}
+	};
 
 	private startOnlineRound(snapshot: BambooBashSnapshot): void {
 		this.overlay?.destroy(true);
@@ -1593,7 +1626,7 @@ export class BambooBashScene extends ResponsiveScene {
 		const players = [...snapshot.players].sort((a, b) => a.side - b.side);
 		players.forEach((player, index) => {
 			const isLocal = player.side === this.onlineMatch?.side;
-			const serverBall = snapshot.balls.find((ball) => ball.side === player.side);
+			const serverBall = snapshot.entities.find((ball) => (ball.side ?? ball.ownerSide) === player.side);
 			const existing = isLocal
 				? this.ball
 				: (this.onlineBalls.get(player.side) ?? {
@@ -1611,6 +1644,11 @@ export class BambooBashScene extends ResponsiveScene {
 				existing.vy = 0;
 				existing.r = BALL_SRC_R * this.arena.scale;
 				resetPlayerTrail(this.ballTrails, player.side, existing.x, existing.y);
+			} else if (!isLocal && serverBall && !serverBall.stopped) {
+				existing.x = this.arena.cx + serverBall.x * this.arena.rx;
+				existing.y = this.arena.cy + serverBall.y * this.arena.ry;
+				existing.vx = serverBall.vx * this.arena.scale;
+				existing.vy = serverBall.vy * this.arena.scale;
 			}
 			this.onlineBallStopped.set(player.side, Boolean(serverBall?.stopped));
 			next.set(player.side, existing);
