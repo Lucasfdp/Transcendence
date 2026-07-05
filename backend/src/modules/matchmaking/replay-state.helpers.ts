@@ -218,6 +218,7 @@ function syncArenaProjectileMirror(
 	const mirror: BallSnapshotData = {
 		...projectile,
 		stateFlags: [...projectile.stateFlags],
+		...(projectile.trail?.length ? { trail: projectile.trail.map((point) => ({ ...point })) } : {}),
 	};
 	if (mirrorIndex >= 0) snapshot.balls[mirrorIndex] = mirror;
 	else snapshot.balls.push(mirror);
