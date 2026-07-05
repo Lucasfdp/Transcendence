@@ -17,6 +17,7 @@ import {
 	buildReelStrip,
 	reelsFromOutcome,
 	reelStripTargetOffset,
+	slotDisplayName,
 	slotImageSrc,
 	symbolCenterY,
 } from "./slots";
@@ -430,7 +431,7 @@ export function ShrineSlotsModal({
 										alt=""
 										aria-hidden="true"
 									/>
-									{symbol.label}
+									{slotDisplayName(symbol.id, symbol.label)}
 								</td>
 								<td>{symbol.payout}×</td>
 								<td>{(symbol.probability * 100).toFixed(1)}%</td>

@@ -372,6 +372,18 @@ export function ThreeShellMonteModal({
 	const canPlay = stakeValid && coins >= stake && !revealing;
 	const rtpPercent = Math.round(config.rtp * 100);
 	const winningShellIndex = result ? shellFromOutcome(result.outcomeId) : -1;
+	/**
+	 * The *displayed* position of the winning pearl — i.e. where it actually
+	 * gets drawn after the shuffle, not the identity's original pre-shuffle
+	 * slot. `winningShellIndex` is an identity; the shuffle can (and usually
+	 * does) move that identity to a different position, so the reveal text
+	 * must read off `finalPositions`, the same source of truth the row below
+	 * uses to decide which button gets the pearl.
+	 */
+	const winningPosition =
+		finalPositions !== null
+			? finalPositions.indexOf(winningShellIndex)
+			: winningShellIndex;
 	const showBoard = pendingReveal !== null && !reducedMotion;
 	const shellIndexes = Array.from({ length: shells }, (_, index) => index);
 
@@ -434,7 +446,7 @@ export function ThreeShellMonteModal({
 					].join(" ")}
 					role="status"
 				>
-					Pearl under shell {winningShellIndex + 1} ·{" "}
+					Pearl under shell {winningPosition + 1} ·{" "}
 					{result.net > 0 ? `+${result.net} ⬡` : `${result.net} ⬡`}
 				</p>
 			) : (

@@ -57,6 +57,31 @@ export function slotImageSrc(id: string): string {
 	return SYMBOL_IMAGE_SRC[id] ?? SYMBOL_IMAGE_SRC.shell;
 }
 
+/**
+ * Display name shown in the paytable — matches what `SYMBOL_IMAGE_SRC` actually
+ * draws rather than the old flavour id (e.g. "koi" now shows the samurai
+ * turtle, so the paytable says "Samurai Turtle", not "Koi"). The power-up
+ * names intentionally match `PowerDef.label` in
+ * `shared/mechanics/power-system.ts` for the same power, so the two stay
+ * consistent if either is ever renamed.
+ */
+const SYMBOL_DISPLAY_NAME: Readonly<Record<string, string>> = {
+	dragon: "Godly Turtle",
+	lantern: "Reaper Turtle",
+	koi: "Samurai Turtle",
+	bamboo: "Rocket Shell",
+	bell: "Mirror",
+	shell: "Tiny Shell",
+};
+
+/** Display name for a symbol id (falls back to the server's own label). */
+export function slotDisplayName(
+	id: string,
+	fallbackLabel: string,
+): string {
+	return SYMBOL_DISPLAY_NAME[id] ?? fallbackLabel;
+}
+
 /** The reel symbol ids from a pipe-joined outcome id like "bell|bell|bell". */
 export function reelsFromOutcome(outcomeId: string): string[] {
 	return outcomeId.split("|");
