@@ -6,11 +6,14 @@ CERT_PATH="${SSL_DIR}/cert.pem"
 KEY_PATH="${SSL_DIR}/key.pem"
 DOMAIN_NAME="${DOMAIN_NAME:-localhost}"
 HTTPS_PORT="${HTTPS_PORT:-42424}"
+PUBLIC_HTTP_ORIGIN="https://${DOMAIN_NAME}:${HTTPS_PORT}"
+PUBLIC_WS_ORIGIN="wss://${DOMAIN_NAME}:${HTTPS_PORT}"
+export DOMAIN_NAME HTTPS_PORT PUBLIC_HTTP_ORIGIN PUBLIC_WS_ORIGIN
 TEMPLATE_PATH="/etc/nginx/templates/default.conf.template"
 TARGET_PATH="/etc/nginx/conf.d/default.conf"
 
 mkdir -p "${SSL_DIR}"
-envsubst '${DOMAIN_NAME} ${HTTPS_PORT}' < "${TEMPLATE_PATH}" > "${TARGET_PATH}"
+envsubst '${DOMAIN_NAME} ${HTTPS_PORT} ${PUBLIC_HTTP_ORIGIN} ${PUBLIC_WS_ORIGIN}' < "${TEMPLATE_PATH}" > "${TARGET_PATH}"
 
 cat > /etc/nginx/modsec/main.conf <<'EOF'
 Include /etc/nginx/modsec/modsecurity.conf
@@ -19,9 +22,16 @@ Include /etc/nginx/modsec/crs/rules/*.conf
 Include /etc/nginx/modsec/local-exclusions.conf
 EOF
 
-if [ -s "${CERT_PATH}" ] && [ -s "${KEY_PATH}" ]; then
+if [ -s "${CERT_PATH}" ] && [ -s "${KEY_PATH}" ] && openssl x509 -in "${CERT_PATH}" -noout -ext subjectAltName 2>/dev/null | grep -Eq "(DNS|IP Address):${DOMAIN_NAME}([,[:space:]]|$)"; then
   echo "[reverse_proxy] Using pre-generated TLS certificate from ${SSL_DIR}."
   exec "$@"
+fi
+
+DOMAIN_ALT_TYPE="DNS"
+LOCALHOST_IP_ALT_INDEX="1"
+if printf '%s' "${DOMAIN_NAME}" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
+  DOMAIN_ALT_TYPE="IP"
+  LOCALHOST_IP_ALT_INDEX="2"
 fi
 
 cat > /tmp/openssl-local.cnf <<EOF
@@ -46,10 +56,9 @@ keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
 
 [alt_names]
-DNS.1 = ${DOMAIN_NAME}
-DNS.2 = localhost
-IP.1 = 127.0.0.1
-IP.2 = 0.0.0.0
+${DOMAIN_ALT_TYPE}.1 = ${DOMAIN_NAME}
+DNS.1 = localhost
+IP.${LOCALHOST_IP_ALT_INDEX} = 127.0.0.1
 EOF
 
 echo "[reverse_proxy] No external TLS certificate found. Generating self-signed fallback."

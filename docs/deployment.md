@@ -56,6 +56,18 @@ make ps
 
 The application is accessible at `https://localhost:42424` (or your configured `DOMAIN_NAME` and `HTTPS_PORT`) once `reverse_proxy` is healthy.
 
+For LAN testing from another device on the same network, set `DOMAIN_NAME` in
+`.env` to the host machine's LAN IP and add that origin to `ALLOWED_ORIGINS`.
+Example:
+
+```bash
+DOMAIN_NAME=10.19.234.21
+ALLOWED_ORIGINS=https://localhost:42424,https://localhost:3000,https://10.19.234.21:42424
+```
+
+Then recreate the reverse proxy/backend with `make up` or `make restart` so the
+TLS certificate, CSP header and CORS/WebSocket origins are regenerated.
+
 ---
 
 ## Deployment Workflow
