@@ -40,3 +40,19 @@ export function removeNotificationsFrom<T extends HasNotificationShape>(
 		(n) => !(n.fromUserId === fromUserId && n.type === type),
 	);
 }
+
+/**
+ * Prepend a freshly-pushed `notification:new` item, unless a notification
+ * with the same id is already present. Without this, a duplicated push (e.g.
+ * a reconnect race re-delivering the same row) would render the item twice
+ * and produce duplicate React keys (Bug Audit L4). Never mutates the input.
+ */
+export function prependNotificationDeduped<T extends HasNotificationShape>(
+	notifications: ReadonlyArray<T>,
+	item: T,
+): T[] {
+	if (notifications.some((n) => n.id === item.id)) {
+		return [...notifications];
+	}
+	return [item, ...notifications];
+}

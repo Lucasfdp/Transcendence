@@ -4,9 +4,10 @@ import {
 	HttpException,
 	Injectable,
 	InternalServerErrorException,
+	Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, Repository } from "typeorm";
+import { DataSource, EntityManager, Repository } from "typeorm";
 import { User } from "../users/entities/user.entity";
 import {
 	BASIC_PACK_TIER,
@@ -46,6 +47,8 @@ const DEFAULT_PACK_TIER_ID: PackTierId = "basic";
  */
 @Injectable()
 export class CardsService {
+	private readonly logger = new Logger(CardsService.name);
+
 	constructor(
 		@InjectRepository(UserCard)
 		private readonly userCardsRepo: Repository<UserCard>,
@@ -108,16 +111,11 @@ export class CardsService {
 
 		try {
 			return await this.dataSource.transaction(async (manager) => {
-				const usersRepo = manager.getRepository(User);
-				const cardsRepo = manager.getRepository(UserCard);
-
-				const current = await usersRepo.findOne({
-					where: { id: user.id },
-					relations: ["profile"],
-				});
-				if (!current) throw new ForbiddenException("User not found");
+				const current = await this.lockUser(manager, user.id);
 				if (current.coins < tier.priceCoins)
 					throw new BadRequestException("Not enough coins");
+
+				const cardsRepo = manager.getRepository(UserCard);
 
 				current.coins -= tier.priceCoins;
 
@@ -137,13 +135,40 @@ export class CardsService {
 					pulls.push(pull);
 				}
 
-				await usersRepo.save(current);
+				await manager.getRepository(User).save(current);
 				return { pulls, coins: current.coins };
 			});
 		} catch (err: unknown) {
 			if (err instanceof HttpException) throw err;
+			this.logger.error(
+				`openPack failed for user ${user.id} (tier ${tierId})`,
+				err instanceof Error ? err.stack : err,
+			);
 			throw new InternalServerErrorException("Failed to open card pack");
 		}
+	}
+
+	/**
+	 * Load the player's row under a pessimistic write-lock for safe balance
+	 * edits (Bug Audit H1). Without this, two concurrent `openPack` calls can
+	 * both read the same `coins` balance, both pass the affordability check,
+	 * and the last `save` wins — double-granting packs while charging once.
+	 * Mirrors `casino.engine.ts`'s `lockUser`: `loadEagerRelations: false` is
+	 * REQUIRED because `User` eager-loads `Profile`, which makes `findOne`
+	 * emit a LEFT JOIN, and Postgres rejects `FOR UPDATE` on the nullable side
+	 * of an outer join.
+	 */
+	private async lockUser(
+		manager: EntityManager,
+		userId: number,
+	): Promise<User> {
+		const current = await manager.getRepository(User).findOne({
+			where: { id: userId },
+			lock: { mode: "pessimistic_write" },
+			loadEagerRelations: false,
+		});
+		if (!current) throw new ForbiddenException("User not found");
+		return current;
 	}
 
 	/**
@@ -166,6 +191,10 @@ export class CardsService {
 			return pull;
 		} catch (err: unknown) {
 			if (err instanceof HttpException) throw err;
+			this.logger.error(
+				`grantMatchDrop failed for user ${user.id}`,
+				err instanceof Error ? err.stack : err,
+			);
 			throw new InternalServerErrorException("Failed to grant match card");
 		}
 	}
@@ -184,9 +213,11 @@ export class CardsService {
 		if (!card)
 			throw new InternalServerErrorException("Rolled an unknown card");
 
+		// Only the FK is needed here, not a hydrated `user` relation — querying
+		// by `{ user: { id } }` filters on the FK column without the extra join
+		// (Bug Audit L4).
 		const existing = await repo.findOne({
 			where: { user: { id: userId }, cardId: rolled.cardId },
-			relations: ["user"],
 		});
 
 		if (existing) {
@@ -224,24 +255,37 @@ export class CardsService {
 			if ((err as { code?: string })?.code !== "23505") throw err;
 			const raceWinner = await repo.findOne({
 				where: { user: { id: userId }, cardId: rolled.cardId },
-				relations: ["user"],
 			});
 			if (!raceWinner) throw err;
 			return this.incrementExisting(raceWinner, rolled, card, repo);
 		}
 	}
 
-	/** Increment an already-owned card row and compute the duplicate refund. */
+	/**
+	 * Increment an already-owned card row and compute the duplicate refund.
+	 *
+	 * Bug Audit M2: this used to be a read-modify-write (`existing.count += 1`
+	 * then `repo.save(existing)`), which loses updates under concurrency — two
+	 * near-simultaneous grants of the same card (e.g. a match-drop racing a
+	 * pack open, since `grantMatchDrop` runs outside `openPack`'s transaction)
+	 * can both read the same in-memory count and both write back N+1. Atomic
+	 * SQL increments avoid the lost-update window entirely; each is its own
+	 * `UPDATE ... SET col = col + 1` statement, so no read-then-write race is
+	 * possible even without a shared lock.
+	 */
 	private async incrementExisting(
 		existing: UserCard,
 		rolled: RolledCard,
 		card: CardDefinition,
 		repo: Repository<UserCard>,
 	): Promise<{ pull: PackPull; refund: number }> {
-		existing.count += 1;
-		if (rolled.foil) existing.foilCount += 1;
-		if (rolled.prismatic) existing.prismaticCount += 1;
-		await repo.save(existing);
+		await repo.increment({ id: existing.id }, "count", 1);
+		if (rolled.foil) {
+			await repo.increment({ id: existing.id }, "foilCount", 1);
+		}
+		if (rolled.prismatic) {
+			await repo.increment({ id: existing.id }, "prismaticCount", 1);
+		}
 
 		return {
 			pull: {
@@ -260,12 +304,17 @@ export class CardsService {
 		repo: Repository<UserCard> = this.userCardsRepo,
 	): Promise<Map<string, UserCard>> {
 		try {
+			// Only the FK is needed to key the map by cardId — no need to
+			// hydrate the `user` relation on every binder read (Bug Audit L4).
 			const rows = await repo.find({
 				where: { user: { id: userId } },
-				relations: ["user"],
 			});
 			return new Map(rows.map((row) => [row.cardId, row]));
-		} catch {
+		} catch (err: unknown) {
+			this.logger.error(
+				`findOwnedRows failed for user ${userId}`,
+				err instanceof Error ? err.stack : err,
+			);
 			throw new InternalServerErrorException("Failed to load card binder");
 		}
 	}

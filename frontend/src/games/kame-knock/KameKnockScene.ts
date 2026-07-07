@@ -31,6 +31,7 @@ import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
+import { showCardDropPopup } from "../../shared/card-drop-popup";
 import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import {
 	PanelRect,
@@ -1209,6 +1210,7 @@ export class KameKnockScene extends ResponsiveScene {
 			.then((result) => {
 				console.info("[KameKnock] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
+				showCardDropPopup(this, result.cardDrop);
 			})
 			.catch((err: unknown) => {
 				console.warn("[KameKnock] failed to submit result:", err);

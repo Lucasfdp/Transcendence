@@ -312,31 +312,67 @@ describe("NotificationsService", () => {
 	});
 
 	// ── markRead ─────────────────────────────────────────────────────────────
+	//
+	// markRead is a single atomic UPDATE (Bug Audit L5) rather than a
+	// findOne+save round trip — mock createQueryBuilder().execute() returning
+	// { affected } instead of repo.findOne/save.
 
 	describe("markRead", () => {
-		it("should set readAt and save when notification belongs to user", async () => {
-			const notif = makeNotification({ readAt: null });
-			repo.findOne.mockResolvedValue(notif);
+		const mockExecute = (affected: number) =>
+			repo.createQueryBuilder.mockReturnValue({
+				update: jest.fn().mockReturnThis(),
+				set: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				execute: jest.fn().mockResolvedValue({ affected }),
+			});
 
-			await service.markRead(20, 1);
+		it("should update readAt when the notification belongs to the user and is unread", async () => {
+			mockExecute(1);
 
-			expect(repo.save).toHaveBeenCalledWith(
-				expect.objectContaining({ readAt: expect.any(Date) }),
-			);
+			await expect(service.markRead(20, 1)).resolves.toBeUndefined();
 		});
 
-		it("should throw NotFoundException when notification is not found or belongs to another user", async () => {
-			repo.findOne.mockResolvedValue(null);
+		it("should throw NotFoundException when nothing matched (wrong user, missing row, or already read)", async () => {
+			mockExecute(0);
 
 			await expect(service.markRead(99, 1)).rejects.toThrow(NotFoundException);
 		});
 
-		it("should throw InternalServerErrorException when repo throws unexpectedly", async () => {
-			repo.findOne.mockRejectedValue(new Error("DB down"));
+		it("should throw InternalServerErrorException when the update query throws", async () => {
+			repo.createQueryBuilder.mockReturnValue({
+				update: jest.fn().mockReturnThis(),
+				set: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				execute: jest.fn().mockRejectedValue(new Error("DB down")),
+			});
 
 			await expect(service.markRead(20, 1)).rejects.toThrow(
 				InternalServerErrorException,
 			);
+		});
+
+		it("should push a fresh inbox to every open socket of the user on success (Bug Audit M1)", async () => {
+			mockExecute(1);
+			const mockEmit = jest.fn();
+			const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
+			service.setServer({ to: mockTo } as never);
+			presence.getSocketIds.mockReturnValue(["socket-abc"]);
+			repo.find.mockResolvedValue([]);
+
+			await service.markRead(20, 1);
+
+			expect(presence.getSocketIds).toHaveBeenCalledWith(20);
+			expect(mockEmit).toHaveBeenCalledWith("notification:inbox", []);
+		});
+
+		it("should not push an inbox when the update finds nothing (NotFoundException case)", async () => {
+			mockExecute(0);
+			const mockEmit = jest.fn();
+			service.setServer({ to: jest.fn().mockReturnValue({ emit: mockEmit }) } as never);
+
+			await expect(service.markRead(99, 1)).rejects.toThrow(NotFoundException);
+
+			expect(presence.getSocketIds).not.toHaveBeenCalled();
 		});
 	});
 
@@ -351,6 +387,7 @@ describe("NotificationsService", () => {
 				where: jest.fn().mockReturnThis(),
 				execute: executeMock,
 			});
+			repo.find.mockResolvedValue([]);
 
 			await service.markAllRead(20);
 
@@ -368,6 +405,100 @@ describe("NotificationsService", () => {
 			await expect(service.markAllRead(20)).rejects.toThrow(
 				InternalServerErrorException,
 			);
+		});
+
+		it("should push a fresh inbox to every open socket of the user on success (Bug Audit M1)", async () => {
+			repo.createQueryBuilder.mockReturnValue({
+				update: jest.fn().mockReturnThis(),
+				set: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				execute: jest.fn().mockResolvedValue(undefined),
+			});
+			const mockEmit = jest.fn();
+			const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
+			service.setServer({ to: mockTo } as never);
+			presence.getSocketIds.mockReturnValue(["socket-1", "socket-2"]);
+			repo.find.mockResolvedValue([]);
+
+			await service.markAllRead(20);
+
+			expect(presence.getSocketIds).toHaveBeenCalledWith(20);
+			expect(mockTo).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	// ── listUnread cap (Bug Audit L3) ────────────────────────────────────────
+
+	describe("listUnread cap", () => {
+		it("should request at most 50 unread rows", async () => {
+			repo.find.mockResolvedValue([]);
+
+			await service.listUnread(20);
+
+			expect(repo.find).toHaveBeenCalledWith(
+				expect.objectContaining({ take: 50 }),
+			);
+		});
+	});
+
+	// ── toView payload fallback (Bug Audit L1) ──────────────────────────────
+
+	describe("fromUsername fallback", () => {
+		it("should fall back to payload.username when the fromUser relation isn't loaded", async () => {
+			repo.find.mockResolvedValue([
+				makeNotification({
+					fromUser: undefined,
+					payload: { username: "snapshotted-name" },
+				}),
+			]);
+
+			const result = await service.listUnread(20);
+
+			expect(result[0].fromUsername).toBe("snapshotted-name");
+		});
+
+		it("should fall back to an empty string when neither the relation nor payload.username exist", async () => {
+			repo.find.mockResolvedValue([
+				makeNotification({ fromUser: undefined, payload: {} }),
+			]);
+
+			const result = await service.listUnread(20);
+
+			expect(result[0].fromUsername).toBe("");
+		});
+	});
+
+	// ── pushLiveEvent (Bug Audit catalog gap — friend_removed) ──────────────
+
+	describe("pushLiveEvent", () => {
+		it("should emit the given event to every open socket of the recipient", () => {
+			const mockEmit = jest.fn();
+			const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
+			service.setServer({ to: mockTo } as never);
+			presence.getSocketIds.mockReturnValue(["socket-1", "socket-2"]);
+
+			service.pushLiveEvent("friend:removed", 20, { userId: 10 });
+
+			expect(mockTo).toHaveBeenCalledTimes(2);
+			expect(mockEmit).toHaveBeenCalledWith("friend:removed", { userId: 10 });
+		});
+
+		it("should be a no-op when no server is wired up", () => {
+			expect(() =>
+				service.pushLiveEvent("friend:removed", 20, { userId: 10 }),
+			).not.toThrow();
+			expect(presence.getSocketIds).not.toHaveBeenCalled();
+		});
+
+		it("should be a no-op when the recipient has no open sockets", () => {
+			const mockEmit = jest.fn();
+			const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
+			service.setServer({ to: mockTo } as never);
+			presence.getSocketIds.mockReturnValue([]);
+
+			service.pushLiveEvent("friend:removed", 20, { userId: 10 });
+
+			expect(mockTo).not.toHaveBeenCalled();
 		});
 	});
 });

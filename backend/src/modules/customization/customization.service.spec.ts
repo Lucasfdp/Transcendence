@@ -59,6 +59,9 @@ describe("CustomizationService", () => {
 		findOne: jest.Mock;
 		save: jest.Mock;
 	};
+	let profilesRepo: {
+		findOne: jest.Mock;
+	};
 	let dataSource: { transaction: jest.Mock };
 
 	beforeEach(async () => {
@@ -77,6 +80,9 @@ describe("CustomizationService", () => {
 			findOne: jest.fn(),
 			save: jest.fn(async (user: User) => user),
 		};
+		profilesRepo = {
+			findOne: jest.fn().mockResolvedValue(new Profile()),
+		};
 		dataSource = {
 			transaction: jest.fn(
 				async (
@@ -90,6 +96,7 @@ describe("CustomizationService", () => {
 							if (entity === UserCosmetic) return cosmeticsRepo;
 							if (entity === UserAchievement)
 								return achievementsRepo;
+							if (entity === Profile) return profilesRepo;
 							throw new Error("Unknown repository");
 						},
 					}),
@@ -283,6 +290,27 @@ describe("CustomizationService", () => {
 
 		await expect(service.buy(user, "dragon")).rejects.toThrow(
 			BadRequestException,
+		);
+	});
+
+	// Bug Audit 1.2: `buy()` used to read the user row with a plain `findOne`
+	// (no lock) inside its transaction, then read-modify-write `coins` — racing
+	// every other wallet writer on the same column (casino spins, card packs,
+	// game results) under READ COMMITTED. It must now lock the row exactly
+	// like `CasinoEngine.resolveSpin` does, via the shared `lockUserForUpdate`
+	// helper.
+	it("locks the user row with pessimistic_write before reading its balance", async () => {
+		const user = makeUser({ coins: 200 });
+		usersRepo.findOne = jest.fn().mockResolvedValue(user);
+
+		await service.buy(user, "sunrise_bg");
+
+		expect(usersRepo.findOne).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { id: user.id },
+				lock: { mode: "pessimistic_write" },
+				loadEagerRelations: false,
+			}),
 		);
 	});
 });

@@ -62,11 +62,18 @@ const makeUser = (overrides: Partial<User> = {}): User =>
 		...overrides,
 	});
 
+const mockNotifications = () => ({
+	create: jest.fn().mockResolvedValue(undefined),
+	removeWhere: jest.fn().mockResolvedValue(undefined),
+	pushLiveEvent: jest.fn(),
+});
+
 describe("FriendsService", () => {
 	let service: FriendsService;
 	let friendshipRepo: ReturnType<typeof mockFriendshipRepo>;
 	let userRepo: ReturnType<typeof mockUserRepo>;
 	let presence: ReturnType<typeof mockPresence>;
+	let notifications: ReturnType<typeof mockNotifications>;
 
 	beforeEach(async () => {
 		const module: TestingModule = await Test.createTestingModule({
@@ -78,13 +85,7 @@ describe("FriendsService", () => {
 				},
 				{ provide: getRepositoryToken(User), useFactory: mockUserRepo },
 				{ provide: PresenceService, useFactory: mockPresence },
-				{
-					provide: NotificationsService,
-					useValue: {
-						create: jest.fn().mockResolvedValue(undefined),
-						removeWhere: jest.fn().mockResolvedValue(undefined),
-					},
-				},
+				{ provide: NotificationsService, useFactory: mockNotifications },
 			],
 		}).compile();
 
@@ -92,6 +93,7 @@ describe("FriendsService", () => {
 		friendshipRepo = module.get(getRepositoryToken(Friendship));
 		userRepo = module.get(getRepositoryToken(User));
 		presence = module.get(PresenceService);
+		notifications = module.get(NotificationsService);
 	});
 
 	// ── sendRequest ──────────────────────────────────────────────────────────────
@@ -109,6 +111,18 @@ describe("FriendsService", () => {
 			await expect(service.sendRequest(1, "self")).rejects.toThrow(
 				BadRequestException,
 			);
+		});
+
+		it("should treat a guest addressee as not-found rather than leaking the guest session (Bug Audit M4)", async () => {
+			userRepo.findOne.mockResolvedValue(
+				makeUser({ id: 2, username: "temp-guest", isGuest: true }),
+			);
+
+			await expect(service.sendRequest(1, "temp-guest")).rejects.toThrow(
+				NotFoundException,
+			);
+			expect(friendshipRepo.findOne).not.toHaveBeenCalled();
+			expect(friendshipRepo.save).not.toHaveBeenCalled();
 		});
 
 		it("should throw ConflictException when an outgoing request already exists", async () => {
@@ -349,6 +363,7 @@ describe("FriendsService", () => {
 			await expect(service.acceptRequest(2, 1)).rejects.toThrow(
 				NotFoundException,
 			);
+			expect(notifications.removeWhere).not.toHaveBeenCalled();
 		});
 
 		it("should update status to accepted on the happy path", async () => {
@@ -363,6 +378,35 @@ describe("FriendsService", () => {
 			expect(friendshipRepo.save).toHaveBeenCalledWith(
 				expect.objectContaining({ status: "accepted" }),
 			);
+		});
+
+		it("should clear the resolved friend_request notification in both directions (Bug Audit H3)", async () => {
+			const row = { requesterId: 1, addresseeId: 2, status: "pending" };
+			friendshipRepo.findOne.mockResolvedValue(row);
+			friendshipRepo.save.mockResolvedValue({ ...row, status: "accepted" });
+
+			// acceptRequest(addresseeId, requesterId)
+			await service.acceptRequest(2, 1);
+
+			expect(notifications.removeWhere).toHaveBeenCalledWith(
+				"friend_request",
+				1,
+				2,
+			);
+			expect(notifications.removeWhere).toHaveBeenCalledWith(
+				"friend_request",
+				2,
+				1,
+			);
+		});
+
+		it("should still succeed even if the notification cleanup rejects (non-fatal)", async () => {
+			const row = { requesterId: 1, addresseeId: 2, status: "pending" };
+			friendshipRepo.findOne.mockResolvedValue(row);
+			friendshipRepo.save.mockResolvedValue({ ...row, status: "accepted" });
+			notifications.removeWhere.mockRejectedValueOnce(new Error("db down"));
+
+			await expect(service.acceptRequest(2, 1)).resolves.toBeUndefined();
 		});
 	});
 
@@ -399,6 +443,26 @@ describe("FriendsService", () => {
 			await expect(service.removeFriend(1, 2)).rejects.toThrow(
 				"Failed to remove friend",
 			);
+		});
+
+		it("should push a live friend:removed event to the removed side when a row was actually deleted (catalog delete-verb entry)", async () => {
+			friendshipRepo.delete.mockResolvedValue({ affected: 1 });
+
+			await service.removeFriend(1, 2);
+
+			expect(notifications.pushLiveEvent).toHaveBeenCalledWith(
+				"friend:removed",
+				2,
+				{ userId: 1 },
+			);
+		});
+
+		it("should not push a live event when nothing was actually removed", async () => {
+			friendshipRepo.delete.mockResolvedValue({ affected: 0 });
+
+			await service.removeFriend(1, 2);
+
+			expect(notifications.pushLiveEvent).not.toHaveBeenCalled();
 		});
 	});
 

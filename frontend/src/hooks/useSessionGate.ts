@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, AuthError } from "../features/hub/api";
+import { disconnectGameSocket } from "../services/network/gameSocket";
 
 export type SessionStatus = "checking" | "authenticated" | "unauthenticated";
 
@@ -18,6 +19,13 @@ export function useSessionGate(): { status: SessionStatus } {
 			})
 			.catch((err: unknown) => {
 				if (cancelled) return;
+
+				// Bug Audit H2: any path that lands here means ProtectedRoute is
+				// about to redirect to /auth. Drop the shared game socket too —
+				// otherwise a session invalidated server-side (revoked token,
+				// expired cookie) leaves a stale authenticated socket connected,
+				// which the next SPA login on this tab would silently inherit.
+				disconnectGameSocket();
 
 				if (err instanceof AuthError) {
 					setStatus("unauthenticated");

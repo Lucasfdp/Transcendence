@@ -25,6 +25,7 @@ function makeUser(overrides: Partial<User> = {}): User {
 	user.id = overrides.id ?? 1;
 	user.username = overrides.username ?? "TestTurtle";
 	user.coins = overrides.coins ?? 0;
+	user.wagerCount = overrides.wagerCount ?? 0;
 	return user;
 }
 
@@ -47,7 +48,6 @@ describe("CasinoService", () => {
 	let service: CasinoService;
 	let wagersRepo: {
 		findOne: jest.Mock;
-		count: jest.Mock;
 		create: jest.Mock;
 		save: jest.Mock;
 	};
@@ -58,7 +58,6 @@ describe("CasinoService", () => {
 	beforeEach(async () => {
 		wagersRepo = {
 			findOne: jest.fn().mockResolvedValue(null),
-			count: jest.fn().mockResolvedValue(0),
 			create: jest.fn((data: Partial<Wager>) => data as Wager),
 			save: jest.fn(async (row: Wager) => row),
 		};
@@ -137,6 +136,23 @@ describe("CasinoService", () => {
 			const view = await service.getWheelView(makeUser());
 
 			expect(view.freeSpinAvailable).toBe(false);
+		});
+
+		// Bug Audit 3.2: the daily free-spin lookup used to match `mode: "free"`
+		// with no `game` filter — harmless only because the wheel is currently
+		// the only game that writes that mode. Lock in the scoped query so a
+		// future game adding its own free mode can't collide with the wheel's
+		// daily spin (or vice versa).
+		it("should scope the free-spin lookup to the wheel game", async () => {
+			wagersRepo.findOne.mockResolvedValue(null);
+
+			await service.getWheelView(makeUser());
+
+			expect(wagersRepo.findOne).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: expect.objectContaining({ game: "wheel", mode: "free" }),
+				}),
+			);
 		});
 	});
 
@@ -303,9 +319,10 @@ describe("CasinoService", () => {
 			expect(selectSegment(roll).id).toBe(segment.id);
 		});
 
-		it("should use the user's prior wager count as the provably-fair nonce", async () => {
-			usersRepo.findOne.mockResolvedValue(makeUser({ coins: 500 }));
-			wagersRepo.count.mockResolvedValue(5);
+		it("should use the user's lifetime wager count as the provably-fair nonce", async () => {
+			usersRepo.findOne.mockResolvedValue(
+				makeUser({ coins: 500, wagerCount: 5 }),
+			);
 
 			const { fairness } = await service.wageredSpin(
 				makeUser({ coins: 500 }),

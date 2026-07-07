@@ -1,13 +1,14 @@
 import {
 	BadRequestException,
-	ForbiddenException,
 	HttpException,
 	Injectable,
 	InternalServerErrorException,
+	Logger,
 } from "@nestjs/common";
 import { DataSource, type EntityManager } from "typeorm";
 import { Profile } from "../profiles/entities/profile.entity";
 import { User } from "../users/entities/user.entity";
+import { lockUserForUpdate } from "../users/user-lock.util";
 import type {
 	CasinoGame,
 	SpinMode,
@@ -65,6 +66,8 @@ export interface ResolveInput {
  */
 @Injectable()
 export class CasinoEngine {
+	private readonly logger = new Logger(CasinoEngine.name);
+
 	constructor(private readonly dataSource: DataSource) {}
 
 	/**
@@ -79,7 +82,7 @@ export class CasinoEngine {
 	): Promise<SpinResolution> {
 		try {
 			return await this.dataSource.transaction(async (manager) => {
-				const current = await this.lockUser(manager, user.id);
+				const current = await lockUserForUpdate(manager, user.id);
 				if (resolveInput.precheck) {
 					await resolveInput.precheck(manager, current);
 				}
@@ -90,26 +93,16 @@ export class CasinoEngine {
 			});
 		} catch (err: unknown) {
 			if (err instanceof HttpException) throw err;
+			// Bug Audit 3.1: this used to swallow the real cause (a DB failure,
+			// the `RangeError` from `rollAt`, a bug in a game's `decide`) behind a
+			// bare 500 with no trace anywhere — production spin failures were
+			// undiagnosable. Log the real error before normalising the response.
+			this.logger.error(
+				`resolveSpin failed for user ${user.id} (game ${resolveInput.game})`,
+				err instanceof Error ? err.stack : String(err),
+			);
 			throw new InternalServerErrorException("Failed to resolve the spin");
 		}
-	}
-
-	/** Load the player's row under a pessimistic write-lock for safe balance edits. */
-	private async lockUser(
-		manager: EntityManager,
-		userId: number,
-	): Promise<User> {
-		// loadEagerRelations:false is REQUIRED: User eager-loads Profile, which
-		// makes findOne emit a LEFT JOIN. Postgres rejects `FOR UPDATE` on the
-		// nullable side of an outer join ("FOR UPDATE cannot be applied to the
-		// nullable side of an outer join"), so the lock must target users alone.
-		const current = await manager.getRepository(User).findOne({
-			where: { id: userId },
-			lock: { mode: "pessimistic_write" },
-			loadEagerRelations: false,
-		});
-		if (!current) throw new ForbiddenException("User not found");
-		return current;
 	}
 
 	/**
@@ -128,9 +121,13 @@ export class CasinoEngine {
 		const clientSeed = resolveInput.options.clientSeed ?? "";
 		const serverSeed = resolveInput.options.serverSeed ?? generateServerSeed();
 		const serverSeedHash = hashSeed(serverSeed);
-		const nonce = await wagersRepo.count({
-			where: { user: { id: current.id } },
-		});
+		// Bug Audit 3.3: this used to be `wagersRepo.count({ where: { user } })`
+		// — correct (serialized under the row lock, so still strictly
+		// increasing), but an unbounded scan over the user's entire wager
+		// history on every single spin. `User.wagerCount` is an O(1) counter
+		// column serialized under the same lock instead; see its own doc for
+		// why a lifetime counter is just as valid a nonce source as a recount.
+		const nonce = current.wagerCount ?? 0;
 
 		const count = resolveInput.rolls ?? DEFAULT_ROLL_COUNT;
 		// Single-roll games keep the legacy "<clientSeed>:<nonce>" scheme so their
@@ -152,6 +149,7 @@ export class CasinoEngine {
 		const net = payout - resolveInput.paid;
 
 		current.coins = current.coins - resolveInput.paid + payout;
+		current.wagerCount = nonce + 1;
 		await usersRepo.save(current);
 
 		// Count positive net winnings towards the player's lifetime earnings.

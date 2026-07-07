@@ -33,6 +33,7 @@ import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
+import { showCardDropPopup } from "../../shared/card-drop-popup";
 import { THEME } from "../../shared/theme";
 import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import { api, type ReplayImportRequest } from "../../features/hub/api";
@@ -1220,6 +1221,7 @@ export class BambooBashScene extends ResponsiveScene {
 			.then((result) => {
 				console.info("[BambooBash] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
+				showCardDropPopup(this, result.cardDrop);
 			})
 			.catch((err: unknown) => {
 				console.warn("[BambooBash] failed to submit result:", err);

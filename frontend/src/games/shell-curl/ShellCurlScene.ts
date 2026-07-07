@@ -48,6 +48,7 @@ import {
 import { SweepController } from "../../shared/mechanics/sweep-controller";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
+import { showCardDropPopup } from "../../shared/card-drop-popup";
 import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
@@ -1358,6 +1359,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			.then((result) => {
 				console.info("[ShellCurl] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
+				showCardDropPopup(this, result.cardDrop);
 			})
 			.catch((err: unknown) => {
 				console.warn("[ShellCurl] failed to submit result:", err);

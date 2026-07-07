@@ -12,6 +12,7 @@ import {
 	UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { GuestGuard } from "../auth/guards/guest.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RateLimiterService } from "../auth/rate-limiter.service";
 import { FriendRequestDto, FriendUserIdDto } from "./dto/friend-action.dto";
@@ -79,9 +80,14 @@ export class FriendsController {
 		return this.friendsService.listBlocked(req.user.id);
 	}
 
-	/** POST /api/friends/request — send a friend request by username. */
+	/**
+	 * POST /api/friends/request — send a friend request by username.
+	 * Guest accounts cannot send requests (Bug Audit M4) — they're ephemeral
+	 * and can't durably participate in the friend graph.
+	 */
 	@Post("request")
 	@HttpCode(200)
+	@UseGuards(GuestGuard)
 	async sendRequest(
 		@Request() req: { user: { id: number } },
 		@Body() body: FriendRequestDto,
@@ -102,9 +108,15 @@ export class FriendsController {
 		return { ok: true };
 	}
 
-	/** POST /api/friends/accept — accept an incoming pending request by userId. */
+	/**
+	 * POST /api/friends/accept — accept an incoming pending request by userId.
+	 * Guest accounts cannot accept requests (Bug Audit M4) — a guest can never
+	 * be a valid addressee in the first place since sendRequest now rejects
+	 * guest addressees, but this closes the loophole defensively too.
+	 */
 	@Post("accept")
 	@HttpCode(200)
+	@UseGuards(GuestGuard)
 	async acceptRequest(
 		@Request() req: { user: { id: number } },
 		@Body() body: FriendUserIdDto,

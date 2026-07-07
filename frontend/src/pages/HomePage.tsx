@@ -45,6 +45,7 @@ import {
 } from "../features/hub/api";
 import { TURTLE_TAGS } from "../shared/turtle-tags";
 import {
+	disconnectGameSocket,
 	getGameSocket,
 	type BellClashSnapshot,
 	type BambooBashSnapshot,
@@ -72,6 +73,7 @@ import { debounce } from "../features/social/profileCard/debounce";
 import { ProfileCard } from "../features/social/profileCard/ProfileCard";
 import {
 	notificationIdsFrom,
+	prependNotificationDeduped,
 	removeNotificationsFrom,
 } from "../features/social/notificationDedup";
 import {
@@ -96,6 +98,10 @@ const GIF_SEARCH_MIN_LENGTH = 2;
  * A full page back implies there may be older messages to load (Bug Audit L6).
  */
 const CHAT_MESSAGE_PAGE_SIZE = 50;
+
+/** Above this many unread notifications, the bell badge shows "99+" instead
+ *  of the exact count (Notification Audit L6). */
+const NOTIF_BADGE_CAP = 99;
 
 type HubView = "choose" | "normal" | "gambit";
 type InfoModal = { title: string; description: string } | null;
@@ -778,13 +784,43 @@ function HomeMenu(): JSX.Element {
 		return () => { cancelled = true; };
 	}, [leaderboardGame, leaderboardScope]);
 
+	// Hydrate the notification inbox on every mount via REST (Bug Audit H1).
+	// The WS `notification:inbox` push below only fires once, at socket
+	// *connect* time — but the game socket is a module-level singleton that
+	// stays connected across route changes (hub → game → hub), so that
+	// one-time hydration never re-runs on a HomePage remount. Without this
+	// fetch the bell goes stale/empty after the most common navigation path
+	// in the app. REST is the source of truth; the WS events remain the live
+	// accelerator while this tab stays open.
+	useEffect(() => {
+		let cancelled = false;
+		api
+			.getNotifications()
+			.then((items) => {
+				if (!cancelled) setNotifications(items);
+			})
+			.catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	// Subscribe to notification + lobby events on the shared game socket
 	useEffect(() => {
 		const socket = getGameSocket();
 
 		const onInbox = (items: NotificationView[]) => setNotifications(items);
+		// Guard against a duplicated push (e.g. a reconnect race) rendering the
+		// same notification twice and producing duplicate React keys — mirrors
+		// the chat message handler's existing id-dedup (Bug Audit L4).
 		const onNew = (item: NotificationView) =>
-			setNotifications((prev) => [item, ...prev]);
+			setNotifications((prev) => prependNotificationDeduped(prev, item));
+
+		// Friend removal is delivered live-only (Bug Audit §3/#10 — see the
+		// backend NotificationType doc for why it's not a persisted bell
+		// entry): just resync the friends list so the removed side doesn't
+		// keep seeing someone who unfriended them until their next refresh.
+		const onFriendRemoved = () => void refreshSocial();
 
 		const onLobbyCreated = (data: { lobbyId: string; gameId: string; expiresAt: number }) =>
 			setActiveLobby(data);
@@ -819,6 +855,7 @@ function HomeMenu(): JSX.Element {
 
 		socket.on("notification:inbox", onInbox);
 		socket.on("notification:new", onNew);
+		socket.on("friend:removed", onFriendRemoved);
 		socket.on("lobby:created", onLobbyCreated);
 		socket.on("lobby:expired", onLobbyExpired);
 		socket.on("lobby:cancelled", onLobbyCancelled);
@@ -829,6 +866,7 @@ function HomeMenu(): JSX.Element {
 		return () => {
 			socket.off("notification:inbox", onInbox);
 			socket.off("notification:new", onNew);
+			socket.off("friend:removed", onFriendRemoved);
 			socket.off("lobby:created", onLobbyCreated);
 			socket.off("lobby:expired", onLobbyExpired);
 			socket.off("lobby:cancelled", onLobbyCancelled);
@@ -1064,6 +1102,17 @@ function HomeMenu(): JSX.Element {
 		} catch (err: unknown) {
 			console.warn("[HomeMenu] Logout failed, redirecting anyway:", err);
 		} finally {
+			// Bug Audit H2: the game socket is a module-level singleton that
+			// otherwise stays connected — and authenticated as this user — right
+			// through logout. Left alone, the "logged-out" user stays "online"
+			// to friends until the tab closes, and if another user logs in on
+			// the same tab afterwards (SPA navigation, no reload) they'd inherit
+			// this still-open socket: receiving the previous user's pushes,
+			// never getting their own, and their notification:read/-all
+			// emissions would mutate the previous user's rows. Disconnecting
+			// here forces a fresh, correctly-authenticated socket on next
+			// connect (getGameSocket() re-creates it lazily).
+			disconnectGameSocket();
 			navigate("/auth", { replace: true });
 		}
 	};
@@ -1717,6 +1766,13 @@ function HomeMenu(): JSX.Element {
 		try {
 			await api.getCsrfToken();
 			await api.acceptFriendRequest(req.userId);
+			// Bug Audit H3: accepting from the social tab used to never clear the
+			// matching "X sent you a friend request" bell entry — its Accept
+			// button would then 404 forever since the pending row is gone. The
+			// backend now also cleans this up server-side (and re-pushes the
+			// inbox to every tab), but resolving it locally too avoids a stale
+			// flash in this tab before that push arrives.
+			handleResolveFriendRequestNotifs(req.userId);
 			showToast({
 				message: `You're now friends with ${req.turtleName ?? req.username}`,
 				variant: "success",
@@ -2196,7 +2252,9 @@ function HomeMenu(): JSX.Element {
 						>
 							🔔
 							{unreadCount > 0 && (
-								<span className="hub-notif-bell__badge">{unreadCount}</span>
+								<span className="hub-notif-bell__badge">
+									{unreadCount > NOTIF_BADGE_CAP ? `${NOTIF_BADGE_CAP}+` : unreadCount}
+								</span>
 							)}
 						</button>
 
@@ -2599,6 +2657,13 @@ function HomeMenu(): JSX.Element {
 												<strong>{notif.fromUsername}</strong> accepted your friend request.
 											</span>
 										)}
+										{/* Bug Audit L6 — createdAt was fetched but never rendered. */}
+										<time
+											className="hub-notif-drawer__item-time"
+											dateTime={notif.createdAt}
+										>
+											{formatRelativeTime(notif.createdAt)}
+										</time>
 									</div>
 									<div className="hub-notif-drawer__item-actions">
 										{notif.type === "friend_request" && (
@@ -2613,8 +2678,28 @@ function HomeMenu(): JSX.Element {
 															// Keep the social tab's friends/pending state in sync in
 															// case it's open (or opened next) elsewhere.
 															void refreshSocial();
-														} catch {
-															// Non-fatal — button remains active if it fails
+														} catch (err: unknown) {
+															// Bug Audit M3: this used to swallow every failure
+															// silently — rate-limited (429), or the request
+															// was already resolved elsewhere (404) — so the
+															// button visibly did nothing. A 404 here means the
+															// pending row is already gone (accepted/declined/
+															// cancelled from another tab or device), so treat
+															// it as resolved rather than a real error — this
+															// also closes the H3 dead-end where an accept that
+															// 404s left the notification stuck forever.
+															if (err instanceof AuthError && err.status === 404) {
+																handleResolveFriendRequestNotifs(notif.fromUserId);
+																void refreshSocial();
+																return;
+															}
+															showToast({
+																message:
+																	err instanceof Error
+																		? err.message
+																		: "Could not accept request.",
+																variant: "error",
+															});
 														}
 													}}
 												>
@@ -2630,8 +2715,23 @@ function HomeMenu(): JSX.Element {
 															// Keep the social tab's friends/pending state in sync in
 															// case it's open (or opened next) elsewhere.
 															void refreshSocial();
-														} catch {
-															// Non-fatal
+														} catch (err: unknown) {
+															// Bug Audit M3 — see the Accept handler above;
+															// decline is idempotent server-side so a 404 here
+															// is rarer, but the stale-notification cleanup
+															// still applies if it happens.
+															if (err instanceof AuthError && err.status === 404) {
+																handleResolveFriendRequestNotifs(notif.fromUserId);
+																void refreshSocial();
+																return;
+															}
+															showToast({
+																message:
+																	err instanceof Error
+																		? err.message
+																		: "Could not decline request.",
+																variant: "error",
+															});
 														}
 													}}
 												>

@@ -72,6 +72,7 @@ describe("CardsService", () => {
 		findOne: jest.Mock;
 		create: jest.Mock;
 		save: jest.Mock;
+		increment: jest.Mock;
 	};
 	let usersRepo: { findOne: jest.Mock; save: jest.Mock };
 	let dataSource: { transaction: jest.Mock };
@@ -82,6 +83,7 @@ describe("CardsService", () => {
 			findOne: jest.fn().mockResolvedValue(null),
 			create: jest.fn((data: Partial<UserCard>) => data as UserCard),
 			save: jest.fn(async (row: UserCard) => row),
+			increment: jest.fn().mockResolvedValue({ affected: 1 }),
 		};
 		usersRepo = {
 			findOne: jest.fn(),
@@ -189,6 +191,35 @@ describe("CardsService", () => {
 	});
 
 	describe("openPack", () => {
+		// ── Bug Audit H1: concurrent double-spend ────────────────────────────────
+		//
+		// Without a row lock, two overlapping `openPack` requests for the same
+		// user both read the pre-purchase `coins` balance, both pass the
+		// affordability check, and the last `save` wins: the player is charged
+		// once but granted two packs (2 × PACK_SIZE cards + dupe refunds), or
+		// ends up with a corrupted balance depending on save ordering. A plain
+		// `findOne` inside the transaction can't prevent this — Postgres's
+		// default READ COMMITTED isolation lets both transactions see the same
+		// committed balance. The fix is a `pessimistic_write` row lock so the
+		// second request blocks until the first commits and sees the
+		// already-decremented balance. This suite can't spin up two real
+		// overlapping Postgres transactions against a mocked repository, so the
+		// regression test below asserts the lock is actually requested — the
+		// mechanism `casino.engine.ts` already relies on for the same class of
+		// bug.
+		it("should load the user row under a pessimistic write lock, without eager relations, to prevent concurrent double-spend", async () => {
+			const user = makeUser({ coins: 500 });
+			usersRepo.findOne.mockResolvedValue(user);
+
+			await service.openPack(user, "basic", seq(PULL_STONE_NO_FOIL));
+
+			expect(usersRepo.findOne).toHaveBeenCalledWith({
+				where: { id: user.id },
+				lock: { mode: "pessimistic_write" },
+				loadEagerRelations: false,
+			});
+		});
+
 		it("should default to the basic tier when no tierId is given", async () => {
 			const user = makeUser({ coins: 500 });
 			usersRepo.findOne.mockResolvedValue(user);
@@ -302,7 +333,16 @@ describe("CardsService", () => {
 
 			// All 5 pulls are duplicates of the same stone card (refund 2 each).
 			expect(result.pulls.every((p) => p.isNew === false)).toBe(true);
-			expect(existing.count).toBe(1 + PACK_SIZE);
+			// Bug Audit M2: increments are atomic SQL updates, not a mutated
+			// in-memory entity save — assert on the increment calls instead of
+			// `existing.count`, which is no longer mutated by the service.
+			expect(cardsRepo.increment).toHaveBeenCalledTimes(PACK_SIZE);
+			expect(cardsRepo.increment).toHaveBeenCalledWith(
+				{ id: existing.id },
+				"count",
+				1,
+			);
+			expect(cardsRepo.save).not.toHaveBeenCalled();
 			expect(result.coins).toBe(500 - PACK_PRICE_COINS + 2 * PACK_SIZE);
 		});
 
@@ -314,7 +354,16 @@ describe("CardsService", () => {
 
 			await service.openPack(user, "basic", seq(PULL_STONE_FOIL));
 
-			expect(existing.foilCount).toBe(PACK_SIZE);
+			expect(cardsRepo.increment).toHaveBeenCalledWith(
+				{ id: existing.id },
+				"foilCount",
+				1,
+			);
+			expect(
+				cardsRepo.increment.mock.calls.filter(
+					(call) => call[1] === "foilCount",
+				),
+			).toHaveLength(PACK_SIZE);
 		});
 
 		it("should set prismaticCount to 1 on a brand-new prismatic pull, and foilCount to 1 alongside it", async () => {
@@ -341,8 +390,14 @@ describe("CardsService", () => {
 
 			await service.openPack(user, "basic", seq(PULL_GOLD_PRISMATIC));
 
-			expect(existing.foilCount).toBe(1 + PACK_SIZE);
-			expect(existing.prismaticCount).toBe(PACK_SIZE);
+			const foilIncrements = cardsRepo.increment.mock.calls.filter(
+				(call) => call[1] === "foilCount",
+			);
+			const prismaticIncrements = cardsRepo.increment.mock.calls.filter(
+				(call) => call[1] === "prismaticCount",
+			);
+			expect(foilIncrements).toHaveLength(PACK_SIZE);
+			expect(prismaticIncrements).toHaveLength(PACK_SIZE);
 		});
 
 		it("should refund the same amount for a prismatic duplicate as a regular gold foil duplicate", async () => {
@@ -380,11 +435,15 @@ describe("CardsService", () => {
 			let i = 0;
 			await service.openPack(user, "basic", () => draws[i++]);
 
-			expect(existing.prismaticCount).toBeLessThanOrEqual(
-				existing.foilCount,
-			);
-			expect(existing.prismaticCount).toBe(1);
-			expect(existing.foilCount).toBe(PACK_SIZE);
+			const foilIncrements = cardsRepo.increment.mock.calls.filter(
+				(call) => call[1] === "foilCount",
+			).length;
+			const prismaticIncrements = cardsRepo.increment.mock.calls.filter(
+				(call) => call[1] === "prismaticCount",
+			).length;
+			expect(prismaticIncrements).toBeLessThanOrEqual(foilIncrements);
+			expect(prismaticIncrements).toBe(1);
+			expect(foilIncrements).toBe(PACK_SIZE);
 		});
 
 		it("should create a first copy with count 1 and no refund for a new pull", async () => {
@@ -491,7 +550,11 @@ describe("CardsService", () => {
 			);
 
 			expect(pull.isNew).toBe(false);
-			expect(existing.count).toBe(3);
+			expect(cardsRepo.increment).toHaveBeenCalledWith(
+				{ id: existing.id },
+				"count",
+				1,
+			);
 		});
 
 		it("should increment foilCount when the dropped card is foil", async () => {
@@ -504,7 +567,11 @@ describe("CardsService", () => {
 			);
 
 			expect(pull.foil).toBe(true);
-			expect(existing.foilCount).toBe(1);
+			expect(cardsRepo.increment).toHaveBeenCalledWith(
+				{ id: existing.id },
+				"foilCount",
+				1,
+			);
 		});
 
 		it("should wrap a repository failure as InternalServerErrorException", async () => {
@@ -536,12 +603,15 @@ describe("CardsService", () => {
 
 			expect(pull.isNew).toBe(false);
 			expect(cardsRepo.findOne).toHaveBeenCalledTimes(2);
-			// Second save() call increments the re-read row rather than retrying the insert.
-			expect(cardsRepo.save).toHaveBeenCalledTimes(2);
-			const incremented = cardsRepo.save.mock.calls[1][0] as {
-				count: number;
-			};
-			expect(incremented.count).toBe(2);
+			// The only save() call is the losing insert attempt; the fallback
+			// path increments the re-read row atomically instead of saving a
+			// mutated entity (Bug Audit M2).
+			expect(cardsRepo.save).toHaveBeenCalledTimes(1);
+			expect(cardsRepo.increment).toHaveBeenCalledWith(
+				{ id: 1 },
+				"count",
+				1,
+			);
 		});
 
 		it("should rethrow when the race-winner row can't be found after a 23505", async () => {

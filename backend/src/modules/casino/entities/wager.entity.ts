@@ -59,8 +59,16 @@ export class Wager {
 	@Column({ type: "varchar" })
 	segmentId: string;
 
-	/** Payout multiplier of the winning segment (0, 0.5, 1, … 10). */
-	@Column({ type: "real" })
+	/**
+	 * Payout multiplier of the winning segment (0, 0.5, 1, … 10).
+	 *
+	 * `double precision`, not `real` (float4): some games' multipliers aren't
+	 * exact in binary at single precision — e.g. Koi Dice's 100/99 ≈ 1.0101 —
+	 * so a `real` column silently rounds the audited value. `payout`/`net` are
+	 * already-computed integers, so money itself was never affected; this only
+	 * degraded the audit trail (Bug Audit 3.4).
+	 */
+	@Column({ type: "double precision" })
 	multiplier: number;
 
 	/** Coins credited to the player = floor(stake × multiplier). */
@@ -83,7 +91,14 @@ export class Wager {
 	@Column({ type: "varchar", default: "" })
 	clientSeed: string;
 
-	/** Per-(user, serverSeed) monotonic counter, part of the provable roll. */
+	/**
+	 * Per-user lifetime monotonic counter, part of the provable roll (mixed
+	 * into the HMAC alongside the server/client seeds — see `casino.fair.ts`).
+	 * Historically documented as "per-(user, serverSeed)", which was wrong: a
+	 * fresh server seed is generated per spin, but the nonce keeps counting up
+	 * across a user's entire wager history, not resetting per seed. Sourced
+	 * from `User.wagerCount` (see that column's doc for why).
+	 */
 	@Column({ type: "int" })
 	nonce: number;
 

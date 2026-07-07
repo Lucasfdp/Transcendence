@@ -1,5 +1,6 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
+import { DataSource } from "typeorm";
 import { AchievementsService } from "./achievements.service";
 import { UserAchievement } from "./entities/user-achievement.entity";
 import { UserCosmetic } from "../customization/entities/user-cosmetic.entity";
@@ -49,7 +50,9 @@ describe("AchievementsService", () => {
 		save: jest.Mock;
 	};
 	let gameStatsRepo: { find: jest.Mock };
-	let usersRepo: { save: jest.Mock };
+	/** Fake `manager.getRepository(User)` inside the coins-reward transaction. */
+	let usersRepo: { findOne: jest.Mock; save: jest.Mock };
+	let dataSource: { transaction: jest.Mock };
 
 	beforeEach(async () => {
 		const mockRepo = {
@@ -76,8 +79,24 @@ describe("AchievementsService", () => {
 		const mockGameStatsRepo = {
 			find: jest.fn().mockResolvedValue([]),
 		};
-		const mockUsersRepo = {
+		usersRepo = {
+			findOne: jest.fn(),
 			save: jest.fn(async (user: User) => user),
+		};
+		dataSource = {
+			transaction: jest.fn(
+				async (
+					callback: (manager: {
+						getRepository: (entity: unknown) => unknown;
+					}) => unknown,
+				) =>
+					callback({
+						getRepository: (entity: unknown) => {
+							if (entity === User) return usersRepo;
+							throw new Error("Unknown repository");
+						},
+					}),
+			),
 		};
 
 		const module: TestingModule = await Test.createTestingModule({
@@ -95,7 +114,7 @@ describe("AchievementsService", () => {
 					provide: getRepositoryToken(UserGameStats),
 					useValue: mockGameStatsRepo,
 				},
-				{ provide: getRepositoryToken(User), useValue: mockUsersRepo },
+				{ provide: DataSource, useValue: dataSource },
 			],
 		}).compile();
 
@@ -103,7 +122,6 @@ describe("AchievementsService", () => {
 		repo = module.get(getRepositoryToken(UserAchievement));
 		cosmeticsRepo = module.get(getRepositoryToken(UserCosmetic));
 		gameStatsRepo = module.get(getRepositoryToken(UserGameStats));
-		usersRepo = module.get(getRepositoryToken(User));
 	});
 
 	it("unlocks first match milestone only once", async () => {
@@ -240,6 +258,7 @@ describe("AchievementsService", () => {
 			coins: 10,
 			profile: makeProfile({ totalCoinsEarned: 1 }),
 		});
+		usersRepo.findOne.mockResolvedValue(user);
 
 		const unlocked = await service.evaluateForUser(user);
 
@@ -251,6 +270,29 @@ describe("AchievementsService", () => {
 		expect(user.coins).toBe(35);
 		expect(usersRepo.save).toHaveBeenCalledWith(
 			expect.objectContaining({ coins: 35 }),
+		);
+	});
+
+	// Bug Audit 1.2 (extension): the coins-reward branch used to be a bare
+	// read-modify-write with no lock, racing every other wallet writer on the
+	// same `users.coins` column. It must now lock the row exactly like
+	// `CasinoEngine.resolveSpin` does, via the shared `lockUserForUpdate`
+	// helper.
+	it("locks the user row with pessimistic_write before granting a coin reward", async () => {
+		const user = makeUser({
+			coins: 10,
+			profile: makeProfile({ totalCoinsEarned: 1 }),
+		});
+		usersRepo.findOne.mockResolvedValue(user);
+
+		await service.evaluateForUser(user);
+
+		expect(usersRepo.findOne).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { id: user.id },
+				lock: { mode: "pessimistic_write" },
+				loadEagerRelations: false,
+			}),
 		);
 	});
 

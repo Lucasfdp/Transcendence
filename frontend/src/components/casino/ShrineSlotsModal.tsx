@@ -149,31 +149,27 @@ export function ShrineSlotsModal({
 	const reducedMotion = useReducedMotion();
 
 	/**
-	 * `view`, `onCoinsChange` and `reducedMotion` mirrored into refs so the
-	 * animation effect below can read their latest values without listing
-	 * them as dependencies. Only a brand-new `pendingOutcome` should
-	 * (re)start that effect — `onCoinsChange` in particular is a fresh inline
-	 * closure on every `HomePage` render, so including it as a dependency
-	 * would tear down and restart the in-flight `requestAnimationFrame` loop
-	 * on every unrelated parent re-render (the exact bug already hit once on
-	 * Shell Drop).
+	 * `view` and `reducedMotion` mirrored into refs so the animation effect
+	 * below can read their latest values without listing them as
+	 * dependencies. Only a brand-new `pendingOutcome` should (re)start that
+	 * effect. `onCoinsChange` no longer needs this treatment since it's now
+	 * called from `runSpin` directly, before the animation starts.
 	 */
 	const viewRef = useRef(view);
-	const onCoinsChangeRef = useRef(onCoinsChange);
 	const reducedMotionRef = useRef(reducedMotion);
 	useEffect(() => {
 		viewRef.current = view;
 	}, [view]);
 	useEffect(() => {
-		onCoinsChangeRef.current = onCoinsChange;
-	}, [onCoinsChange]);
-	useEffect(() => {
 		reducedMotionRef.current = reducedMotion;
 	}, [reducedMotion]);
+	/** Bumped by the "Retry" button on a load failure to re-run the load effect. */
+	const [reloadToken, setReloadToken] = useState(0);
 
 	useEffect(() => {
 		let cancelled = false;
 		setLoading(true);
+		setError("");
 		api
 			.getSlots()
 			.then(async (data) => {
@@ -195,7 +191,7 @@ export function ShrineSlotsModal({
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [reloadToken]);
 
 	// Idle/resting reels: draws each reel's symbol parked in place — the first
 	// symbol of the set before any spin, or the landed symbol once `result` is
@@ -231,8 +227,10 @@ export function ShrineSlotsModal({
 	// frame and an instant reveal.
 	//
 	// Deliberately keyed on `pendingOutcome` alone — see the comment above the
-	// ref mirrors for why `view`/`onCoinsChange`/`reducedMotion` are read from
-	// refs instead of being dependencies here.
+	// ref mirrors for why `view`/`reducedMotion` are read from refs instead of
+	// being dependencies here. The wallet sync (`onCoinsChange`) happens in
+	// `runSpin` as soon as the server responds, not here — this effect is
+	// purely cosmetic.
 	useEffect(() => {
 		if (!pendingOutcome) return;
 		const view = viewRef.current;
@@ -242,8 +240,6 @@ export function ShrineSlotsModal({
 
 		const finish = (): void => {
 			setResult(pendingOutcome);
-			onCoinsChangeRef.current(pendingOutcome.coins);
-			setView((prev) => (prev ? { ...prev, coins: pendingOutcome.coins } : prev));
 			setSpinning(false);
 			setPendingOutcome(null);
 		};
@@ -324,6 +320,11 @@ export function ShrineSlotsModal({
 		try {
 			await api.getCsrfToken();
 			const outcome = await api.spinSlots(stake, clientSeed || undefined);
+			// Sync the wallet the moment the server settles the wager — do not
+			// wait for the cosmetic reel animation, which may never finish if
+			// the modal is closed early.
+			onCoinsChange(outcome.coins);
+			setView((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
 			setPendingOutcome(outcome);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Spin failed. Try again.");
@@ -332,7 +333,19 @@ export function ShrineSlotsModal({
 	};
 
 	if (loading) return <p>Loading Shrine Slots...</p>;
-	if (!view) return <p className="hub-modal__error">{error || "No game."}</p>;
+	if (!view)
+		return (
+			<div className="hub-modal__error">
+				<p>{error || "No game."}</p>
+				<button
+					type="button"
+					className="hub-modal__retry-button"
+					onClick={() => setReloadToken((token) => token + 1)}
+				>
+					Retry
+				</button>
+			</div>
+		);
 
 	const stakeValid =
 		Number.isInteger(stake) &&
@@ -387,10 +400,17 @@ export function ShrineSlotsModal({
 						min={view.minWager}
 						max={view.maxWager}
 						step={1}
-						value={stake}
+						// NaN (not 0) represents "cleared, still typing" so the field
+						// can actually go empty instead of snapping back to "0" on
+						// every keystroke (Bug Audit 3.6).
+						value={Number.isNaN(stake) ? "" : stake}
 						disabled={spinning}
 						onChange={(event) =>
-							setStake(Math.floor(Number(event.target.value)))
+							setStake(
+								event.target.value === ""
+									? NaN
+									: Math.floor(Number(event.target.value)),
+							)
 						}
 					/>
 					<button

@@ -891,11 +891,18 @@ export class MatchmakingGateway
 	@SubscribeMessage("notification:read")
 	async onNotificationRead(
 		@ConnectedSocket() socket: Socket,
-		@MessageBody() data: { notificationId: number },
+		@MessageBody() data: { notificationId?: number },
 	): Promise<void> {
 		const user = socket.data.user as { id: number; isGuest: boolean } | undefined;
 		if (!user || user.isGuest) return;
-		await this.notificationsService.markRead(user.id, data.notificationId).catch(() => undefined);
+		// Bug Audit M2: TypeORM 0.3 silently drops `undefined` where-values, so
+		// an unvalidated `{}` payload would otherwise match the caller's first
+		// notification and stamp it read, and a non-numeric value would 500.
+		// Reject anything that isn't a real integer id before touching the DB.
+		if (!Number.isInteger(data?.notificationId)) return;
+		await this.notificationsService
+			.markRead(user.id, data.notificationId as number)
+			.catch(() => undefined);
 	}
 
 	/** Mark all unread notifications as read for the authenticated user. */

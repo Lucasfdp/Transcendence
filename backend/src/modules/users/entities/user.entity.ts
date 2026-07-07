@@ -49,6 +49,19 @@ export class User {
 	@Column({ default: 0 })
 	coins: number;
 
+	/**
+	 * Lifetime count of casino wagers this user has placed — used as the
+	 * provably-fair nonce for the next spin (see `CasinoEngine.apply`).
+	 * Incremented under the same pessimistic-write lock the spin's coin delta
+	 * is applied under, so it's O(1) per spin instead of a
+	 * `COUNT(*) FROM wagers WHERE user = ...` table scan that grows with the
+	 * user's entire wager history (Bug Audit 3.3). Correctness of past rolls
+	 * doesn't depend on this column — it only needs to keep increasing, which
+	 * a lifetime counter does just as well as a recount would.
+	 */
+	@Column({ default: 0 })
+	wagerCount: number;
+
 	// The display name of the player's turtle (defaults to username)
 	@Column({ nullable: true })
 	turtleName: string;

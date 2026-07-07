@@ -46,7 +46,7 @@ describe("CasinoController", () => {
 	let diceService: { getDiceConfig: jest.Mock; dice: jest.Mock };
 	let plinkoService: { getPlinkoView: jest.Mock; drop: jest.Mock };
 	let usersService: { findById: jest.Mock };
-	let rateLimiter: { allow: jest.Mock };
+	let rateLimiter: { allowKey: jest.Mock };
 
 	beforeEach(async () => {
 		casinoService = {
@@ -81,7 +81,7 @@ describe("CasinoController", () => {
 			drop: jest.fn().mockResolvedValue({ game: "drop", outcomeId: "bucket-4" }),
 		};
 		usersService = { findById: jest.fn().mockResolvedValue(makeUser()) };
-		rateLimiter = { allow: jest.fn().mockReturnValue(true) };
+		rateLimiter = { allowKey: jest.fn().mockReturnValue(true) };
 
 		const moduleRef: TestingModule = await Test.createTestingModule({
 			providers: [
@@ -132,7 +132,7 @@ describe("CasinoController", () => {
 		});
 
 		it("should reject with HTTP 429 when rate-limited", async () => {
-			rateLimiter.allow.mockReturnValue(false);
+			rateLimiter.allowKey.mockReturnValue(false);
 
 			await expectStatus(controller.freeSpin(req, {}), 429);
 			expect(casinoService.freeSpin).not.toHaveBeenCalled();
@@ -155,7 +155,7 @@ describe("CasinoController", () => {
 		});
 
 		it("should reject with HTTP 429 when rate-limited", async () => {
-			rateLimiter.allow.mockReturnValue(false);
+			rateLimiter.allowKey.mockReturnValue(false);
 
 			await expectStatus(controller.spin(req, { stake: 100 }), 429);
 			expect(casinoService.wageredSpin).not.toHaveBeenCalled();
@@ -199,7 +199,7 @@ describe("CasinoController", () => {
 		});
 
 		it("should reject with HTTP 429 when rate-limited", async () => {
-			rateLimiter.allow.mockReturnValue(false);
+			rateLimiter.allowKey.mockReturnValue(false);
 
 			await expectStatus(
 				controller.flip(req, { stake: 100, pick: "heads" }),
@@ -240,7 +240,7 @@ describe("CasinoController", () => {
 		});
 
 		it("should reject with HTTP 429 when rate-limited", async () => {
-			rateLimiter.allow.mockReturnValue(false);
+			rateLimiter.allowKey.mockReturnValue(false);
 
 			await expectStatus(
 				controller.monte(req, { stake: 100, pick: 0 }),
@@ -275,7 +275,7 @@ describe("CasinoController", () => {
 		});
 
 		it("should reject with HTTP 429 when rate-limited", async () => {
-			rateLimiter.allow.mockReturnValue(false);
+			rateLimiter.allowKey.mockReturnValue(false);
 
 			await expectStatus(controller.slots(req, { stake: 100 }), 429);
 			expect(slotsService.slots).not.toHaveBeenCalled();
@@ -313,7 +313,7 @@ describe("CasinoController", () => {
 		});
 
 		it("should reject with HTTP 429 when rate-limited", async () => {
-			rateLimiter.allow.mockReturnValue(false);
+			rateLimiter.allowKey.mockReturnValue(false);
 
 			await expectStatus(
 				controller.dice(req, { stake: 100, direction: "under", target: 50 }),
@@ -352,10 +352,56 @@ describe("CasinoController", () => {
 		});
 
 		it("should reject with HTTP 429 when rate-limited", async () => {
-			rateLimiter.allow.mockReturnValue(false);
+			rateLimiter.allowKey.mockReturnValue(false);
 
 			await expectStatus(controller.plinko(req, { stake: 100 }), 429);
 			expect(plinkoService.drop).not.toHaveBeenCalled();
+		});
+	});
+
+	// Bug Audit 2.1: the spin rate limit used to be a single bucket shared by
+	// all six games, keyed by client IP — one fast game (or a shared NAT)
+	// could starve every player/game sharing that bucket. It must now key on
+	// the authenticated user id, with a separate bucket per game.
+	describe("spin rate limiting (Bug Audit 2.1)", () => {
+		it("should rate-limit by the authenticated user id, not the request IP", async () => {
+			await controller.spin(req, { stake: 100 });
+
+			expect(rateLimiter.allowKey).toHaveBeenCalledWith(
+				expect.any(String),
+				"1",
+				expect.any(Number),
+				expect.any(Number),
+			);
+		});
+
+		it("should use a separate bucket per game so one fast game can't starve the others", async () => {
+			await controller.spin(req, { stake: 100 });
+			await controller.dice(req, {
+				stake: 100,
+				direction: "under",
+				target: 50,
+			});
+
+			const buckets = rateLimiter.allowKey.mock.calls.map(
+				(call) => call[0] as string,
+			);
+			expect(new Set(buckets).size).toBe(buckets.length);
+		});
+
+		it("should not let being rate-limited on one game block a different game", async () => {
+			rateLimiter.allowKey.mockImplementation(
+				(bucket: string) => !bucket.endsWith(":wheel"),
+			);
+
+			await expectStatus(controller.spin(req, { stake: 100 }), 429);
+			const result = await controller.dice(req, {
+				stake: 100,
+				direction: "under",
+				target: 50,
+			});
+
+			expect(result).toEqual({ game: "dice", outcomeId: "roll-10" });
 		});
 	});
 });

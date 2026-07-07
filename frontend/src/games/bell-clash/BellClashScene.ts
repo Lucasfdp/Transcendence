@@ -31,6 +31,7 @@ import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
+import { showCardDropPopup } from "../../shared/card-drop-popup";
 import { THEME } from "../../shared/theme";
 import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import {
@@ -1026,6 +1027,7 @@ export class BellClashScene extends ResponsiveScene {
 			.then((result) => {
 				console.info("[BellClash] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
+				showCardDropPopup(this, result.cardDrop);
 			})
 			.catch((err: unknown) => {
 				console.warn("[BellClash] failed to submit result:", err);

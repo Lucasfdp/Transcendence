@@ -119,7 +119,16 @@ export class CasinoService {
 		return { ...resolution, segment };
 	}
 
-	/** The player's free-spin row for the current UTC day, or null if none yet. */
+	/**
+	 * The player's free-spin row for the current UTC day, or null if none yet.
+	 *
+	 * Bug Audit 3.2: this used to match on `mode: "free"` alone, with no
+	 * `game` filter. Only the wheel writes `mode: "free"` today, so it worked
+	 * by accident — but `Wager` already carries a `game` discriminator
+	 * precisely so per-game state like this doesn't collide, and the moment
+	 * any other game grows a free mode, it would silently consume (or be
+	 * consumed by) the wheel's daily spin. Scope explicitly to "wheel".
+	 */
 	private async findTodaysFreeSpin(
 		repo: Repository<Wager>,
 		userId: number,
@@ -127,6 +136,7 @@ export class CasinoService {
 		return repo.findOne({
 			where: {
 				user: { id: userId },
+				game: "wheel",
 				mode: "free",
 				createdAt: MoreThanOrEqual(startOfUtcDay()),
 			},

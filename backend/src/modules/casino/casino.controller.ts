@@ -17,6 +17,7 @@ import { RateLimiterService } from "../auth/rate-limiter.service";
 import type { User } from "../users/entities/user.entity";
 import { UsersService } from "../users/users.service";
 import {
+	type CasinoGame,
 	type SpinResolution,
 	type SpinResult,
 	type WheelView,
@@ -42,9 +43,23 @@ import { FreeSpinDto, SpinDto } from "./dto/spin.dto";
 /** Authenticated request: JwtAuthGuard attaches the decoded user. */
 type AuthedRequest = ExpressRequest & { user: { id: number } };
 
-/** Spin rate-limit bucket: a generous cap to stop scripted spamming. */
+/**
+ * Spin rate-limit bucket: a generous cap to stop scripted spamming.
+ *
+ * Bug Audit 2.1: this used to be a single bucket shared across all six games,
+ * keyed by client IP (`rateLimiter.allow`). Two failure modes followed: (1) a
+ * single engaged player could exceed it alone — Koi Dice's ~1.65s animation
+ * alone reaches ~36 rolls/min, and the shared bucket aggregated across every
+ * game, so alternating games got there even faster than one game could; (2)
+ * keying by IP meant every player behind one NAT (a campus, or any shared
+ * egress) shared one bucket — one player's spins could starve everyone
+ * else's. Fixed by keying on the authenticated user id (`allowKey`, exactly
+ * what it exists for — see its own doc) with a per-game bucket suffix, so one
+ * fast game can no longer starve the others, and a slightly higher ceiling
+ * that comfortably covers every game's fastest reachable rate.
+ */
 const SPIN_BUCKET = "casino-spin";
-const SPIN_MAX_PER_WINDOW = 30;
+const SPIN_MAX_PER_WINDOW = 40;
 const SPIN_WINDOW_MS = 60_000;
 
 /** Portable 429 — TooManyRequestsException is absent in this NestJS version. */
@@ -82,7 +97,7 @@ export class CasinoController {
 		@Request() req: AuthedRequest,
 		@Body() dto: FreeSpinDto,
 	): Promise<SpinResult> {
-		this.enforceSpinRate(req);
+		this.enforceSpinRate(req, "wheel");
 		const user = await this.requireUser(req);
 		return this.casinoService.freeSpin(user, { clientSeed: dto.clientSeed });
 	}
@@ -95,7 +110,7 @@ export class CasinoController {
 		@Request() req: AuthedRequest,
 		@Body() dto: SpinDto,
 	): Promise<SpinResult> {
-		this.enforceSpinRate(req);
+		this.enforceSpinRate(req, "wheel");
 		const user = await this.requireUser(req);
 		return this.casinoService.wageredSpin(user, dto.stake, {
 			clientSeed: dto.clientSeed,
@@ -117,7 +132,7 @@ export class CasinoController {
 		@Request() req: AuthedRequest,
 		@Body() dto: FlipDto,
 	): Promise<SpinResolution> {
-		this.enforceSpinRate(req);
+		this.enforceSpinRate(req, "flip");
 		const user = await this.requireUser(req);
 		return this.flipService.flip(user, dto.pick, dto.stake, {
 			clientSeed: dto.clientSeed,
@@ -139,7 +154,7 @@ export class CasinoController {
 		@Request() req: AuthedRequest,
 		@Body() dto: MonteDto,
 	): Promise<SpinResolution> {
-		this.enforceSpinRate(req);
+		this.enforceSpinRate(req, "monte");
 		const user = await this.requireUser(req);
 		return this.monteService.monte(user, dto.pick, dto.shells, dto.stake, {
 			clientSeed: dto.clientSeed,
@@ -161,7 +176,7 @@ export class CasinoController {
 		@Request() req: AuthedRequest,
 		@Body() dto: SlotsSpinDto,
 	): Promise<SpinResolution> {
-		this.enforceSpinRate(req);
+		this.enforceSpinRate(req, "slots");
 		const user = await this.requireUser(req);
 		return this.slotsService.slots(user, dto.stake, {
 			clientSeed: dto.clientSeed,
@@ -183,7 +198,7 @@ export class CasinoController {
 		@Request() req: AuthedRequest,
 		@Body() dto: DiceDto,
 	): Promise<SpinResolution> {
-		this.enforceSpinRate(req);
+		this.enforceSpinRate(req, "dice");
 		const user = await this.requireUser(req);
 		return this.diceService.dice(user, dto.direction, dto.target, dto.stake, {
 			clientSeed: dto.clientSeed,
@@ -205,7 +220,7 @@ export class CasinoController {
 		@Request() req: AuthedRequest,
 		@Body() dto: PlinkoDto,
 	): Promise<SpinResolution> {
-		this.enforceSpinRate(req);
+		this.enforceSpinRate(req, "drop");
 		const user = await this.requireUser(req);
 		return this.plinkoService.drop(user, dto.rows, dto.stake, {
 			clientSeed: dto.clientSeed,
@@ -219,12 +234,17 @@ export class CasinoController {
 		return user;
 	}
 
-	/** Throttle spins per client IP; throws 429 when the window is exceeded. */
-	private enforceSpinRate(req: AuthedRequest): void {
+	/**
+	 * Throttle spins per authenticated player, one bucket per game so a fast
+	 * game (e.g. Koi Dice) can't starve the others (Bug Audit 2.1). JwtAuthGuard
+	 * has already populated `req.user.id` by the time this runs. Throws 429
+	 * when the window is exceeded.
+	 */
+	private enforceSpinRate(req: AuthedRequest, game: CasinoGame): void {
 		if (
-			!this.rateLimiter.allow(
-				req,
-				SPIN_BUCKET,
+			!this.rateLimiter.allowKey(
+				`${SPIN_BUCKET}:${game}`,
+				String(req.user.id),
 				SPIN_MAX_PER_WINDOW,
 				SPIN_WINDOW_MS,
 			)

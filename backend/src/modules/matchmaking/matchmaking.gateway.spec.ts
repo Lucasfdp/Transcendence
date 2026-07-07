@@ -94,6 +94,7 @@ describe("MatchmakingGateway", () => {
 		listConversations: jest.Mock;
 		pushUnreadInboxToSocket: jest.Mock;
 	};
+	let notificationsService: { markRead: jest.Mock; markAllRead: jest.Mock };
 
 	beforeEach(async () => {
 		presence = makePresenceMock();
@@ -118,6 +119,10 @@ describe("MatchmakingGateway", () => {
 			listConversations: jest.fn().mockResolvedValue([]),
 			pushUnreadInboxToSocket: jest.fn().mockResolvedValue(undefined),
 		};
+		notificationsService = {
+			markRead: jest.fn().mockResolvedValue(undefined),
+			markAllRead: jest.fn().mockResolvedValue(undefined),
+		};
 
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
@@ -128,7 +133,7 @@ describe("MatchmakingGateway", () => {
 				{ provide: MatchmakingService, useValue: matchmaking },
 				{ provide: RoomService, useValue: rooms },
 				{ provide: GameSessionService, useValue: sessions },
-				{ provide: NotificationsService, useValue: {} },
+				{ provide: NotificationsService, useValue: notificationsService },
 				{ provide: PrivateLobbiesService, useValue: privateLobbies },
 				{ provide: FriendsService, useValue: {} },
 				{ provide: ReplayService, useValue: replays },
@@ -491,6 +496,83 @@ describe("MatchmakingGateway", () => {
 			await gateway.onChatRead(socket, { conversationId: 10 });
 
 			expect(chatService.markRead).not.toHaveBeenCalled();
+		});
+	});
+
+	// ── onNotificationRead / onNotificationReadAll (Bug Audit M2) ─────────────
+
+	describe("onNotificationRead", () => {
+		const makeConnSocket = (userId: number, isGuest = false): Socket =>
+			({
+				id: "socket-1",
+				data: { user: { id: userId, username: `user${userId}`, isGuest } },
+				emit: jest.fn(),
+			}) as unknown as Socket;
+
+		it("should mark the notification read for a valid integer id", async () => {
+			await gateway.onNotificationRead(makeConnSocket(1), { notificationId: 42 });
+
+			expect(notificationsService.markRead).toHaveBeenCalledWith(1, 42);
+		});
+
+		it("should reject a missing notificationId instead of matching an arbitrary row", async () => {
+			await gateway.onNotificationRead(
+				makeConnSocket(1),
+				{} as { notificationId?: number },
+			);
+
+			expect(notificationsService.markRead).not.toHaveBeenCalled();
+		});
+
+		it("should reject a non-numeric notificationId", async () => {
+			await gateway.onNotificationRead(makeConnSocket(1), {
+				notificationId: "42" as unknown as number,
+			});
+
+			expect(notificationsService.markRead).not.toHaveBeenCalled();
+		});
+
+		it("should reject a non-integer (float) notificationId", async () => {
+			await gateway.onNotificationRead(makeConnSocket(1), { notificationId: 1.5 });
+
+			expect(notificationsService.markRead).not.toHaveBeenCalled();
+		});
+
+		it("should do nothing for a guest socket", async () => {
+			await gateway.onNotificationRead(makeConnSocket(1, true), {
+				notificationId: 42,
+			});
+
+			expect(notificationsService.markRead).not.toHaveBeenCalled();
+		});
+
+		it("should not throw when markRead rejects (non-fatal)", async () => {
+			notificationsService.markRead.mockRejectedValue(new Error("db down"));
+
+			await expect(
+				gateway.onNotificationRead(makeConnSocket(1), { notificationId: 42 }),
+			).resolves.toBeUndefined();
+		});
+	});
+
+	describe("onNotificationReadAll", () => {
+		const makeConnSocket = (userId: number, isGuest = false): Socket =>
+			({
+				id: "socket-1",
+				data: { user: { id: userId, username: `user${userId}`, isGuest } },
+				emit: jest.fn(),
+			}) as unknown as Socket;
+
+		it("should mark all notifications read for the authenticated user", async () => {
+			await gateway.onNotificationReadAll(makeConnSocket(1));
+
+			expect(notificationsService.markAllRead).toHaveBeenCalledWith(1);
+		});
+
+		it("should do nothing for a guest socket", async () => {
+			await gateway.onNotificationReadAll(makeConnSocket(1, true));
+
+			expect(notificationsService.markAllRead).not.toHaveBeenCalled();
 		});
 	});
 

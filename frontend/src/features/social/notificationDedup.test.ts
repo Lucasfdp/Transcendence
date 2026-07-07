@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	notificationIdsFrom,
+	prependNotificationDeduped,
 	removeNotificationsFrom,
 } from "./notificationDedup";
 
@@ -66,5 +67,33 @@ describe("removeNotificationsFrom", () => {
 
 	it("should return the same-shaped empty array when the list is already empty", () => {
 		expect(removeNotificationsFrom([], 10, "friend_request")).toEqual([]);
+	});
+});
+
+describe("prependNotificationDeduped", () => {
+	it("should prepend a new item when its id isn't already present", () => {
+		const notifications = [notif({ id: 1 })];
+		const result = prependNotificationDeduped(notifications, notif({ id: 2 }));
+		expect(result).toEqual([notif({ id: 2 }), notif({ id: 1 })]);
+	});
+
+	it("should not add a duplicate when the id is already present (Bug Audit L4)", () => {
+		const notifications = [notif({ id: 1 }), notif({ id: 2 })];
+		const result = prependNotificationDeduped(notifications, notif({ id: 1 }));
+		expect(result).toEqual(notifications);
+		expect(result).toHaveLength(2);
+	});
+
+	it("should not mutate the input array", () => {
+		const notifications = [notif({ id: 1 })];
+		const original = [...notifications];
+		prependNotificationDeduped(notifications, notif({ id: 2 }));
+		expect(notifications).toEqual(original);
+	});
+
+	it("should prepend into an empty list", () => {
+		expect(prependNotificationDeduped([], notif({ id: 1 }))).toEqual([
+			notif({ id: 1 }),
+		]);
 	});
 });

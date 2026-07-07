@@ -221,22 +221,13 @@ export function ThreeShellMonteModal({
 	const [revealedPick, setRevealedPick] = useState(0);
 	const boardCanvasRef = useRef<HTMLCanvasElement | null>(null);
 	const reducedMotion = useReducedMotion();
-
-	/**
-	 * `onCoinsChange` mirrored into a ref so the animation effect can call the
-	 * latest version without listing it as a dependency. `HomePage` passes a
-	 * fresh inline closure on every render; if it were a dependency, any
-	 * unrelated re-render would tear down and restart the in-flight
-	 * `requestAnimationFrame` loop mid-shuffle.
-	 */
-	const onCoinsChangeRef = useRef(onCoinsChange);
-	useEffect(() => {
-		onCoinsChangeRef.current = onCoinsChange;
-	}, [onCoinsChange]);
+	/** Bumped by the "Retry" button on a load failure to re-run the load effect. */
+	const [reloadToken, setReloadToken] = useState(0);
 
 	useEffect(() => {
 		let cancelled = false;
 		setLoading(true);
+		setError("");
 		api
 			.getMonte()
 			.then((data) => {
@@ -254,14 +245,15 @@ export function ThreeShellMonteModal({
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [reloadToken]);
 
 	/**
 	 * Runs the cosmetic shuffle once the server has resolved a guess, then
 	 * reveals it. Deliberately keyed only on `pendingReveal` (and
 	 * `reducedMotion`, which only changes when the OS setting actually does)
-	 * so unrelated re-renders never restart an in-flight animation — see the
-	 * `onCoinsChangeRef` comment above.
+	 * so unrelated re-renders never restart an in-flight animation. The wallet
+	 * sync (`onCoinsChange`) happens in `runMonte` as soon as the server
+	 * responds, not here — this effect is purely cosmetic.
 	 */
 	useEffect(() => {
 		if (!pendingReveal) return;
@@ -272,8 +264,6 @@ export function ThreeShellMonteModal({
 			setPlayedShells(playedWith);
 			setRevealedPick(playedPick);
 			setFinalPositions(positions);
-			onCoinsChangeRef.current(outcome.coins);
-			setConfig((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
 			setRevealing(false);
 			setPendingReveal(null);
 		};
@@ -352,6 +342,11 @@ export function ThreeShellMonteModal({
 				playedWith,
 				clientSeed || undefined,
 			);
+			// Sync the wallet the moment the server settles the wager — do not
+			// wait for the cosmetic shuffle animation, which may never finish if
+			// the modal is closed early.
+			onCoinsChange(outcome.coins);
+			setConfig((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
 			setPendingReveal({ outcome, shells: playedWith, pick: playedPick });
 		} catch (err) {
 			setError(
@@ -363,7 +358,18 @@ export function ThreeShellMonteModal({
 
 	if (loading) return <p>Loading Three-Shell Monte...</p>;
 	if (!config)
-		return <p className="hub-modal__error">{error || "No game."}</p>;
+		return (
+			<div className="hub-modal__error">
+				<p>{error || "No game."}</p>
+				<button
+					type="button"
+					className="hub-modal__retry-button"
+					onClick={() => setReloadToken((token) => token + 1)}
+				>
+					Retry
+				</button>
+			</div>
+		);
 
 	const stakeValid =
 		Number.isInteger(stake) &&
@@ -480,10 +486,17 @@ export function ThreeShellMonteModal({
 						min={config.minWager}
 						max={config.maxWager}
 						step={1}
-						value={stake}
+						// NaN (not 0) represents "cleared, still typing" so the field
+						// can actually go empty instead of snapping back to "0" on
+						// every keystroke (Bug Audit 3.6).
+						value={Number.isNaN(stake) ? "" : stake}
 						disabled={revealing}
 						onChange={(event) =>
-							setStake(Math.floor(Number(event.target.value)))
+							setStake(
+								event.target.value === ""
+									? NaN
+									: Math.floor(Number(event.target.value)),
+							)
 						}
 					/>
 					<button

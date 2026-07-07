@@ -2320,6 +2320,21 @@ input {
 	color: #ff8d8d;
 }
 
+.hub-modal__retry-button {
+	margin-top: 0.75rem;
+	padding: 0.5rem 1.25rem;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--panel);
+	color: var(--text);
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.hub-modal__retry-button:hover {
+	border-color: var(--accent);
+}
+
 .hub-modal__list {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5007,6 +5022,13 @@ img.power-card__orb {
 	color: var(--accent);
 }
 
+.hub-notif-drawer__item-time {
+	display: block;
+	margin-top: 0.2rem;
+	font-size: 0.74rem;
+	color: var(--muted);
+}
+
 .hub-notif-drawer__item-actions {
 	display: flex;
 	align-items: center;
@@ -5303,6 +5325,15 @@ img.power-card__orb {
 .hub-cards__store-info span {
 	font-size: 0.82rem;
 	opacity: 0.75;
+}
+
+/* Bug Audit L2: coin balance shown inside the modal itself, since the hub
+   header's own balance is occluded behind this wide modal. */
+.hub-cards__store-coins {
+	font-family: var(--rowdy-font);
+	font-size: 0.9rem;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
 }
 
 .hub-cards__open-button {
@@ -7037,6 +7068,9 @@ img.power-card__orb {
 .hub-dice__result.is-loss {
 	color: #ff9083;
 }
+.hub-dice__result.is-push {
+	color: var(--muted);
+}
 .hub-dice__directions {
 	display: flex;
 	gap: 10px;
@@ -7332,6 +7366,9 @@ img.power-card__orb {
 }
 .hub-drop__result.is-loss {
 	color: #ff9083;
+}
+.hub-drop__result.is-push {
+	color: var(--muted);
 }
 .hub-drop__tiers {
 	display: flex;

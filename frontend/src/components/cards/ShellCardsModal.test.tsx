@@ -282,3 +282,110 @@ describe("ShellCardsModal pack tiers", () => {
 		);
 	});
 });
+
+// ── Bug Audit L2: coin balance shown inside the modal ──────────────────────
+describe("ShellCardsModal coin balance", () => {
+	it("should show the current coin balance next to the Collection counter", async () => {
+		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		render(<ShellCardsModal coins={734} onCoinsChange={() => undefined} />);
+
+		await screen.findByText("Golden Blitz");
+
+		expect(screen.getByText(/734 coins/)).toBeInTheDocument();
+	});
+});
+
+// ── Bug Audit M1: purchase vs binder-refresh error handling ────────────────
+describe("ShellCardsModal pack-open error handling", () => {
+	it("should keep the reveal and not show the purchase-failure message when only the binder refresh fails", async () => {
+		vi.mocked(api.getCards)
+			.mockResolvedValueOnce(makeBinder()) // initial load
+			.mockRejectedValueOnce(new Error("network blip")); // post-purchase refresh
+		vi.mocked(api.getCsrfToken).mockResolvedValue("token");
+		vi.mocked(api.openCardPack).mockResolvedValue({
+			coins: 400,
+			pulls: [
+				{
+					card: {
+						id: "pull-3",
+						family: "power_shell",
+						rarity: "stone",
+						name: "Pulled Pebble",
+						flavor: "",
+						sourceRef: "r11",
+					},
+					foil: false,
+					prismatic: false,
+					isNew: true,
+				},
+			],
+		});
+		const onCoinsChange = vi.fn();
+
+		render(<ShellCardsModal coins={500} onCoinsChange={onCoinsChange} />);
+		await screen.findByText("Golden Blitz");
+
+		fireEvent.click(
+			screen.getByRole("button", { name: /open basic pack.*100/i }),
+		);
+
+		// The reveal overlay is still shown even though the trailing
+		// getCards() refresh is about to fail.
+		await screen.findByRole("dialog");
+		expect(onCoinsChange).toHaveBeenCalledWith(400);
+
+		await waitFor(() =>
+			expect(
+				screen.getByText(/couldn't refresh the binder/i),
+			).toBeInTheDocument(),
+		);
+		expect(
+			screen.queryByText("Could not open pack. Try again."),
+		).not.toBeInTheDocument();
+		// The reveal dialog must still be present, not dismissed by the error.
+		expect(screen.getByRole("dialog")).toBeInTheDocument();
+	});
+
+	it("should surface the server's own message when the purchase itself fails", async () => {
+		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(api.getCsrfToken).mockResolvedValue("token");
+		vi.mocked(api.openCardPack).mockRejectedValue(
+			new Error("Not enough coins"),
+		);
+
+		render(<ShellCardsModal coins={500} onCoinsChange={() => undefined} />);
+		await screen.findByText("Golden Blitz");
+
+		fireEvent.click(
+			screen.getByRole("button", { name: /open basic pack.*100/i }),
+		);
+
+		expect(await screen.findByText("Not enough coins")).toBeInTheDocument();
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+	});
+});
+
+// ── Bug Audit M4: retry after a failed initial binder load ─────────────────
+describe("ShellCardsModal failed initial load", () => {
+	it("should reload the binder when Retry is clicked after a failed load", async () => {
+		vi.mocked(api.getCards)
+			.mockRejectedValueOnce(new Error("db down"))
+			.mockResolvedValueOnce(makeBinder());
+		// api.getCards is a shared mock across this whole test file (no
+		// resetMocks configured), so assert the *delta* in call count rather
+		// than an absolute total.
+		const callsBeforeRetry = vi.mocked(api.getCards).mock.calls.length;
+
+		render(<ShellCardsModal coins={500} onCoinsChange={() => undefined} />);
+
+		await screen.findByText("Could not load your binder.");
+		expect(screen.queryByText("Golden Blitz")).not.toBeInTheDocument();
+
+		fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+		expect(await screen.findByText("Golden Blitz")).toBeInTheDocument();
+		expect(vi.mocked(api.getCards).mock.calls.length).toBe(
+			callsBeforeRetry + 2,
+		);
+	});
+});

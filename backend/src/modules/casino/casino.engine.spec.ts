@@ -17,6 +17,7 @@ function makeUser(overrides: Partial<User> = {}): User {
 	user.id = overrides.id ?? 1;
 	user.username = overrides.username ?? "TestTurtle";
 	user.coins = overrides.coins ?? 0;
+	user.wagerCount = overrides.wagerCount ?? 0;
 	return user;
 }
 
@@ -40,7 +41,6 @@ describe("CasinoEngine", () => {
 	let engine: CasinoEngine;
 	let wagersRepo: {
 		findOne: jest.Mock;
-		count: jest.Mock;
 		create: jest.Mock;
 		save: jest.Mock;
 	};
@@ -51,7 +51,6 @@ describe("CasinoEngine", () => {
 	beforeEach(async () => {
 		wagersRepo = {
 			findOne: jest.fn().mockResolvedValue(null),
-			count: jest.fn().mockResolvedValue(0),
 			create: jest.fn((data: Partial<Wager>) => data as Wager),
 			save: jest.fn(async (row: Wager) => row),
 		};
@@ -261,9 +260,10 @@ describe("CasinoEngine", () => {
 			);
 		});
 
-		it("should use the prior wager count as the nonce and expose a recomputable roll", async () => {
-			usersRepo.findOne.mockResolvedValue(makeUser({ coins: 500 }));
-			wagersRepo.count.mockResolvedValue(5);
+		it("should use the user's lifetime wager count as the nonce and expose a recomputable roll", async () => {
+			usersRepo.findOne.mockResolvedValue(
+				makeUser({ coins: 500, wagerCount: 5 }),
+			);
 
 			const { fairness } = await engine.resolveSpin(
 				makeUser({ coins: 500 }),
@@ -274,6 +274,26 @@ describe("CasinoEngine", () => {
 			expect(fairness.nonce).toBe(5);
 			expect(fairness.roll).toBe(computeRoll("fixed", "c", 5));
 			expect(fairness.rolls).toEqual([computeRoll("fixed", "c", 5)]);
+		});
+
+		// Bug Audit 3.3: the nonce used to come from `wagersRepo.count(...)` — an
+		// unbounded scan over the user's entire wager history on every spin.
+		// It must now come from (and increment) `User.wagerCount`, an O(1)
+		// counter column serialized under the same row lock as the coin delta.
+		it("should increment the user's wagerCount by one per spin", async () => {
+			usersRepo.findOne.mockResolvedValue(
+				makeUser({ coins: 500, wagerCount: 5 }),
+			);
+
+			await engine.resolveSpin(
+				makeUser({ coins: 500 }),
+				input(),
+				fixedDecide(2),
+			);
+
+			expect(usersRepo.save).toHaveBeenCalledWith(
+				expect.objectContaining({ wagerCount: 6 }),
+			);
 		});
 
 		it("should expose `rolls` per reel for a multi-roll spin and pass them to decide", async () => {

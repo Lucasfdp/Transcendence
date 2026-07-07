@@ -9,7 +9,9 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository } from "typeorm";
 import { ACHIEVEMENTS } from "../achievements/achievements.constants";
 import { UserAchievement } from "../achievements/entities/user-achievement.entity";
+import { Profile } from "../profiles/entities/profile.entity";
 import { User } from "../users/entities/user.entity";
+import { lockUserForUpdate } from "../users/user-lock.util";
 import {
 	COSMETICS,
 	CosmeticDefinition,
@@ -75,15 +77,23 @@ export class CustomizationService {
 			throw new BadRequestException("Default cosmetics cannot be bought");
 
 		return this.dataSource.transaction(async (manager) => {
-			const usersRepo = manager.getRepository(User);
+			// Bug Audit 1.2: this used to be a plain `findOne` + later `save()`
+			// (read-modify-write) with no lock, racing every other wallet writer
+			// on the same `users.coins` column (casino spins, card packs, game
+			// results) under READ COMMITTED — the loser's coin delta is silently
+			// dropped. Lock the row first, exactly like `CasinoEngine.lockUser`.
+			const currentUser = await lockUserForUpdate(manager, user.id);
+			// `loadEagerRelations: false` (required for the lock, see
+			// `lockUserForUpdate`) means `profile` isn't populated by the fetch
+			// above — reload it separately so `toViews`' dojo-tag equip check
+			// still works.
+			currentUser.profile =
+				(await manager
+					.getRepository(Profile)
+					.findOne({ where: { user: { id: currentUser.id } } })) ?? undefined;
+
 			const cosmeticsRepo = manager.getRepository(UserCosmetic);
 			const achievementsRepo = manager.getRepository(UserAchievement);
-
-			const currentUser = await usersRepo.findOne({
-				where: { id: user.id },
-				relations: ["profile"],
-			});
-			if (!currentUser) throw new ForbiddenException("User not found");
 
 			const ownedIds = await this.findOwnedIds(
 				currentUser.id,
@@ -108,7 +118,7 @@ export class CustomizationService {
 				throw new BadRequestException("Not enough coins");
 
 			currentUser.coins -= cosmetic.price;
-			await usersRepo.save(currentUser);
+			await manager.getRepository(User).save(currentUser);
 			await this.grantCosmetic(currentUser, cosmetic.id, cosmeticsRepo);
 
 			ownedIds.add(cosmetic.id);

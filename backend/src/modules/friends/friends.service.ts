@@ -70,7 +70,12 @@ export class FriendsService {
 			const addressee = await this.userRepo.findOne({
 				where: { username: addresseeUsername },
 			});
-			if (!addressee) throw new NotFoundException("User not found");
+			// Guests are ephemeral and cannot durably receive/read notifications
+			// (Bug Audit M4) — treat a guest addressee as not-found rather than
+			// leaking that the username belongs to a live guest session.
+			if (!addressee || addressee.isGuest) {
+				throw new NotFoundException("User not found");
+			}
 
 			if (requesterId === addressee.id) {
 				throw new BadRequestException(
@@ -192,6 +197,20 @@ export class FriendsService {
 					username: accepter?.username ?? "",
 				})
 				.catch(() => undefined);
+
+			// Clear the now-resolved friend_request notification from the
+			// accepter's inbox, in both directions (Bug Audit H3). Without this,
+			// accepting from the social tab — which doesn't go through the
+			// drawer's own resolve-on-accept handler — or the mutual-request
+			// auto-accept path in sendRequest() left a dead-end "X sent you a
+			// friend request" entry whose Accept button 404s forever. Mirrors
+			// the cleanup declineOrCancelRequest/block already do.
+			await this.notifications
+				.removeWhere("friend_request", requesterId, addresseeId)
+				.catch(() => undefined);
+			await this.notifications
+				.removeWhere("friend_request", addresseeId, requesterId)
+				.catch(() => undefined);
 		} catch (err) {
 			if (err instanceof NotFoundException) throw err;
 			throw new InternalServerErrorException(
@@ -213,10 +232,23 @@ export class FriendsService {
 	 */
 	async removeFriend(actorId: number, otherId: number): Promise<void> {
 		try {
-			await this.friendshipRepo.delete([
+			const result = await this.friendshipRepo.delete([
 				{ requesterId: actorId, addresseeId: otherId, status: "accepted" },
 				{ requesterId: otherId, addresseeId: actorId, status: "accepted" },
 			]);
+			// "delete" event catalog entry (Bug Audit §3/#10). Deliberately
+			// live-only, not a persisted Notification row: a standing "so-and-so
+			// removed you as a friend" bell entry is an awkward, arguably
+			// hostile UX choice for a social feature. This just lets the
+			// removed side's friends list resync instantly if they're online;
+			// it carries no lingering notification and is a silent no-op if a
+			// row was never actually removed (a friendship didn't exist) or the
+			// user is offline.
+			if (result.affected && result.affected > 0) {
+				this.notifications.pushLiveEvent("friend:removed", otherId, {
+					userId: actorId,
+				});
+			}
 		} catch {
 			throw new InternalServerErrorException("Failed to remove friend");
 		}

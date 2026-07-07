@@ -106,33 +106,29 @@ export function ShellFlipModal({
 	const [pendingOutcome, setPendingOutcome] = useState<SpinResolution | null>(
 		null,
 	);
+	/** Bumped by the "Retry" button on a load failure to re-run the load effect. */
+	const [reloadToken, setReloadToken] = useState(0);
 	const coinRef = useRef<HTMLDivElement | null>(null);
 	const labelRef = useRef<HTMLSpanElement | null>(null);
 	const reducedMotion = useReducedMotion();
 
 	/**
-	 * `rotation` and `onCoinsChange` mirrored into refs so the animation effect
-	 * below can read their latest values without listing them as dependencies.
-	 * `onCoinsChange` in particular is a fresh inline closure on every
-	 * `HomePage` render (not memoized) — if it were a dependency, any
-	 * unrelated re-render of the hub page would tear down and restart the
-	 * in-flight `requestAnimationFrame` loop mid-flip. The effect is
+	 * `rotation` mirrored into a ref so the animation effect below can read its
+	 * latest value without listing it as a dependency. The effect is
 	 * deliberately keyed only on `pendingOutcome` (and `reducedMotion`, a real
 	 * user setting change worth reacting to), not on values that change for
-	 * unrelated reasons.
+	 * unrelated reasons — `onCoinsChange` no longer needs this treatment since
+	 * it's now called from `runFlip` directly, before the animation starts.
 	 */
 	const rotationRef = useRef(rotation);
-	const onCoinsChangeRef = useRef(onCoinsChange);
 	useEffect(() => {
 		rotationRef.current = rotation;
 	}, [rotation]);
-	useEffect(() => {
-		onCoinsChangeRef.current = onCoinsChange;
-	}, [onCoinsChange]);
 
 	useEffect(() => {
 		let cancelled = false;
 		setLoading(true);
+		setError("");
 		api
 			.getFlip()
 			.then((data) => {
@@ -149,7 +145,7 @@ export function ShellFlipModal({
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [reloadToken]);
 
 	// Active flip animation: spins the coin forward from its current resting
 	// angle to a deterministic landing angle for the already-known outcome,
@@ -159,9 +155,6 @@ export function ShellFlipModal({
 	// `reducedMotion`) alone — see the ref-mirroring note above.
 	useEffect(() => {
 		if (!pendingOutcome) return;
-		const coinEl = coinRef.current;
-		const labelEl = labelRef.current;
-		if (!coinEl || !labelEl) return;
 
 		const startAngle = rotationRef.current;
 		const targetSide = pendingOutcome.outcomeId as FlipSide;
@@ -174,13 +167,22 @@ export function ShellFlipModal({
 		const finish = (): void => {
 			setRotation(targetAngle);
 			setResult(pendingOutcome);
-			onCoinsChangeRef.current(pendingOutcome.coins);
-			setConfig((prev) =>
-				prev ? { ...prev, coins: pendingOutcome.coins } : prev,
-			);
 			setFlipping(false);
 			setPendingOutcome(null);
 		};
+
+		const coinEl = coinRef.current;
+		const labelEl = labelRef.current;
+		if (!coinEl || !labelEl) {
+			// Unreachable today (the coin/label elements always render once
+			// `config` has loaded, and `pendingOutcome` can't be set before
+			// that) — but if it ever happened, bailing out here without calling
+			// `finish()` would leave `flipping` stuck true forever with no way
+			// to reveal the result. Cheap hardening: settle immediately,
+			// skipping only the cosmetic paint (Bug Audit 3.6).
+			finish();
+			return;
+		}
 
 		const paintFace = (angle: number, scale: number): void => {
 			const side = sideAtAngle(angle);
@@ -241,6 +243,11 @@ export function ShellFlipModal({
 		try {
 			await api.getCsrfToken();
 			const outcome = await api.flip(stake, pick, clientSeed || undefined);
+			// Sync the wallet the moment the server settles the wager — do not
+			// wait for the cosmetic flip animation, which may never finish if
+			// the modal is closed early.
+			onCoinsChange(outcome.coins);
+			setConfig((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
 			setPendingOutcome(outcome);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Flip failed. Try again.");
@@ -250,7 +257,18 @@ export function ShellFlipModal({
 
 	if (loading) return <p>Loading Shell Flip...</p>;
 	if (!config)
-		return <p className="hub-modal__error">{error || "No game."}</p>;
+		return (
+			<div className="hub-modal__error">
+				<p>{error || "No game."}</p>
+				<button
+					type="button"
+					className="hub-modal__retry-button"
+					onClick={() => setReloadToken((token) => token + 1)}
+				>
+					Retry
+				</button>
+			</div>
+		);
 
 	const stakeValid =
 		Number.isInteger(stake) &&
@@ -332,10 +350,17 @@ export function ShellFlipModal({
 						min={config.minWager}
 						max={config.maxWager}
 						step={1}
-						value={stake}
+						// NaN (not 0) represents "cleared, still typing" so the field
+						// can actually go empty instead of snapping back to "0" on
+						// every keystroke (Bug Audit 3.6).
+						value={Number.isNaN(stake) ? "" : stake}
 						disabled={flipping}
 						onChange={(event) =>
-							setStake(Math.floor(Number(event.target.value)))
+							setStake(
+								event.target.value === ""
+									? NaN
+									: Math.floor(Number(event.target.value)),
+							)
 						}
 					/>
 					<button

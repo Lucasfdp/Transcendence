@@ -824,6 +824,13 @@ export type LeaderboardScope = "global" | "friends";
 
 // ── Notifications ─────────────────────────────────────────────────────────────
 
+/**
+ * These are the only persisted, inbox-visible notification types — mirrors
+ * the backend NotificationType. A friend removal is delivered separately as
+ * a live-only `friend:removed` WS event on the game socket and deliberately
+ * never appears here or in GET /notifications: see the backend entity doc
+ * for why that event has no persisted/bell form.
+ */
 export type NotificationType = "friend_request" | "friend_accepted";
 
 export interface NotificationView {
@@ -1124,6 +1131,36 @@ export const api = {
 			method: "POST",
 			body: JSON.stringify({ userId }),
 			// Deletes the caller's block row — repeating it is a no-op.
+			idempotent: true,
+		}),
+
+	// ── Notifications ────────────────────────────────────────────────────────
+
+	/**
+	 * Full unread notification inbox. Source of truth for hydrating the bell
+	 * on mount (Bug Audit H1) — the game socket's `notification:inbox` /
+	 * `notification:new` events remain the live accelerator on top of this
+	 * while a tab stays open.
+	 */
+	getNotifications: (): Promise<NotificationView[]> =>
+		apiFetch<NotificationView[]>("/notifications"),
+
+	/**
+	 * Mark one notification as read over REST. The live path is the
+	 * `notification:read` socket event — this is a fallback for when the
+	 * socket is unavailable, mirroring markConversationReadRest for chat.
+	 */
+	markNotificationReadRest: (notificationId: number): Promise<void> =>
+		apiFetch<void>(`/notifications/${notificationId}/read`, {
+			method: "POST",
+			// Scoped to readAt IS NULL server-side — repeating it is a no-op.
+			idempotent: true,
+		}),
+
+	/** Mark every unread notification as read over REST. */
+	markAllNotificationsReadRest: (): Promise<void> =>
+		apiFetch<void>("/notifications/read-all", {
+			method: "POST",
 			idempotent: true,
 		}),
 

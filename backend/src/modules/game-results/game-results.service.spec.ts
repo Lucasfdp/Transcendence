@@ -52,7 +52,6 @@ function makeUser(overrides: Partial<User> = {}): User {
 
 describe("GameResultsService", () => {
 	let service: GameResultsService;
-	let usersService: jest.Mocked<UsersService>;
 	let achievementsService: jest.Mocked<AchievementsService>;
 	let cardsService: jest.Mocked<Pick<CardsService, "grantMatchDrop">>;
 	let gameStatsRepo: {
@@ -60,6 +59,12 @@ describe("GameResultsService", () => {
 		create: jest.Mock;
 		save: jest.Mock;
 	};
+	/** Fake `manager.getRepository(User)` — the row `lockUserForUpdate` locks. */
+	let usersRepo: { findOne: jest.Mock; save: jest.Mock };
+	/** Fake `manager.getRepository(Profile)` — reloaded separately post-lock. */
+	let profilesRepo: { findOne: jest.Mock; save: jest.Mock };
+	/** Fake `DataSource` — `submitResult` runs its locked mutation through this. */
+	let dataSource: { transaction: jest.Mock };
 
 	const sampleDrop: PackPull = {
 		card: {
@@ -75,9 +80,50 @@ describe("GameResultsService", () => {
 		isNew: true,
 	};
 
+	/**
+	 * Points the fake locked-user/profile repos at `user` (and its `.profile`)
+	 * so `submitResult`'s transaction resolves them exactly as if the DB had
+	 * that row — every existing assertion on the mutated `user`/`user.profile`
+	 * object then keeps working unchanged, since the fakes resolve the very
+	 * same object references `makeUser()` built.
+	 */
+	function mockLockedUser(user: User, persistent = false): void {
+		if (persistent) {
+			usersRepo.findOne.mockResolvedValue(user);
+			profilesRepo.findOne.mockResolvedValue(user.profile);
+		} else {
+			usersRepo.findOne.mockResolvedValueOnce(user);
+			profilesRepo.findOne.mockResolvedValueOnce(user.profile);
+		}
+	}
+
 	beforeEach(async () => {
+		usersRepo = {
+			findOne: jest.fn(),
+			save: jest.fn(async (u: User) => u),
+		};
+		profilesRepo = {
+			findOne: jest.fn(),
+			save: jest.fn(async (p: Profile) => p),
+		};
+		dataSource = {
+			transaction: jest.fn(
+				async (
+					callback: (manager: {
+						getRepository: (entity: unknown) => unknown;
+					}) => unknown,
+				) =>
+					callback({
+						getRepository: (entity: unknown) => {
+							if (entity === User) return usersRepo;
+							if (entity === Profile) return profilesRepo;
+							throw new Error("Unknown repository");
+						},
+					}),
+			),
+		};
 		const mockUsersService: Partial<jest.Mocked<UsersService>> = {
-			save: jest.fn(),
+			getDataSource: jest.fn().mockReturnValue(dataSource),
 		};
 		const mockAchievementsService: Partial<
 			jest.Mocked<AchievementsService>
@@ -115,7 +161,6 @@ describe("GameResultsService", () => {
 		}).compile();
 
 		service = module.get<GameResultsService>(GameResultsService);
-		usersService = module.get(UsersService);
 		achievementsService = module.get(AchievementsService);
 		cardsService = module.get(CardsService);
 		gameStatsRepo = module.get(getRepositoryToken(UserGameStats));
@@ -125,7 +170,7 @@ describe("GameResultsService", () => {
 
 	it("should award XP and coins on win, increment totalWins and gamesPlayed", async () => {
 		const user = makeUser({ xp: 0, coins: 0 });
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		const result = await service.submitResult(user, {
 			gameId: "test-game",
@@ -140,14 +185,16 @@ describe("GameResultsService", () => {
 		expect(user.profile.totalLosses).toBe(0);
 		expect(user.profile.gamesPlayed).toBe(1);
 		expect(user.profile.totalCoinsEarned).toBe(COINS_PER_WIN);
-		expect(usersService.save).toHaveBeenCalledWith(user);
+		expect(usersRepo.save).toHaveBeenCalledWith(
+			expect.objectContaining({ id: user.id, coins: COINS_PER_WIN }),
+		);
 		expect(achievementsService.evaluateForUser).toHaveBeenCalledWith(user);
 		expect(result.unlockedAchievements).toEqual([]);
 	});
 
 	it("should award loss rewards and increment totalLosses and gamesPlayed", async () => {
 		const user = makeUser({ xp: 0, coins: 0 });
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		const result = await service.submitResult(user, {
 			gameId: "test-game",
@@ -166,7 +213,7 @@ describe("GameResultsService", () => {
 
 	it("should award completed rewards without incrementing wins or losses", async () => {
 		const user = makeUser({ xp: 0, coins: 0 });
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		const result = await service.submitResult(user, {
 			gameId: "test-game",
@@ -192,7 +239,7 @@ describe("GameResultsService", () => {
 
 	it("should award draw rewards without incrementing wins or losses", async () => {
 		const user = makeUser({ xp: 0, coins: 0 });
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		const result = await service.submitResult(user, {
 			gameId: "test-game",
@@ -218,7 +265,7 @@ describe("GameResultsService", () => {
 
 	it("should create per-game stats when none exist", async () => {
 		const user = makeUser();
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		await service.submitResult(user, {
 			gameId: "kame-knock",
@@ -254,7 +301,7 @@ describe("GameResultsService", () => {
 			totalLosses: 2,
 		});
 		gameStatsRepo.findOne.mockResolvedValueOnce(stats);
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		await service.submitResult(user, {
 			gameId: "temple-curling",
@@ -276,7 +323,7 @@ describe("GameResultsService", () => {
 	it("should level up when XP crosses the threshold", async () => {
 		// Level 1 threshold is 1 000 XP. Start at 900 — a win (150 XP) pushes past it.
 		const user = makeUser({ level: 1, xp: 900 });
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		const result = await service.submitResult(user, {
 			gameId: "test-game",
@@ -291,28 +338,11 @@ describe("GameResultsService", () => {
 
 	it("should handle multiple level-ups in a single call", async () => {
 		// Level 1 threshold: 1 000. Level 2 threshold: 2 000.
-		// Starting at level 1 with 0 XP and awarding 3 500 XP should push to level 3.
-		// 3500 >= 1000 → level 2, remainder 2500
-		// 2500 >= 2000 → level 3, remainder 500
-		const testXpGain = 3_500;
-		// Override XP_PER_WIN for this test by supplying the right starting state.
-		// We fake the internal award by starting the user with enough XP to ensure
-		// multiple thresholds are crossed after a single win (+150 XP).
-		// Actually, let's test the loop directly: start at level 1, 0 xp, and
-		// manually test with a high xp start so the *result* of adding XP_PER_WIN
-		// triggers two level-ups.
-		//
-		// Level 1 threshold = 1000. Level 2 threshold = 2000.
-		// Start: level 1, xp = 990. Win adds 150 → 1140.
-		// 1140 >= 1000 → level 2, remainder = 140. 140 < 2000 → stop.
-		// Only 1 level-up in that case.
-		//
 		// For 2 level-ups: level 1, xp = 2950. Win adds 150 → 3100.
 		// 3100 >= 1000 → level 2, remainder = 2100.
 		// 2100 >= 2000 → level 3, remainder = 100. Stop.
-		void testXpGain; // unused above — used for documentation
 		const user = makeUser({ level: 1, xp: 2_950 });
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		const result = await service.submitResult(user, {
 			gameId: "test-game",
@@ -328,7 +358,7 @@ describe("GameResultsService", () => {
 		// Level 2 threshold = 2000. Start at level 2, xp = 1990.
 		// Win adds 150 → 2140. 2140 >= 2000 → level 3, remainder = 140.
 		const user = makeUser({ level: 2, xp: 1_990 });
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		const result = await service.submitResult(user, {
 			gameId: "test-game",
@@ -342,7 +372,7 @@ describe("GameResultsService", () => {
 
 	it("should not level up when XP does not reach the threshold", async () => {
 		const user = makeUser({ level: 1, xp: 0 });
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		const result = await service.submitResult(user, {
 			gameId: "test-game",
@@ -356,21 +386,21 @@ describe("GameResultsService", () => {
 
 	// ── Error handling ──────────────────────────────────────────────────────────
 
-	it("should throw InternalServerErrorException when usersService.save fails", async () => {
+	it("should throw InternalServerErrorException when persisting the locked user fails", async () => {
 		const user = makeUser();
-		usersService.save.mockRejectedValueOnce(
-			new Error("DB connection lost"),
-		);
+		mockLockedUser(user);
+		usersRepo.save.mockRejectedValueOnce(new Error("DB connection lost"));
 
 		await expect(
 			service.submitResult(user, { gameId: "test-game", outcome: "win" }),
 		).rejects.toThrow(InternalServerErrorException);
 	});
 
-	it("should propagate InternalServerErrorException from usersService.save as-is", async () => {
+	it("should propagate InternalServerErrorException from the transaction as-is", async () => {
 		const user = makeUser();
+		mockLockedUser(user);
 		const original = new InternalServerErrorException("upstream failure");
-		usersService.save.mockRejectedValueOnce(original);
+		usersRepo.save.mockRejectedValueOnce(original);
 
 		await expect(
 			service.submitResult(user, { gameId: "test-game", outcome: "win" }),
@@ -379,6 +409,7 @@ describe("GameResultsService", () => {
 
 	it("should return newly unlocked achievements from achievement evaluation", async () => {
 		const user = makeUser();
+		mockLockedUser(user);
 		const unlocked = [
 			{
 				id: "first-match",
@@ -396,7 +427,6 @@ describe("GameResultsService", () => {
 				unlockedAt: new Date("2026-01-01T00:00:00Z").toISOString(),
 			},
 		];
-		usersService.save.mockResolvedValueOnce(user);
 		achievementsService.evaluateForUser.mockResolvedValueOnce(unlocked);
 
 		const result = await service.submitResult(user, {
@@ -411,7 +441,7 @@ describe("GameResultsService", () => {
 
 	it("should include the cosmetic card drop in the result", async () => {
 		const user = makeUser();
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		const result = await service.submitResult(user, {
 			gameId: "test-game",
@@ -424,7 +454,7 @@ describe("GameResultsService", () => {
 
 	it("should still record the match with a null drop when the card grant fails", async () => {
 		const user = makeUser();
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 		cardsService.grantMatchDrop.mockRejectedValueOnce(
 			new Error("card grant failed"),
 		);
@@ -436,14 +466,16 @@ describe("GameResultsService", () => {
 
 		expect(result.cardDrop).toBeNull();
 		expect(result.coinsGained).toBe(COINS_PER_WIN);
-		expect(usersService.save).toHaveBeenCalledWith(user);
+		expect(usersRepo.save).toHaveBeenCalledWith(
+			expect.objectContaining({ id: user.id }),
+		);
 	});
 
 	// ── Accumulation ────────────────────────────────────────────────────────────
 
 	it("should accumulate coins across multiple calls", async () => {
 		const user = makeUser({ coins: 100 });
-		usersService.save.mockResolvedValue(user);
+		mockLockedUser(user, /* persistent */ true);
 
 		await service.submitResult(user, {
 			gameId: "test-game",
@@ -460,7 +492,7 @@ describe("GameResultsService", () => {
 
 	it("should accumulate gamesPlayed correctly for mixed outcomes", async () => {
 		const user = makeUser();
-		usersService.save.mockResolvedValue(user);
+		mockLockedUser(user, /* persistent */ true);
 
 		await service.submitResult(user, { gameId: "g", outcome: "win" });
 		await service.submitResult(user, { gameId: "g", outcome: "loss" });
@@ -476,7 +508,7 @@ describe("GameResultsService", () => {
 
 	it("should include a coins-reward achievement's bonus in newCoins", async () => {
 		const user = makeUser({ coins: 100 });
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 		// Simulate AchievementsService.applyReward: it mutates the *same* user
 		// object reference and persists it internally, independent of
 		// GameResultsService's own save.
@@ -498,7 +530,7 @@ describe("GameResultsService", () => {
 
 	it("should return the plain match-reward balance when no achievement unlocks a coin reward", async () => {
 		const user = makeUser({ coins: 100 });
-		usersService.save.mockResolvedValueOnce(user);
+		mockLockedUser(user);
 
 		const result = await service.submitResult(user, {
 			gameId: "test-game",
@@ -510,15 +542,38 @@ describe("GameResultsService", () => {
 
 	// ── Bug Audit L4: missing profile guard ─────────────────────────────────────
 
-	it("should throw a clear InternalServerErrorException when user.profile is missing", async () => {
-		// `makeUser`'s `??` fallback means passing `profile: null` in overrides
-		// doesn't stick — set it directly on the built user instead.
+	it("should throw a clear InternalServerErrorException when the locked user has no profile row", async () => {
+		// A missing profile is now a genuine DB-integrity check: the profile is
+		// reloaded fresh from the (mocked) `Profile` repo inside the locked
+		// transaction, independent of whatever the caller's `user` argument
+		// happened to have preloaded.
 		const user = makeUser();
-		user.profile = null as unknown as Profile;
+		usersRepo.findOne.mockResolvedValueOnce(user);
+		profilesRepo.findOne.mockResolvedValueOnce(null);
 
 		await expect(
 			service.submitResult(user, { gameId: "test-game", outcome: "win" }),
 		).rejects.toThrow(InternalServerErrorException);
-		expect(usersService.save).not.toHaveBeenCalled();
+		expect(usersRepo.save).not.toHaveBeenCalled();
+	});
+
+	// ── Bug Audit 1.2: locked read-modify-write ──────────────────────────────────
+
+	it("locks the user row with pessimistic_write before reading its balance", async () => {
+		const user = makeUser();
+		mockLockedUser(user);
+
+		await service.submitResult(user, {
+			gameId: "test-game",
+			outcome: "win",
+		});
+
+		expect(usersRepo.findOne).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { id: user.id },
+				lock: { mode: "pessimistic_write" },
+				loadEagerRelations: false,
+			}),
+		);
 	});
 });

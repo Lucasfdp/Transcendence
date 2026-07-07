@@ -15,6 +15,7 @@ import {
 	type PackTierId,
 	type PackTierView,
 } from "../../features/hub/api";
+import { useDialogFocusTrap } from "../../hooks/useDialogFocusTrap";
 import { computeCardTilt } from "./cardTilt";
 import {
 	filterAndSortCards,
@@ -24,10 +25,6 @@ import {
 
 /** Keys that activate a card slot, mirroring native button behaviour. */
 const ACTIVATION_KEYS = new Set(["Enter", " "]);
-
-/** Selector for elements that can receive keyboard focus, used by the lightbox's focus trap. */
-const FOCUSABLE_SELECTOR =
-	'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * Distinct shapes per rarity, layered on top of the existing border-colour
@@ -158,6 +155,10 @@ export function CardSlot({
 	/** Called with the card when an owned slot is activated (click or Enter/Space). */
 	onSelect: (card: CardView) => void;
 }): JSX.Element {
+	// Bug Audit L5: was computed twice per render (once for the badge text,
+	// once for the conditional rendering it). Hoisted to a local.
+	const shineBadge = shineBadgeText(card.foilCount, card.prismaticCount);
+
 	const classes = [
 		"hub-cards__card",
 		`hub-cards__card--${card.rarity}`,
@@ -222,17 +223,15 @@ export function CardSlot({
 			{card.owned && card.count > 1 ? (
 				<span className="hub-cards__count">×{card.count}</span>
 			) : null}
-			{shineBadgeText(card.foilCount, card.prismaticCount) ? (
-				<span className="hub-cards__foil-badge">
-					{shineBadgeText(card.foilCount, card.prismaticCount)}
-				</span>
+			{shineBadge ? (
+				<span className="hub-cards__foil-badge">{shineBadge}</span>
 			) : null}
 		</article>
 	);
 }
 
 /** The pack-opening reveal overlay — tap each card to flip it. */
-function RevealOverlay({
+export function RevealOverlay({
 	pulls,
 	onDismiss,
 }: {
@@ -240,13 +239,26 @@ function RevealOverlay({
 	onDismiss: () => void;
 }): JSX.Element {
 	const [flipped, setFlipped] = useState<ReadonlySet<number>>(new Set());
+	const containerRef = useRef<HTMLDivElement>(null);
+	const firstCardRef = useRef<HTMLDivElement>(null);
+
+	// Bug Audit M3: previously this dialog declared role="dialog" aria-modal
+	// with no focus management at all — initial focus lands on the first
+	// face-down card, matching CardLightbox's "focus the primary control"
+	// convention.
+	useDialogFocusTrap(containerRef, onDismiss, firstCardRef);
 
 	const flip = (index: number): void => {
 		setFlipped((prev) => new Set([...prev, index]));
 	};
 
 	return (
-		<div className="hub-cards__reveal" role="dialog" aria-modal="true">
+		<div
+			className="hub-cards__reveal"
+			role="dialog"
+			aria-modal="true"
+			ref={containerRef}
+		>
 			<h3 className="hub-cards__reveal-title">Tap to reveal!</h3>
 			<div className="hub-cards__reveal-row">
 				{pulls.map((pull, index) => {
@@ -254,6 +266,7 @@ function RevealOverlay({
 					return (
 						<div
 							key={`${pull.card.id}-${index}`}
+							ref={index === 0 ? firstCardRef : undefined}
 							className={[
 								"hub-cards__reveal-wrapper",
 								isFlipped ? "is-flipped" : "",
@@ -343,45 +356,12 @@ export function CardLightbox({
 
 	// Focus management: move focus to the Close button on open, trap Tab
 	// within the lightbox, close on Escape, and restore focus to whatever
-	// triggered the lightbox on close/unmount. Deps are `[]` (not `[onClose]`)
-	// so this doesn't re-run — and re-steal focus — every time ShellCardsModal
-	// re-renders and passes a new onClose closure; mirrors HubModal's
-	// focus-trap effect in HomePage.tsx.
-	useEffect(() => {
-		const previouslyFocused = document.activeElement as HTMLElement | null;
-		closeButtonRef.current?.focus();
+	// triggered the lightbox on close/unmount (Bug Audit M3 — this used to be
+	// hand-rolled here; it's now the shared hook so RevealOverlay gets the
+	// same behaviour instead of a third copy).
+	useDialogFocusTrap(containerRef, onClose, closeButtonRef);
 
-		const handleKeyDown = (event: globalThis.KeyboardEvent): void => {
-			if (event.key === "Escape") {
-				onClose();
-				return;
-			}
-			const container = containerRef.current;
-			if (event.key !== "Tab" || !container) return;
-
-			const focusable = Array.from(
-				container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-			);
-			if (focusable.length === 0) return;
-
-			const first = focusable[0];
-			const last = focusable[focusable.length - 1];
-			if (event.shiftKey && document.activeElement === first) {
-				event.preventDefault();
-				last.focus();
-			} else if (!event.shiftKey && document.activeElement === last) {
-				event.preventDefault();
-				first.focus();
-			}
-		};
-		document.addEventListener("keydown", handleKeyDown);
-		return () => {
-			document.removeEventListener("keydown", handleKeyDown);
-			previouslyFocused?.focus();
-		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on mount, mirrors HubModal's focus-trap effect
-	}, []);
-
+	const shineBadge = shineBadgeText(card.foilCount, card.prismaticCount);
 	const classes = [
 		"hub-cards__card",
 		"hub-cards__lightbox-card",
@@ -431,9 +411,7 @@ export function CardLightbox({
 				<p className="hub-cards__lightbox-flavor">{card.flavor}</p>
 				<span className="hub-cards__lightbox-meta">
 					{card.rarity}
-					{shineBadgeText(card.foilCount, card.prismaticCount)
-						? ` · ${shineBadgeText(card.foilCount, card.prismaticCount)}`
-						: ""}
+					{shineBadge ? ` · ${shineBadge}` : ""}
 					{card.count > 1 ? ` · ×${card.count}` : ""}
 				</span>
 			</div>
@@ -459,10 +437,15 @@ export function ShellCardsModal({
 	const [binder, setBinder] = useState<BinderView | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
+	/** Bug Audit M4: bumped by the Retry button to re-run the load effect below. */
+	const [loadAttempt, setLoadAttempt] = useState(0);
 	/** id of the tier currently mid-purchase, or null when no purchase is in flight. */
 	const [openingTierId, setOpeningTierId] = useState<PackTierId | null>(null);
 	const [reveal, setReveal] = useState<PackPull[] | null>(null);
-	const [selectedCard, setSelectedCard] = useState<CardView | null>(null);
+	/** Bug Audit L6: store only the id, not a snapshot — the lightbox re-derives
+	 * the live `CardView` from `binder.cards` below so counts never go stale if
+	 * the binder refreshes while it's open. */
+	const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 	const [rarityFilter, setRarityFilter] = useState<CardRarity | "all">("all");
 	const [missingOnly, setMissingOnly] = useState(false);
 	const [sortOrder, setSortOrder] = useState<BinderSortOrder>("collection");
@@ -470,6 +453,7 @@ export function ShellCardsModal({
 	useEffect(() => {
 		let cancelled = false;
 		setLoading(true);
+		setError("");
 		api
 			.getCards()
 			.then((data) => {
@@ -484,28 +468,72 @@ export function ShellCardsModal({
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [loadAttempt]);
 
 	const handleOpenPack = async (tier: PackTierView): Promise<void> => {
 		if (openingTierId !== null || reveal !== null || !binder) return;
 		if (coins < tier.priceCoins) return;
 		setOpeningTierId(tier.id);
 		setError("");
+
+		// Bug Audit M1: purchase and binder-refresh failures used to share one
+		// try/catch. If only the trailing getCards() refresh failed, the user
+		// still saw the reveal overlay AND "Could not open pack. Try again." —
+		// even though coins were already spent — which reads as "my attempt
+		// failed" and invites a second, wasted purchase. Split so a refresh
+		// failure keeps the reveal and shows a softer message instead, and
+		// surface the server's own message (e.g. "Not enough coins") when the
+		// purchase itself fails, mirroring FortuneWheelModal's convention.
+		let result: Awaited<ReturnType<typeof api.openCardPack>>;
 		try {
 			await api.getCsrfToken();
-			const result = await api.openCardPack(tier.id);
-			onCoinsChange(result.coins);
-			setReveal(result.pulls);
+			result = await api.openCardPack(tier.id);
+		} catch (err: unknown) {
+			setError(
+				err instanceof Error ? err.message : "Could not open pack. Try again.",
+			);
+			setOpeningTierId(null);
+			return;
+		}
+
+		onCoinsChange(result.coins);
+		setReveal(result.pulls);
+
+		try {
 			setBinder(await api.getCards());
 		} catch {
-			setError("Could not open pack. Try again.");
+			setError(
+				"Pack opened — couldn't refresh the binder. It'll update next " +
+					"time you open this screen.",
+			);
 		} finally {
 			setOpeningTierId(null);
 		}
 	};
 
+	/** Bug Audit M4: lets the user retry after a failed initial binder load,
+	 * instead of the previous dead end (close and reopen the modal). */
+	const handleRetryLoad = (): void => setLoadAttempt((attempt) => attempt + 1);
+
 	if (loading) return <p>Loading your binder...</p>;
-	if (!binder) return <p className="hub-modal__error">{error || "No binder."}</p>;
+	if (!binder) {
+		return (
+			<div className="hub-modal__error">
+				<p>{error || "No binder."}</p>
+				<button
+					type="button"
+					className="hub-cards__open-button"
+					onClick={handleRetryLoad}
+				>
+					Retry
+				</button>
+			</div>
+		);
+	}
+
+	const selectedCard = selectedCardId
+		? (binder.cards.find((c) => c.id === selectedCardId) ?? null)
+		: null;
 
 	const setsByFamily = new Map(binder.sets.map((s) => [s.family, s]));
 	const visibleCards = filterAndSortCards(binder.cards, {
@@ -524,6 +552,12 @@ export function ShellCardsModal({
 					<span>
 						{binder.totals.owned} / {binder.totals.total} cards
 					</span>
+				</div>
+				{/* Bug Audit L2: the pack store didn't show the coin balance inside
+				    the modal (spec §6 calls for it), and the hub header showing it
+				    is occluded by this wide modal. */}
+				<div className="hub-cards__store-coins">
+					<span aria-hidden="true">⬡</span> {coins} coins
 				</div>
 			</div>
 
@@ -658,7 +692,7 @@ export function ShellCardsModal({
 								<CardSlot
 									key={card.id}
 									card={card}
-									onSelect={setSelectedCard}
+									onSelect={(selected) => setSelectedCardId(selected.id)}
 								/>
 							))}
 						</div>
@@ -673,7 +707,7 @@ export function ShellCardsModal({
 			{selectedCard ? (
 				<CardLightbox
 					card={selectedCard}
-					onClose={() => setSelectedCard(null)}
+					onClose={() => setSelectedCardId(null)}
 				/>
 			) : null}
 		</div>

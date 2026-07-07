@@ -148,6 +148,8 @@ export function FortuneWheelModal({
 	const [showFairness, setShowFairness] = useState(false);
 	const [verify, setVerify] = useState<FairnessCheck | null>(null);
 	const [verifying, setVerifying] = useState(false);
+	/** Bumped by the "Retry" button on a load failure to re-run the load effect. */
+	const [reloadToken, setReloadToken] = useState(0);
 	const reducedMotion = useReducedMotion();
 	/** Cancels the in-flight rotation animation, if any (set only while spinning). */
 	const cancelSpinAnimation = useRef<(() => void) | null>(null);
@@ -159,6 +161,7 @@ export function FortuneWheelModal({
 	useEffect(() => {
 		let cancelled = false;
 		setLoading(true);
+		setError("");
 		api
 			.getWheel()
 			.then((data) => {
@@ -176,7 +179,7 @@ export function FortuneWheelModal({
 			cancelled = true;
 			cancelSpinAnimation.current?.();
 		};
-	}, []);
+	}, [reloadToken]);
 
 	const runSpin = async (
 		produce: () => Promise<SpinResult>,
@@ -190,6 +193,21 @@ export function FortuneWheelModal({
 		try {
 			await api.getCsrfToken();
 			const spin = await produce();
+			// Sync the wallet (and any other server-truth flags) the moment the
+			// server settles the wager — do not wait for the cosmetic spin
+			// animation, which may never finish if the modal is closed early.
+			onCoinsChange(spin.coins);
+			setWheel((prev) =>
+				prev
+					? {
+							...prev,
+							coins: spin.coins,
+							freeSpinAvailable:
+								spin.mode === "free" ? false : prev.freeSpinAvailable,
+						}
+					: prev,
+			);
+
 			const index = wheel.segments.findIndex(
 				(segment) => segment.id === spin.segment.id,
 			);
@@ -204,19 +222,6 @@ export function FortuneWheelModal({
 					pulsePointer(pointerRef.current, LANDING_FLEX_CLASS);
 				}
 				setResult(spin);
-				onCoinsChange(spin.coins);
-				setWheel((prev) =>
-					prev
-						? {
-								...prev,
-								coins: spin.coins,
-								freeSpinAvailable:
-									spin.mode === "free"
-										? false
-										: prev.freeSpinAvailable,
-							}
-						: prev,
-				);
 				setSpinning(false);
 			};
 
@@ -249,7 +254,18 @@ export function FortuneWheelModal({
 
 	if (loading) return <p>Loading the wheel...</p>;
 	if (!wheel)
-		return <p className="hub-modal__error">{error || "No wheel."}</p>;
+		return (
+			<div className="hub-modal__error">
+				<p>{error || "No wheel."}</p>
+				<button
+					type="button"
+					className="hub-modal__retry-button"
+					onClick={() => setReloadToken((token) => token + 1)}
+				>
+					Retry
+				</button>
+			</div>
+		);
 
 	const stakeValid =
 		Number.isInteger(stake) &&
@@ -311,7 +327,7 @@ export function FortuneWheelModal({
 				>
 					{wheel.freeSpinAvailable
 						? `Free Daily Spin (${wheel.freeStake} ⬡ stake)`
-						: "Free spin used today"}
+						: "Free spin used today — resets at midnight UTC"}
 				</button>
 
 				<div className="hub-wheel__wager">
@@ -328,10 +344,17 @@ export function FortuneWheelModal({
 						min={wheel.minWager}
 						max={wheel.maxWager}
 						step={1}
-						value={stake}
+						// NaN (not 0) represents "cleared, still typing" so the field
+						// can actually go empty instead of snapping back to "0" on
+						// every keystroke (Bug Audit 3.6).
+						value={Number.isNaN(stake) ? "" : stake}
 						disabled={spinning}
 						onChange={(event) =>
-							setStake(Math.floor(Number(event.target.value)))
+							setStake(
+								event.target.value === ""
+									? NaN
+									: Math.floor(Number(event.target.value)),
+							)
 						}
 					/>
 					<button

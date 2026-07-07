@@ -93,6 +93,8 @@ export function KoiDiceModal({
 	const [pendingOutcome, setPendingOutcome] = useState<SpinResolution | null>(
 		null,
 	);
+	/** Bumped by the "Retry" button on a load failure to re-run the load effect. */
+	const [reloadToken, setReloadToken] = useState(0);
 	const odometerStripRef = useRef<HTMLDivElement | null>(null);
 	const landedMarkerRef = useRef<HTMLDivElement | null>(null);
 	const reducedMotion = useReducedMotion();
@@ -120,6 +122,7 @@ export function KoiDiceModal({
 	useEffect(() => {
 		let cancelled = false;
 		setLoading(true);
+		setError("");
 		api
 			.getDice()
 			.then((data) => {
@@ -139,7 +142,7 @@ export function KoiDiceModal({
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [reloadToken]);
 
 	// Resting frame: shows a single row in the odometer window (either "—"
 	// before any roll, or the landed value after one) and parks the landed
@@ -179,10 +182,6 @@ export function KoiDiceModal({
 
 		const finish = (): void => {
 			setResult(pendingOutcome);
-			onCoinsChangeRef.current(pendingOutcome.coins);
-			setConfig((prev) =>
-				prev ? { ...prev, coins: pendingOutcome.coins } : prev,
-			);
 			setRolling(false);
 			setPendingOutcome(null);
 		};
@@ -244,6 +243,11 @@ export function KoiDiceModal({
 				target,
 				clientSeed || undefined,
 			);
+			// Sync the wallet the moment the server settles the wager — do not
+			// wait for the cosmetic odometer animation, which may never finish
+			// if the modal is closed early.
+			onCoinsChangeRef.current(outcome.coins);
+			setConfig((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
 			setPendingOutcome(outcome);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Roll failed. Try again.");
@@ -253,7 +257,18 @@ export function KoiDiceModal({
 
 	if (loading) return <p>Loading Koi Dice...</p>;
 	if (!config)
-		return <p className="hub-modal__error">{error || "No game."}</p>;
+		return (
+			<div className="hub-modal__error">
+				<p>{error || "No game."}</p>
+				<button
+					type="button"
+					className="hub-modal__retry-button"
+					onClick={() => setReloadToken((token) => token + 1)}
+				>
+					Retry
+				</button>
+			</div>
+		);
 
 	const bounds = boundsFor(config, direction);
 	const targetValid =
@@ -300,12 +315,20 @@ export function KoiDiceModal({
 				<p
 					className={[
 						"hub-dice__result",
-						result.net > 0 ? "is-win" : "is-loss",
+						result.net > 0
+							? "is-win"
+							: result.net < 0
+								? "is-loss"
+								: "is-push",
 					].join(" ")}
 					role="status"
 				>
 					Rolled {landedValue} ·{" "}
-					{result.net > 0 ? `+${result.net} ⬡` : `${result.net} ⬡`}
+					{result.net > 0
+						? `+${result.net} ⬡`
+						: result.net < 0
+							? `${result.net} ⬡`
+							: "Push — stake returned"}
 				</p>
 			) : (
 				<p className="hub-dice__balance">Balance: {coins} ⬡</p>
@@ -349,6 +372,16 @@ export function KoiDiceModal({
 				<div className="hub-dice__odds">
 					<span>Win chance: {(winChance * 100).toFixed(1)}%</span>
 					<span>Pays {payoutMultiplier.toFixed(2)}×</span>
+					{stakeValid ? (
+						<span>
+							{/* Payouts round down to whole coins server-side (see
+							 * CasinoEngine.resolveSpin), so a win can settle at exactly
+							 * the stake back — showing the effective payout up front
+							 * lets the player see that before betting. */}
+							Effective payout for {stake} ⬡:{" "}
+							{Math.floor(stake * payoutMultiplier)} ⬡
+						</span>
+					) : null}
 				</div>
 			</div>
 
@@ -364,10 +397,17 @@ export function KoiDiceModal({
 						min={config.minWager}
 						max={config.maxWager}
 						step={1}
-						value={stake}
+						// NaN (not 0) represents "cleared, still typing" so the field
+						// can actually go empty instead of snapping back to "0" on
+						// every keystroke (Bug Audit 3.6).
+						value={Number.isNaN(stake) ? "" : stake}
 						disabled={rolling}
 						onChange={(event) =>
-							setStake(Math.floor(Number(event.target.value)))
+							setStake(
+								event.target.value === ""
+									? NaN
+									: Math.floor(Number(event.target.value)),
+							)
 						}
 					/>
 					<button
@@ -465,7 +505,8 @@ export function KoiDiceModal({
 
 			<p className="hub-dice__notice">
 				Play money only — coins have no real-world value. Koi Dice takes no
-				house cut (fair payout 100%, range 0–{DICE_MAX_VALUE}).
+				house cut (fair payout ~100%, range 0–{DICE_MAX_VALUE}; payouts round
+				down to whole coins).
 			</p>
 		</div>
 	);

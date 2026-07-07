@@ -12,9 +12,18 @@ import { User } from "../../users/entities/user.entity";
  * Notification types:
  *   'friend_request'  — someone sent the recipient a friend request (persistent)
  *   'friend_accepted' — someone accepted the recipient's friend request (persistent)
+ *   'friend_removed'  — someone removed the recipient as a friend (delete verb)
  *
- * Game-invite notifications are ephemeral and handled live-only via WebSocket
- * — they are never persisted here.
+ * 'friend_removed' is intentionally NOT persisted here — see
+ * NotificationsService.pushLiveEvent and FriendsService.removeFriend. A
+ * permanent "so-and-so removed you as a friend" bell entry is an awkward,
+ * arguably hostile UX choice for a social feature, so this event is
+ * delivered live-only (like game_invite) purely to resync the removed
+ * side's friends list in real time; it carries no lingering notification.
+ *
+ * Game-invite notifications are likewise ephemeral and handled live-only via
+ * WebSocket — they are never persisted here. See docs/notifications.md for
+ * the full event catalog.
  */
 export type NotificationType = "friend_request" | "friend_accepted";
 

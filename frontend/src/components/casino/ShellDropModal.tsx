@@ -21,6 +21,7 @@ import {
 } from "./drop-path";
 import { type OutcomeFairnessCheck, verifyPlinko } from "./fairness";
 import { bucketFromOutcome, bucketView } from "./plinko";
+import { useReducedMotion } from "./useReducedMotion";
 
 /**
  * Total wall-clock time a drop animation takes, independent of the chosen
@@ -196,21 +197,23 @@ export function ShellDropModal({
 		null,
 	);
 	const boardCanvasRef = useRef<HTMLCanvasElement | null>(null);
+	const reducedMotion = useReducedMotion();
 
 	/**
-	 * `rows` and `onCoinsChange` mirrored into refs so the animation effect
+	 * `rows` and `reducedMotion` mirrored into refs so the animation effect
 	 * below can read their latest values without listing them as
 	 * dependencies. They're irrelevant to *when* a drop animation should
-	 * (re)start — only a brand-new `pendingOutcome` should do that — but
-	 * `onCoinsChange` in particular is a fresh inline function on every
-	 * parent (`HomePage`) render, so including it as a dependency was
+	 * (re)start — only a brand-new `pendingOutcome` should do that. Including
+	 * a fresh inline function (like the old `onCoinsChange` dependency) was
 	 * tearing down and restarting the in-flight `requestAnimationFrame` loop
 	 * on every unrelated parent re-render, which is why the shell appeared to
-	 * loop the first few rows and never reach the bottom.
+	 * loop the first few rows and never reach the bottom — `onCoinsChange` no
+	 * longer needs this treatment since it's now called from `runDrop`
+	 * directly, before the animation starts.
 	 */
 	const viewRef = useRef(view);
 	const rowsRef = useRef(rows);
-	const onCoinsChangeRef = useRef(onCoinsChange);
+	const reducedMotionRef = useRef(reducedMotion);
 	useEffect(() => {
 		viewRef.current = view;
 	}, [view]);
@@ -218,12 +221,15 @@ export function ShellDropModal({
 		rowsRef.current = rows;
 	}, [rows]);
 	useEffect(() => {
-		onCoinsChangeRef.current = onCoinsChange;
-	}, [onCoinsChange]);
+		reducedMotionRef.current = reducedMotion;
+	}, [reducedMotion]);
+	/** Bumped by the "Retry" button on a load failure to re-run the load effect. */
+	const [reloadToken, setReloadToken] = useState(0);
 
 	useEffect(() => {
 		let cancelled = false;
 		setLoading(true);
+		setError("");
 		api
 			.getPlinko()
 			.then((data) => {
@@ -241,7 +247,7 @@ export function ShellDropModal({
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [reloadToken]);
 
 	// Idle/resting board frame: draws the shell parked at top-centre before any
 	// drop, or parked at the landed bucket once `result` is revealed. Skipped
@@ -299,17 +305,11 @@ export function ShellDropModal({
 
 		const finish = (): void => {
 			setResult(pendingOutcome);
-			onCoinsChangeRef.current(pendingOutcome.coins);
-			setView((prev) => (prev ? { ...prev, coins: pendingOutcome.coins } : prev));
 			setDropping(false);
 			setPendingOutcome(null);
 		};
 
-		const reduceMotion =
-			globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ??
-			false;
-
-		if (reduceMotion || rect.width === 0) {
+		if (reducedMotionRef.current || rect.width === 0) {
 			const restX = path.length > 0 ? path[path.length - 1].x : 0.5;
 			drawBoard(ctx, rect.width, rect.height, pegs, restX, 1, palette);
 			finish();
@@ -346,6 +346,11 @@ export function ShellDropModal({
 		try {
 			await api.getCsrfToken();
 			const outcome = await api.dropPlinko(stake, rows, clientSeed || undefined);
+			// Sync the wallet the moment the server settles the wager — do not
+			// wait for the cosmetic board animation, which may never finish if
+			// the modal is closed early.
+			onCoinsChange(outcome.coins);
+			setView((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
 			setPendingOutcome(outcome);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Drop failed. Try again.");
@@ -354,7 +359,19 @@ export function ShellDropModal({
 	};
 
 	if (loading) return <p>Loading Shell Drop...</p>;
-	if (!view) return <p className="hub-modal__error">{error || "No game."}</p>;
+	if (!view)
+		return (
+			<div className="hub-modal__error">
+				<p>{error || "No game."}</p>
+				<button
+					type="button"
+					className="hub-modal__retry-button"
+					onClick={() => setReloadToken((token) => token + 1)}
+				>
+					Retry
+				</button>
+			</div>
+		);
 
 	const tier = tierFor(view, rows);
 	const stakeValid =
@@ -394,12 +411,20 @@ export function ShellDropModal({
 				<p
 					className={[
 						"hub-drop__result",
-						result.net > 0 ? "is-win" : "is-loss",
+						result.net > 0
+							? "is-win"
+							: result.net < 0
+								? "is-loss"
+								: "is-push",
 					].join(" ")}
 					role="status"
 				>
 					Bucket {landedBucket} · {landedView.multiplier.toFixed(2)}× ·{" "}
-					{result.net > 0 ? `+${result.net} ⬡` : `${result.net} ⬡`}
+					{result.net > 0
+						? `+${result.net} ⬡`
+						: result.net < 0
+							? `${result.net} ⬡`
+							: "Push — stake returned"}
 				</p>
 			) : (
 				<p className="hub-drop__balance">Balance: {coins} ⬡</p>
@@ -413,7 +438,17 @@ export function ShellDropModal({
 						className={`hub-drop__tier ${rows === option ? "is-selected" : ""}`}
 						disabled={dropping}
 						aria-pressed={rows === option}
-						onClick={() => setRows(option)}
+						onClick={() => {
+							// Switching row tiers after a drop invalidates the last
+							// result/verification — they were computed for the
+							// previous tier's row count and bucket layout, so the
+							// idle board and result line must not keep showing them
+							// against the newly selected tier (see ThreeShellMonte's
+							// `changeShells`, which follows the same pattern).
+							setRows(option);
+							setResult(null);
+							setVerify(null);
+						}}
 					>
 						{option} rows
 					</button>
@@ -432,10 +467,17 @@ export function ShellDropModal({
 						min={view.minWager}
 						max={view.maxWager}
 						step={1}
-						value={stake}
+						// NaN (not 0) represents "cleared, still typing" so the field
+						// can actually go empty instead of snapping back to "0" on
+						// every keystroke (Bug Audit 3.6).
+						value={Number.isNaN(stake) ? "" : stake}
 						disabled={dropping}
 						onChange={(event) =>
-							setStake(Math.floor(Number(event.target.value)))
+							setStake(
+								event.target.value === ""
+									? NaN
+									: Math.floor(Number(event.target.value)),
+							)
 						}
 					/>
 					<button
@@ -535,7 +577,8 @@ export function ShellDropModal({
 
 			<p className="hub-drop__notice">
 				Play money only — coins have no real-world value. Shell Drop takes no
-				house cut (fair payout {rtpPercent}%).
+				house cut (fair payout ~{rtpPercent}%; payouts round down to whole
+				coins).
 			</p>
 		</div>
 	);

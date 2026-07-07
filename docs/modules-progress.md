@@ -103,20 +103,20 @@ Missing for completion:
 - Nothing specific to this module.
 
 ### Minor: Complete notification system for create, update, and delete actions
-Status: `In progress`
+Status: `Done`
 
 Requirement breakdown:
 - Complete notification system for relevant create, update, and delete actions.
 
 Evidence:
-- `backend/src/modules/notifications/`
-- Real-time inbox in `frontend/src/pages/HomePage.tsx`
-- Persistent friendship notifications.
+- `backend/src/modules/notifications/` — REST (`GET /api/notifications`, `POST /api/notifications/:id/read`, `POST /api/notifications/read-all`) plus WebSocket live push/read; REST is now the source of truth, WS is the accelerator.
+- Full event catalog with create/update/delete coverage documented in `docs/notifications.md`: `friend_request` (create), `friend_accepted` (update), `friend_removed` (delete, live-only by deliberate product choice), `lobby:invited` (create, ephemeral), chat unread digest (create, separate cursor-based system).
+- Persistent friendship notifications in `backend/src/modules/friends/friends.service.ts`, with guest exclusion (guests can neither send/receive nor be targeted by persisted notifications).
+- 2026-07-07 audit (`docs/notifications.md` fix log) closed the bell-goes-stale-on-remount bug (H1), the cross-user socket leak on logout (H2), the dead-end accept notification (H3), and four medium-severity gaps (cross-tab read sync, WS payload validation, silent drawer failures, guest exclusion).
 
 Missing for completion:
-- Covers only part of the social domain.
-- No clear coverage of create/update/delete across the system.
-- Need to define complete catalog of events and their persistence.
+- `achievement_unlocked` is not wired to a notification producer (achievements exist server-side but don't emit one) — deliberately deferred as a separate scope extension; see `docs/notifications.md`'s "Deliberately out of scope" note.
+- No standalone history view (the inbox is unread-only by design, documented in `docs/notifications.md`).
 
 ### Minor: Server-Side Rendering (SSR)
 Status: `Not done`
@@ -329,7 +329,7 @@ Evidence:
 - Powers and mechanics in `frontend/src/shared/mechanics/`
 - `shell-curl` and other games already use powers and selection.
 - `backend/src/modules/customization/` covers user cosmetics.
-- `backend/src/modules/cards/` (Shell Cards): collectible cosmetic binder, with multiple booster levels (`basic`/`deluxe`/`legendary`, each with its own price and probabilities — see `docs/SHELL_CARDS_SPEC.md` §11). Catalog expanded to 37 cards (4 new gold characters) and new "Prismatic" state — a rarer tier than foil, exclusive to gold cards, no changes to the economy (see `docs/SHELL_CARDS_SPEC.md` §12). Reinforces, does not replace, the pending separation between gameplay customization and cosmetic customization.
+- `backend/src/modules/cards/` (Shell Cards): collectible cosmetic binder, with multiple booster levels (`basic`/`deluxe`/`legendary`, each with its own price and probabilities — see `docs/SHELL_CARDS_SPEC.md` §11). Catalog is 40 cards total (21 power_shell + 5 shrine + 3 shell_skin + 11 character, the latter including `char-pirate` and `char-samurai`, which had shipped in code but were missing from the spec's own card list) and includes a "Prismatic" state — a rarer tier than foil, exclusive to gold cards, no changes to the economy (see `docs/SHELL_CARDS_SPEC.md` §12). Reinforces, does not replace, the pending separation between gameplay customization and cosmetic customization. A bug audit (`docs/handoff-shell-cards-bug-audit-and-fix-plan.md`) closed a concurrent-double-spend hole in pack opening (pessimistic row lock), added the missing `user_cards` create-table migration, made per-card increments atomic, surfaced match-completion card drops in all four game scenes (previously granted but never shown), and fixed several medium/low-severity gaps (pack-open error handling, binder-load retry, reveal-overlay focus trap, in-modal coin balance).
 
 Missing for completion:
 - Clearly separate gameplay customization from cosmetic customization.

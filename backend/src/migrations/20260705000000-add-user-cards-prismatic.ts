@@ -9,10 +9,9 @@ import { MigrationInterface, QueryRunner } from "typeorm";
  * is for prod, matching the `IF NOT EXISTS` pattern used by
  * 20260628010000-add-wager-game.ts.
  *
- * Note: there is currently no migration at all for the original `user_cards`
- * table (not even for `count`/`foilCount`, a pre-existing gap from the
- * original MVP) — this migration only adds the new column and doesn't
- * attempt to backfill that gap.
+ * Note: 20260704990000-create-user-cards.ts (Bug Audit H2) now creates the
+ * base table with `count`/`foilCount`, closing the gap that used to exist
+ * here — this migration only adds the new column on top of it.
  */
 export class AddUserCardsPrismatic20260705000000
 	implements MigrationInterface

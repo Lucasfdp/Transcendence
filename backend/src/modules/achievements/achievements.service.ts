@@ -1,6 +1,6 @@
 import { Injectable, InternalServerErrorException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { DataSource, Repository } from "typeorm";
 import {
 	ACHIEVEMENTS,
 	AchievementContext,
@@ -12,6 +12,7 @@ import { findCosmetic } from "../customization/customization.constants";
 import { UserCosmetic } from "../customization/entities/user-cosmetic.entity";
 import { UserGameStats } from "../game-results/entities/user-game-stats.entity";
 import { User } from "../users/entities/user.entity";
+import { lockUserForUpdate } from "../users/user-lock.util";
 
 @Injectable()
 export class AchievementsService {
@@ -22,8 +23,7 @@ export class AchievementsService {
 		private readonly userCosmeticsRepo: Repository<UserCosmetic>,
 		@InjectRepository(UserGameStats)
 		private readonly userGameStatsRepo: Repository<UserGameStats>,
-		@InjectRepository(User)
-		private readonly usersRepo: Repository<User>,
+		private readonly dataSource: DataSource,
 	) {}
 
 	async listForUser(user: User): Promise<AchievementView[]> {
@@ -124,8 +124,23 @@ export class AchievementsService {
 			return;
 		}
 		if (achievement.reward.type === "coins") {
-			user.coins = (user.coins ?? 0) + achievement.reward.amount;
-			await this.usersRepo.save(user);
+			// This used to be a bare read-modify-write (`user.coins += amount`
+			// then `usersRepo.save(user)`) with no lock — racing every other
+			// wallet writer on the same `users.coins` column (casino spins, card
+			// packs, cosmetic purchases, the match-reward save this very call
+			// runs inside of) under READ COMMITTED, same class of bug as Bug
+			// Audit 1.2. Lock the row first, exactly like `CasinoEngine
+			// .resolveSpin` does, and mirror the persisted total back onto the
+			// caller's `user` reference — `GameResultsService.submitResult`
+			// reads `user.coins` right after this call returns and must see the
+			// real, up-to-date balance rather than a locally-computed guess.
+			const amount = achievement.reward.amount;
+			user.coins = await this.dataSource.transaction(async (manager) => {
+				const locked = await lockUserForUpdate(manager, user.id);
+				locked.coins = (locked.coins ?? 0) + amount;
+				await manager.getRepository(User).save(locked);
+				return locked.coins;
+			});
 		}
 	}
 

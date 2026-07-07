@@ -67,9 +67,15 @@ Catalogue families (`CardFamily`) and current counts:
   **Akuma, the Demon Shell** (`char-demon`, gold,
   `imageUrl: /assets/character/demon-turtle.png`), **Kishi, the Knight
   Shell** (`char-knight`, gold, `imageUrl: /assets/character/knight-turtle.png`),
-  and **Irie Kame, the Roots Shell** (`char-rasta`, gold,
-  `imageUrl: /assets/character/rasta-turtle.png`). Total catalogue:
-  **37 cards**.
+  **Irie Kame, the Roots Shell** (`char-rasta`, gold,
+  `imageUrl: /assets/character/rasta-turtle.png`), **Kaizoku, the Corsair
+  Shell** (`char-pirate`, gold, `imageUrl: /assets/character/pirate-turtle.webp`),
+  and **Kabuto, the Bushido Shell** (`char-samurai`, gold,
+  `imageUrl: /assets/character/samurai-turtle.webp`) — the last two were
+  previously missing from this list even though they shipped in the catalogue
+  (Bug Audit L1, `docs/handoff-shell-cards-bug-audit-and-fix-plan.md`). Total
+  catalogue: **40 cards** (21 power_shell + 5 shrine + 3 shell_skin + 11
+  character).
 
 ### Rarity & foils
 
