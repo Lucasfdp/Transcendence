@@ -1,6 +1,7 @@
 # Repository Guidelines
 
 ## Reglas Base
+- Siempre que se genera cualquier documentacion que se suba al repositorio el idioma tiene que ser sin falta ingles britanico. No se puede subir ningun archivo al repositorio que no este estrictamente en ingles britanico.
 - El idioma de respuesta debe ser siempre el idioma del usuario. Si hay duda real, usa ingles.
 - Si un cambio modifica reglas de trabajo, flujos o convenciones reflejadas aqui, actualiza `AGENTS.md` en la misma tarea.
 - Cualquier cambio en el proyecto debe revisar `docs/modules-progress.md` para comprobar si se completo algun avance de modulo y, si aplica, actualizar ese archivo para reflejar el nuevo progreso.

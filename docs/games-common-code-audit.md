@@ -1,53 +1,77 @@
-# Auditoria De Codigo Comun Entre Minijuegos
+# Common Code Audit Between Minigames
 
-## Objetivo
-Responder con evidencia concreta a una pregunta: que codigo comun ya existe entre `shell-curl`, `bamboo-bash`, `kame-knock` y `bell-clash`, que piezas siguen duplicadas o semi-duplicadas, y que se puede extraer con seguridad a una capa compartida sin forzar abstracciones prematuras.
+## Objective
+Provide concrete evidence to answer a key question: what common code already exists between `shell-curl`, `bamboo-bash`, `kame-knock`, and `bell-clash`, which components remain duplicated or partially duplicated, and what can be safely extracted into a shared layer without introducing premature abstractions.
 
-## Alcance Revisado
+## Scope Reviewed
+
 - Frontend gameplay:
   - `frontend/src/games/shell-curl/ShellCurlScene.ts`
   - `frontend/src/games/bamboo-bash/BambooBashScene.ts`
   - `frontend/src/games/kame-knock/KameKnockScene.ts`
   - `frontend/src/games/bell-clash/BellClashScene.ts`
-- Frontend shared:
+
+- Shared frontend:
   - `frontend/src/shared/mechanics/*`
   - `frontend/src/shared/arenas/*`
   - `frontend/src/games/shared/*`
-- Backend gameplay y replay:
+
+- Backend gameplay and replay:
   - `backend/src/modules/matchmaking/engines/*`
   - `backend/src/modules/matchmaking/replay-state.helpers.ts`
   - `backend/src/modules/matchmaking/matchmaking.types.ts`
 
-## Resumen Ejecutivo
-Hay dos familias claras:
+## Executive Summary
 
-| Familia | Juegos | Estado |
+There are two clearly defined game families:
+
+| Family | Games | Status |
 | --- | --- | --- |
-| `arena + ball + slingshot` | `bamboo-bash`, `kame-knock`, `bell-clash` | Comparten mucha infraestructura real, pero cada escena sigue reimplementando bastante ciclo de ronda, HUD local, pickups y objetos del mundo. |
-| `rect-arena + stone + turn-manager` | `shell-curl` | Ya reutiliza varias capas comunes, pero sigue teniendo contratos y reglas propios de curling que no conviene diluir dentro de la familia `ball`. |
+| `arena + ball + slingshot` | `bamboo-bash`, `kame-knock`, `bell-clash` | These games share a substantial amount of real infrastructure, but each scene still reimplements much of the round lifecycle, local HUD, pickups, and world objects. |
+| `rect-arena + stone + turn-manager` | `shell-curl` | This game already reuses several shared layers, but it still relies on curling-specific contracts and gameplay rules that should not be diluted into the `ball` family. |
 
-La mejor oportunidad inmediata no es fusionar los cuatro juegos bajo una sola escena base, sino consolidar tres zonas:
+The best immediate opportunity is **not** to merge all four games into a single base scene. Instead, effort should be focused on consolidating three areas:
 
-1. configuracion visual y de jugador
-2. contratos de obstaculos/objetivos/coleccionables
-3. ciclo compartido de proyectiles, powers, replay y snapshot para juegos de tipo `arena + ball`
+1. Player visual configuration
+2. Contracts for obstacles, objectives, and collectibles
+3. Shared projectile, power, replay, and snapshot lifecycle for `arena + ball` games
 
-## Inventario De Juegos Auditados
+---
 
-### `shell-curl`
-- Nucleo propio: sheet rectangular, fisica `stone`, scoring por casa, turnos y ends, sweep, bumpers.
-- Capas compartidas ya usadas:
+# Inventory of Audited Games
+
+## `shell-curl`
+
+- Core gameplay:
+  - Rectangular sheet
+  - `stone` physics
+  - House scoring
+  - Turns and ends
+  - Sweeping
+  - Bumpers
+
+- Shared layers already in use:
   - `shared/mechanics/slingshot.ts`
   - `shared/mechanics/power-pickups.ts`
   - `shared/mechanics/score-hud.ts`
   - `shared/mechanics/player-renderer.ts`
   - `shared/mechanics/player-trails.ts`
   - `games/shared/localReplay.ts`
-- Diferencia estructural clave: depende de `stone.ts`, `rect-arena.ts` y `turn-manager.ts`, no de `ball.ts` ni de `arena.ts`.
 
-### `bamboo-bash`
-- Nucleo propio: bambu que crece, timer de ronda, spawn continuo, scoring por stage.
-- Capas compartidas ya usadas:
+- Key structural difference:
+  - Depends on `stone.ts`, `rect-arena.ts`, and `turn-manager.ts` rather than `ball.ts` and `arena.ts`.
+
+---
+
+## `bamboo-bash`
+
+- Core gameplay:
+  - Growing bamboo
+  - Round timer
+  - Continuous spawning
+  - Stage-based scoring
+
+- Shared layers already in use:
   - `shared/arenas/arena.ts`
   - `shared/mechanics/ball.ts`
   - `shared/mechanics/slingshot.ts`
@@ -55,11 +79,21 @@ La mejor oportunidad inmediata no es fusionar los cuatro juegos bajo una sola es
   - `shared/mechanics/ball-powers.ts`
   - `shared/mechanics/ball-spawn-powers.ts`
   - `games/shared/localReplay.ts`
-- Diferencia estructural clave: tiene mas estado compartido de partida continua que de turno estricto.
 
-### `kame-knock`
-- Nucleo propio: targets temporales, combo, perfect hit, rondas de targets por jugador.
-- Capas compartidas ya usadas:
+- Key structural difference:
+  - Relies more heavily on continuous match state than on a strict turn-based flow.
+
+---
+
+## `kame-knock`
+
+- Core gameplay:
+  - Timed targets
+  - Combo system
+  - Perfect-hit mechanic
+  - Player-specific target rounds
+
+- Shared layers already in use:
   - `shared/arenas/arena.ts`
   - `shared/mechanics/ball.ts`
   - `shared/mechanics/slingshot.ts`
@@ -68,11 +102,21 @@ La mejor oportunidad inmediata no es fusionar los cuatro juegos bajo una sola es
   - `shared/mechanics/ball-powers.ts`
   - `shared/mechanics/ball-spawn-powers.ts`
   - `games/shared/localReplay.ts`
-- Diferencia estructural clave: mezcla turno por jugador con reglas de targets regenerados por ronda.
 
-### `bell-clash`
-- Nucleo propio: campana central, zonas angulares, puntuacion por impacto, tres tiros por ronda.
-- Capas compartidas ya usadas:
+- Key structural difference:
+  - Combines player turns with target regeneration rules on a per-round basis.
+
+---
+
+## `bell-clash`
+
+- Core gameplay:
+  - Central bell
+  - Angular scoring zones
+  - Impact-based scoring
+  - Three shots per round
+
+- Shared layers already in use:
   - `shared/arenas/arena.ts`
   - `shared/mechanics/ball.ts`
   - `shared/mechanics/slingshot.ts`
@@ -80,130 +124,168 @@ La mejor oportunidad inmediata no es fusionar los cuatro juegos bajo una sola es
   - `shared/mechanics/ball-powers.ts`
   - `shared/mechanics/ball-spawn-powers.ts`
   - `games/shared/localReplay.ts`
-- Diferencia estructural clave: no comparte ni el modelo de objetivos de `bamboo-bash` ni el de `kame-knock`; solo comparte la capa de proyectil y ronda.
 
-## Mapa De Codigo Comun Ya Extraido
+- Key structural difference:
+  - Shares neither Bamboo Bash's objective model nor Kame Knock's target system; it only shares the projectile and round infrastructure.
 
-### Frontend Compartido Real
+---
 
-| Dominio | Codigo comun | Evidencia |
+# Existing Shared Code Map
+
+## Shared Frontend Infrastructure
+
+| Domain | Shared Code | Evidence |
 | --- | --- | --- |
-| Proyectil de arena | Fisica, colision y render basico de bola | `frontend/src/shared/mechanics/ball.ts`; usado por `frontend/src/games/bamboo-bash/BambooBashScene.ts`, `frontend/src/games/kame-knock/KameKnockScene.ts`, `frontend/src/games/bell-clash/BellClashScene.ts` |
-| Proyectil de curling | Fisica, colision y render de stone | `frontend/src/shared/mechanics/stone.ts`; usado por `frontend/src/games/shell-curl/ShellCurlScene.ts` |
-| Lanzamiento | Drag-to-launch compartido | `frontend/src/shared/mechanics/slingshot.ts`; importado por los 4 juegos |
-| Arenas elipticas | Geometria y layout responsivo | `frontend/src/shared/arenas/arena.ts`; usado por `bamboo-bash`, `kame-knock`, `bell-clash` |
-| Arena rectangular | Geometria de sheet y scoring house | `frontend/src/shared/mechanics/rect-arena.ts`; usado por `shell-curl` |
-| Powers | Catalogo, assets y semantica comun | `frontend/src/shared/mechanics/power-system.ts`; `frontend/src/shared/mechanics/game-powers.ts` |
-| Pickups | Spawn, colleccion y dibujo de pickups | `frontend/src/shared/mechanics/power-pickups.ts`; usado por los 4 juegos |
-| Powers sobre `ball` | Flags y mutaciones compartidas de proyectil | `frontend/src/shared/mechanics/ball-powers.ts`; usado por `bamboo-bash`, `kame-knock`, `bell-clash` |
-| Spawn de powers sobre `ball` | Split y mirror | `frontend/src/shared/mechanics/ball-spawn-powers.ts`; usado por `bamboo-bash`, `kame-knock`, `bell-clash` |
-| HUD y overlays | `ScoreHud`, overlay de ronda, modal final, rematch online | `frontend/src/shared/mechanics/score-hud.ts`, `round-overlay.ts`, `game-end-modal.ts`, `online-rematch.ts` |
-| Visuales de jugador | Texturas in-game y trails | `frontend/src/shared/mechanics/player-renderer.ts`; `frontend/src/shared/mechanics/player-trails.ts` |
-| Replay local y visual | Normalizacion de frames, controller y escena de replay | `frontend/src/games/shared/localReplay.ts`; `ReplayController.ts`; `ReplayScene.ts`; `replayVisuals.ts` |
+| Arena projectile | Ball physics, collision, and basic rendering | `frontend/src/shared/mechanics/ball.ts`; used by `frontend/src/games/bamboo-bash/BambooBashScene.ts`, `frontend/src/games/kame-knock/KameKnockScene.ts`, `frontend/src/games/bell-clash/BellClashScene.ts` |
+| Curling projectile | Stone physics, collision, and rendering | `frontend/src/shared/mechanics/stone.ts`; used by `frontend/src/games/shell-curl/ShellCurlScene.ts` |
+| Launch system | Shared drag-to-launch implementation | `frontend/src/shared/mechanics/slingshot.ts`; imported by all four games |
+| Elliptical arenas | Arena geometry and responsive layout | `frontend/src/shared/arenas/arena.ts`; used by `bamboo-bash`, `kame-knock`, and `bell-clash` |
+| Rectangular arena | Sheet geometry and house scoring | `frontend/src/shared/mechanics/rect-arena.ts`; used by `shell-curl` |
+| Powers | Shared catalogue, assets, and power semantics | `frontend/src/shared/mechanics/power-system.ts`; `frontend/src/shared/mechanics/game-powers.ts` |
+| Pickups | Pickup spawning, collection, and rendering | `frontend/src/shared/mechanics/power-pickups.ts`; used by all four games |
+| Ball powers | Shared projectile flags and mutations | `frontend/src/shared/mechanics/ball-powers.ts`; used by `bamboo-bash`, `kame-knock`, and `bell-clash` |
+| Ball power spawning | Split and mirror mechanics | `frontend/src/shared/mechanics/ball-spawn-powers.ts`; used by `bamboo-bash`, `kame-knock`, and `bell-clash` |
+| HUD and overlays | `ScoreHud`, round overlay, game-end modal, and online rematch UI | `frontend/src/shared/mechanics/score-hud.ts`, `round-overlay.ts`, `game-end-modal.ts`, `online-rematch.ts` |
+| Player visuals | In-game textures and trails | `frontend/src/shared/mechanics/player-renderer.ts`; `frontend/src/shared/mechanics/player-trails.ts` |
+| Local replay and replay visuals | Frame normalisation, replay controller, replay scene, and replay rendering | `frontend/src/games/shared/localReplay.ts`; `ReplayController.ts`; `ReplayScene.ts`; `replayVisuals.ts` |
 
-### Backend Compartido Real
+## Shared Backend Infrastructure
 
-| Dominio | Codigo comun | Evidencia |
+| Domain | Shared Code | Evidence |
 | --- | --- | --- |
-| Contrato de engine | Interfaz comun para engines | `backend/src/modules/matchmaking/engines/game-engine.ts` |
-| Registro de engines | Resolucion por `gameId` | `backend/src/modules/matchmaking/engines/game-engine.registry.ts` |
-| Jugadores en snapshot | Sincronizacion de `room.players` a `snapshot.players` | `backend/src/modules/matchmaking/engines/base.engine.ts` |
-| Contratos de snapshot y replay entity | `GameSnapshot`, `SnapshotPlayer`, `ReplayFrameSnapshotEntity`, `BallSnapshotData` | `backend/src/modules/matchmaking/matchmaking.types.ts` |
-| Mirror de replay en juegos de arena | Inicializacion, sync y settle de projectiles | `backend/src/modules/matchmaking/replay-state.helpers.ts`; usado por `bamboo-bash.engine.ts`, `kame-knock.engine.ts`, `bell-clash.engine.ts` |
-| Mirror de replay en curling | Inicializacion y sync de stone | `backend/src/modules/matchmaking/replay-state.helpers.ts`; usado por `shell-curl.engine.ts` |
+| Engine contract | Common interface for game engines | `backend/src/modules/matchmaking/engines/game-engine.ts` |
+| Engine registry | Engine resolution by `gameId` | `backend/src/modules/matchmaking/engines/game-engine.registry.ts` |
+| Snapshot player synchronisation | Synchronisation of `room.players` into `snapshot.players` | `backend/src/modules/matchmaking/engines/base.engine.ts` |
+| Snapshot and replay entity contracts | `GameSnapshot`, `SnapshotPlayer`, `ReplayFrameSnapshotEntity`, `BallSnapshotData` | `backend/src/modules/matchmaking/matchmaking.types.ts` |
+| Replay mirroring for arena games | Projectile initialisation, synchronisation, and settle handling | `backend/src/modules/matchmaking/replay-state.helpers.ts`; used by `bamboo-bash.engine.ts`, `kame-knock.engine.ts`, and `bell-clash.engine.ts` |
+| Replay mirroring for curling | Stone initialisation and synchronisation | `backend/src/modules/matchmaking/replay-state.helpers.ts`; used by `shell-curl.engine.ts` |
 
-## Matriz De Extraccion Por Dominio
+---
 
-| Componente | Donde existe hoy | Grado de comun | Que extraer | Riesgo | Prioridad | Evidencia |
+# Extraction Matrix by Domain
+
+| Component | Current Implementation | Degree of Reuse | Proposed Extraction | Risk | Priority | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Capa de proyectil lanzable | `ball.ts` y `stone.ts` con `Slingshot` compartido | `parecido pero acoplado` | Un contrato `LaunchableActor` para lanzamiento, flags visuales y hooks de movimiento; mantener dos motores fisicos separados (`ball` y `stone`) | Medio | Alta | `frontend/src/shared/mechanics/ball.ts`; `frontend/src/shared/mechanics/stone.ts`; `frontend/src/shared/mechanics/slingshot.ts` |
-| Configuracion visual de jugador | Cada escena repite arrays de skins/colores y llamadas a `drawIngamePlayerTexture` o `drawIngameShellTexture` | `duplicado` | `PlayerEntityConfig` para skin, color, escala, alpha, spriteKey, trail y reglas de render | Bajo | Alta | `frontend/src/games/bamboo-bash/BambooBashScene.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts`; `frontend/src/shared/mechanics/player-renderer.ts`; `frontend/src/shared/mechanics/player-trails.ts` |
-| Obstaculos y objetivos | `bamboo.ts`, `timed-targets.ts`, zonas/campana dentro de `BellClashScene`, bumpers dentro de `ShellCurlScene` | `parecido pero acoplado` | `ObstacleDescriptor` con geometria, colision, scoring, vida y render metadata; cada juego mantiene hooks propios | Medio | Alta | `frontend/src/games/bamboo-bash/bamboo.ts`; `frontend/src/shared/mechanics/timed-targets.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts` |
-| Coleccionables / pickups | Manager compartido pero contratos de pickup locales y payloads backend separados | `ya compartido` en visual/spawn, `duplicado` en integracion | `CollectibleDescriptor` para pickup, efecto y serializacion comun | Bajo | Media | `frontend/src/shared/mechanics/power-pickups.ts`; `backend/src/modules/matchmaking/engines/bamboo-bash.engine.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts` |
-| Power loop en juegos no-curling | Los tres juegos de bola repiten `applyBallPower`, split, mirror, pickup consume, flags y replay metadata | `duplicado` | Un `ArenaPowerRuntime` o `BallPowerCycle` compartido para release, pickup, split, mirror y sincronizacion visual | Medio | Alta | `frontend/src/games/bamboo-bash/BambooBashScene.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/shared/mechanics/ball-powers.ts`; `frontend/src/shared/mechanics/ball-spawn-powers.ts` |
-| Terreno / arena / colisiones | Oval arena ya compartida; rect arena separada; spawn spots y normalizacion de coordenadas se repiten en objetos de mundo | `ya compartido` parcialmente | Mantener `arena.ts` y `rect-arena.ts` separadas; extraer solo helpers de posicion normalizada y spawn clearance | Bajo | Media | `frontend/src/shared/arenas/arena.ts`; `frontend/src/shared/mechanics/rect-arena.ts`; `frontend/src/shared/mechanics/timed-targets.ts`; `frontend/src/games/bamboo-bash/bamboo.ts` |
-| Scoring / turnos / rondas | `TurnManager` solo cubre curling; los otros tres construyen estados tipo ronda/turno a mano | `duplicado` | `GameRuleHooks` + `RoundFlowState` para declarar round, shot, turn, submit y finish sin imponer scoring unico | Medio | Alta | `frontend/src/shared/mechanics/turn-manager.ts`; `frontend/src/games/bamboo-bash/BambooBashScene.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts` |
-| HUD / overlay / fin de partida | Componentes compartidos, pero cada escena adapta manualmente `TurnState` o genera estructuras equivalentes | `ya compartido` en UI, `duplicado` en adaptadores | Un adapter compartido `buildHudStateFromRoundFlow()` para no rehacer mapping por juego | Bajo | Media | `frontend/src/shared/mechanics/score-hud.ts`; `frontend/src/shared/mechanics/round-overlay.ts`; `frontend/src/shared/mechanics/game-end-modal.ts`; `frontend/src/shared/mechanics/online-rematch.ts` |
-| Replay local / snapshot frontend | Capa de replay muy bien extraida, pero cada escena sigue montando entidades y players con codigo parecido | `ya compartido` con duplicacion residual | Extraer un `SceneReplayRecorder` con helpers para players, frames y persistencia local | Bajo | Media | `frontend/src/games/shared/localReplay.ts`; `frontend/src/games/shared/ReplayController.ts`; `frontend/src/games/shared/ReplayScene.ts`; escenas de los 4 juegos |
-| Snapshot / replay backend de juegos de arena | Tres engines usan el mismo helper de projectile mirror y estructuras parecidas | `duplicado` en lifecycle, `ya compartido` en replay entity | Un `BaseArenaEngine` para ganador, reset de round, validacion basica de release y hooks de scoring/objetivos | Medio | Alta | `backend/src/modules/matchmaking/replay-state.helpers.ts`; `backend/src/modules/matchmaking/engines/bamboo-bash.engine.ts`; `kame-knock.engine.ts`; `bell-clash.engine.ts` |
-| Snapshot frontend/backend compartido | Contratos compatibles, pero algunos payloads y estados siguen siendo ad hoc por juego | `parecido pero acoplado` | Revisar un contrato comun `LaunchSnapshotEntity` y `WorldObjectSnapshot` para reducir serializaciones distintas | Medio | Media | `backend/src/modules/matchmaking/matchmaking.types.ts`; `frontend/src/games/shared/localReplay.ts`; `frontend/src/games/shared/ReplayScene.ts` |
+| Launchable projectile layer | `ball.ts` and `stone.ts` with a shared `Slingshot` | Similar but tightly coupled | Introduce a `LaunchableActor` contract for launching, visual flags, and movement hooks while retaining separate physics engines (`ball` and `stone`) | Medium | High | `frontend/src/shared/mechanics/ball.ts`; `frontend/src/shared/mechanics/stone.ts`; `frontend/src/shared/mechanics/slingshot.ts` |
+| Player visual configuration | Each scene duplicates skin/colour arrays and calls to `drawIngamePlayerTexture` or `drawIngameShellTexture` | Duplicated | Create a `PlayerEntityConfig` covering skin, colour, scale, alpha, sprite key, trail, and rendering rules | Low | High | `frontend/src/games/bamboo-bash/BambooBashScene.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts`; `frontend/src/shared/mechanics/player-renderer.ts`; `frontend/src/shared/mechanics/player-trails.ts` |
+| Obstacles and objectives | `bamboo.ts`, `timed-targets.ts`, bell/zones inside `BellClashScene`, bumpers inside `ShellCurlScene` | Similar but tightly coupled | Introduce an `ObstacleDescriptor` containing geometry, collision, scoring, health, and rendering metadata while allowing each game to retain its own hooks | Medium | High | `frontend/src/games/bamboo-bash/bamboo.ts`; `frontend/src/shared/mechanics/timed-targets.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts` |
+| Collectibles / pickups | Shared manager, but local pickup contracts and separate backend payloads | Shared visually, duplicated at integration level | Introduce a `CollectibleDescriptor` covering pickup behaviour, effects, and common serialisation | Low | Medium | `frontend/src/shared/mechanics/power-pickups.ts`; `backend/src/modules/matchmaking/engines/bamboo-bash.engine.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts` |
+| Power lifecycle in non-curling games | The three ball games duplicate `applyBallPower`, split, mirror, pickup consumption, flags, and replay metadata | Duplicated | Create a shared `ArenaPowerRuntime` or `BallPowerCycle` covering release, pickups, split, mirror, and visual synchronisation | Medium | High | `frontend/src/games/bamboo-bash/BambooBashScene.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/shared/mechanics/ball-powers.ts`; `frontend/src/shared/mechanics/ball-spawn-powers.ts` |
+| Terrain / arena / collisions | Elliptical arena already shared; rectangular arena separate; spawn locations and coordinate normalisation repeated across world objects | Partially shared | Keep `arena.ts` and `rect-arena.ts` separate; extract only normalised positioning helpers and spawn-clearance utilities | Low | Medium | `frontend/src/shared/arenas/arena.ts`; `frontend/src/shared/mechanics/rect-arena.ts`; `frontend/src/shared/mechanics/timed-targets.ts`; `frontend/src/games/bamboo-bash/bamboo.ts` |
+| Scoring / turns / rounds | `TurnManager` only supports curling; the other three games build round/turn state manually | Duplicated | Introduce `GameRuleHooks` together with `RoundFlowState` to describe rounds, shots, turns, submissions, and completion without enforcing a single scoring model | Medium | High | `frontend/src/shared/mechanics/turn-manager.ts`; `frontend/src/games/bamboo-bash/BambooBashScene.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts` |
+| HUD / overlays / game end | UI components are shared, but each scene manually maps `TurnState` or builds equivalent structures | Shared UI, duplicated adapters | Create a shared `buildHudStateFromRoundFlow()` adapter to eliminate repeated mapping logic | Low | Medium | `frontend/src/shared/mechanics/score-hud.ts`; `frontend/src/shared/mechanics/round-overlay.ts`; `frontend/src/shared/mechanics/game-end-modal.ts`; `frontend/src/shared/mechanics/online-rematch.ts` |
+| Local replay / frontend snapshots | Replay layer is already well extracted, but each scene still constructs entities and players using similar code | Mostly shared with residual duplication | Extract a `SceneReplayRecorder` with helpers for players, frames, and local persistence | Low | Medium | `frontend/src/games/shared/localReplay.ts`; `frontend/src/games/shared/ReplayController.ts`; `frontend/src/games/shared/ReplayScene.ts`; all four game scenes |
+| Backend snapshot / replay for arena games | Three engines share the same projectile replay helper and very similar structures | Duplicated lifecycle, shared replay entities | Introduce a `BaseArenaEngine` covering winner resolution, round reset, basic release validation, and scoring/objective hooks | Medium | High | `backend/src/modules/matchmaking/replay-state.helpers.ts`; `backend/src/modules/matchmaking/engines/bamboo-bash.engine.ts`; `kame-knock.engine.ts`; `bell-clash.engine.ts` |
+| Shared frontend/backend snapshot contracts | Contracts are compatible, but several payloads and state structures remain game-specific | Similar but tightly coupled | Review a common `LaunchSnapshotEntity` and `WorldObjectSnapshot` contract to reduce duplicate serialisation | Medium | Medium | `backend/src/modules/matchmaking/matchmaking.types.ts`; `frontend/src/games/shared/localReplay.ts`; `frontend/src/games/shared/ReplayScene.ts` |
 
-## Clasificacion Ejecutiva De Refactorizacion
+---
 
-### Extraible Ya
-- `PlayerEntityConfig` para agrupar skin, sprite, tamano, escala, alpha y trail.
-- `SceneReplayRecorder` para local replay en escenas de juego.
-- Adaptador comun para `ScoreHud`, `showRoundTransitionOverlay`, `showGameEndModal` y `showOnlineRematchEndModal`.
-- Helpers de posicion normalizada y clearance para objetos de mundo elipticos.
+# Executive Refactoring Classification
 
-### Extraible Tras Normalizar Interfaz
-- `LaunchableActor` como contrato de lanzamiento y flags visuales, no como fisica unica.
-- `ObstacleDescriptor` para objetivos, bumpers, bambu, campanas y targets.
-- `CollectibleDescriptor` para pickups y otros objetos recogibles.
-- `BaseArenaEngine` backend para `bamboo-bash`, `kame-knock` y `bell-clash`.
-- `GameRuleHooks` para separar flujo comun de ronda/turno del scoring local.
+## Ready to Extract
 
-### Conviene Dejar Local
-- Fisica de `stone.ts` frente a fisica de `ball.ts`.
-- Scoring de casa en curling.
-- Geometria angular de `bell-clash`.
-- Crecimiento de bambu por stage.
-- Combo y perfect-hit de `kame-knock`.
+- `PlayerEntityConfig` to consolidate skin, sprite, size, scale, alpha, and trail configuration.
+- `SceneReplayRecorder` for local replay support across game scenes.
+- A shared adapter for `ScoreHud`, `showRoundTransitionOverlay`, `showGameEndModal`, and `showOnlineRematchEndModal`.
+- Normalised positioning and spawn-clearance helpers for elliptical world objects.
 
-## Propuesta De Abstracciones Objetivo
+---
 
-### `PlayerEntityConfig` propuesta
-Debe centralizar:
+## Suitable After Interface Normalisation
+
+- `LaunchableActor` as a shared launch contract and visual flag interface, without enforcing a single physics implementation.
+- `ObstacleDescriptor` for objectives, bumpers, bamboo, bells, and targets.
+- `CollectibleDescriptor` for pickups and other collectible world objects.
+- `BaseArenaEngine` for `bamboo-bash`, `kame-knock`, and `bell-clash`.
+- `GameRuleHooks` to separate the shared round/turn lifecycle from game-specific scoring logic.
+
+---
+
+## Best Left Local
+
+- `stone.ts` physics versus `ball.ts` physics.
+- Curling house scoring.
+- The angular scoring geometry in `bell-clash`.
+- Stage-based bamboo growth.
+- The combo and perfect-hit mechanics in `kame-knock`.
+
+---
+
+# Proposed Target Abstractions
+
+## Proposed `PlayerEntityConfig`
+
+Should centralise:
+
 - `spriteKey`
 - `shellSkin`
 - `radius`
 - `scale`
 - `alpha`
-- `trailColor` o `side`
+- `trailColor` or `side`
 - `renderMode`: `fullPlayer | shellOnly`
 - `stateFlags`
 
-Objetivo: dejar de repartir decisiones visuales entre cada escena, `player-renderer.ts`, `player-trails.ts` y el ensamblado de replay.
+**Objective:** remove visual decision-making from individual scenes, `player-renderer.ts`, `player-trails.ts`, and replay construction.
 
-### `LaunchableActor` propuesta
-Debe unificar:
-- estado minimo de lanzamiento
-- metadata visual comun
-- flags de power
-- enganche con `Slingshot`
+---
 
-No debe obligar a una sola fisica. `ball.ts` y `stone.ts` pueden seguir con `step*()` separados.
+## Proposed `LaunchableActor`
 
-### `ObstacleDescriptor` propuesta
-Debe describir:
-- id y tipo
-- posicion normalizada o absoluta
-- radio o bounds
-- puntos
-- si bloquea, rebota, se rompe o puntua
-- metadata de render
-- hooks opcionales de `onHit`, `onExpire`, `onScore`
+Should unify:
 
-Esto cubriria:
-- bambu
-- targets de `kame-knock`
-- bumpers de `shell-curl`
-- campana y zonas de `bell-clash`
+- Minimum launch state
+- Shared visual metadata
+- Power flags
+- Integration with `Slingshot`
 
-### `CollectibleDescriptor` propuesta
-Debe describir:
-- id
-- tipo
-- posicion
-- radio
-- efecto
-- reglas de consumo
-- serializacion a snapshot
+It should **not** enforce a single physics model. `ball.ts` and `stone.ts` should continue to maintain their own `step*()` implementations.
 
-Esto cerraria la brecha entre el `PowerPickupManager` compartido y la integracion todavia repetida en escenas y engines.
+---
 
-### `GameRuleHooks` propuesta
-Debe dejar local solo lo que cambia:
+## Proposed `ObstacleDescriptor`
+
+Should describe:
+
+- ID and type
+- Normalised or absolute position
+- Radius or bounds
+- Score value
+- Whether it blocks, bounces, breaks, or awards points
+- Rendering metadata
+- Optional hooks:
+  - `onHit`
+  - `onExpire`
+  - `onScore`
+
+This would cover:
+
+- Bamboo
+- `kame-knock` targets
+- `shell-curl` bumpers
+- The bell and scoring zones in `bell-clash`
+
+---
+
+## Proposed `CollectibleDescriptor`
+
+Should describe:
+
+- ID
+- Type
+- Position
+- Radius
+- Effect
+- Consumption rules
+- Snapshot serialisation
+
+This would close the remaining gap between the shared `PowerPickupManager` and the still-duplicated integration code found in individual scenes and backend engines.
+```
+
+## Proposed `GameRuleHooks`
+
+Should leave only game-specific behaviour implemented locally:
+
 - `onRelease`
 - `onProjectileSettled`
 - `onObstacleHit`
@@ -211,60 +293,96 @@ Debe dejar local solo lo que cambia:
 - `computeWinner`
 - `buildHudState`
 
-Objetivo: extraer flujo, no esconder reglas.
+**Objective:** extract the shared gameplay flow without hiding or abstracting away each game's individual rules.
 
-## Hallazgos Concretos De Duplicacion
+---
 
-### 1. Trio `bamboo-bash` / `kame-knock` / `bell-clash`
-Es la principal veta de extraccion:
-- Comparten `arena.ts`, `ball.ts`, `Slingshot`, `PowerPickupManager`, `applyBallPower`, split/mirror, `ScoreHud`, trails, renderer, replay local y replay backend de projectile.
-- Tambien comparten bastante estructura de escena:
-  - recreacion o sincronizacion de slingshot
-  - reconstruccion de HUD
-  - captura de replay
-  - aplicacion de pickups
-  - fin de ronda y modal final
+# Concrete Duplication Findings
 
-Conclusion: merece una capa comun especifica para `arena + ball`, no una abstraccion universal de los cuatro juegos.
+## 1. The `bamboo-bash` / `kame-knock` / `bell-clash` Trio
 
-### 2. `shell-curl` esta menos duplicado de lo que parece
-Aunque comparte menos fisica, ya consume muchas capas correctas:
+This represents the strongest opportunity for further extraction.
+
+These games already share:
+
+- `arena.ts`
+- `ball.ts`
+- `Slingshot`
+- `PowerPickupManager`
+- `applyBallPower`
+- Split and mirror mechanics
+- `ScoreHud`
+- Player trails
+- Player renderer
+- Local replay
+- Backend projectile replay
+
+They also share a considerable amount of scene structure, including:
+
+- Slingshot recreation and synchronisation
+- HUD reconstruction
+- Replay recording
+- Pickup application
+- Round completion handling and the end-game modal
+
+**Conclusion:** these games justify a dedicated shared layer for the `arena + ball` family, rather than a universal abstraction covering all four games.
+
+---
+
+## 2. `shell-curl` Is Less Duplicated Than It First Appears
+
+Although it shares less gameplay physics, it already reuses many of the appropriate shared systems:
+
 - HUD
-- overlays
-- slingshot
-- pickups
-- renderer
-- trails
-- local replay
+- Overlays
+- Slingshot
+- Pickups
+- Player renderer
+- Player trails
+- Local replay
 
-Conclusion: el trabajo con `shell-curl` no pasa por "convertirlo" al stack de `ball`, sino por extraer contratos de visuales, pickups, replay y objetos del mundo.
+**Conclusion:** the goal with `shell-curl` should not be to migrate it onto the `ball` architecture. Instead, effort should focus on extracting shared contracts for visuals, pickups, replay, and world objects.
 
-### 3. Backend de arena con fuerte repeticion estructural
-`bamboo-bash.engine.ts`, `kame-knock.engine.ts` y `bell-clash.engine.ts` repiten:
-- `createInitialState()` con arrays paralelos por jugador
-- `start()` con `resetArenaReplayBalls()` y `refreshSnapshotPlayers()`
-- validaciones de jugador/sala/fase
-- ganador por max score
-- integracion con `initializeArenaReplayBall()` y `syncArenaReplayBallFromPayload()`
+---
 
-Conclusion: hay suficiente similitud para un `BaseArenaEngine` con hooks por juego.
+## 3. Arena Backend Exhibits Significant Structural Duplication
 
-## Backlog Priorizado De Extraccion
+`bamboo-bash.engine.ts`, `kame-knock.engine.ts`, and `bell-clash.engine.ts` all repeat:
 
-1. Consolidar configuracion comun de jugador y visuales.
-2. Unificar contratos de obstaculos y objetivos.
-3. Extraer ciclo comun de powers en escenas no-curling.
-4. Reducir duplicacion de HUD, ronda, replay y snapshot.
-5. Revisar un contrato backend/frontend compartido para entidades lanzables y objetos del mundo.
+- `createInitialState()` using parallel arrays per player
+- `start()` together with `resetArenaReplayBalls()` and `refreshSnapshotPlayers()`
+- Player, room, and phase validation
+- Winner calculation based on the highest score
+- Integration with `initializeArenaReplayBall()` and `syncArenaReplayBallFromPayload()`
 
-## Recomendacion Operativa
-La secuencia mas segura es:
+**Conclusion:** there is sufficient structural similarity to justify introducing a `BaseArenaEngine` with game-specific hooks.
 
-1. sacar abstracciones de datos y adaptadores pequenos
-2. mover despues el flujo compartido de `arena + ball`
-3. dejar para el final cualquier intento de unificar `stone` con `ball`
+---
 
-Hacerlo al reves forzaria una jerarquia demasiado abstracta y aumentaria el riesgo de regresiones en gameplay.
+# Prioritised Extraction Backlog
 
-## Estado De Modulos
-Se reviso `docs/modules-progress.md` durante esta auditoria. No hay evidencia de un cambio real de estado de modulo; por tanto, no corresponde actualizarlo en esta tarea.
+1. Consolidate shared player configuration and visual rendering.
+2. Unify obstacle and objective contracts.
+3. Extract the shared power lifecycle used by the non-curling games.
+4. Reduce duplication across HUD, round flow, replay, and snapshot handling.
+5. Review a shared frontend/backend contract for launchable entities and world objects.
+
+---
+
+# Recommended Approach
+
+The safest implementation order is:
+
+1. Extract small data abstractions and lightweight adapters.
+2. Move the shared `arena + ball` gameplay flow into common infrastructure.
+3. Leave any attempt to unify `stone` and `ball` until the very end.
+
+Reversing this order would force an overly abstract inheritance hierarchy and significantly increase the risk of gameplay regressions.
+
+---
+
+# Module Status
+
+`docs/modules-progress.md` was reviewed as part of this audit.
+
+There is no evidence that these changes alter the completion status of any project module. Consequently, no update to the module progress document is required.
