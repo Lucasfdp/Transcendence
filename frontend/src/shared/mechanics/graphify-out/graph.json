@@ -1,0 +1,6285 @@
+{
+  "nodes": [
+    {
+      "id": "arena_power_runtime_test",
+      "label": "arena-power-runtime.test.ts",
+      "file_type": "code",
+      "source_file": "arena-power-runtime.test.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "arena_power_runtime_test_arena",
+      "label": "arena",
+      "file_type": "code",
+      "source_file": "arena-power-runtime.test.ts",
+      "source_location": "L7",
+      "_origin": "ast"
+    },
+    {
+      "id": "arena_power_runtime",
+      "label": "arena-power-runtime.ts",
+      "file_type": "code",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "arena_power_runtime_arenapowerballentry",
+      "label": "ArenaPowerBallEntry",
+      "file_type": "code",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L25",
+      "_origin": "ast"
+    },
+    {
+      "id": "arena_power_runtime_applyarenaballpowercycle",
+      "label": "applyArenaBallPowerCycle()",
+      "file_type": "code",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L30",
+      "_origin": "ast"
+    },
+    {
+      "id": "arena_power_runtime_updatearenapowerballs",
+      "label": "updateArenaPowerBalls()",
+      "file_type": "code",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L49",
+      "_origin": "ast"
+    },
+    {
+      "id": "arena_power_runtime_resolvearenapowerballcollisions",
+      "label": "resolveArenaPowerBallCollisions()",
+      "file_type": "code",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L79",
+      "_origin": "ast"
+    },
+    {
+      "id": "arena_power_runtime_cleararenapowerballtextures",
+      "label": "clearArenaPowerBallTextures()",
+      "file_type": "code",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L96",
+      "_origin": "ast"
+    },
+    {
+      "id": "arena_power_runtime_drawarenapowerballs",
+      "label": "drawArenaPowerBalls()",
+      "file_type": "code",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L106",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_powers",
+      "label": "ball-powers.ts",
+      "file_type": "code",
+      "source_file": "ball-powers.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_powers_ballextstate",
+      "label": "BallExtState",
+      "file_type": "code",
+      "source_file": "ball-powers.ts",
+      "source_location": "L47",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_powers_applyballpower",
+      "label": "applyBallPower()",
+      "file_type": "code",
+      "source_file": "ball-powers.ts",
+      "source_location": "L79",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_powers_applyballcurl",
+      "label": "applyBallCurl()",
+      "file_type": "code",
+      "source_file": "ball-powers.ts",
+      "source_location": "L189",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_spawn_powers",
+      "label": "ball-spawn-powers.ts",
+      "file_type": "code",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_spawn_powers_cloneball",
+      "label": "cloneBall()",
+      "file_type": "code",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L5",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_spawn_powers_createsplitballs",
+      "label": "createSplitBalls()",
+      "file_type": "code",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L15",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_spawn_powers_createmirrorball",
+      "label": "createMirrorBall()",
+      "file_type": "code",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L33",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball",
+      "label": "ball.ts",
+      "file_type": "code",
+      "source_file": "ball.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_ballstate",
+      "label": "BallState",
+      "file_type": "code",
+      "source_file": "ball.ts",
+      "source_location": "L25",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_isballmoving",
+      "label": "isBallMoving()",
+      "file_type": "code",
+      "source_file": "ball.ts",
+      "source_location": "L33",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_stepball",
+      "label": "stepBall()",
+      "file_type": "code",
+      "source_file": "ball.ts",
+      "source_location": "L43",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_resolveballcollision",
+      "label": "resolveBallCollision()",
+      "file_type": "code",
+      "source_file": "ball.ts",
+      "source_location": "L102",
+      "_origin": "ast"
+    },
+    {
+      "id": "ball_drawshellball",
+      "label": "drawShellBall()",
+      "file_type": "code",
+      "source_file": "ball.ts",
+      "source_location": "L143",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_end_modal",
+      "label": "game-end-modal.ts",
+      "file_type": "code",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_end_modal_gameendmodalplayer",
+      "label": "GameEndModalPlayer",
+      "file_type": "code",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L5",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_end_modal_gameendmodalaction",
+      "label": "GameEndModalAction",
+      "file_type": "code",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L12",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_end_modal_gameendmodaloptions",
+      "label": "GameEndModalOptions",
+      "file_type": "code",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L17",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_end_modal_showgameendmodal",
+      "label": "showGameEndModal()",
+      "file_type": "code",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L27",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_end_modal_addmodalbutton",
+      "label": "addModalButton()",
+      "file_type": "code",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L163",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_powers",
+      "label": "game-powers.ts",
+      "file_type": "code",
+      "source_file": "game-powers.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_powers_gameid",
+      "label": "GameId",
+      "file_type": "code",
+      "source_file": "game-powers.ts",
+      "source_location": "L13",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_powers_all_special_powers",
+      "label": "ALL_SPECIAL_POWERS",
+      "file_type": "code",
+      "source_file": "game-powers.ts",
+      "source_location": "L20",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_powers_game_powers",
+      "label": "GAME_POWERS",
+      "file_type": "code",
+      "source_file": "game-powers.ts",
+      "source_location": "L36",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_powers_power_up_assets",
+      "label": "POWER_UP_ASSETS",
+      "file_type": "code",
+      "source_file": "game-powers.ts",
+      "source_location": "L43",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_powers_power_up_textures",
+      "label": "POWER_UP_TEXTURES",
+      "file_type": "code",
+      "source_file": "game-powers.ts",
+      "source_location": "L68",
+      "_origin": "ast"
+    },
+    {
+      "id": "game_powers_preloadpowerupassets",
+      "label": "preloadPowerUpAssets()",
+      "file_type": "code",
+      "source_file": "game-powers.ts",
+      "source_location": "L93",
+      "_origin": "ast"
+    },
+    {
+      "id": "hud",
+      "label": "hud.ts",
+      "file_type": "code",
+      "source_file": "hud.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "hud_buildreturnbutton",
+      "label": "buildReturnButton()",
+      "file_type": "code",
+      "source_file": "hud.ts",
+      "source_location": "L12",
+      "_origin": "ast"
+    },
+    {
+      "id": "online_rematch",
+      "label": "online-rematch.ts",
+      "file_type": "code",
+      "source_file": "online-rematch.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "online_rematch_onlinerematchoptions",
+      "label": "OnlineRematchOptions",
+      "file_type": "code",
+      "source_file": "online-rematch.ts",
+      "source_location": "L9",
+      "_origin": "ast"
+    },
+    {
+      "id": "online_rematch_showonlinerematchendmodal",
+      "label": "showOnlineRematchEndModal()",
+      "file_type": "code",
+      "source_file": "online-rematch.ts",
+      "source_location": "L17",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics",
+      "label": "physics.ts",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_replayprojectilestate",
+      "label": "ReplayProjectileState",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L27",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_replaystonestate",
+      "label": "ReplayStoneState",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L38",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_replaytrailpoint",
+      "label": "ReplayTrailPoint",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L53",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_simulatedreplayobject",
+      "label": "SimulatedReplayObject",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L58",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_createreplayprojectilestate",
+      "label": "createReplayProjectileState()",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L63",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_applyreplayprojectilepower",
+      "label": "applyReplayProjectilePower()",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L83",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_stepreplayprojectile",
+      "label": "stepReplayProjectile()",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L126",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_createreplaystonestate",
+      "label": "createReplayStoneState()",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L190",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_stepreplaystone",
+      "label": "stepReplayStone()",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L244",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_simulatereplayprojectile",
+      "label": "simulateReplayProjectile()",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L317",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_simulatereplaystone",
+      "label": "simulateReplayStone()",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L335",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_lerpnumber",
+      "label": "lerpNumber()",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L353",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_clamp01",
+      "label": "clamp01()",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L357",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_runfixedstepsimulation",
+      "label": "runFixedStepSimulation()",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L361",
+      "_origin": "ast"
+    },
+    {
+      "id": "physics_pushreplaytrailpoint",
+      "label": "pushReplayTrailPoint()",
+      "file_type": "code",
+      "source_file": "physics.ts",
+      "source_location": "L376",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_config",
+      "label": "player-config.ts",
+      "file_type": "code",
+      "source_file": "player-config.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_config_playerentityconfig",
+      "label": "PlayerEntityConfig",
+      "file_type": "code",
+      "source_file": "player-config.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_config_default_player_shell_skins",
+      "label": "DEFAULT_PLAYER_SHELL_SKINS",
+      "file_type": "code",
+      "source_file": "player-config.ts",
+      "source_location": "L12",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_config_resolveplayershellskins",
+      "label": "resolvePlayerShellSkins()",
+      "file_type": "code",
+      "source_file": "player-config.ts",
+      "source_location": "L20",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer",
+      "label": "player-renderer.ts",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer_playervisualstate",
+      "label": "PlayerVisualState",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L4",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer_playerrollstate",
+      "label": "PlayerRollState",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L12",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer_rollstates",
+      "label": "rollStates",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L17",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer_preloadingameplayertexture",
+      "label": "preloadIngamePlayerTexture()",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L22",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer_drawingameplayertexture",
+      "label": "drawIngamePlayerTexture()",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L33",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer_drawingameshelltexture",
+      "label": "drawIngameShellTexture()",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L81",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer_getorcreateplayerimage",
+      "label": "getOrCreatePlayerImage()",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L115",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer_isplayermoving",
+      "label": "isPlayerMoving()",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L127",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer_updateingameplayerroll",
+      "label": "updateIngamePlayerRoll()",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L131",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer_hideingameplayertexture",
+      "label": "hideIngamePlayerTexture()",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L155",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_renderer_destroyingameplayertexture",
+      "label": "destroyIngamePlayerTexture()",
+      "file_type": "code",
+      "source_file": "player-renderer.ts",
+      "source_location": "L165",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_trails",
+      "label": "player-trails.ts",
+      "file_type": "code",
+      "source_file": "player-trails.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_trails_playertrailpoint",
+      "label": "PlayerTrailPoint",
+      "file_type": "code",
+      "source_file": "player-trails.ts",
+      "source_location": "L5",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_trails_playertrailobject",
+      "label": "PlayerTrailObject",
+      "file_type": "code",
+      "source_file": "player-trails.ts",
+      "source_location": "L10",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_trails_playertrailstore",
+      "label": "PlayerTrailStore",
+      "file_type": "code",
+      "source_file": "player-trails.ts",
+      "source_location": "L18",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_trails_playertrailoptions",
+      "label": "PlayerTrailOptions",
+      "file_type": "code",
+      "source_file": "player-trails.ts",
+      "source_location": "L20",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_trails_resetplayertrail",
+      "label": "resetPlayerTrail()",
+      "file_type": "code",
+      "source_file": "player-trails.ts",
+      "source_location": "L35",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_trails_recordplayertrails",
+      "label": "recordPlayerTrails()",
+      "file_type": "code",
+      "source_file": "player-trails.ts",
+      "source_location": "L44",
+      "_origin": "ast"
+    },
+    {
+      "id": "player_trails_drawplayertrails",
+      "label": "drawPlayerTrails()",
+      "file_type": "code",
+      "source_file": "player-trails.ts",
+      "source_location": "L64",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups",
+      "label": "power-pickups.ts",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickup",
+      "label": "PowerPickup",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L8",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupspawnarea",
+      "label": "PowerPickupSpawnArea",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L16",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupspawnarea_contains",
+      "label": ".contains()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L17",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupspawnarea_randompoint",
+      "label": ".randomPoint()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L18",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupblocker",
+      "label": "PowerPickupBlocker",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L21",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanageroptions",
+      "label": "PowerPickupManagerOptions",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L27",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager",
+      "label": "PowerPickupManager",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L37",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager_constructor",
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L49",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager_all",
+      "label": ".all()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L59",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager_clear",
+      "label": ".clear()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L63",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager_setpickups",
+      "label": ".setPickups()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L68",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager_destroy",
+      "label": ".destroy()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L74",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager_spawn",
+      "label": ".spawn()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L80",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager_collect",
+      "label": ".collect()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L102",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager_remove",
+      "label": ".remove()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L111",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager_draw",
+      "label": ".draw()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L116",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager_canplace",
+      "label": ".canPlace()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L141",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_powerpickupmanager_clearimages",
+      "label": ".clearImages()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L155",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_createrectpowerpickuparea",
+      "label": "createRectPowerPickupArea()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L161",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_pickups_createellipsepowerpickuparea",
+      "label": "createEllipsePowerPickupArea()",
+      "file_type": "code",
+      "source_file": "power-pickups.ts",
+      "source_location": "L180",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system",
+      "label": "power-system.ts",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_powertype",
+      "label": "PowerType",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L14",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_powerdef",
+      "label": "PowerDef",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L42",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_powerdef_onapply",
+      "label": ".onApply()",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L48",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_powerdef_onupdate",
+      "label": ".onUpdate()",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L50",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_powerdef_oncollide",
+      "label": ".onCollide()",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L52",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_powerdef_onstop",
+      "label": ".onStop()",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L58",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_none_def",
+      "label": "NONE_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L106",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_heavy_def",
+      "label": "HEAVY_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L116",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_bomb_def",
+      "label": "BOMB_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L128",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_splitter_def",
+      "label": "SPLITTER_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L157",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_ghost_def",
+      "label": "GHOST_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L169",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_magnet_def",
+      "label": "MAGNET_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L185",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_spinning_def",
+      "label": "SPINNING_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L213",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_bouncer_def",
+      "label": "BOUNCER_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L226",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_shield_def",
+      "label": "SHIELD_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L238",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_freeze_def",
+      "label": "FREEZE_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L259",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_slick_def",
+      "label": "SLICK_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L276",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_phantomstone",
+      "label": "PhantomStone",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L289",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_boomerangstone",
+      "label": "BoomerangStone",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L293",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_stickystone",
+      "label": "StickyStone",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L301",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_ricochetstone",
+      "label": "RicochetStone",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L306",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_rocket_def",
+      "label": "ROCKET_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L310",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_giant_def",
+      "label": "GIANT_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L323",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_tiny_def",
+      "label": "TINY_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L335",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_boomerang_def",
+      "label": "BOOMERANG_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L348",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_repel_def",
+      "label": "REPEL_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L379",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_sticky_def",
+      "label": "STICKY_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L408",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_lightning_def",
+      "label": "LIGHTNING_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L433",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_vortex_def",
+      "label": "VORTEX_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L468",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_mirror_def",
+      "label": "MIRROR_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L490",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_ricochet_def",
+      "label": "RICOCHET_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L502",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_phantom_def",
+      "label": "PHANTOM_DEF",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L522",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_gameeffecthook",
+      "label": "GameEffectHook",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L545",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_gameeffecthook_onactivate",
+      "label": ".onActivate()",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L550",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_all_powers",
+      "label": "ALL_POWERS",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L556",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_powerregistry",
+      "label": "PowerRegistry",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L585",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_powerregistry_register",
+      "label": ".register()",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L588",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_powerregistry_get",
+      "label": ".get()",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L593",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_powerregistry_available",
+      "label": ".available()",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L598",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_splittablestone",
+      "label": "SplittableStone",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L606",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_ghoststone",
+      "label": "GhostStone",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L611",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_frozenstone",
+      "label": "FrozenStone",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L615",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_slickstone",
+      "label": "SlickStone",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L619",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_boomerangstonestate",
+      "label": "BoomerangStoneState",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L625",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_stickystonestate",
+      "label": "StickyStoneState",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L633",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_ricochetstonestate",
+      "label": "RicochetStoneState",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L638",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_phantomstonestate",
+      "label": "PhantomStoneState",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L642",
+      "_origin": "ast"
+    },
+    {
+      "id": "power_system_mirrorstonestate",
+      "label": "MirrorStoneState",
+      "file_type": "code",
+      "source_file": "power-system.ts",
+      "source_location": "L646",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena",
+      "label": "rect-arena.ts",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_rectarenadef",
+      "label": "RectArenaDef",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L17",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_rectarenapixels",
+      "label": "RectArenaPixels",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L30",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_rectarenatoscreen",
+      "label": "rectArenaToScreen()",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L70",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_rectarenatoscreeninrect",
+      "label": "rectArenaToScreenInRect()",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L79",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_rectarenaplayabletoscreeninrect",
+      "label": "rectArenaPlayableToScreenInRect()",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L150",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_isstoneinhouse",
+      "label": "isStoneInHouse()",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L175",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_distancetohousebutton",
+      "label": "distanceToHouseButton()",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L182",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_isstoneoutofbounds",
+      "label": "isStoneOutOfBounds()",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L194",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_house_colors",
+      "label": "HOUSE_COLORS",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L216",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_drawicesheet",
+      "label": "drawIceSheet()",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L228",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_drawhorizontalsheet",
+      "label": "drawHorizontalSheet()",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L264",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_drawverticalsheet",
+      "label": "drawVerticalSheet()",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L304",
+      "_origin": "ast"
+    },
+    {
+      "id": "rect_arena_drawhouserings",
+      "label": "drawHouseRings()",
+      "file_type": "code",
+      "source_file": "rect-arena.ts",
+      "source_location": "L354",
+      "_origin": "ast"
+    },
+    {
+      "id": "round_flow_hud",
+      "label": "round-flow-hud.ts",
+      "file_type": "code",
+      "source_file": "round-flow-hud.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "round_flow_hud_roundflowstate",
+      "label": "RoundFlowState",
+      "file_type": "code",
+      "source_file": "round-flow-hud.ts",
+      "source_location": "L4",
+      "_origin": "ast"
+    },
+    {
+      "id": "round_flow_hud_buildhudstatefromroundflow",
+      "label": "buildHudStateFromRoundFlow()",
+      "file_type": "code",
+      "source_file": "round-flow-hud.ts",
+      "source_location": "L13",
+      "_origin": "ast"
+    },
+    {
+      "id": "round_overlay",
+      "label": "round-overlay.ts",
+      "file_type": "code",
+      "source_file": "round-overlay.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "round_overlay_roundoverlayoptions",
+      "label": "RoundOverlayOptions",
+      "file_type": "code",
+      "source_file": "round-overlay.ts",
+      "source_location": "L5",
+      "_origin": "ast"
+    },
+    {
+      "id": "round_overlay_showroundtransitionoverlay",
+      "label": "showRoundTransitionOverlay()",
+      "file_type": "code",
+      "source_file": "round-overlay.ts",
+      "source_location": "L16",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud",
+      "label": "score-hud.ts",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_team_labels",
+      "label": "TEAM_LABELS",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L26",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_phase_labels",
+      "label": "PHASE_LABELS",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L28",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehudoptions",
+      "label": "ScoreHudOptions",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L36",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud",
+      "label": "ScoreHud",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L51",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_constructor",
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L56",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_update",
+      "label": ".update()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L67",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_destroy",
+      "label": ".destroy()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L71",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_buildtexts",
+      "label": ".buildTexts()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L78",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_draw",
+      "label": ".draw()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L142",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_drawstonedots",
+      "label": ".drawStoneDots()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L211",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_drawstatuslabels",
+      "label": ".drawStatusLabels()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L235",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_repositiontexts",
+      "label": ".repositionTexts()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L243",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_repositionstatustexts",
+      "label": ".repositionStatusTexts()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L254",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_playerlabel",
+      "label": ".playerLabel()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L261",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_playercolour",
+      "label": ".playerColour()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L268",
+      "_origin": "ast"
+    },
+    {
+      "id": "score_hud_scorehud_playerhexcolour",
+      "label": ".playerHexColour()",
+      "file_type": "code",
+      "source_file": "score-hud.ts",
+      "source_location": "L273",
+      "_origin": "ast"
+    },
+    {
+      "id": "slingshot",
+      "label": "slingshot.ts",
+      "file_type": "code",
+      "source_file": "slingshot.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "slingshot_slingshotconfig",
+      "label": "SlingshotConfig",
+      "file_type": "code",
+      "source_file": "slingshot.ts",
+      "source_location": "L19",
+      "_origin": "ast"
+    },
+    {
+      "id": "slingshot_slingshot",
+      "label": "Slingshot",
+      "file_type": "code",
+      "source_file": "slingshot.ts",
+      "source_location": "L27",
+      "_origin": "ast"
+    },
+    {
+      "id": "slingshot_slingshot_constructor",
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "slingshot.ts",
+      "source_location": "L40",
+      "_origin": "ast"
+    },
+    {
+      "id": "slingshot_slingshot_attach",
+      "label": ".attach()",
+      "file_type": "code",
+      "source_file": "slingshot.ts",
+      "source_location": "L52",
+      "_origin": "ast"
+    },
+    {
+      "id": "slingshot_slingshot_destroy",
+      "label": ".destroy()",
+      "file_type": "code",
+      "source_file": "slingshot.ts",
+      "source_location": "L61",
+      "_origin": "ast"
+    },
+    {
+      "id": "slingshot_slingshot_cancel",
+      "label": ".cancel()",
+      "file_type": "code",
+      "source_file": "slingshot.ts",
+      "source_location": "L73",
+      "_origin": "ast"
+    },
+    {
+      "id": "slingshot_slingshot_ondown",
+      "label": ".onDown()",
+      "file_type": "code",
+      "source_file": "slingshot.ts",
+      "source_location": "L80",
+      "_origin": "ast"
+    },
+    {
+      "id": "slingshot_slingshot_onmove",
+      "label": ".onMove()",
+      "file_type": "code",
+      "source_file": "slingshot.ts",
+      "source_location": "L98",
+      "_origin": "ast"
+    },
+    {
+      "id": "slingshot_slingshot_onup",
+      "label": ".onUp()",
+      "file_type": "code",
+      "source_file": "slingshot.ts",
+      "source_location": "L114",
+      "_origin": "ast"
+    },
+    {
+      "id": "slingshot_slingshot_drawaim",
+      "label": ".drawAim()",
+      "file_type": "code",
+      "source_file": "slingshot.ts",
+      "source_location": "L135",
+      "_origin": "ast"
+    },
+    {
+      "id": "stone",
+      "label": "stone.ts",
+      "file_type": "code",
+      "source_file": "stone.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "stone_stonestate",
+      "label": "StoneState",
+      "file_type": "code",
+      "source_file": "stone.ts",
+      "source_location": "L46",
+      "_origin": "ast"
+    },
+    {
+      "id": "stone_stepstone",
+      "label": "stepStone()",
+      "file_type": "code",
+      "source_file": "stone.ts",
+      "source_location": "L74",
+      "_origin": "ast"
+    },
+    {
+      "id": "stone_resolvestonecollision",
+      "label": "resolveStoneCollision()",
+      "file_type": "code",
+      "source_file": "stone.ts",
+      "source_location": "L165",
+      "_origin": "ast"
+    },
+    {
+      "id": "stone_team_colour",
+      "label": "TEAM_COLOUR",
+      "file_type": "code",
+      "source_file": "stone.ts",
+      "source_location": "L224",
+      "_origin": "ast"
+    },
+    {
+      "id": "stone_team_dark",
+      "label": "TEAM_DARK",
+      "file_type": "code",
+      "source_file": "stone.ts",
+      "source_location": "L225",
+      "_origin": "ast"
+    },
+    {
+      "id": "stone_drawstone",
+      "label": "drawStone()",
+      "file_type": "code",
+      "source_file": "stone.ts",
+      "source_location": "L236",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller",
+      "label": "sweep-controller.ts",
+      "file_type": "code",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller_trailpoint",
+      "label": "TrailPoint",
+      "file_type": "code",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L30",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller_sweepcontroller",
+      "label": "SweepController",
+      "file_type": "code",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L36",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller_sweepcontroller_constructor",
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L47",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller_sweepcontroller_attach",
+      "label": ".attach()",
+      "file_type": "code",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L55",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller_sweepcontroller_detach",
+      "label": ".detach()",
+      "file_type": "code",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L63",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller_sweepcontroller_destroy",
+      "label": ".destroy()",
+      "file_type": "code",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L71",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller_sweepcontroller_update",
+      "label": ".update()",
+      "file_type": "code",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L81",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller_sweepcontroller_getsweepmultiplier",
+      "label": ".getSweepMultiplier()",
+      "file_type": "code",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L94",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller_sweepcontroller_onmove",
+      "label": ".onMove()",
+      "file_type": "code",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L100",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller_sweepcontroller_drawtrail",
+      "label": ".drawTrail()",
+      "file_type": "code",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L123",
+      "_origin": "ast"
+    },
+    {
+      "id": "sweep_controller_rationale_44",
+      "label": "NOTE: stone param is accepted but not used internally \u2014 the controller only",
+      "file_type": "rationale",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L44",
+      "_origin": "ast"
+    },
+    {
+      "id": "timed_targets",
+      "label": "timed-targets.ts",
+      "file_type": "code",
+      "source_file": "timed-targets.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "timed_targets_timedtargetkind",
+      "label": "TimedTargetKind",
+      "file_type": "code",
+      "source_file": "timed-targets.ts",
+      "source_location": "L3",
+      "_origin": "ast"
+    },
+    {
+      "id": "timed_targets_timedtarget",
+      "label": "TimedTarget",
+      "file_type": "code",
+      "source_file": "timed-targets.ts",
+      "source_location": "L5",
+      "_origin": "ast"
+    },
+    {
+      "id": "timed_targets_timedtargetspot",
+      "label": "TimedTargetSpot",
+      "file_type": "code",
+      "source_file": "timed-targets.ts",
+      "source_location": "L17",
+      "_origin": "ast"
+    },
+    {
+      "id": "timed_targets_steptimedtargets",
+      "label": "stepTimedTargets()",
+      "file_type": "code",
+      "source_file": "timed-targets.ts",
+      "source_location": "L27",
+      "_origin": "ast"
+    },
+    {
+      "id": "timed_targets_randomtimedtargetspot",
+      "label": "randomTimedTargetSpot()",
+      "file_type": "code",
+      "source_file": "timed-targets.ts",
+      "source_location": "L38",
+      "_origin": "ast"
+    },
+    {
+      "id": "timed_targets_timedtargetposition",
+      "label": "timedTargetPosition()",
+      "file_type": "code",
+      "source_file": "timed-targets.ts",
+      "source_location": "L63",
+      "_origin": "ast"
+    },
+    {
+      "id": "timed_targets_timedtargetradius",
+      "label": "timedTargetRadius()",
+      "file_type": "code",
+      "source_file": "timed-targets.ts",
+      "source_location": "L73",
+      "_origin": "ast"
+    },
+    {
+      "id": "timed_targets_hitstimedtarget",
+      "label": "hitsTimedTarget()",
+      "file_type": "code",
+      "source_file": "timed-targets.ts",
+      "source_location": "L80",
+      "_origin": "ast"
+    },
+    {
+      "id": "timed_targets_targethitaccuracy",
+      "label": "targetHitAccuracy()",
+      "file_type": "code",
+      "source_file": "timed-targets.ts",
+      "source_location": "L94",
+      "_origin": "ast"
+    },
+    {
+      "id": "turn_manager",
+      "label": "turn-manager.ts",
+      "file_type": "code",
+      "source_file": "turn-manager.ts",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "turn_manager_turnphase",
+      "label": "TurnPhase",
+      "file_type": "code",
+      "source_file": "turn-manager.ts",
+      "source_location": "L13",
+      "_origin": "ast"
+    },
+    {
+      "id": "turn_manager_turnstate",
+      "label": "TurnState",
+      "file_type": "code",
+      "source_file": "turn-manager.ts",
+      "source_location": "L20",
+      "_origin": "ast"
+    },
+    {
+      "id": "turn_manager_turnmanager",
+      "label": "TurnManager",
+      "file_type": "code",
+      "source_file": "turn-manager.ts",
+      "source_location": "L32",
+      "_origin": "ast"
+    },
+    {
+      "id": "turn_manager_turnmanager_constructor",
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "turn-manager.ts",
+      "source_location": "L42",
+      "_origin": "ast"
+    },
+    {
+      "id": "turn_manager_turnmanager_state",
+      "label": ".state()",
+      "file_type": "code",
+      "source_file": "turn-manager.ts",
+      "source_location": "L64",
+      "_origin": "ast"
+    },
+    {
+      "id": "turn_manager_turnmanager_setphase",
+      "label": ".setPhase()",
+      "file_type": "code",
+      "source_file": "turn-manager.ts",
+      "source_location": "L69",
+      "_origin": "ast"
+    },
+    {
+      "id": "turn_manager_turnmanager_endend",
+      "label": ".endEnd()",
+      "file_type": "code",
+      "source_file": "turn-manager.ts",
+      "source_location": "L78",
+      "_origin": "ast"
+    },
+    {
+      "id": "turn_manager_turnmanager_nextthrow",
+      "label": ".nextThrow()",
+      "file_type": "code",
+      "source_file": "turn-manager.ts",
+      "source_location": "L110",
+      "_origin": "ast"
+    },
+    {
+      "id": "turn_manager_turnmanager_isgameover",
+      "label": ".isGameOver()",
+      "file_type": "code",
+      "source_file": "turn-manager.ts",
+      "source_location": "L126",
+      "_origin": "ast"
+    },
+    {
+      "id": "turn_manager_turnmanager_upnext",
+      "label": ".upNext()",
+      "file_type": "code",
+      "source_file": "turn-manager.ts",
+      "source_location": "L131",
+      "_origin": "ast"
+    }
+  ],
+  "edges": [
+    {
+      "source": "arena_power_runtime_test",
+      "target": "ref_vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.test.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_test",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.test.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_test",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_arenapixels",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.test.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_test",
+      "target": "arena_power_runtime",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.test.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_test",
+      "target": "arena_power_runtime_applyarenaballpowercycle",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.test.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_test",
+      "target": "power_system",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.test.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_test",
+      "target": "power_system_powertype",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.test.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_test",
+      "target": "arena_power_runtime_test_arena",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.test.ts",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_arenapixels",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_ballstate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_drawshellball",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_isballmoving",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_resolveballcollision",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_stepball",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_powers",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_powers_applyballcurl",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_powers_applyballpower",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_powers_ballextstate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_ball_powers_ball_friction_base",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_spawn_powers",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_spawn_powers_createmirrorball",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "ball_spawn_powers_createsplitballs",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "player_renderer",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "player_renderer_destroyingameplayertexture",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "player_renderer_drawingameplayertexture",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "player_renderer_hideingameplayertexture",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "power_system",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L23",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "power_system_powertype",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L23",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "arena_power_runtime_arenapowerballentry",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "arena_power_runtime_applyarenaballpowercycle",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "arena_power_runtime_updatearenapowerballs",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L49",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "arena_power_runtime_resolvearenapowerballcollisions",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L79",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "arena_power_runtime_cleararenapowerballtextures",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L96",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime",
+      "target": "arena_power_runtime_drawarenapowerballs",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L106",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_arenapixels",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "ball",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L26",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_ball_ball_friction_base",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L26",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "ball_ballstate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L26",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "power_system",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "power_system_powertype",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_heavy_speed_factor",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_giant_radius_factor",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_tiny_radius_factor",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_rocket_speed_factor",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_friction_slick",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_spinning_curl_bias",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "ball_powers_ballextstate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L47",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "ball_powers_applyballpower",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L79",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "ball_powers_applyballcurl",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L189",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_spawn_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_spawn_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_arenapixels",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_spawn_powers",
+      "target": "ball",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_spawn_powers",
+      "target": "ball_ballstate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_spawn_powers",
+      "target": "power_system",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_spawn_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_splitter_radius",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_spawn_powers",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_splitter_spread",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_spawn_powers",
+      "target": "ball_spawn_powers_cloneball",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_spawn_powers",
+      "target": "ball_spawn_powers_createsplitballs",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_spawn_powers",
+      "target": "ball_spawn_powers_createmirrorball",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L33",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_spawn_powers_createmirrorball",
+      "target": "ball_spawn_powers_cloneball",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-spawn-powers.ts",
+      "source_location": "L34",
+      "weight": 1.0
+    },
+    {
+      "source": "ball",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball.ts",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "ball",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball.ts",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "ball",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_arenapixels",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "ball.ts",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "ball",
+      "target": "ball_ballstate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ball.ts",
+      "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "ball",
+      "target": "ball_isballmoving",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ball.ts",
+      "source_location": "L33",
+      "weight": 1.0
+    },
+    {
+      "source": "ball",
+      "target": "ball_stepball",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ball.ts",
+      "source_location": "L43",
+      "weight": 1.0
+    },
+    {
+      "source": "ball",
+      "target": "ball_resolveballcollision",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ball.ts",
+      "source_location": "L102",
+      "weight": 1.0
+    },
+    {
+      "source": "ball",
+      "target": "ball_drawshellball",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ball.ts",
+      "source_location": "L143",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_stepball",
+      "target": "ball_isballmoving",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ball.ts",
+      "source_location": "L48",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_resolveballcollision",
+      "target": "ball_isballmoving",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ball.ts",
+      "source_location": "L103",
+      "weight": 1.0
+    },
+    {
+      "source": "game_end_modal",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "game_end_modal",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_theme_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "game_end_modal",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_theme_theme",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "game_end_modal",
+      "target": "game_end_modal_gameendmodalplayer",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "game_end_modal",
+      "target": "game_end_modal_gameendmodalaction",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "game_end_modal",
+      "target": "game_end_modal_gameendmodaloptions",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "game_end_modal",
+      "target": "game_end_modal_showgameendmodal",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "game_end_modal",
+      "target": "game_end_modal_addmodalbutton",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L163",
+      "weight": 1.0
+    },
+    {
+      "source": "game_end_modal_showgameendmodal",
+      "target": "game_end_modal_addmodalbutton",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "game-end-modal.ts",
+      "source_location": "L157",
+      "weight": 1.0
+    },
+    {
+      "source": "game_powers",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "game-powers.ts",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "game_powers",
+      "target": "power_system",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "game-powers.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "game_powers",
+      "target": "power_system_powertype",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "game-powers.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "game_powers",
+      "target": "game_powers_gameid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "game-powers.ts",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "game_powers",
+      "target": "game_powers_all_special_powers",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "game-powers.ts",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "game_powers",
+      "target": "game_powers_game_powers",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "game-powers.ts",
+      "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "game_powers",
+      "target": "game_powers_power_up_assets",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "game-powers.ts",
+      "source_location": "L43",
+      "weight": 1.0
+    },
+    {
+      "source": "game_powers",
+      "target": "game_powers_power_up_textures",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "game-powers.ts",
+      "source_location": "L68",
+      "weight": 1.0
+    },
+    {
+      "source": "game_powers",
+      "target": "game_powers_preloadpowerupassets",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "game-powers.ts",
+      "source_location": "L93",
+      "weight": 1.0
+    },
+    {
+      "source": "hud",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "hud.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "hud",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_theme_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "hud.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "hud",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_theme_theme",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "hud.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "hud",
+      "target": "hud_buildreturnbutton",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "hud.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "online_rematch",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "online-rematch.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "online_rematch",
+      "target": "home_marcos_programming_transgender_frontend_src_services_network_gamesocket_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "online-rematch.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "online_rematch",
+      "target": "home_marcos_programming_transgender_frontend_src_services_network_gamesocket_getgamesocket",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "online-rematch.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "online_rematch",
+      "target": "home_marcos_programming_transgender_frontend_src_services_network_gamesocket_gamesnapshot",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "online-rematch.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "online_rematch",
+      "target": "game_end_modal",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "online-rematch.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "online_rematch",
+      "target": "game_end_modal_showgameendmodal",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "online-rematch.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "online_rematch",
+      "target": "game_end_modal_gameendmodaloptions",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "online-rematch.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "online_rematch",
+      "target": "online_rematch_onlinerematchoptions",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "online-rematch.ts",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "online_rematch",
+      "target": "online_rematch_showonlinerematchendmodal",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "online-rematch.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_arenapixels",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "rect_arena",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "rect_arena_rectarenapixels",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "ball",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_ball_ball_src_r",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_ball_ball_friction_base",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "stone",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_stone_stone_src_r",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_stone_friction_ice",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_stone_bounce_damp",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_stone_min_speed_src",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_stone_curl_strength",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_stone_default_curl_bias",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "power_system",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "power_system_powertype",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_friction_slick",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_heavy_speed_factor",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_giant_radius_factor",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_tiny_radius_factor",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_rocket_speed_factor",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_replayprojectilestate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_replaystonestate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L38",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_replaytrailpoint",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L53",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_simulatedreplayobject",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L58",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_createreplayprojectilestate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L63",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_applyreplayprojectilepower",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L83",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_stepreplayprojectile",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L126",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_createreplaystonestate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L190",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_stepreplaystone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L244",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_simulatereplayprojectile",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L317",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_simulatereplaystone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L335",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_lerpnumber",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L353",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_clamp01",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L357",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_runfixedstepsimulation",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L361",
+      "weight": 1.0
+    },
+    {
+      "source": "physics",
+      "target": "physics_pushreplaytrailpoint",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L376",
+      "weight": 1.0
+    },
+    {
+      "source": "physics_createreplayprojectilestate",
+      "target": "physics_applyreplayprojectilepower",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L79",
+      "weight": 1.0
+    },
+    {
+      "source": "physics_simulatereplayprojectile",
+      "target": "physics_runfixedstepsimulation",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L326",
+      "weight": 1.0
+    },
+    {
+      "source": "physics_simulatereplayprojectile",
+      "target": "physics_stepreplayprojectile",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L327",
+      "weight": 1.0
+    },
+    {
+      "source": "physics_simulatereplayprojectile",
+      "target": "physics_pushreplaytrailpoint",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L328",
+      "weight": 1.0
+    },
+    {
+      "source": "physics_simulatereplaystone",
+      "target": "physics_runfixedstepsimulation",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L344",
+      "weight": 1.0
+    },
+    {
+      "source": "physics_simulatereplaystone",
+      "target": "physics_stepreplaystone",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L345",
+      "weight": 1.0
+    },
+    {
+      "source": "physics_simulatereplaystone",
+      "target": "physics_pushreplaytrailpoint",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L346",
+      "weight": 1.0
+    },
+    {
+      "source": "player_config",
+      "target": "player_config_playerentityconfig",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-config.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "player_config",
+      "target": "player_config_default_player_shell_skins",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-config.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "player_config",
+      "target": "player_config_resolveplayershellskins",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-config.ts",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_assets_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_assets_ingame_player_asset",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_assets_shell_skin_assets",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_assets_resolveshellskinasset",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "player_renderer_playervisualstate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "player_renderer_playerrollstate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "player_renderer_rollstates",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "player_renderer_preloadingameplayertexture",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L22",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "player_renderer_drawingameplayertexture",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L33",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "player_renderer_drawingameshelltexture",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L81",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "player_renderer_getorcreateplayerimage",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L115",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "player_renderer_isplayermoving",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L127",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "player_renderer_updateingameplayerroll",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L131",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "player_renderer_hideingameplayertexture",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L155",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer",
+      "target": "player_renderer_destroyingameplayertexture",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L165",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer_drawingameplayertexture",
+      "target": "player_renderer_hideingameplayertexture",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L45",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer_drawingameplayertexture",
+      "target": "player_renderer_getorcreateplayerimage",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L49",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer_drawingameplayertexture",
+      "target": "player_renderer_updateingameplayerroll",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L62",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer_drawingameplayertexture",
+      "target": "player_renderer_isplayermoving",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L64",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer_drawingameshelltexture",
+      "target": "player_renderer_hideingameplayertexture",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L90",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer_drawingameshelltexture",
+      "target": "player_renderer_getorcreateplayerimage",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L97",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer_drawingameshelltexture",
+      "target": "player_renderer_updateingameplayerroll",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L104",
+      "weight": 1.0
+    },
+    {
+      "source": "player_renderer_drawingameshelltexture",
+      "target": "player_renderer_isplayermoving",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "player-renderer.ts",
+      "source_location": "L110",
+      "weight": 1.0
+    },
+    {
+      "source": "player_trails",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "player-trails.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "player_trails",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_game_ui_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "player-trails.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "player_trails",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_game_ui_player_colour_values",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "player-trails.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "player_trails",
+      "target": "player_trails_playertrailpoint",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-trails.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "player_trails",
+      "target": "player_trails_playertrailobject",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-trails.ts",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "player_trails",
+      "target": "player_trails_playertrailstore",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-trails.ts",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "player_trails",
+      "target": "player_trails_playertrailoptions",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-trails.ts",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "player_trails",
+      "target": "player_trails_resetplayertrail",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-trails.ts",
+      "source_location": "L35",
+      "weight": 1.0
+    },
+    {
+      "source": "player_trails",
+      "target": "player_trails_recordplayertrails",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-trails.ts",
+      "source_location": "L44",
+      "weight": 1.0
+    },
+    {
+      "source": "player_trails",
+      "target": "player_trails_drawplayertrails",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "player-trails.ts",
+      "source_location": "L64",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "power_system",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "power_system_all_powers",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "power_system_powertype",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "game_powers",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "game_powers_power_up_textures",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "power_pickups_powerpickup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "power_pickups_powerpickupspawnarea",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupspawnarea",
+      "target": "power_pickups_powerpickupspawnarea_contains",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupspawnarea",
+      "target": "power_pickups_powerpickupspawnarea_randompoint",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "power_pickups_powerpickupblocker",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "power_pickups_powerpickupmanageroptions",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "power_pickups_powerpickupmanager",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L37",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_pickups_powerpickupmanager_constructor",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L49",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_pickups_powerpickupmanager_all",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L59",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_pickups_powerpickupmanager_clear",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L63",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_pickups_powerpickupmanager_setpickups",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L68",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_pickups_powerpickupmanager_destroy",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L74",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_pickups_powerpickupmanager_spawn",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_pickups_powerpickupmanager_collect",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L102",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_pickups_powerpickupmanager_remove",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L111",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_pickups_powerpickupmanager_draw",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L116",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_pickups_powerpickupmanager_canplace",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L141",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_pickups_powerpickupmanager_clearimages",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L155",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "power_pickups_createrectpowerpickuparea",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L161",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups",
+      "target": "power_pickups_createellipsepowerpickuparea",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L180",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager_clear",
+      "target": "power_pickups_powerpickupmanager_draw",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L65",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager_setpickups",
+      "target": "power_pickups_powerpickupmanager_draw",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L71",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager_destroy",
+      "target": "power_pickups_powerpickupmanager_clearimages",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L75",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager_spawn",
+      "target": "power_pickups_powerpickupspawnarea_randompoint",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L84",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager_spawn",
+      "target": "power_pickups_powerpickupspawnarea_contains",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L85",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager_spawn",
+      "target": "power_pickups_powerpickupmanager_canplace",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L86",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager_collect",
+      "target": "power_pickups_powerpickupmanager_remove",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L105",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager_draw",
+      "target": "power_pickups_powerpickupmanager_clearimages",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L118",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager_clearimages",
+      "target": "power_pickups_powerpickupmanager_destroy",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L156",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "stone",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "stone_stonestate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "rect_arena",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "rect_arena_rectarenapixels",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_powertype",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_powerdef",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L42",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef",
+      "target": "power_system_powerdef_onapply",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L48",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef",
+      "target": "power_system_powerdef_onupdate",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L50",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef",
+      "target": "power_system_powerdef_oncollide",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L52",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef",
+      "target": "power_system_powerdef_onstop",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L58",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_none_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L106",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_heavy_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L116",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_bomb_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L128",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_splitter_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L157",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_ghost_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L169",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_magnet_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L185",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_spinning_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L213",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_bouncer_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L226",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_shield_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L238",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_freeze_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L259",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_slick_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L276",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_phantomstone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L289",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_boomerangstone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L293",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_stickystone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L301",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_ricochetstone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L306",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_rocket_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L310",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_giant_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L323",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_tiny_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L335",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_boomerang_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L348",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_repel_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L379",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_sticky_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L408",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_lightning_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L433",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_vortex_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L468",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_mirror_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L490",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_ricochet_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L502",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_phantom_def",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L522",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_gameeffecthook",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L545",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_gameeffecthook",
+      "target": "power_system_gameeffecthook_onactivate",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L550",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_all_powers",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L556",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_powerregistry",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L585",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerregistry",
+      "target": "power_system_powerregistry_register",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L588",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerregistry",
+      "target": "power_system_powerregistry_get",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L593",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerregistry",
+      "target": "power_system_powerregistry_available",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L598",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_splittablestone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L606",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_ghoststone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L611",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_frozenstone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L615",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_slickstone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L619",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_boomerangstonestate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L625",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_stickystonestate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L633",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_ricochetstonestate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L638",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_phantomstonestate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L642",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system",
+      "target": "power_system_mirrorstonestate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L646",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "stone",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "stone_stonestate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_rectarenadef",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_rectarenapixels",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_rectarenatoscreen",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L70",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_rectarenatoscreeninrect",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L79",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_rectarenaplayabletoscreeninrect",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L150",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_isstoneinhouse",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L175",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_distancetohousebutton",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L182",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_isstoneoutofbounds",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L194",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_house_colors",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L216",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_drawicesheet",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L228",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_drawhorizontalsheet",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L264",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_drawverticalsheet",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L304",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena",
+      "target": "rect_arena_drawhouserings",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L354",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena_rectarenatoscreen",
+      "target": "rect_arena_rectarenatoscreeninrect",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L75",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena_rectarenaplayabletoscreeninrect",
+      "target": "rect_arena_rectarenatoscreeninrect",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L157",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena_drawicesheet",
+      "target": "rect_arena_drawhorizontalsheet",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L256",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena_drawicesheet",
+      "target": "rect_arena_drawverticalsheet",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L258",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena_drawhorizontalsheet",
+      "target": "rect_arena_drawhouserings",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L271",
+      "weight": 1.0
+    },
+    {
+      "source": "rect_arena_drawverticalsheet",
+      "target": "rect_arena_drawhouserings",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "rect-arena.ts",
+      "source_location": "L311",
+      "weight": 1.0
+    },
+    {
+      "source": "round_flow_hud",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "round-flow-hud.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "round_flow_hud",
+      "target": "turn_manager",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "round-flow-hud.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "round_flow_hud",
+      "target": "turn_manager_turnphase",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "round-flow-hud.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "round_flow_hud",
+      "target": "turn_manager_turnstate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "round-flow-hud.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "round_flow_hud",
+      "target": "round_flow_hud_roundflowstate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "round-flow-hud.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "round_flow_hud",
+      "target": "round_flow_hud_buildhudstatefromroundflow",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "round-flow-hud.ts",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "round_overlay",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "round-overlay.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "round_overlay",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_theme_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "round-overlay.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "round_overlay",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_theme_theme",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "round-overlay.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "round_overlay",
+      "target": "round_overlay_roundoverlayoptions",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "round-overlay.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "round_overlay",
+      "target": "round_overlay_showroundtransitionoverlay",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "round-overlay.ts",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "turn_manager",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "turn_manager_turnstate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_theme_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_theme_theme",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_game_ui_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_game_ui_player_colour_values",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_game_ui_player_hex_colours",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "score_hud_team_labels",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L26",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "score_hud_phase_labels",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L28",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "score_hud_scorehudoptions",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud",
+      "target": "score_hud_scorehud",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L51",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_constructor",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L56",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_update",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L67",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_destroy",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L71",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_buildtexts",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L78",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_draw",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L142",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_drawstonedots",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L211",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_drawstatuslabels",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L235",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_repositiontexts",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L243",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_repositionstatustexts",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L254",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_playerlabel",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L261",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_playercolour",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L268",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud",
+      "target": "score_hud_scorehud_playerhexcolour",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L273",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_constructor",
+      "target": "score_hud_scorehud_buildtexts",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L63",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_update",
+      "target": "score_hud_scorehud_draw",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L68",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_buildtexts",
+      "target": "score_hud_scorehud_playerlabel",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L129",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_draw",
+      "target": "score_hud_scorehud_playercolour",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L164",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_draw",
+      "target": "score_hud_scorehud_drawstatuslabels",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L168",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_draw",
+      "target": "score_hud_scorehud_drawstonedots",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L169",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_draw",
+      "target": "score_hud_scorehud_repositiontexts",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L172",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_draw",
+      "target": "score_hud_scorehud_playerhexcolour",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L178",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_draw",
+      "target": "score_hud_scorehud_playerlabel",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L184",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_drawstonedots",
+      "target": "score_hud_scorehud_playercolour",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L222",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_drawstatuslabels",
+      "target": "score_hud_scorehud_repositionstatustexts",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L240",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot",
+      "target": "ball",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot",
+      "target": "ball_ballstate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot",
+      "target": "ball_isballmoving",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_theme_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_theme_theme",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot",
+      "target": "slingshot_slingshotconfig",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L19",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot",
+      "target": "slingshot_slingshot",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot_slingshot",
+      "target": "slingshot_slingshot_constructor",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L40",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot_slingshot",
+      "target": "slingshot_slingshot_attach",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L52",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot_slingshot",
+      "target": "slingshot_slingshot_destroy",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L61",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot_slingshot",
+      "target": "slingshot_slingshot_cancel",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L73",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot_slingshot",
+      "target": "slingshot_slingshot_ondown",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot_slingshot",
+      "target": "slingshot_slingshot_onmove",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L98",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot_slingshot",
+      "target": "slingshot_slingshot_onup",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L114",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot_slingshot",
+      "target": "slingshot_slingshot_drawaim",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L135",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot_slingshot_onmove",
+      "target": "slingshot_slingshot_drawaim",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L111",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "rect_arena",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "rect_arena_rectarenapixels",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "power_system",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "power_system_powertype",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_heavy_mass_ratio",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_friction_slick",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "stone_stonestate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L46",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "stone_stepstone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L74",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "stone_resolvestonecollision",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L165",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "stone_team_colour",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L224",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "stone_team_dark",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L225",
+      "weight": 1.0
+    },
+    {
+      "source": "stone",
+      "target": "stone_drawstone",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L236",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller",
+      "target": "ref_phaser",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller",
+      "target": "stone",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller",
+      "target": "stone_stonestate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller",
+      "target": "sweep_controller_trailpoint",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller",
+      "target": "sweep_controller_sweepcontroller",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_sweepcontroller",
+      "target": "sweep_controller_sweepcontroller_constructor",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L47",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_sweepcontroller",
+      "target": "sweep_controller_sweepcontroller_attach",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L55",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_sweepcontroller",
+      "target": "sweep_controller_sweepcontroller_detach",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L63",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_sweepcontroller",
+      "target": "sweep_controller_sweepcontroller_destroy",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L71",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_sweepcontroller",
+      "target": "sweep_controller_sweepcontroller_update",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L81",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_sweepcontroller",
+      "target": "sweep_controller_sweepcontroller_getsweepmultiplier",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L94",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_sweepcontroller",
+      "target": "sweep_controller_sweepcontroller_onmove",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L100",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_sweepcontroller",
+      "target": "sweep_controller_sweepcontroller_drawtrail",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L123",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_sweepcontroller_destroy",
+      "target": "sweep_controller_sweepcontroller_detach",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L72",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_sweepcontroller_update",
+      "target": "sweep_controller_sweepcontroller_drawtrail",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L86",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_rationale_44",
+      "target": "sweep_controller",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L44",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets",
+      "target": "home_marcos_programming_transgender_frontend_src_shared_arenas_arena_arenapixels",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets",
+      "target": "timed_targets_timedtargetkind",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets",
+      "target": "timed_targets_timedtarget",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets",
+      "target": "timed_targets_timedtargetspot",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets",
+      "target": "timed_targets_steptimedtargets",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets",
+      "target": "timed_targets_randomtimedtargetspot",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L38",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets",
+      "target": "timed_targets_timedtargetposition",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L63",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets",
+      "target": "timed_targets_timedtargetradius",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L73",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets",
+      "target": "timed_targets_hitstimedtarget",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets",
+      "target": "timed_targets_targethitaccuracy",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L94",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets_hitstimedtarget",
+      "target": "timed_targets_timedtargetposition",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L87",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets_hitstimedtarget",
+      "target": "timed_targets_timedtargetradius",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L90",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets_targethitaccuracy",
+      "target": "timed_targets_timedtargetposition",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L100",
+      "weight": 1.0
+    },
+    {
+      "source": "timed_targets_targethitaccuracy",
+      "target": "timed_targets_timedtargetradius",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "timed-targets.ts",
+      "source_location": "L101",
+      "weight": 1.0
+    },
+    {
+      "source": "turn_manager",
+      "target": "turn_manager_turnphase",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "turn-manager.ts",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "turn_manager",
+      "target": "turn_manager_turnstate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "turn-manager.ts",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "turn_manager",
+      "target": "turn_manager_turnmanager",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "turn-manager.ts",
+      "source_location": "L32",
+      "weight": 1.0
+    },
+    {
+      "source": "turn_manager_turnmanager",
+      "target": "turn_manager_turnmanager_constructor",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "turn-manager.ts",
+      "source_location": "L42",
+      "weight": 1.0
+    },
+    {
+      "source": "turn_manager_turnmanager",
+      "target": "turn_manager_turnmanager_state",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "turn-manager.ts",
+      "source_location": "L64",
+      "weight": 1.0
+    },
+    {
+      "source": "turn_manager_turnmanager",
+      "target": "turn_manager_turnmanager_setphase",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "turn-manager.ts",
+      "source_location": "L69",
+      "weight": 1.0
+    },
+    {
+      "source": "turn_manager_turnmanager",
+      "target": "turn_manager_turnmanager_endend",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "turn-manager.ts",
+      "source_location": "L78",
+      "weight": 1.0
+    },
+    {
+      "source": "turn_manager_turnmanager",
+      "target": "turn_manager_turnmanager_nextthrow",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "turn-manager.ts",
+      "source_location": "L110",
+      "weight": 1.0
+    },
+    {
+      "source": "turn_manager_turnmanager",
+      "target": "turn_manager_turnmanager_isgameover",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "turn-manager.ts",
+      "source_location": "L126",
+      "weight": 1.0
+    },
+    {
+      "source": "turn_manager_turnmanager",
+      "target": "turn_manager_turnmanager_upnext",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "turn-manager.ts",
+      "source_location": "L131",
+      "weight": 1.0
+    },
+    {
+      "source": "turn_manager_turnmanager_nextthrow",
+      "target": "turn_manager_turnmanager_upnext",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "turn-manager.ts",
+      "source_location": "L115",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers",
+      "target": "ball",
+      "relation": "re_exports",
+      "context": "export",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L68",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_arenapowerballentry",
+      "target": "ball_ballstate",
+      "relation": "references",
+      "context": "field",
+      "confidence": "EXTRACTED",
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L26",
+      "weight": 1.0
+    },
+    {
+      "source": "ball_powers_ballextstate",
+      "target": "ball_ballstate",
+      "relation": "inherits",
+      "context": "type",
+      "confidence": "EXTRACTED",
+      "source_file": "ball-powers.ts",
+      "source_location": "L47",
+      "weight": 1.0
+    },
+    {
+      "source": "physics_replayprojectilestate",
+      "target": "power_system_powertype",
+      "relation": "references",
+      "context": "field",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L33",
+      "weight": 1.0
+    },
+    {
+      "source": "physics_replaystonestate",
+      "target": "power_system_powertype",
+      "relation": "references",
+      "context": "field",
+      "confidence": "EXTRACTED",
+      "source_file": "physics.ts",
+      "source_location": "L46",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickup",
+      "target": "power_system_powertype",
+      "relation": "references",
+      "context": "field",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanageroptions",
+      "target": "power_system_powertype",
+      "relation": "references",
+      "context": "field",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L31",
+      "weight": 1.0
+    },
+    {
+      "source": "power_pickups_powerpickupmanager",
+      "target": "power_system_powertype",
+      "relation": "references",
+      "context": "field",
+      "confidence": "EXTRACTED",
+      "source_file": "power-pickups.ts",
+      "source_location": "L41",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef_onapply",
+      "target": "stone_stonestate",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L48",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef_onapply",
+      "target": "rect_arena_rectarenapixels",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L48",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef_onupdate",
+      "target": "stone_stonestate",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L50",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef_onupdate",
+      "target": "rect_arena_rectarenapixels",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L50",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef_oncollide",
+      "target": "stone_stonestate",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L52",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef_oncollide",
+      "target": "rect_arena_rectarenapixels",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L52",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef_onstop",
+      "target": "stone_stonestate",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L58",
+      "weight": 1.0
+    },
+    {
+      "source": "power_system_powerdef_onstop",
+      "target": "rect_arena_rectarenapixels",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "power-system.ts",
+      "source_location": "L58",
+      "weight": 1.0
+    },
+    {
+      "source": "round_flow_hud_roundflowstate",
+      "target": "turn_manager_turnphase",
+      "relation": "references",
+      "context": "field",
+      "confidence": "EXTRACTED",
+      "source_file": "round-flow-hud.ts",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehudoptions",
+      "target": "turn_manager_turnstate",
+      "relation": "references",
+      "context": "field",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L45",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_update",
+      "target": "turn_manager_turnstate",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L67",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_draw",
+      "target": "turn_manager_turnstate",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L142",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_drawstonedots",
+      "target": "turn_manager_turnstate",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L211",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_drawstatuslabels",
+      "target": "turn_manager_turnstate",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "score-hud.ts",
+      "source_location": "L235",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot_slingshot_constructor",
+      "target": "ball_ballstate",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "slingshot.ts",
+      "source_location": "L40",
+      "weight": 1.0
+    },
+    {
+      "source": "stone_stonestate",
+      "target": "power_system_powertype",
+      "relation": "references",
+      "context": "field",
+      "confidence": "EXTRACTED",
+      "source_file": "stone.ts",
+      "source_location": "L54",
+      "weight": 1.0
+    },
+    {
+      "source": "sweep_controller_sweepcontroller_constructor",
+      "target": "stone_stonestate",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "sweep-controller.ts",
+      "source_location": "L47",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_applyarenaballpowercycle",
+      "target": "ball_spawn_powers_createsplitballs",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L37",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_applyarenaballpowercycle",
+      "target": "ball_spawn_powers_createmirrorball",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L44",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_applyarenaballpowercycle",
+      "target": "ball_powers_applyballpower",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L45",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_updatearenapowerballs",
+      "target": "ball_stepball",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L60",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_updatearenapowerballs",
+      "target": "ball_powers_applyballcurl",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L70",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_updatearenapowerballs",
+      "target": "ball_isballmoving",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L71",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_resolvearenapowerballcollisions",
+      "target": "ball_resolveballcollision",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L91",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_cleararenapowerballtextures",
+      "target": "player_renderer_destroyingameplayertexture",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L102",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_drawarenapowerballs",
+      "target": "player_renderer_hideingameplayertexture",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L120",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_drawarenapowerballs",
+      "target": "player_renderer_drawingameplayertexture",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L125",
+      "weight": 1.0
+    },
+    {
+      "source": "arena_power_runtime_drawarenapowerballs",
+      "target": "ball_drawshellball",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "arena-power-runtime.ts",
+      "source_location": "L133",
+      "weight": 1.0
+    },
+    {
+      "source": "online_rematch_showonlinerematchendmodal",
+      "target": "game_end_modal_showgameendmodal",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "online-rematch.ts",
+      "source_location": "L34",
+      "weight": 1.0
+    },
+    {
+      "source": "slingshot_slingshot_ondown",
+      "target": "ball_isballmoving",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "slingshot.ts",
+      "source_location": "L81",
+      "weight": 1.0
+    },
+    {
+      "source": "game_end_modal_addmodalbutton",
+      "target": "game_end_modal_gameendmodalaction",
+      "relation": "references",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "game-end-modal.ts",
+      "source_location": "L212",
+      "weight": 1.0
+    },
+    {
+      "source": "online_rematch_showonlinerematchendmodal",
+      "target": "online_rematch_onlinerematchoptions",
+      "relation": "references",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "online-rematch.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "player_trails_recordplayertrails",
+      "target": "player_trails_playertrailstore",
+      "relation": "references",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "player-trails.ts",
+      "source_location": "L55",
+      "weight": 1.0
+    },
+    {
+      "source": "round_overlay_showroundtransitionoverlay",
+      "target": "round_overlay_roundoverlayoptions",
+      "relation": "references",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "round-overlay.ts",
+      "source_location": "L104",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_draw",
+      "target": "score_hud_scorehudoptions",
+      "relation": "references",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "score-hud.ts",
+      "source_location": "L189",
+      "weight": 1.0
+    },
+    {
+      "source": "score_hud_scorehud_playerlabel",
+      "target": "score_hud_scorehudoptions",
+      "relation": "references",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "score-hud.ts",
+      "source_location": "L262",
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

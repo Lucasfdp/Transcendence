@@ -10,7 +10,7 @@ import {
 	resetArenaReplayBalls,
 	syncArenaReplayBallFromPayload,
 } from "../replay-state.helpers";
-import { BaseEngine } from "./base.engine";
+import { BaseArenaEngine } from "./base-arena.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
 type BellZoneKind = "red" | "yellow" | "green";
@@ -21,7 +21,7 @@ const ZONE_SPAN = Math.PI * 2 * 0.15;
 const TWO_PI = Math.PI * 2;
 
 @Injectable()
-export class BellClashEngine extends BaseEngine implements GameEngine {
+export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 	readonly gameId = "bell-clash";
 
 	createInitialState(
@@ -46,23 +46,15 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 			roundScores: Array.from({ length: roomPlayers.length }, () => null),
 			shotCounts: Array.from({ length: roomPlayers.length }, () => 0),
 			zones: [],
-			players: roomPlayers.map((player) => this.toSnapshotPlayer(player)),
-			balls: [],
-			activeBallIdBySide: [],
-			nextBallId: 1,
-			entities: [],
-			winnerSide: null,
+			...this.buildArenaReplayState(roomPlayers),
 		};
 	}
 
 	start(room: MatchRoom): void {
 		const state = room.state as BellClashSnapshot;
-		room.status = "active";
-		state.phase = "active";
-		this.resetRound(state, room.players.length);
-		resetArenaReplayBalls(state, { clearEntities: true });
-		state.seq = ++room.seq;
-		this.refreshSnapshotPlayers(room);
+		this.startArenaRoom(room, state, (snapshot) => {
+			this.resetRound(snapshot, room.players.length);
+		});
 	}
 
 	handleInput(
@@ -81,19 +73,7 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 
 	abandon(room: MatchRoom, abandonedPlayer: RoomPlayer): number | null {
 		const state = room.state as BellClashSnapshot;
-		const remaining = room.players
-			.filter(
-				(player) =>
-					player.side !== abandonedPlayer.side && player.connected,
-			)
-			.map((player) => ({
-				side: player.side,
-				score: state.score[player.side] ?? 0,
-			}));
-		if (!remaining.length) return null;
-		const maxScore = Math.max(...remaining.map((entry) => entry.score));
-		const winners = remaining.filter((entry) => entry.score === maxScore);
-		return winners.length === 1 ? winners[0].side : null;
+		return this.resolveAbandonWinner(room, abandonedPlayer, state.score);
 	}
 
 	private applyRelease(
@@ -102,9 +82,7 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 		payload: Record<string, unknown>,
 	): MatchRoom | null {
 		const state = room.state as BellClashSnapshot;
-		const player = room.players.find(
-			(candidate) => candidate.user.id === userId,
-		);
+		const player = this.findRoomPlayer(room, userId);
 		if (!player || room.status !== "active" || state.phase !== "active")
 			return null;
 		if (state.roundScores[player.side] !== null) return null;
@@ -127,8 +105,7 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 			undefined,
 			String(payload.power ?? "none"),
 		);
-		state.seq = ++room.seq;
-		this.refreshSnapshotPlayers(room);
+		this.bumpRoomState(room);
 		return room;
 	}
 
@@ -138,9 +115,7 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 		payload: Record<string, unknown>,
 	): MatchRoom | null {
 		const state = room.state as BellClashSnapshot;
-		const player = room.players.find(
-			(candidate) => candidate.user.id === userId,
-		);
+		const player = this.findRoomPlayer(room, userId);
 		if (!player || room.status !== "active" || state.phase !== "active")
 			return null;
 		if (state.roundScores[player.side] !== null) return null;
@@ -157,8 +132,7 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 		syncArenaReplayBallFromPayload(state, player.side, payload);
 		state.liveRoundScores[player.side] =
 			(state.liveRoundScores[player.side] ?? 0) + points;
-		state.seq = ++room.seq;
-		this.refreshSnapshotPlayers(room);
+		this.bumpRoomState(room);
 		return room;
 	}
 
@@ -168,9 +142,7 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 		payload: Record<string, unknown>,
 	): MatchRoom | null {
 		const state = room.state as BellClashSnapshot;
-		const player = room.players.find(
-			(candidate) => candidate.user.id === userId,
-		);
+		const player = this.findRoomPlayer(room, userId);
 		if (!player || room.status !== "active" || state.phase !== "active")
 			return null;
 
@@ -180,10 +152,8 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 			return null;
 		if (state.roundScores[player.side] !== null) return null;
 
-		state.roundScores[player.side] =
-			state.liveRoundScores[player.side] ?? 0;
-		state.seq = ++room.seq;
-		this.refreshSnapshotPlayers(room);
+		state.roundScores[player.side] = state.liveRoundScores[player.side] ?? 0;
+		this.bumpRoomState(room);
 
 		if (state.roundScores.some((value) => value === null)) return room;
 
@@ -195,16 +165,14 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 			room.status = "finished";
 			state.phase = "finished";
 			state.winnerSide = this.getWinnerSide(state.score);
-			state.seq = ++room.seq;
-			this.refreshSnapshotPlayers(room);
+			this.bumpRoomState(room);
 			return room;
 		}
 
 		state.roundNumber += 1;
 		this.resetRound(state, room.players.length);
 		resetArenaReplayBalls(state, { clearEntities: true });
-		state.seq = ++room.seq;
-		this.refreshSnapshotPlayers(room);
+		this.bumpRoomState(room);
 		return room;
 	}
 
@@ -279,11 +247,4 @@ export class BellClashEngine extends BaseEngine implements GameEngine {
 		return values;
 	}
 
-	private getWinnerSide(score: number[]): number | null {
-		const maxScore = Math.max(...score);
-		const winners = score
-			.map((value, side) => ({ value, side }))
-			.filter((entry) => entry.value === maxScore);
-		return winners.length === 1 ? winners[0].side : null;
-	}
 }

@@ -11,7 +11,7 @@ import {
 	settleArenaReplayBall,
 	syncArenaReplayBallFromPayload,
 } from "../replay-state.helpers";
-import { BaseEngine } from "./base.engine";
+import { BaseArenaEngine } from "./base-arena.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
 const ROUND_CONFIGS = [
@@ -29,7 +29,7 @@ const TARGET_TYPES = [
 type KameKnockTarget = KameKnockSnapshot["targets"][number];
 
 @Injectable()
-export class KameKnockEngine extends BaseEngine implements GameEngine {
+export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 	readonly gameId = "kame-knock";
 	private readonly roundTargetSets = new Map<string, KameKnockTarget[][]>();
 
@@ -53,24 +53,16 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 			roundScores: Array.from({ length: roomPlayers.length }, () => 0),
 			targets: [],
 			nextTargetId: 1,
-			players: roomPlayers.map((player) => this.toSnapshotPlayer(player)),
-			balls: [],
-			activeBallIdBySide: [],
-			nextBallId: 1,
-			entities: [],
-			winnerSide: null,
+			...this.buildArenaReplayState(roomPlayers),
 		};
 	}
 
 	start(room: MatchRoom): void {
 		const state = room.state as KameKnockSnapshot;
-		room.status = "active";
-		state.phase = "active";
-		this.createRoundTargetSet(room.matchId, state.roundNumber);
-		this.resetTurnTargets(room.matchId, state);
-		resetArenaReplayBalls(state, { clearEntities: true });
-		state.seq = ++room.seq;
-		this.refreshSnapshotPlayers(room);
+		this.startArenaRoom(room, state, (snapshot) => {
+			this.createRoundTargetSet(room.matchId, snapshot.roundNumber);
+			this.resetTurnTargets(room.matchId, snapshot);
+		});
 	}
 
 	handleInput(
@@ -89,19 +81,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 
 	abandon(room: MatchRoom, abandonedPlayer: RoomPlayer): number | null {
 		const state = room.state as KameKnockSnapshot;
-		const remaining = room.players
-			.filter(
-				(player) =>
-					player.side !== abandonedPlayer.side && player.connected,
-			)
-			.map((player) => ({
-				side: player.side,
-				score: state.score[player.side] ?? 0,
-			}));
-		if (!remaining.length) return null;
-		const maxScore = Math.max(...remaining.map((entry) => entry.score));
-		const winners = remaining.filter((entry) => entry.score === maxScore);
-		return winners.length === 1 ? winners[0].side : null;
+		return this.resolveAbandonWinner(room, abandonedPlayer, state.score);
 	}
 
 	private applyRelease(
@@ -110,9 +90,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		payload: Record<string, unknown>,
 	): MatchRoom | null {
 		const state = room.state as KameKnockSnapshot;
-		const player = room.players.find(
-			(candidate) => candidate.user.id === userId,
-		);
+		const player = this.findRoomPlayer(room, userId);
 		if (!player || room.status !== "active" || state.phase !== "active")
 			return null;
 		if (player.side !== state.currentTurn) return null;
@@ -138,8 +116,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 			undefined,
 			String(payload.power ?? "none"),
 		);
-		state.seq = ++room.seq;
-		this.refreshSnapshotPlayers(room);
+		this.bumpRoomState(room);
 		return room;
 	}
 
@@ -149,9 +126,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		payload: Record<string, unknown>,
 	): MatchRoom | null {
 		const state = room.state as KameKnockSnapshot;
-		const player = room.players.find(
-			(candidate) => candidate.user.id === userId,
-		);
+		const player = this.findRoomPlayer(room, userId);
 		if (!player || room.status !== "active" || state.phase !== "active")
 			return null;
 		if (player.side !== state.currentTurn) return null;
@@ -185,8 +160,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		state.score[player.side] = (state.score[player.side] ?? 0) + gained;
 		state.roundScores[player.side] =
 			(state.roundScores[player.side] ?? 0) + gained;
-		state.seq = ++room.seq;
-		this.refreshSnapshotPlayers(room);
+		this.bumpRoomState(room);
 		return room;
 	}
 
@@ -196,9 +170,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		payload: Record<string, unknown>,
 	): MatchRoom | null {
 		const state = room.state as KameKnockSnapshot;
-		const player = room.players.find(
-			(candidate) => candidate.user.id === userId,
-		);
+		const player = this.findRoomPlayer(room, userId);
 		if (!player || room.status !== "active" || state.phase !== "active")
 			return null;
 		if (player.side !== state.currentTurn) return null;
@@ -220,8 +192,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 			state.phase = "finished";
 			state.winnerSide = this.getWinnerSide(state.score);
 			this.roundTargetSets.delete(room.matchId);
-			state.seq = ++room.seq;
-			this.refreshSnapshotPlayers(room);
+			this.bumpRoomState(room);
 			return room;
 		}
 
@@ -242,8 +213,7 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		resetArenaReplayBalls(state, {
 			clearEntities: isNewRound,
 		});
-		state.seq = ++room.seq;
-		this.refreshSnapshotPlayers(room);
+		this.bumpRoomState(room);
 		return room;
 	}
 
@@ -331,11 +301,4 @@ export class KameKnockEngine extends BaseEngine implements GameEngine {
 		return values;
 	}
 
-	private getWinnerSide(score: number[]): number | null {
-		const maxScore = Math.max(...score);
-		const winners = score
-			.map((value, side) => ({ value, side }))
-			.filter((entry) => entry.value === maxScore);
-		return winners.length === 1 ? winners[0].side : null;
-	}
 }

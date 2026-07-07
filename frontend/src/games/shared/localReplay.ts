@@ -35,8 +35,118 @@ export interface LocalReplayPlayerVisuals {
 	shellSkins?: Record<string, string>;
 }
 
+export interface LocalReplayImportOptions {
+	gameId: string;
+	mode: ReplayImportRequest["mode"];
+	createdAt: string;
+	finishedAt: string;
+	winnerSide: number | null;
+	playerUserIds: Array<number | null>;
+	playerNames: string[];
+	frames: ReplayImportRequest["frames"];
+	events?: ReplayImportRequest["events"];
+}
+
 export function createLocalReplayId(gameId: string): string {
 	return `local:${gameId}:${Date.now()}`;
+}
+
+export class SceneReplayRecorder<TSnapshot extends Record<string, unknown>> {
+	private replayId: string | null = null;
+	private frames: LocalReplayFrameDraft[] = [];
+	private startedAtIso = "";
+	private elapsedMs = 0;
+	private lastCaptureMs = 0;
+	private captureAccMs = 0;
+
+	reset(): void {
+		this.replayId = null;
+		this.frames = [];
+		this.startedAtIso = "";
+		this.elapsedMs = 0;
+		this.lastCaptureMs = 0;
+		this.captureAccMs = 0;
+	}
+
+	start(
+		gameId: string,
+		buildSnapshot: (phaseOverride?: string) => TSnapshot,
+	): void {
+		this.replayId = createLocalReplayId(gameId);
+		this.frames = [];
+		this.startedAtIso = new Date().toISOString();
+		this.elapsedMs = 0;
+		this.lastCaptureMs = 0;
+		this.captureAccMs = 0;
+		this.captureSnapshot(buildSnapshot, { force: true });
+	}
+
+	addElapsed(delta: number): void {
+		this.elapsedMs += delta;
+	}
+
+	resetCaptureAccumulator(): void {
+		this.captureAccMs = 0;
+	}
+
+	captureOnInterval(
+		delta: number,
+		stepMs: number,
+		buildSnapshot: (phaseOverride?: string) => TSnapshot,
+	): void {
+		if (!this.replayId) return;
+		this.captureAccMs += delta;
+		if (this.captureAccMs < stepMs) return;
+		this.captureAccMs = 0;
+		this.captureSnapshot(buildSnapshot);
+	}
+
+	captureSnapshot(
+		buildSnapshot: (phaseOverride?: string) => TSnapshot,
+		options: {
+			force?: boolean;
+			phaseOverride?: string;
+		} = {},
+	): void {
+		if (!this.replayId) return;
+		const nowMs = Math.round(this.elapsedMs);
+		if (!options.force && nowMs === this.lastCaptureMs) return;
+		const deltaMs =
+			this.frames.length === 0
+				? undefined
+				: Math.max(0, nowMs - this.lastCaptureMs);
+		this.lastCaptureMs = nowMs;
+		this.frames.push({
+			seq: this.frames.length,
+			recordedAt: new Date().toISOString(),
+			...(deltaMs !== undefined ? { deltaMs } : {}),
+			snapshot: buildSnapshot(options.phaseOverride),
+		});
+	}
+
+	getReplayId(): string | null {
+		return this.replayId;
+	}
+
+	getStartedAtIso(): string {
+		return this.startedAtIso;
+	}
+
+	getFrames(): LocalReplayFrameDraft[] {
+		return this.frames;
+	}
+
+	hasFrames(): boolean {
+		return this.frames.length > 0;
+	}
+
+	nextSeq(): number {
+		return this.frames.length;
+	}
+
+	buildImportFrames(maxFrames = DEFAULT_MAX_IMPORTED_REPLAY_FRAMES): ReplayImportRequest["frames"] {
+		return normalizeReplayImportFrames(this.frames, maxFrames);
+	}
 }
 
 export function buildLocalReplayPlayers(
@@ -78,6 +188,23 @@ export function resolveReplayWinnerSide(scores: number[]): number | null {
 	const winnerCount = scores.filter((score) => score === maxScore).length;
 	if (winnerCount !== 1) return null;
 	return scores.findIndex((score) => score === maxScore);
+}
+
+export function buildLocalReplayImportRequest(
+	options: LocalReplayImportOptions,
+): ReplayImportRequest {
+	return {
+		gameId: options.gameId,
+		mode: options.mode,
+		status: "finished",
+		createdAt: options.createdAt,
+		finishedAt: options.finishedAt,
+		winnerSide: options.winnerSide,
+		playerUserIds: options.playerUserIds,
+		playerNames: options.playerNames,
+		frames: options.frames,
+		events: options.events ?? [],
+	};
 }
 
 export function replayBallToEntity(

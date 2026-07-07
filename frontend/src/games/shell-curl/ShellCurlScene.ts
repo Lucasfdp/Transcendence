@@ -62,6 +62,7 @@ import {
 	drawIngameShellTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
+import { DEFAULT_PLAYER_SHELL_SKINS, resolvePlayerShellSkins } from "../../shared/mechanics/player-config";
 import {
 	drawPlayerTrails,
 	recordPlayerTrails,
@@ -86,12 +87,12 @@ import {
 } from "../../shared/game-ui";
 import { hudPlayerLabel } from "../../shared/player-labels";
 import {
+	buildLocalReplayImportRequest,
 	buildLocalReplayPlayerUserIds,
 	buildLocalReplayPlayers,
-	createLocalReplayId,
-	normalizeReplayImportFrames,
 	replayStoneToEntity,
 	resolveReplayWinnerSide,
+	SceneReplayRecorder,
 	withPowerStateFlags,
 } from "../shared/localReplay";
 
@@ -206,7 +207,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private activeStone: StoneState | null = null;
 	private activeRingGfx: Phaser.GameObjects.Graphics | null = null;
 	private activeRingTween: Phaser.Tweens.Tween | null = null;
-	private playerShellSkins: string[] = ["base", "dragon", "bamboo", "purple", "base"];
+	private playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
 	private nextStoneId = 0;
 	private settlingTimer = 0;
 
@@ -249,17 +250,8 @@ export class ShellCurlScene extends ResponsiveScene {
 	private onlineReplayThrowId: number | null = null;
 	private pendingOnlineSnapshot: CurlingSnapshot | null = null;
 	private onlineConfirmedStoneIds: Set<number> = new Set();
-	private localReplayId: string | null = null;
-	private localReplayFrames: Array<{
-		seq: number;
-		recordedAt: string;
-		deltaMs?: number;
-		snapshot: Record<string, unknown>;
-	}> = [];
-	private localReplayStartedAtIso = "";
-	private localReplayElapsedMs = 0;
-	private localReplayLastCaptureMs = 0;
-	private localReplayCaptureAccMs = 0;
+	private readonly localReplayRecorder =
+		new SceneReplayRecorder<CurlingSnapshot>();
 	private pendingReplayPersist: Promise<void> | null = null;
 
 	// ── Per-player power pools (read from registry, set in create()) ──────────
@@ -294,12 +286,7 @@ export class ShellCurlScene extends ResponsiveScene {
 				| OnlineMatchContext
 				| undefined) ?? null;
 		this.lastOnlineSeq = -1;
-		this.localReplayId = null;
-		this.localReplayFrames = [];
-		this.localReplayStartedAtIso = "";
-		this.localReplayElapsedMs = 0;
-		this.localReplayLastCaptureMs = 0;
-		this.localReplayCaptureAccMs = 0;
+		this.localReplayRecorder.reset();
 		this.pendingReplayPersist = null;
 		this.activePower = PowerType.NONE;
 		this.powerUsed = Array.from({ length: 5 }, () => new Set<PowerType>());
@@ -362,9 +349,9 @@ export class ShellCurlScene extends ResponsiveScene {
 		const shellSkins = this.registry.get("shellSkins") as
 			| Record<string, string | undefined>
 			| undefined;
-		this.playerShellSkins = Array.from(
-			{ length: 5 },
-			(_value, index) => shellSkins?.[`player${index}`] ?? this.playerShellSkins[index] ?? "base",
+		this.playerShellSkins = resolvePlayerShellSkins(
+			shellSkins,
+			this.playerShellSkins,
 		);
 
 		// Power registry — register ALL powers so the registry can always resolve any type
@@ -474,7 +461,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			this.updateOnlineReplay(delta);
 			return;
 		}
-		this.localReplayElapsedMs += delta;
+		this.localReplayRecorder.addElapsed(delta);
 		const phase = this.turnManager.state.phase;
 
 		if (phase === "sweeping" && this.activeStone) {
@@ -1378,41 +1365,41 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private initLocalReplayRecording(): void {
-		this.localReplayId = createLocalReplayId("temple-curling");
-		this.localReplayFrames = [];
-		this.localReplayStartedAtIso = new Date().toISOString();
-		this.localReplayElapsedMs = 0;
-		this.localReplayLastCaptureMs = 0;
-		this.localReplayCaptureAccMs = 0;
-		this.captureLocalReplayFrame(true);
+		this.localReplayRecorder.start("temple-curling", (phaseOverride) =>
+			this.buildLocalReplaySnapshot(
+				phaseOverride as CurlingSnapshot["phase"] | undefined,
+			),
+		);
 	}
 
 	private captureReplayTick(delta: number): void {
-		if (this.onlineMatch || !this.localReplayId) return;
-		this.localReplayCaptureAccMs += delta;
-		if (this.localReplayCaptureAccMs < REPLAY_CAPTURE_STEP_MS) return;
-		this.localReplayCaptureAccMs = 0;
-		this.captureLocalReplayFrame();
+		if (this.onlineMatch) return;
+		this.localReplayRecorder.captureOnInterval(
+			delta,
+			REPLAY_CAPTURE_STEP_MS,
+			(phaseOverride) =>
+				this.buildLocalReplaySnapshot(
+					phaseOverride as CurlingSnapshot["phase"] | undefined,
+				),
+		);
 	}
 
 	private captureLocalReplayFrame(
 		force = false,
 		phaseOverride?: CurlingSnapshot["phase"],
 	): void {
-		if (this.onlineMatch || !this.localReplayId) return;
-		const nowMs = Math.round(this.localReplayElapsedMs);
-		if (!force && nowMs === this.localReplayLastCaptureMs) return;
-		const deltaMs =
-			this.localReplayFrames.length === 0
-				? undefined
-				: Math.max(0, nowMs - this.localReplayLastCaptureMs);
-		this.localReplayLastCaptureMs = nowMs;
-		this.localReplayFrames.push({
-			seq: this.localReplayFrames.length,
-			recordedAt: new Date().toISOString(),
-			...(deltaMs !== undefined ? { deltaMs } : {}),
-			snapshot: this.buildLocalReplaySnapshot(phaseOverride),
-		});
+		if (this.onlineMatch) return;
+		this.localReplayRecorder.captureSnapshot(
+			(snapshotPhase) =>
+				this.buildLocalReplaySnapshot(
+					(snapshotPhase as CurlingSnapshot["phase"] | undefined) ??
+						phaseOverride,
+				),
+			{
+				force,
+				...(phaseOverride ? { phaseOverride } : {}),
+			},
+		);
 	}
 
 	private buildLocalReplaySnapshot(
@@ -1460,8 +1447,10 @@ export class ShellCurlScene extends ResponsiveScene {
 			};
 		});
 		return {
-			matchId: this.localReplayId ?? "local:temple-curling:unknown",
-			seq: this.localReplayFrames.length,
+			matchId:
+				this.localReplayRecorder.getReplayId() ??
+				"local:temple-curling:unknown",
+			seq: this.localReplayRecorder.nextSeq(),
 			gameId: "temple-curling",
 			mode: "casual",
 			phase,
@@ -1535,18 +1524,21 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private async persistLocalReplay(): Promise<void> {
-		if (!this.localReplayId || this.localReplayFrames.length === 0) return;
+		if (
+			!this.localReplayRecorder.getReplayId() ||
+			!this.localReplayRecorder.hasFrames()
+		)
+			return;
 		const user = this.registry.get("user") as
 			| { id?: number; username?: string; turtleName?: string | null; isGuest?: boolean }
 			| undefined;
 		if (user?.isGuest) return;
 		const finishedAt = new Date().toISOString();
 		const playerCount = Math.max(1, this.turnManager.state.score.length);
-		const importPayload: ReplayImportRequest = {
+		const importPayload = buildLocalReplayImportRequest({
 			gameId: "temple-curling",
 			mode: this.localMode === "solo" ? "singleplayer" : "local-versus",
-			status: "finished",
-			createdAt: this.localReplayStartedAtIso || finishedAt,
+			createdAt: this.localReplayRecorder.getStartedAtIso() || finishedAt,
 			finishedAt,
 			winnerSide:
 				this.localMode === "solo"
@@ -1555,8 +1547,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			playerUserIds: buildLocalReplayPlayerUserIds(user?.id ?? null, playerCount),
 			playerNames: this.buildLocalReplayPlayers().map((player) => player.username),
 			frames: this.buildReplayImportFrames(),
-			events: [],
-		};
+		});
 		try {
 			await api.importReplay(importPayload);
 			console.info("[ShellCurl] replay persisted");
@@ -1566,7 +1557,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private buildReplayImportFrames(): ReplayImportRequest["frames"] {
-		return normalizeReplayImportFrames(this.localReplayFrames);
+		return this.localReplayRecorder.buildImportFrames();
 	}
 
 	private initOnlineMatch(): void {

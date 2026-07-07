@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+	buildLocalReplayImportRequest,
 	buildLocalReplayPlayers,
 	normalizeReplayImportFrames,
 	replayBallToEntity,
 	resolveReplayWinnerSide,
+	SceneReplayRecorder,
 } from "./localReplay";
 
 describe("localReplay", () => {
@@ -97,5 +99,48 @@ describe("localReplay", () => {
 	it("resolves winners only when there is a single highest score", () => {
 		expect(resolveReplayWinnerSide([1, 3, 2])).toBe(1);
 		expect(resolveReplayWinnerSide([3, 3, 1])).toBeNull();
+	});
+
+	it("records local replay frames through the shared recorder runtime", () => {
+		const recorder = new SceneReplayRecorder<{ phase: string; seq: number }>();
+
+		recorder.start("bamboo-bash", () => ({
+			phase: "active",
+			seq: recorder.nextSeq(),
+		}));
+		recorder.addElapsed(120);
+		recorder.captureOnInterval(120, 100, () => ({
+			phase: "active",
+			seq: recorder.nextSeq(),
+		}));
+
+		expect(recorder.getReplayId()).toMatch(/^local:bamboo-bash:/);
+		expect(recorder.getFrames()).toHaveLength(2);
+		expect(recorder.buildImportFrames()).toEqual([
+			expect.objectContaining({ seq: 0 }),
+			expect.objectContaining({ seq: 1, deltaMs: 120 }),
+		]);
+	});
+
+	it("builds replay import payloads with the finished status contract", () => {
+		expect(
+			buildLocalReplayImportRequest({
+				gameId: "bell-clash",
+				mode: "singleplayer",
+				createdAt: "2026-07-04T10:00:00.000Z",
+				finishedAt: "2026-07-04T10:00:02.000Z",
+				winnerSide: 0,
+				playerUserIds: [7],
+				playerNames: ["Player 1"],
+				frames: [],
+			}),
+		).toMatchObject({
+			gameId: "bell-clash",
+			mode: "singleplayer",
+			status: "finished",
+			winnerSide: 0,
+			playerUserIds: [7],
+			playerNames: ["Player 1"],
+		});
 	});
 });
