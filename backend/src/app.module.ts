@@ -39,9 +39,12 @@ import { AppController } from "./app.controller";
 				entities: [__dirname + "/**/*.entity{.ts,.js}"],
 				migrations: [__dirname + "/migrations/**/*{.ts,.js}"],
 				// synchronize creates the base schema on fresh installs (dev/staging only).
-				// All 5 existing migrations are additive on top of this base schema —
-				// there is no initial migration covering it. Production deployments must
-				// run `npm run migration:run` manually after the base schema exists.
+				// The existing migrations are additive on top of this base schema and
+				// now all use quoted camelCase columns matching the entities (Bug Audit
+				// H1), so `npm run migration:run` produces a schema production queries
+				// can actually read. There is still no single initial migration covering
+				// every entity, so production deployments must run migrations manually
+				// after the base schema exists.
 				// TODO(#initial-migration): generate an initial migration from current
 				// entities so synchronize can be set to false everywhere.
 				synchronize: config.get("NODE_ENV") !== "production",

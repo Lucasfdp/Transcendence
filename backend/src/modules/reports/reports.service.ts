@@ -2,6 +2,7 @@ import {
 	BadRequestException,
 	Injectable,
 	InternalServerErrorException,
+	NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
@@ -19,7 +20,7 @@ export class ReportsService {
 	/**
 	 * Persist a report and auto-block the reported user.
 	 * Reporting always blocks — there is no separate block step (locked
-	 * product decision, see SOCIAL_TAB_HANDOFF.md §4).
+	 * product decision, see docs/SOCIAL_TAB_HANDOFF.md §4).
 	 */
 	async create(
 		reporterId: number,
@@ -47,10 +48,12 @@ export class ReportsService {
 				await this.friendsService.block(reporterId, reportedId, em);
 			});
 		} catch (err) {
-			// Preserve typed exceptions (e.g. block's InternalServerError); wrap
-			// anything else as a generic report failure.
+			// Preserve typed exceptions (e.g. block's NotFound for a missing
+			// target — Bug Audit M3 — or its InternalServerError); wrap anything
+			// else as a generic report failure.
 			if (
 				err instanceof BadRequestException ||
+				err instanceof NotFoundException ||
 				err instanceof InternalServerErrorException
 			) {
 				throw err;

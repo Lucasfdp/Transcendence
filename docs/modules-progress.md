@@ -1,416 +1,409 @@
 # Modules Progress And Scope
 
 ## Purpose
-Este documento traduce `docs/modules.md` al nivel de detalle del enunciado en `docs/en.subject.md` y fija el alcance real del proyecto. Solo se consideran aqui los modulos elegidos, hechos o en progreso.
+This document translates `docs/modules.md` to the level of detail in the specification `docs/en.subject.md` and defines the actual project scope. Only selected, completed, or in-progress modules are considered here.
 
-Estados usados:
-- `Hecho`: cumple de forma razonable lo exigido por el enunciado.
-- `En progreso`: hay implementacion real, pero faltan requisitos de validacion.
-- `No hecho`: no hay implementacion suficiente para reclamar el modulo.
+Status indicators used:
+- `Done`: meets the requirements of the specification reasonably well.
+- `In progress`: real implementation exists, but validation requirements remain.
+- `Not done`: insufficient implementation to claim the module.
 
 ## Web
 
 ### Minor: Frontend framework
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- Uso de framework frontend.
+Requirement breakdown:
+- Use of a frontend framework.
 
-Evidencia:
-- `frontend/package.json` usa React + Vite.
+Evidence:
+- `frontend/package.json` uses React + Vite.
 
-Faltas para completarse:
-- Ninguna especifica del modulo. La calidad general sigue dependiendo del resto del proyecto.
+Missing for completion:
+- Nothing specific to this module. Overall quality depends on the rest of the project.
 
 ### Minor: Backend framework
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- Uso de framework backend.
+Requirement breakdown:
+- Use of a backend framework.
 
-Evidencia:
-- `backend/package.json` usa NestJS.
+Evidence:
+- `backend/package.json` uses NestJS.
 
-Faltas para completarse:
-- Ninguna especifica del modulo.
+Missing for completion:
+- Nothing specific to this module.
 
 ### Major: Real-time features using WebSockets
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- Actualizaciones en tiempo real.
-- Manejo de conexion y desconexion.
-- Broadcasting eficiente.
+Requirement breakdown:
+- Real-time updates.
+- Connection and disconnection handling.
+- Efficient broadcasting.
 
-Evidencia:
+Evidence:
 - `backend/src/modules/matchmaking/matchmaking.gateway.ts`
 - `frontend/src/services/network/gameSocket.ts`
-- Eventos de juego, cola, lobby, reconexion y estado compartido.
+- Game events, queue, lobby, reconnection, and shared state.
 
-Faltas para completarse:
-- Reforzar pruebas de caidas de red y reconexion en escenarios limite.
+Missing for completion:
+- Strengthen testing of network failures and reconnection in edge-case scenarios.
 
 ### Major: Allow users to interact with other users
-Estado: `En progreso`
+Status: `In progress`
 
-Desglose del enunciado:
-- Chat basico.
-- Sistema de perfil.
-- Sistema de amigos con add/remove y lista.
+Requirement breakdown:
+- Basic chat.
+- Profile system.
+- Friends system with add/remove and list.
 
-Evidencia:
-- Perfiles y actualizacion: `backend/src/modules/users/`
-- Amigos y bloqueos: `backend/src/modules/friends/`
-- Estado online por sockets: `backend/src/modules/presence/`
-- Chat de dm's y grupos (solo entre amigos, con historial persistido, envio de GIFs via Klipy): `backend/src/modules/chat/`, wiring de sockets en `matchmaking.gateway.ts`, UI en la seccion "Messages" del modal Social (`frontend/src/pages/HomePage.tsx`).
+Evidence:
+- Profiles and updates: `backend/src/modules/users/` (public hover-card view is a whitelist — no PII/balances leaked; see `getUser` in `users.controller.ts`).
+- Friends, blocking, and unblocking: `backend/src/modules/friends/` — includes `GET /friends/blocked` + `POST /friends/unblock` and a "Blocked users" section in the Social modal; mutual blocks are representable.
+- Online status via sockets: `backend/src/modules/presence/`
+- DM and group chat (friends-only, with persistent history, GIF sending via Klipy): `backend/src/modules/chat/`. The chat WebSocket glue in `matchmaking.gateway.ts` (`chat:send` / `chat:send-gif` / `chat:read` handlers, per-conversation room joins on connect, unread-inbox push) was restored in the 2026-07-07 social audit — before that it was absent and chat was non-functional end-to-end. UI in the "Messages" section of the Social modal (`frontend/src/pages/HomePage.tsx`), now with older-message pagination.
 
-Faltas para completarse:
-- Ninguna pendiente para el chat basico.
+Missing for completion:
+- Basic chat is functional end-to-end. Group ownership transfer on owner-leave is still not implemented (owner is informational only; empty groups are now cleaned up on last-member-leave). See `docs/social-page-bug-audit-2026-07-07.md` for the full audit and remaining product calls.
 
 ### Major: Public API for database interaction
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- API key segura.
+Requirement breakdown:
+- Secure API key.
 - Rate limiting.
-- Documentacion.
-- Al menos 5 endpoints.
-- Ejemplos `GET`, `POST`, `PUT`, `DELETE`.
+- Documentation.
+- At least 5 endpoints.
+- Examples for `GET`, `POST`, `PUT`, `DELETE`.
 
-Evidencia:
-- Hay multiples endpoints REST en `auth`, `users`, `friends`, `matches`, `leaderboard`.
-- Hay rate limiting parcial en autenticacion y minijuegos.
-- Hay Swagger en backend.
-- API publica dedicada en `backend/src/modules/public-api/` protegida por `X-API-Key`.
-- Endpoints publicos documentados: `GET /api/public/users`, `GET /api/public/users/:username`, `POST /api/public/users/query`, `PUT /api/public/users/:username`, `DELETE /api/public/users/:username/avatar`.
-- `PUBLIC_API_KEY` documentada en `.env.example` y registrada en Swagger.
-- Rate limiting compartido en Redis para la API publica mediante `backend/src/modules/auth/redis-rate-limiter.service.ts`.
-- Ejemplos de consumo en `docs/public-api.md`.
+Evidence:
+- Multiple REST endpoints in `auth`, `users`, `friends`, `matches`, `leaderboard`.
+- Partial rate limiting on authentication and mini-games.
+- Swagger documentation in backend.
+- Dedicated public API in `backend/src/modules/public-api/` protected by `X-API-Key`.
+- Documented public endpoints: `GET /api/public/users`, `GET /api/public/users/:username`, `POST /api/public/users/query`, `PUT /api/public/users/:username`, `DELETE /api/public/users/:username/avatar`.
+- `PUBLIC_API_KEY` documented in `.env.example` and registered in Swagger.
+- Shared rate limiting in Redis for the public API via `backend/src/modules/auth/redis-rate-limiter.service.ts`.
+- Consumption examples in `docs/public-api.md`.
 
-Faltas para completarse:
-- El resto de buckets legacy (`auth`, `casino`) sigue usando el limitador en memoria; solo la API publica usa el compartido en Redis.
+Missing for completion:
+- Legacy buckets (`auth`, `casino`) still use in-memory limiter; only the public API uses the shared Redis limiter.
 
 ### Minor: ORM for database
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- Uso de ORM.
+Requirement breakdown:
+- Use of an ORM.
 
-Evidencia:
-- TypeORM en `backend/src/app.module.ts` y entidades distribuidas por modulos.
+Evidence:
+- TypeORM in `backend/src/app.module.ts` with entities distributed across modules.
 
-Faltas para completarse:
-- Ninguna especifica del modulo.
+Missing for completion:
+- Nothing specific to this module.
 
 ### Minor: Complete notification system for create, update, and delete actions
-Estado: `En progreso`
+Status: `In progress`
 
-Desglose del enunciado:
-- Sistema completo de notificaciones para crear, actualizar y borrar acciones relevantes.
+Requirement breakdown:
+- Complete notification system for relevant create, update, and delete actions.
 
-Evidencia:
+Evidence:
 - `backend/src/modules/notifications/`
-- Inbox en tiempo real en `frontend/src/pages/HomePage.tsx`
-- Notificaciones persistentes de amistad.
+- Real-time inbox in `frontend/src/pages/HomePage.tsx`
+- Persistent friendship notifications.
 
-Faltas para completarse:
-- Solo cubre una parte del dominio social.
-- No hay cobertura clara de create/update/delete de forma transversal.
-- Falta definir catalogo completo de eventos y su persistencia.
+Missing for completion:
+- Covers only part of the social domain.
+- No clear coverage of create/update/delete across the system.
+- Need to define complete catalog of events and their persistence.
 
 ### Minor: Server-Side Rendering (SSR)
-Estado: `No hecho`
+Status: `Not done`
 
-Desglose del enunciado:
-- SSR real para rendimiento y SEO.
+Requirement breakdown:
+- Real SSR for performance and SEO.
 
-Evidencia:
-- El frontend es Vite SPA; no hay Next.js, Nuxt, SvelteKit ni pipeline SSR.
+Evidence:
+- Frontend is a Vite SPA; no Next.js, Nuxt, SvelteKit, or SSR pipeline.
 
-Faltas para completarse:
-- Implementacion completa del renderizado en servidor.
+Missing for completion:
+- Complete implementation of server-side rendering.
 
 ### Minor: Progressive Web App (PWA)
-Estado: `No hecho`
+Status: `Not done`
 
-Desglose del enunciado:
-- Soporte offline.
-- Instalabilidad.
+Requirement breakdown:
+- Offline support.
+- Installability.
 
-Evidencia:
-- No hay `manifest`, service worker ni plugin PWA.
+Evidence:
+- No `manifest`, service worker, or PWA plugin.
 
-Faltas para completarse:
-- Todo el modulo.
+Missing for completion:
+- Entire module.
 
 ### Minor: Custom design system with at least 10 reusable components
-Estado: `En progreso`
+Status: `In progress`
 
-Desglose del enunciado:
-- Sistema de diseno propio.
-- Al menos 10 componentes reutilizables.
-- Paleta, tipografia e iconografia.
+Requirement breakdown:
+- Custom design system.
+- At least 10 reusable components.
+- Palette, typography, and iconography.
 
-Evidencia:
-- Componentes reutilizables en `frontend/src/components/`
-- Tema y estilos globales en `frontend/src/shared/theme.ts` y `frontend/src/styles/global.css`
+Evidence:
+- Reusable components in `frontend/src/components/`
+- Theme and global styles in `frontend/src/shared/theme.ts` and `frontend/src/styles/global.css`
 
-Faltas para completarse:
-- Falta inventario formal del design system.
-- Falta demostrar de forma explicita las 10 piezas y su reutilizacion sistematica.
+Missing for completion:
+- Formal inventory of the design system is lacking.
+- Need to explicitly demonstrate the 10 pieces and their systematic reuse.
 
 ### Minor: Support additional browsers
-Estado: `No hecho`
+Status: `Not done`
 
-Desglose del enunciado:
-- Compatibilidad completa con al menos 2 navegadores extra.
-- Tests y correcciones documentadas.
-- Limitaciones especificas documentadas.
+Requirement breakdown:
+- Full compatibility with at least 2 additional browsers.
+- Documented tests and fixes.
+- Specific limitations documented.
 
-Evidencia:
-- No hay documentacion ni matriz de compatibilidad.
+Evidence:
+- No documentation or compatibility matrix.
 
-Faltas para completarse:
-- Todo el modulo.
+Missing for completion:
+- Entire module.
 
 ## User Management
 
 ### Major: Standard user management and authentication
-Estado: `En progreso`
+Status: `In progress`
 
-Desglose del enunciado:
-- Actualizar perfil.
-- Subir avatar con avatar por defecto.
-- Amigos y estado online.
-- Pagina de perfil.
+Requirement breakdown:
+- Update profile.
+- Upload avatar with default avatar.
+- Friends and online status.
+- Profile page.
 
-Evidencia:
-- Auth local, guest y OAuth en `backend/src/modules/auth/`
-- Perfil editable y avatar upload en `backend/src/modules/users/users.controller.ts`
-- Amigos y online status en `friends` y `presence`
-- Perfil visible desde `HomePage`
+Evidence:
+- Local auth, guest, and OAuth in `backend/src/modules/auth/`
+- Editable profile and avatar upload in `backend/src/modules/users/users.controller.ts`
+- Friends and online status in `friends` and `presence`
+- Profile viewable from `HomePage`
 
-Faltas para completarse:
-- Validar que la pagina de perfil y el flujo completo de avatar cumplen bien en la UI.
-- Confirmar avatar por defecto consistente en todos los casos.
-- Sigue marcado como `pending` en `docs/modules.md`, asi que no debe reclamarse como cerrado todavia.
+Missing for completion:
+- Validate that the profile page and complete avatar flow work well in the UI.
+- Confirm consistent default avatar in all cases.
+- Still marked as `pending` in `docs/modules.md`, so should not be claimed as closed yet.
 
 ### Minor: Game statistics and match history
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- Wins, losses, ranking, level y similares.
-- Historial con fechas, resultados y rivales.
-- Logros y progresion.
+Requirement breakdown:
+- Wins, losses, ranking, level, and similar.
+- History with dates, results, and opponents.
+- Achievements and progression.
 - Leaderboards.
 
-Evidencia:
+Evidence:
 - `backend/src/modules/game-results/`
 - `backend/src/modules/leaderboard/`
 - `backend/src/modules/achievements/`
-- Replays e historial de partidas en `backend/src/modules/matchmaking/replay.service.ts`
+- Replays and match history in `backend/src/modules/matchmaking/replay.service.ts`
 
-Faltas para completarse:
-- Conviene revisar cobertura de historial para todos los juegos ya expuestos.
+Missing for completion:
+- Should review history coverage for all exposed games.
 
 ### Minor: Remote authentication with OAuth 2.0
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- OAuth remoto con proveedores tipo Google, GitHub o 42.
+Requirement breakdown:
+- Remote OAuth with providers like Google, GitHub, or 42.
 
-Evidencia:
-- Flujos 42 y GitHub implementados en `backend/src/modules/auth/`
-- UI de OAuth en `frontend/src/components/auth/OAuthButtons.tsx`
+Evidence:
+- 42 and GitHub flows implemented in `backend/src/modules/auth/`
+- OAuth UI in `frontend/src/components/auth/OAuthButtons.tsx`
 
-Faltas para completarse:
-- Varios botones del frontend no implican backend funcional; para reclamar el modulo basta con tener proveedores reales funcionando, pero hay que evitar vender proveedores no implementados.
+Missing for completion:
+- Multiple frontend buttons do not imply functional backend; claiming this module requires real working providers, but avoid advertising unimplemented providers.
 
 ## Cybersecurity
 
 ### Major: Hardened WAF/ModSecurity plus HashiCorp Vault
-Estado: `En progreso`
+Status: `In progress`
 
-Desglose del enunciado:
-- WAF/ModSecurity estricto.
-- Vault para secretos, claves y credenciales.
+Requirement breakdown:
+- Strict WAF/ModSecurity.
+- Vault for secrets, keys, and credentials.
 
-Evidencia:
-- Vault y agentes en `docker-compose.yml`
-- Scripts y bootstrap en `Makefile` y `scripts/`
+Evidence:
+- Vault and agents in `docker-compose.yml`
+- Scripts and bootstrap in `Makefile` and `scripts/`
 
-Faltas para completarse:
-- No se ve ModSecurity/WAF endurecido y demostrable en el estado actual.
-- Sin esa parte, el major completo no puede darse por hecho.
+Missing for completion:
+- Hardened ModSecurity/WAF is not clearly visible and demonstrable in the current state.
+- Without that part, the complete major cannot be claimed as done.
 
 ## Gaming and User Experience
 
 ### Major: Complete web-based game where users can play each other
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- Juego web jugable.
-- Partidas en vivo.
-- Reglas claras y win/loss conditions.
+Requirement breakdown:
+- Playable web game.
+- Live matches.
+- Clear rules and win/loss conditions.
 
-Evidencia:
+Evidence:
 - `frontend/src/games/kame-knock/`
-- Estados y resultados en `matchmaking` y `game-results`
+- States and results in `matchmaking` and `game-results`
 
-Faltas para completarse:
-- Ninguna critica para reclamar el modulo base.
+Missing for completion:
+- Nothing critical to claim this base module.
 
 ### Major: Remote players
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- Dos jugadores remotos.
-- Manejo de latencia, desconexion y reconexion.
+Requirement breakdown:
+- Two remote players.
+- Latency, disconnection, and reconnection handling.
 
-Evidencia:
+Evidence:
 - `matchmaking.gateway.ts`, `room.service.ts`, `gameSocket.ts`
-- Rejoin, away, abandon y reconnect timeout implementados.
+- Rejoin, away, abandon, and reconnect timeout implemented.
 
-Faltas para completarse:
-- Afinar pruebas reales multi-equipo antes de evaluacion.
+Missing for completion:
+- Fine-tune real multi-team testing before evaluation.
 
 ### Major: Multiplayer game with more than two players
-Estado: `En progreso`
+Status: `In progress`
 
-Desglose del enunciado:
-- Minimo 3 jugadores simultaneos.
-- Juego justo.
-- Sincronizacion correcta.
+Requirement breakdown:
+- Minimum 3 simultaneous players.
+- Fair gameplay.
+- Correct synchronization.
 
-Evidencia:
-- Motores de varios juegos y estructura de matchmaking suficientemente general.
-- `shell-curl` apunta a modos con mas de dos participantes.
+Evidence:
+- Engines for multiple games and sufficiently general matchmaking structure.
+- `shell-curl` points to modes with more than two participants.
 
-Faltas para completarse:
-- Falta prueba clara y demostrable de una partida funcional 3+ validada de extremo a extremo.
+Missing for completion:
+- Lacking clear, demonstrable proof of a functional 3+ match validated end-to-end.
 
 ### Major: Add another game with user history and matchmaking
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- Segundo juego distinto.
-- Historial y estadisticas.
+Requirement breakdown:
+- Second distinct game.
+- History and statistics.
 - Matchmaking.
 
-Evidencia:
-- Juegos adicionales en `bell-clash`, `bamboo-bash`, `shell-curl`
-- Matchmaking multi-juego en `backend/src/modules/matchmaking/engines/`
+Evidence:
+- Additional games in `bell-clash`, `bamboo-bash`, `shell-curl`
+- Multi-game matchmaking in `backend/src/modules/matchmaking/engines/`
 
-Faltas para completarse:
-- Ninguna esencial para reclamar el modulo.
+Missing for completion:
+- Nothing essential to claim the module.
 
 ### Minor: Tournament system
-Estado: `No hecho`
+Status: `Not done`
 
-Desglose del enunciado:
+Requirement breakdown:
 - Brackets.
-- Orden de cruces.
-- Registro y gestion de participantes.
+- Matchup order.
+- Registration and participant management.
 
-Evidencia:
-- No hay implementacion visible de torneos.
+Evidence:
+- No visible tournament implementation.
 
-Faltas para completarse:
-- Todo el modulo.
+Missing for completion:
+- Entire module.
 
 ### Minor: Game customisation options
-Estado: `En progreso`
+Status: `In progress`
 
-Desglose del enunciado:
-- Power-ups, habilidades, mapas o ajustes.
-- Opciones por defecto.
+Requirement breakdown:
+- Power-ups, abilities, maps, or adjustments.
+- Default options.
 
-Evidencia:
-- Powers y mecanicas en `frontend/src/shared/mechanics/`
-- `shell-curl` y otros juegos ya usan poderes y seleccion.
-- `backend/src/modules/customization/` cubre cosmeticos de usuario.
-- `backend/src/modules/cards/` (Shell Cards): binder coleccionable puramente
-  cosmetico, con multiples niveles de sobre (`basic`/`deluxe`/`legendary`,
-  cada uno con su propio precio y probabilidades — ver
-  `docs/SHELL_CARDS_SPEC.md` §11). Catalogo ampliado a 37 cartas (4 nuevos
-  personajes gold) y nuevo estado "Prismatic" — un tier mas raro que el
-  foil, exclusivo de cartas gold, sin cambios en la economia (ver
-  `docs/SHELL_CARDS_SPEC.md` §12). Refuerza, no sustituye, la separacion
-  pendiente entre personalizacion de gameplay y personalizacion cosmetica.
+Evidence:
+- Powers and mechanics in `frontend/src/shared/mechanics/`
+- `shell-curl` and other games already use powers and selection.
+- `backend/src/modules/customization/` covers user cosmetics.
+- `backend/src/modules/cards/` (Shell Cards): collectible cosmetic binder, with multiple booster levels (`basic`/`deluxe`/`legendary`, each with its own price and probabilities — see `docs/SHELL_CARDS_SPEC.md` §11). Catalog expanded to 37 cards (4 new gold characters) and new "Prismatic" state — a rarer tier than foil, exclusive to gold cards, no changes to the economy (see `docs/SHELL_CARDS_SPEC.md` §12). Reinforces, does not replace, the pending separation between gameplay customization and cosmetic customization.
 
-Faltas para completarse:
-- Separar claramente personalizacion de gameplay de personalizacion cosmetica.
-- Demostrar configuracion jugable estable y evaluable por modulo.
+Missing for completion:
+- Clearly separate gameplay customization from cosmetic customization.
+- Demonstrate stable, playable configuration evaluable by module.
 
 ### Minor: Gamification system
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- Al menos 3 entre logros, badges, leaderboard, XP/niveles, retos, recompensas.
-- Persistencia.
-- Feedback visual.
+Requirement breakdown:
+- At least 3 of: achievements, badges, leaderboard, XP/levels, quests, rewards.
+- Persistence.
+- Visual feedback.
 
-Evidencia:
+Evidence:
 - Achievements
 - Leaderboards
-- XP/level y progresion
-- Popups visuales de logro
+- XP/level and progression
+- Visual achievement popups
 
-Faltas para completarse:
-- Ninguna esencial para reclamarlo.
+Missing for completion:
+- Nothing essential to claim it.
 
 ### Minor: Spectator mode
-Estado: `En progreso`
+Status: `In progress`
 
-Desglose del enunciado:
-- Ver partidas en curso.
-- Actualizaciones en tiempo real.
-- Chat opcional.
+Requirement breakdown:
+- Watch ongoing matches.
+- Real-time updates.
+- Optional chat.
 
-Evidencia:
-- Entidades y estructuras de espectadores en `matchmaking`
-- `room.service.ts` y escenas frontend contemplan `spectator`
+Evidence:
+- Spectator entities and structures in `matchmaking`
+- `room.service.ts` and frontend scenes contemplate `spectator`
 
-Faltas para completarse:
-- Validar flujo completo y accesible desde UI.
-- Confirmar entrada real a partidas activas y estabilidad del modo observador.
+Missing for completion:
+- Validate complete flow and accessibility from UI.
+- Confirm real entry into active matches and observer mode stability.
 
 ## Devops
 
 ### Major: Monitoring with Prometheus and Grafana
-Estado: `En progreso`
+Status: `In progress`
 
-Desglose del enunciado:
-- Recoleccion de metricas.
-- Exporters e integraciones.
-- Dashboards custom.
-- Alertas.
-- Acceso seguro.
+Requirement breakdown:
+- Metrics collection.
+- Exporters and integrations.
+- Custom dashboards.
+- Alerts.
+- Secure access.
 
-Evidencia:
-- Servicio `monitoring` en Docker.
+Evidence:
+- `monitoring` service in Docker.
 - `backend/src/modules/metrics/`
 - `backend/src/modules/health/`
 
-Faltas para completarse:
-- Falta evidenciar dashboards finales y reglas de alertado.
-- Hay monitorizacion montada, pero no queda demostrado que el modulo entero este cerrado.
+Missing for completion:
+- Missing evidence of final dashboards and alert rules.
+- Monitoring is in place, but it is not yet demonstrated that the entire module is closed.
 
 ## Modules of Choice
 
 ### Major: Replay mode
-Estado: `Hecho`
+Status: `Done`
 
-Desglose del enunciado:
-- Debe ser sustancial, relevante al proyecto y justificable como major.
+Requirement breakdown:
+- Must be substantial, relevant to the project, and justifiable as a major.
 
-Evidencia:
-- Persistencia de replays y eventos en migraciones y entidades.
-- API de replays en `backend/src/modules/matchmaking/matches.controller.ts`
-- Visualizacion en `frontend/src/pages/HomePage.tsx`
+Evidence:
+- Replay and event persistence in migrations and entities.
+- Replay API in `backend/src/modules/matchmaking/matches.controller.ts`
+- Visualization in `frontend/src/pages/HomePage.tsx`
 
-Faltas para completarse:
-- Dejar su justificacion final reflejada tambien en `README.md` para evaluacion.
+Missing for completion:
+- Document final justification also in `README.md` for evaluation.
 
 ## Module Boundary Rule
-Este documento, junto con `AGENTS.md`, marca los limites funcionales del proyecto. El agente no debe proponer, implementar ni ampliar funcionalidades fuera de estos modulos elegidos, salvo que el usuario lo pida de forma explicita.
+This document, together with `AGENTS.md`, defines the functional boundaries of the project. The agent must not propose, implement, or extend functionality outside these chosen modules except upon explicit user request.

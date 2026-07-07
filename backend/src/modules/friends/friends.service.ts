@@ -86,6 +86,37 @@ export class FriendsService {
 				],
 			});
 			if (existing) {
+				// They already sent *me* a pending request → accept it instead of
+				// erroring. This is the friendly resolution and it also guarantees a
+				// second, opposite-direction pending row can never exist for the
+				// pair (Bug Audit M2).
+				if (
+					existing.status === "pending" &&
+					existing.requesterId === addressee.id
+				) {
+					await this.acceptRequest(requesterId, addressee.id);
+					return;
+				}
+				// The other user has blocked me → behave like a silent success so
+				// the block is not leaked to the sender (Bug Audit M8). Nothing is
+				// created.
+				if (
+					existing.status === "blocked" &&
+					existing.requesterId === addressee.id
+				) {
+					return;
+				}
+				// I previously blocked them → actionable 409 (they must be
+				// unblocked first; see unblock()).
+				if (
+					existing.status === "blocked" &&
+					existing.requesterId === requesterId
+				) {
+					throw new ConflictException(
+						"You have blocked this user. Unblock them before sending a request.",
+					);
+				}
+				// My own outstanding request, or we are already friends.
 				throw new ConflictException(
 					"Friend request already exists or users are already friends",
 				);
@@ -207,7 +238,18 @@ export class FriendsService {
 				{ requesterId: actorId, addresseeId: otherId, status: "pending" },
 				{ requesterId: otherId, addresseeId: actorId, status: "pending" },
 			]);
-		} catch {
+
+			// Clear any friend_request notification tied to this pair in either
+			// direction, so a declined/cancelled request doesn't leave a bell
+			// entry that dead-ends on Accept (Bug Audit M9). Non-fatal.
+			await this.notifications
+				.removeWhere("friend_request", otherId, actorId)
+				.catch(() => undefined);
+			await this.notifications
+				.removeWhere("friend_request", actorId, otherId)
+				.catch(() => undefined);
+		} catch (err) {
+			if (err instanceof InternalServerErrorException) throw err;
 			throw new InternalServerErrorException(
 				"Failed to decline friend request",
 			);
@@ -239,12 +281,26 @@ export class FriendsService {
 				throw new BadRequestException("You cannot block yourself");
 			}
 
+			// Target must exist — otherwise the FK violation on insert would
+			// surface as a generic 500 instead of a clear 404 (Bug Audit M3).
+			const target = await this.userRepo.findOne({ where: { id: blockedId } });
+			if (!target) throw new NotFoundException("User not found");
+
 			const doBlock = async (em: EntityManager): Promise<void> => {
 				const repo = em.getRepository(Friendship);
-				// Remove any existing row in either direction first, then insert block
+				// Remove any pending/accepted relationship in either direction plus
+				// the caller's OWN prior block row (so re-blocking is idempotent).
+				// Deliberately does NOT delete a `blocked` row where blockedId is the
+				// requester — that is the *other* user's block of the caller, which
+				// must survive so mutual blocks can coexist (Bug Audit M1). The
+				// per-direction unique index lets blockerId→blockedId and
+				// blockedId→blockerId both exist.
 				await repo.delete([
-					{ requesterId: blockerId, addresseeId: blockedId },
-					{ requesterId: blockedId, addresseeId: blockerId },
+					{ requesterId: blockerId, addresseeId: blockedId, status: "pending" },
+					{ requesterId: blockedId, addresseeId: blockerId, status: "pending" },
+					{ requesterId: blockerId, addresseeId: blockedId, status: "accepted" },
+					{ requesterId: blockedId, addresseeId: blockerId, status: "accepted" },
+					{ requesterId: blockerId, addresseeId: blockedId, status: "blocked" },
 				]);
 				await repo.save(
 					repo.create({
@@ -260,9 +316,68 @@ export class FriendsService {
 			} else {
 				await this.friendshipRepo.manager.transaction(doBlock);
 			}
+
+			// Resolve any outstanding friend_request notification between the pair
+			// in either direction, so the recipient's bell doesn't dead-end on an
+			// Accept that now finds no pending row (Bug Audit M9). Non-fatal.
+			await this.notifications
+				.removeWhere("friend_request", blockerId, blockedId)
+				.catch(() => undefined);
+			await this.notifications
+				.removeWhere("friend_request", blockedId, blockerId)
+				.catch(() => undefined);
 		} catch (err) {
-			if (err instanceof BadRequestException) throw err;
+			if (
+				err instanceof BadRequestException ||
+				err instanceof NotFoundException
+			) {
+				throw err;
+			}
 			throw new InternalServerErrorException("Failed to block user");
+		}
+	}
+
+	/**
+	 * List every user the caller has blocked — the rows they own
+	 * (requesterId = caller, status = 'blocked'). Backs the "Blocked users"
+	 * section of the Social modal and the unblock affordance (Bug Audit H3).
+	 */
+	async listBlocked(userId: number): Promise<PendingView[]> {
+		try {
+			const rows = await this.friendshipRepo.find({
+				where: { requesterId: userId, status: "blocked" },
+				relations: ["addressee"],
+			});
+			return rows.map((row) => ({
+				userId: row.addressee.id,
+				username: row.addressee.username,
+				turtleName: row.addressee.turtleName ?? null,
+				shellSkin: row.addressee.shellSkin,
+				avatar: row.addressee.avatar ?? null,
+				level: row.addressee.level,
+				isOnline: this.presence.isOnline(row.addressee.id),
+			}));
+		} catch {
+			throw new InternalServerErrorException("Failed to list blocked users");
+		}
+	}
+
+	/**
+	 * Unblock a user. Deletes ONLY the caller's own block row
+	 * (requesterId = caller). Must never delete a `blocked` row where the
+	 * caller is the addressee — that is the other user's block of the caller,
+	 * and unblocking one direction must not silently clear the other (Bug Audit
+	 * H3/M1). Idempotent: a no-op if no such block row exists.
+	 */
+	async unblock(blockerId: number, blockedId: number): Promise<void> {
+		try {
+			await this.friendshipRepo.delete({
+				requesterId: blockerId,
+				addresseeId: blockedId,
+				status: "blocked",
+			});
+		} catch {
+			throw new InternalServerErrorException("Failed to unblock user");
 		}
 	}
 
@@ -362,6 +477,8 @@ export class FriendsService {
 		try {
 			const friendIds = await this.getFriendIds(userId);
 			if (friendIds.length === 0) return [];
+			// O(1) membership tests inside the fof loop below (Bug Audit M5).
+			const friendIdSet = new Set(friendIds);
 
 			// Friends of my friends (accepted friendships involving any of them).
 			const fofRows = await this.friendshipRepo.find({
@@ -373,10 +490,10 @@ export class FriendsService {
 
 			const candidateIds = new Set<number>();
 			for (const row of fofRows) {
-				const otherId = friendIds.includes(row.requesterId)
+				const otherId = friendIdSet.has(row.requesterId)
 					? row.addresseeId
 					: row.requesterId;
-				if (otherId !== userId && !friendIds.includes(otherId)) {
+				if (otherId !== userId && !friendIdSet.has(otherId)) {
 					candidateIds.add(otherId);
 				}
 			}

@@ -24,6 +24,13 @@ import { GifService } from "./gif.service";
 /** Fallback message body when a gif's Klipy title is blank. */
 const GIF_FALLBACK_TITLE = "GIF";
 
+/**
+ * Display fallback when a sender's username can't be resolved (e.g. the
+ * relation reload failed after save). Better than a blank name in the UI /
+ * unread-bell title (Bug Audit L8).
+ */
+const SENDER_FALLBACK_NAME = "Someone";
+
 /** Default page size for paginated message history fetches. */
 const DEFAULT_MESSAGE_PAGE_SIZE = 50;
 
@@ -134,6 +141,20 @@ export class ChatService {
 	/** Called once by MatchmakingGateway.afterInit() to wire up real-time push. */
 	setServer(server: Server): void {
 		this.server = server;
+	}
+
+	/**
+	 * Broadcast an already-persisted message to its conversation room. Used by
+	 * the REST send paths (ChatController) so a message sent over HTTP reaches
+	 * live sockets too — the socket send path broadcasts from the gateway
+	 * handler instead (MatchmakingGateway.onChatSend), so exactly one broadcast
+	 * happens per message regardless of which path sent it. No-op until the
+	 * gateway has wired the server via setServer().
+	 */
+	broadcastMessage(view: MessageView): void {
+		this.server
+			?.to(chatRoomName(view.conversationId))
+			.emit("chat:message", view);
 	}
 
 	/**
@@ -360,6 +381,21 @@ export class ChatService {
 			const user = await this.userRepo.findOne({ where: { id: userId } });
 
 			await this.participantRepo.delete({ conversationId, userId });
+
+			// If the last member just left, the conversation is now unreachable
+			// (nobody can list or rejoin it — addGroupMember requires an existing
+			// participant), so delete it and its messages rather than leaking an
+			// orphaned row forever (Bug Audit M10). No system message / broadcast:
+			// there is no one left to receive it.
+			const remaining = await this.participantRepo.count({
+				where: { conversationId },
+			});
+			if (remaining === 0) {
+				await this.messageRepo.delete({ conversationId });
+				await this.conversationRepo.delete({ id: conversationId });
+				this.leaveLiveParticipant(conversationId, userId);
+				return;
+			}
 
 			const systemMessage = await this.messageRepo.save(
 				this.messageRepo.create({
@@ -861,7 +897,7 @@ export class ChatService {
 				(row) =>
 					row.conversationId === conversation.id && row.userId !== userId,
 			);
-			title = other?.user?.username ?? "";
+			title = other?.user?.username ?? SENDER_FALLBACK_NAME;
 		}
 
 		return {
@@ -912,7 +948,7 @@ export class ChatService {
 			id: message.id,
 			conversationId: message.conversationId,
 			senderId: message.senderId,
-			senderUsername: message.sender?.username ?? "",
+			senderUsername: message.sender?.username ?? SENDER_FALLBACK_NAME,
 			type: message.type,
 			body: message.body,
 			metadata: message.metadata,

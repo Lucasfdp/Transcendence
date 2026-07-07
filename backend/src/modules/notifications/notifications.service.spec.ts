@@ -30,6 +30,7 @@ const mockRepo = () => ({
 	create: jest.fn((v) => v),
 	save: jest.fn(async (v) => ({ ...v, id: 1 })),
 	find: jest.fn(),
+	delete: jest.fn().mockResolvedValue({ affected: 0 }),
 	// Default to a resolved promise so the service's `.catch()` chaining on
 	// findOne behaves like a real repository. Tests override per-case.
 	findOne: jest.fn().mockResolvedValue(null),
@@ -233,6 +234,46 @@ describe("NotificationsService", () => {
 				"notification:new",
 				expect.objectContaining({ fromUsername: "" }),
 			);
+		});
+	});
+
+	// ── removeWhere (Bug Audit M9) ─────────────────────────────────────────────
+
+	describe("removeWhere", () => {
+		it("should delete matching notifications by (type, from, to)", async () => {
+			repo.delete.mockResolvedValue({ affected: 1 });
+			repo.find.mockResolvedValue([]);
+
+			await service.removeWhere("friend_request", 10, 20);
+
+			expect(repo.delete).toHaveBeenCalledWith({
+				type: "friend_request",
+				fromUserId: 10,
+				toUserId: 20,
+			});
+		});
+
+		it("should push a fresh inbox to the recipient's sockets when rows were removed", async () => {
+			const mockEmit = jest.fn();
+			const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
+			service.setServer({ to: mockTo } as never);
+			presence.getSocketIds.mockReturnValue(["socket-abc"]);
+			repo.delete.mockResolvedValue({ affected: 1 });
+			repo.find.mockResolvedValue([]);
+
+			await service.removeWhere("friend_request", 10, 20);
+
+			expect(presence.getSocketIds).toHaveBeenCalledWith(20);
+			expect(mockEmit).toHaveBeenCalledWith("notification:inbox", []);
+		});
+
+		it("should not push when nothing was removed", async () => {
+			service.setServer({ to: jest.fn() } as never);
+			repo.delete.mockResolvedValue({ affected: 0 });
+
+			await service.removeWhere("friend_request", 10, 20);
+
+			expect(presence.getSocketIds).not.toHaveBeenCalled();
 		});
 	});
 

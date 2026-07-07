@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { ConfigModule, ConfigService } from "@nestjs/config";
+import { RateLimiterService } from "../auth/rate-limiter.service";
 import { ChatModule } from "../chat/chat.module";
 import { FriendsModule } from "../friends/friends.module";
 import { GameResultsModule } from "../game-results/game-results.module";
@@ -66,6 +67,9 @@ import { RoomService } from "./room.service";
 		ReplayService,
 		GameSessionService,
 		MatchmakingGateway,
+		// Backs the per-user socket chat-send rate limit (Bug Audit M7); the
+		// gateway injects it as @Optional() so tests can omit it.
+		RateLimiterService,
 	],
 })
 export class MatchmakingModule {}

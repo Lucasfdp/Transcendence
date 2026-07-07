@@ -5,6 +5,7 @@ import {
 	Get,
 	InternalServerErrorException,
 	Logger,
+	NotFoundException,
 	Param,
 	Patch,
 	Post,
@@ -59,6 +60,33 @@ export interface LeaderboardEntry {
 	wins: number;
 	gamesPlayed: number;
 	isOnline: boolean;
+}
+
+/**
+ * Public-facing view returned by GET /api/users/:username — the hover/focus
+ * profile card. Deliberately a *whitelist*: it must never include PII or
+ * account-linkage fields (email, fortyTwoId, githubId, passwordHash) or
+ * balances (coins, xp) that the previous "strip only passwordHash and return
+ * the whole entity" implementation leaked to any authenticated user, guests
+ * included (Bug Audit H2). Add a field here only if a public profile card
+ * genuinely needs to render it.
+ */
+export interface PublicUserView {
+	id: number;
+	username: string;
+	turtleName: string | null;
+	shellSkin: string;
+	avatar: string | null;
+	level: number;
+	isOnline: boolean;
+	mostPlayedGame: MostPlayedGame | null;
+	profile: {
+		totalWins: number;
+		totalLosses: number;
+		gamesPlayed: number;
+		tag: string | null;
+		showcasedAchievements: string[] | null;
+	} | null;
 }
 
 /**
@@ -241,18 +269,28 @@ export class UsersController {
 	@Get(":username")
 	async getUser(
 		@Param("username") username: string,
-	): Promise<(Omit<User, "passwordHash"> & { isOnline: boolean; mostPlayedGame: MostPlayedGame | null }) | null> {
+	): Promise<PublicUserView> {
 		const user = await this.usersService.findByUsername(username);
-		if (!user) return null;
-		const { passwordHash: _pw, ...safe } = user as User & {
-			passwordHash?: unknown;
-		};
-		void _pw;
+		if (!user) throw new NotFoundException("User not found");
 		const mostPlayedGame = await this.usersService.getMostPlayedGame(user.id);
 		return {
-			...(safe as Omit<User, "passwordHash">),
+			id: user.id,
+			username: user.username,
+			turtleName: user.turtleName ?? null,
+			shellSkin: user.shellSkin,
+			avatar: user.avatar ?? null,
+			level: user.level,
 			isOnline: this.presence.isOnline(user.id),
 			mostPlayedGame,
+			profile: user.profile
+				? {
+						totalWins: user.profile.totalWins,
+						totalLosses: user.profile.totalLosses,
+						gamesPlayed: user.profile.gamesPlayed,
+						tag: user.profile.tag,
+						showcasedAchievements: user.profile.showcasedAchievements,
+					}
+				: null,
 		};
 	}
 

@@ -80,7 +80,10 @@ describe("FriendsService", () => {
 				{ provide: PresenceService, useFactory: mockPresence },
 				{
 					provide: NotificationsService,
-					useValue: { create: jest.fn().mockResolvedValue(undefined) },
+					useValue: {
+						create: jest.fn().mockResolvedValue(undefined),
+						removeWhere: jest.fn().mockResolvedValue(undefined),
+					},
 				},
 			],
 		}).compile();
@@ -108,11 +111,68 @@ describe("FriendsService", () => {
 			);
 		});
 
-		it("should throw ConflictException when a friendship row already exists", async () => {
+		it("should throw ConflictException when an outgoing request already exists", async () => {
 			userRepo.findOne.mockResolvedValue(
 				makeUser({ id: 2, username: "rival" }),
 			);
-			friendshipRepo.findOne.mockResolvedValue({ id: 1 });
+			// My own outstanding pending row (I am the requester).
+			friendshipRepo.findOne.mockResolvedValue({
+				requesterId: 1,
+				addresseeId: 2,
+				status: "pending",
+			});
+			await expect(service.sendRequest(1, "rival")).rejects.toThrow(
+				ConflictException,
+			);
+		});
+
+		it("should auto-accept when the addressee already sent me a pending request (Bug Audit M2)", async () => {
+			userRepo.findOne.mockResolvedValue(
+				makeUser({ id: 2, username: "rival" }),
+			);
+			// Reverse-direction pending: they (id 2) requested me (id 1).
+			const reverse = { requesterId: 2, addresseeId: 1, status: "pending" };
+			friendshipRepo.findOne
+				.mockResolvedValueOnce(reverse) // sendRequest's existing lookup
+				.mockResolvedValueOnce(reverse); // acceptRequest's lookup
+			friendshipRepo.save.mockResolvedValue({ ...reverse, status: "accepted" });
+
+			await expect(service.sendRequest(1, "rival")).resolves.toBeUndefined();
+
+			// Resolved by accepting the existing row, never by inserting a new one.
+			expect(friendshipRepo.save).toHaveBeenCalledWith(
+				expect.objectContaining({ status: "accepted" }),
+			);
+			expect(friendshipRepo.save).not.toHaveBeenCalledWith(
+				expect.objectContaining({ status: "pending" }),
+			);
+		});
+
+		it("should silently no-op (not leak the block) when the addressee has blocked me (Bug Audit M8)", async () => {
+			userRepo.findOne.mockResolvedValue(
+				makeUser({ id: 2, username: "rival" }),
+			);
+			// The other user (id 2) blocked me (id 1).
+			friendshipRepo.findOne.mockResolvedValue({
+				requesterId: 2,
+				addresseeId: 1,
+				status: "blocked",
+			});
+
+			await expect(service.sendRequest(1, "rival")).resolves.toBeUndefined();
+			expect(friendshipRepo.save).not.toHaveBeenCalled();
+		});
+
+		it("should throw an actionable ConflictException when I have blocked the target", async () => {
+			userRepo.findOne.mockResolvedValue(
+				makeUser({ id: 2, username: "rival" }),
+			);
+			friendshipRepo.findOne.mockResolvedValue({
+				requesterId: 1,
+				addresseeId: 2,
+				status: "blocked",
+			});
+
 			await expect(service.sendRequest(1, "rival")).rejects.toThrow(
 				ConflictException,
 			);
@@ -177,16 +237,30 @@ describe("FriendsService", () => {
 			expect(friendshipRepo.manager?.transaction).not.toHaveBeenCalled();
 		});
 
-		it("should delete any existing row in either direction, then insert a blocked row, inside a transaction (Bug Audit M5)", async () => {
+		it("should throw NotFoundException when the target user does not exist (Bug Audit M3)", async () => {
+			userRepo.findOne.mockResolvedValue(null);
+
+			await expect(service.block(1, 2)).rejects.toThrow(NotFoundException);
+			expect(friendshipRepo.manager?.transaction).not.toHaveBeenCalled();
+		});
+
+		it("should delete pending/accepted rows in both directions plus the caller's own block row, but NOT the other user's block, then insert a blocked row (Bug Audit M1)", async () => {
+			userRepo.findOne.mockResolvedValue(makeUser({ id: 2 }));
 			friendshipRepo.delete.mockResolvedValue({ affected: 1 });
 			friendshipRepo.save.mockResolvedValue({});
 
 			await service.block(1, 2);
 
 			expect(friendshipRepo.manager?.transaction).toHaveBeenCalledTimes(1);
+			// Crucially, { requesterId: 2, addresseeId: 1, status: "blocked" } is
+			// absent — the other user's block of the caller must survive so mutual
+			// blocks coexist.
 			expect(friendshipRepo.delete).toHaveBeenCalledWith([
-				{ requesterId: 1, addresseeId: 2 },
-				{ requesterId: 2, addresseeId: 1 },
+				{ requesterId: 1, addresseeId: 2, status: "pending" },
+				{ requesterId: 2, addresseeId: 1, status: "pending" },
+				{ requesterId: 1, addresseeId: 2, status: "accepted" },
+				{ requesterId: 2, addresseeId: 1, status: "accepted" },
+				{ requesterId: 1, addresseeId: 2, status: "blocked" },
 			]);
 			expect(friendshipRepo.save).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -198,6 +272,7 @@ describe("FriendsService", () => {
 		});
 
 		it("should join a caller-provided manager instead of opening its own transaction", async () => {
+			userRepo.findOne.mockResolvedValue(makeUser({ id: 2 }));
 			friendshipRepo.delete.mockResolvedValue({ affected: 0 });
 			friendshipRepo.save.mockResolvedValue({});
 			const callerManager = {
@@ -211,6 +286,7 @@ describe("FriendsService", () => {
 		});
 
 		it("should throw InternalServerErrorException when the transaction fails", async () => {
+			userRepo.findOne.mockResolvedValue(makeUser({ id: 2 }));
 			friendshipRepo.manager!.transaction.mockRejectedValueOnce(
 				new Error("db down"),
 			);
@@ -218,6 +294,50 @@ describe("FriendsService", () => {
 			await expect(service.block(1, 2)).rejects.toThrow(
 				InternalServerErrorException,
 			);
+		});
+	});
+
+	// ── unblock / listBlocked (Bug Audit H3) ──────────────────────────────────
+
+	describe("unblock", () => {
+		it("should delete only the caller's own block row, never the other user's", async () => {
+			friendshipRepo.delete.mockResolvedValue({ affected: 1 });
+
+			await service.unblock(1, 2);
+
+			expect(friendshipRepo.delete).toHaveBeenCalledWith({
+				requesterId: 1,
+				addresseeId: 2,
+				status: "blocked",
+			});
+		});
+
+		it("should resolve without throwing when there is no matching block row", async () => {
+			friendshipRepo.delete.mockResolvedValue({ affected: 0 });
+
+			await expect(service.unblock(1, 2)).resolves.toBeUndefined();
+		});
+	});
+
+	describe("listBlocked", () => {
+		it("should return the users the caller has blocked (rows they own)", async () => {
+			friendshipRepo.find.mockResolvedValue([
+				{
+					requesterId: 1,
+					status: "blocked",
+					addressee: makeUser({ id: 2, username: "rival" }),
+				},
+			]);
+
+			const result = await service.listBlocked(1);
+
+			expect(friendshipRepo.find).toHaveBeenCalledWith({
+				where: { requesterId: 1, status: "blocked" },
+				relations: ["addressee"],
+			});
+			expect(result).toEqual([
+				expect.objectContaining({ userId: 2, username: "rival" }),
+			]);
 		});
 	});
 

@@ -4,9 +4,10 @@ import { MigrationInterface, QueryRunner } from "typeorm";
  * Creates the chat schema: conversations (dm | group), their membership rows,
  * and messages.
  *
- * Column names are camelCase (quoted) to match the newer-table convention —
- * see wagers, matchReplays, reports — rather than the older snake_case
- * friendships table (see SOCIAL_TAB_HANDOFF.md §9 for that inconsistency).
+ * Column names are camelCase (quoted) to match the table convention — see
+ * wagers, matchReplays, reports. (The friendships/notifications migrations,
+ * formerly snake_case per docs/SOCIAL_TAB_HANDOFF.md §9, were realigned to
+ * quoted camelCase in Bug Audit H1, so the schema is now consistent.)
  *
  * No `notifications` row is created per message — unread state is derived
  * from `conversations."lastMessageAt"` vs.

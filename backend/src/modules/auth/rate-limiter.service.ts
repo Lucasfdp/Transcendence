@@ -36,8 +36,30 @@ export class RateLimiterService {
 		max: number,
 		windowMs: number,
 	): boolean {
-		const ip = this.getIp(req);
-		const key = `${bucket}:${ip}`;
+		return this.consume(`${bucket}:${this.getIp(req)}`, max, windowMs);
+	}
+
+	/**
+	 * Rate-limit by an arbitrary identity instead of the request IP — for
+	 * non-HTTP call sites (WebSocket handlers, where there is no Express
+	 * request) or per-user limits where the authenticated user id is a better
+	 * key than a shared egress IP (Bug Audit M7).
+	 *
+	 * @param bucket   - Logical bucket name (allows different limits per action)
+	 * @param identity - Stable per-caller identity (e.g. `String(userId)`)
+	 * @param max      - Maximum requests allowed within `windowMs`
+	 * @param windowMs - Window duration in milliseconds
+	 */
+	allowKey(
+		bucket: string,
+		identity: string,
+		max: number,
+		windowMs: number,
+	): boolean {
+		return this.consume(`${bucket}:${identity}`, max, windowMs);
+	}
+
+	private consume(key: string, max: number, windowMs: number): boolean {
 		const now = Date.now();
 
 		// Purge on every call so the Map cannot grow unboundedly between
