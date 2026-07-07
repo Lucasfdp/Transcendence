@@ -57,15 +57,27 @@ export class NotificationsService {
 			});
 			if (duplicate) return;
 
-			const notification = await this.notificationRepo.save(
-				this.notificationRepo.create({
-					type,
-					fromUserId,
-					toUserId,
-					payload,
-					readAt: null,
-				}),
-			);
+			let notification: Notification;
+			try {
+				notification = await this.notificationRepo.save(
+					this.notificationRepo.create({
+						type,
+						fromUserId,
+						toUserId,
+						payload,
+						readAt: null,
+					}),
+				);
+			} catch (saveErr: unknown) {
+				// A concurrent create() for the same triple won the race and
+				// inserted the unread row between our check and this save; the
+				// partial unique index (uq_notification_unread_triple, Bug Audit
+				// L7) rejects the loser with 23505. That is exactly the dedup we
+				// wanted, so treat it as a successful no-op.
+				const pg = saveErr as { code?: string };
+				if (pg?.code === "23505") return;
+				throw saveErr;
+			}
 
 			// Push real-time to every open tab of the recipient
 			if (this.server) {
@@ -161,6 +173,41 @@ export class NotificationsService {
 			this.server.to(socketId).emit(WS_EVENT_INBOX, unread);
 		} catch {
 			// Non-fatal: client will not get inbox but connection should proceed
+		}
+	}
+
+	/**
+	 * Delete every notification matching (type, fromUserId, toUserId) and, if
+	 * any were removed, push the recipient a fresh inbox so their bell updates
+	 * immediately. Used by FriendsService when a friend request is
+	 * declined/cancelled/blocked, so a stale friend_request notification can't
+	 * dead-end on an Accept that finds no pending row (Bug Audit M9).
+	 *
+	 * Non-fatal by contract: callers invoke this as a best-effort side effect
+	 * and swallow rejections, so failure here never fails the parent action.
+	 */
+	async removeWhere(
+		type: NotificationType,
+		fromUserId: number,
+		toUserId: number,
+	): Promise<void> {
+		const result = await this.notificationRepo.delete({
+			type,
+			fromUserId,
+			toUserId,
+		});
+		if (result.affected && result.affected > 0) {
+			await this.pushInboxToUser(toUserId);
+		}
+	}
+
+	/** Push the current unread inbox to every one of a user's open sockets. */
+	private async pushInboxToUser(userId: number): Promise<void> {
+		if (!this.server) return;
+		const unread = await this.listUnread(userId).catch(() => null);
+		if (!unread) return;
+		for (const socketId of this.presence.getSocketIds(userId)) {
+			this.server.to(socketId).emit(WS_EVENT_INBOX, unread);
 		}
 	}
 

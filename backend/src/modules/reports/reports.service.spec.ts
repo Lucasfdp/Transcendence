@@ -1,6 +1,7 @@
 import {
 	BadRequestException,
 	InternalServerErrorException,
+	NotFoundException,
 } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
@@ -103,6 +104,16 @@ describe("ReportsService", () => {
 
 			await expect(service.create(1, 2, "spam")).rejects.toThrow(
 				"Failed to block user",
+			);
+		});
+
+		it("should propagate NotFoundException when the reported user does not exist (Bug Audit M3)", async () => {
+			friendsService.block.mockRejectedValue(
+				new NotFoundException("User not found"),
+			);
+
+			await expect(service.create(1, 999, "spam")).rejects.toThrow(
+				NotFoundException,
 			);
 		});
 	});

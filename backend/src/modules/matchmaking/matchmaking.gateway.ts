@@ -1,4 +1,4 @@
-import { Logger } from "@nestjs/common";
+import { Logger, Optional } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import {
 	ConnectedSocket,
@@ -12,6 +12,8 @@ import {
 } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
 import { COOKIE_NAME } from "../auth/auth.service";
+import { RateLimiterService } from "../auth/rate-limiter.service";
+import { ChatService, chatRoomName } from "../chat/chat.service";
 import { FriendsService } from "../friends/friends.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UsersService } from "../users/users.service";
@@ -40,6 +42,14 @@ import { ReplayService } from "./replay.service";
 import { RoomService } from "./room.service";
 
 const RECONNECT_TIMEOUT_MS = 45_000;
+
+/**
+ * Per-user cap on socket-sent messages (text + gif share the bucket) — mirrors
+ * the REST limit in ChatController so neither path can flood a conversation
+ * (Bug Audit M7).
+ */
+const CHAT_SEND_RATE_LIMIT_MAX = 30;
+const CHAT_SEND_RATE_LIMIT_WINDOW_MS = 10_000;
 
 function parseCookie(
 	cookieHeader: string | undefined,
@@ -79,11 +89,34 @@ export class MatchmakingGateway
 		private readonly privateLobbies: PrivateLobbiesService,
 		private readonly friendsService: FriendsService,
 		private readonly replays: ReplayService,
+		private readonly chatService: ChatService,
+		// Optional so the gateway spec (which mocks only the services it
+		// exercises) still instantiates without wiring a limiter; production
+		// always provides one via MatchmakingModule.
+		@Optional() private readonly rateLimiter?: RateLimiterService,
 	) {}
 
-	/** Wire the Socket.io server into NotificationsService for real-time push. */
+	/** True if the user is within the socket send window (or no limiter wired). */
+	private allowChatSend(userId: number): boolean {
+		return (
+			!this.rateLimiter ||
+			this.rateLimiter.allowKey(
+				"chat-send",
+				String(userId),
+				CHAT_SEND_RATE_LIMIT_MAX,
+				CHAT_SEND_RATE_LIMIT_WINDOW_MS,
+			)
+		);
+	}
+
+	/**
+	 * Wire the Socket.io server into the services that push real-time events
+	 * outside of a direct request/response (NotificationsService for the bell,
+	 * ChatService for REST-originated chat broadcasts and unread digests).
+	 */
 	afterInit(server: Server): void {
 		this.notificationsService.setServer(server);
+		this.chatService.setServer(server);
 	}
 
 	async handleConnection(socket: Socket): Promise<void> {
@@ -137,9 +170,15 @@ export class MatchmakingGateway
 				this.emitState(room.matchId);
 			}
 
-			// Push unread notification inbox — guests have no persistent notifications
+			// Push unread notification inbox + join chat rooms — guests have no
+			// persistent notifications or conversations, so this is non-guest only.
 			if (!socketUser.isGuest) {
 				void this.notificationsService.pushInboxToSocket(
+					socket.id,
+					socketUser.id,
+				);
+				await this.joinChatRooms(socket, socketUser.id);
+				void this.chatService.pushUnreadInboxToSocket(
 					socket.id,
 					socketUser.id,
 				);
@@ -865,6 +904,107 @@ export class MatchmakingGateway
 		const user = socket.data.user as { id: number; isGuest: boolean } | undefined;
 		if (!user || user.isGuest) return;
 		await this.notificationsService.markAllRead(user.id).catch(() => undefined);
+	}
+
+	// ── Chat handlers ─────────────────────────────────────────────────────────
+	//
+	// Thin glue over ChatService: guard on the authenticated socket user, call
+	// the service, then broadcast the returned MessageView into the
+	// conversation's room. The service already enforces membership / friend /
+	// length rules and throws on rejection, which we surface to the sender as a
+	// `chat:error` rather than letting it become an unhandled socket error.
+	// The REST send paths broadcast via ChatService.broadcastMessage instead.
+
+	/** Send a text message to a conversation. */
+	@SubscribeMessage("chat:send")
+	async onChatSend(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { conversationId: number; body: string },
+	): Promise<void> {
+		const user = socket.data.user as SocketUser | undefined;
+		if (!user) return;
+		if (!this.allowChatSend(user.id)) {
+			socket.emit("chat:error", {
+				message: "You're sending messages too fast.",
+			});
+			return;
+		}
+		try {
+			const view = await this.chatService.sendMessage(
+				payload.conversationId,
+				user.id,
+				payload.body,
+			);
+			this.server
+				.to(chatRoomName(payload.conversationId))
+				.emit("chat:message", view);
+		} catch (err) {
+			socket.emit("chat:error", {
+				message:
+					err instanceof Error ? err.message : "Failed to send message",
+			});
+		}
+	}
+
+	/** Send a gif message (client supplies an opaque slug; server resolves it). */
+	@SubscribeMessage("chat:send-gif")
+	async onChatSendGif(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { conversationId: number; slug: string },
+	): Promise<void> {
+		const user = socket.data.user as SocketUser | undefined;
+		if (!user) return;
+		if (!this.allowChatSend(user.id)) {
+			socket.emit("chat:error", {
+				message: "You're sending messages too fast.",
+			});
+			return;
+		}
+		try {
+			const view = await this.chatService.sendGifMessage(
+				payload.conversationId,
+				user.id,
+				payload.slug,
+			);
+			this.server
+				.to(chatRoomName(payload.conversationId))
+				.emit("chat:message", view);
+		} catch (err) {
+			socket.emit("chat:error", {
+				message:
+					err instanceof Error ? err.message : "Failed to send gif",
+			});
+		}
+	}
+
+	/** Move the caller's read cursor for a conversation to now. */
+	@SubscribeMessage("chat:read")
+	async onChatRead(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { conversationId: number },
+	): Promise<void> {
+		const user = socket.data.user as SocketUser | undefined;
+		if (!user) return;
+		await this.chatService
+			.markRead(payload.conversationId, user.id)
+			.catch(() => undefined);
+	}
+
+	/**
+	 * Join a socket into the Socket.IO room of every conversation the user
+	 * belongs to, so live `chat:message` broadcasts reach it immediately.
+	 * Non-fatal: on failure the socket simply won't receive live chat until its
+	 * next reconnect. Invoked on connect (see handleConnection).
+	 */
+	private async joinChatRooms(socket: Socket, userId: number): Promise<void> {
+		try {
+			const conversations = await this.chatService.listConversations(userId);
+			for (const conversation of conversations) {
+				socket.join(chatRoomName(conversation.id));
+			}
+		} catch {
+			// Non-fatal — no live chat rooms joined this connect.
+		}
 	}
 
 	private emitState(matchId: string): void {

@@ -1114,6 +1114,19 @@ export const api = {
 			idempotent: true,
 		}),
 
+	/** List users the current user has blocked (Bug Audit H3). */
+	getBlockedUsers: (): Promise<PendingView[]> =>
+		apiFetch<PendingView[]>("/friends/blocked"),
+
+	/** Unblock a user by userId. Removes only the caller's own block row. */
+	unblockUser: (userId: number): Promise<void> =>
+		apiFetch<void>("/friends/unblock", {
+			method: "POST",
+			body: JSON.stringify({ userId }),
+			// Deletes the caller's block row — repeating it is a no-op.
+			idempotent: true,
+		}),
+
 	// ── Chat ───────────────────────────────────────────────────────────────────
 
 	/** List every conversation the current user belongs to, most recent first. */

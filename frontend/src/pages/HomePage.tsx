@@ -56,7 +56,7 @@ import {
 	removeById,
 	upsertById,
 } from "../features/social/friendsOps";
-import { buildFriendCode } from "../features/social/friendCode";
+import { buildFriendCode, parseFriendCode } from "../features/social/friendCode";
 import {
 	addUnread,
 	conversationTitle,
@@ -90,6 +90,12 @@ const PROFILE_HOVER_DEBOUNCE_MS = 300;
 /** Delay before a gif picker search query triggers a fetch, and its minimum length. */
 const GIF_SEARCH_DEBOUNCE_MS = 350;
 const GIF_SEARCH_MIN_LENGTH = 2;
+
+/**
+ * Server-side default message page size (ChatService.DEFAULT_MESSAGE_PAGE_SIZE).
+ * A full page back implies there may be older messages to load (Bug Audit L6).
+ */
+const CHAT_MESSAGE_PAGE_SIZE = 50;
 
 type HubView = "choose" | "normal" | "gambit";
 type InfoModal = { title: string; description: string } | null;
@@ -625,6 +631,7 @@ function HomeMenu(): JSX.Element {
 		null,
 	);
 	const [suggestions, setSuggestions] = useState<PendingView[] | null>(null);
+	const [blockedUsers, setBlockedUsers] = useState<PendingView[] | null>(null);
 	const [socialLoading, setSocialLoading] = useState(false);
 	const [friendSearchQuery, setFriendSearchQuery] = useState("");
 	const [friendUsername, setFriendUsername] = useState("");
@@ -643,6 +650,10 @@ function HomeMenu(): JSX.Element {
 	const [chatMessages, setChatMessages] = useState<ChatMessageView[]>([]);
 	const [chatMessageDraft, setChatMessageDraft] = useState("");
 	const [chatThreadLoading, setChatThreadLoading] = useState(false);
+	// Whether there may be older messages to page in, and whether such a fetch
+	// is in flight (Bug Audit L6).
+	const [chatHasMoreOlder, setChatHasMoreOlder] = useState(false);
+	const [chatLoadingOlder, setChatLoadingOlder] = useState(false);
 	const [chatActionLoading, setChatActionLoading] = useState(false);
 	const [isNewGroupOpen, setIsNewGroupOpen] = useState(false);
 	const [newGroupName, setNewGroupName] = useState("");
@@ -655,6 +666,15 @@ function HomeMenu(): JSX.Element {
 	const removalTimers = useRef(
 		new Map<number, ReturnType<typeof setTimeout>>(),
 	);
+	// Clear any outstanding undo timers on unmount so a deferred commit can't
+	// fire setState after the component is gone (Bug Audit L2).
+	useEffect(() => {
+		const timers = removalTimers.current;
+		return () => {
+			for (const timer of timers.values()) clearTimeout(timer);
+			timers.clear();
+		};
+	}, []);
 	const [hoveredFriendUsername, setHoveredFriendUsername] = useState<
 		string | null
 	>(null);
@@ -832,7 +852,12 @@ function HomeMenu(): JSX.Element {
 
 		const onChatMessage = (message: ChatMessageView) => {
 			if (activeConversationIdRef.current === message.conversationId) {
-				setChatMessages((prev) => [...prev, message]);
+				// Skip if we already have this message id — the sender receives its
+				// own broadcast, and a message can race the initial history fetch
+				// (Bug Audit L1).
+				setChatMessages((prev) =>
+					prev.some((m) => m.id === message.id) ? prev : [...prev, message],
+				);
 			}
 			setConversations((prev) =>
 				prev
@@ -1213,6 +1238,7 @@ function HomeMenu(): JSX.Element {
 		setPendingRequests(null);
 		setOutgoingRequests(null);
 		setSuggestions(null);
+		setBlockedUsers(null);
 		setFriendSearchQuery("");
 		setBlockConfirmUserId(null);
 		setReportTarget(null);
@@ -1225,19 +1251,30 @@ function HomeMenu(): JSX.Element {
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
 		setGifResults([]);
+		// Commit any in-flight friend removals first, so the fresh fetch below
+		// doesn't momentarily re-show a friend mid-undo-window (Bug Audit L2).
+		await flushPendingRemovals();
 		try {
-			const [nextFriends, nextPending, nextOutgoing, nextSuggestions, nextConversations] =
-				await Promise.all([
-					api.getFriends(),
-					api.getPendingRequests(),
-					api.getOutgoingRequests(),
-					api.getFriendSuggestions(),
-					api.getConversations(),
-				]);
+			const [
+				nextFriends,
+				nextPending,
+				nextOutgoing,
+				nextSuggestions,
+				nextBlocked,
+				nextConversations,
+			] = await Promise.all([
+				api.getFriends(),
+				api.getPendingRequests(),
+				api.getOutgoingRequests(),
+				api.getFriendSuggestions(),
+				api.getBlockedUsers(),
+				api.getConversations(),
+			]);
 			setFriends(nextFriends);
 			setPendingRequests(nextPending);
 			setOutgoingRequests(nextOutgoing);
 			setSuggestions(nextSuggestions);
+			setBlockedUsers(nextBlocked);
 			setConversations(sortConversationsByRecency(nextConversations));
 		} catch {
 			setModalError("Could not load social data. Try again later.");
@@ -1259,6 +1296,7 @@ function HomeMenu(): JSX.Element {
 	const handleOpenConversation = async (conversationId: number): Promise<void> => {
 		setActiveConversationId(conversationId);
 		setChatMessages([]);
+		setChatHasMoreOlder(false);
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
 		setGifResults([]);
@@ -1266,7 +1304,19 @@ function HomeMenu(): JSX.Element {
 		try {
 			const messages = await api.getChatMessages(conversationId);
 			// Server returns newest-first for pagination; display oldest-first.
-			setChatMessages([...messages].reverse());
+			const ordered = [...messages].reverse();
+			// Preserve any live messages that arrived during this fetch and aren't
+			// in the fetched page, so they're neither dropped nor duplicated
+			// (Bug Audit L1).
+			setChatMessages((live) => {
+				const seen = new Set(ordered.map((m) => m.id));
+				const extras = live.filter(
+					(m) => m.conversationId === conversationId && !seen.has(m.id),
+				);
+				return [...ordered, ...extras];
+			});
+			// A full page implies there may be older history to page in (L6).
+			setChatHasMoreOlder(messages.length >= CHAT_MESSAGE_PAGE_SIZE);
 			getGameSocket().emit("chat:read", { conversationId });
 			setUnreadConversationIds((prev) => removeUnread(prev, conversationId));
 		} catch (err: unknown) {
@@ -1280,9 +1330,43 @@ function HomeMenu(): JSX.Element {
 		}
 	};
 
+	/** Page in the previous batch of messages, prepending them (Bug Audit L6). */
+	const handleLoadOlderMessages = async (): Promise<void> => {
+		if (!activeConversationId || chatLoadingOlder || chatMessages.length === 0) {
+			return;
+		}
+		const oldest = chatMessages[0];
+		setChatLoadingOlder(true);
+		try {
+			const older = await api.getChatMessages(
+				activeConversationId,
+				oldest.createdAt,
+			);
+			// Server returns newest-first; reverse to oldest-first, dedup, prepend.
+			const ordered = [...older].reverse();
+			setChatMessages((prev) => {
+				const seen = new Set(prev.map((m) => m.id));
+				const dedup = ordered.filter((m) => !seen.has(m.id));
+				return [...dedup, ...prev];
+			});
+			setChatHasMoreOlder(older.length >= CHAT_MESSAGE_PAGE_SIZE);
+		} catch (err: unknown) {
+			showToast({
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not load older messages.",
+				variant: "error",
+			});
+		} finally {
+			setChatLoadingOlder(false);
+		}
+	};
+
 	const handleCloseConversation = (): void => {
 		setActiveConversationId(null);
 		setChatMessages([]);
+		setChatHasMoreOlder(false);
 		setChatMessageDraft("");
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
@@ -1317,9 +1401,16 @@ function HomeMenu(): JSX.Element {
 		setChatMessageDraft("");
 	};
 
+	/**
+	 * Monotonic id for the latest in-flight gif search. A slower earlier
+	 * response must not overwrite a newer one (Bug Audit L3).
+	 */
+	const gifSearchSeq = useRef(0);
+
 	/** Run a gif search and populate gifResults — called (debounced) as the user types. */
 	const runGifSearch = async (query: string): Promise<void> => {
 		const trimmed = query.trim();
+		const seq = ++gifSearchSeq.current;
 		if (trimmed.length < GIF_SEARCH_MIN_LENGTH) {
 			setGifResults([]);
 			setGifSearchLoading(false);
@@ -1328,12 +1419,15 @@ function HomeMenu(): JSX.Element {
 		setGifSearchLoading(true);
 		try {
 			const results = await api.searchGifs(trimmed);
+			// Drop a stale response that resolved after a newer search began.
+			if (seq !== gifSearchSeq.current) return;
 			setGifResults(results);
 		} catch {
 			// Non-fatal — an empty grid with no error toast is enough feedback here.
+			if (seq !== gifSearchSeq.current) return;
 			setGifResults([]);
 		} finally {
-			setGifSearchLoading(false);
+			if (seq === gifSearchSeq.current) setGifSearchLoading(false);
 		}
 	};
 
@@ -1493,19 +1587,45 @@ function HomeMenu(): JSX.Element {
 	 *  after an optimistic update fails). Non-fatal on its own failure. */
 	const refreshSocial = async (): Promise<void> => {
 		try {
-			const [nextFriends, nextPending, nextOutgoing, nextSuggestions] =
-				await Promise.all([
-					api.getFriends(),
-					api.getPendingRequests(),
-					api.getOutgoingRequests(),
-					api.getFriendSuggestions(),
-				]);
+			const [
+				nextFriends,
+				nextPending,
+				nextOutgoing,
+				nextSuggestions,
+				nextBlocked,
+			] = await Promise.all([
+				api.getFriends(),
+				api.getPendingRequests(),
+				api.getOutgoingRequests(),
+				api.getFriendSuggestions(),
+				api.getBlockedUsers(),
+			]);
 			setFriends(nextFriends);
 			setPendingRequests(nextPending);
 			setOutgoingRequests(nextOutgoing);
 			setSuggestions(nextSuggestions);
+			setBlockedUsers(nextBlocked);
 		} catch {
 			// Leave the current optimistic state in place; the user can reopen.
+		}
+	};
+
+	/** Unblock a user and optimistically drop them from the Blocked list. */
+	const handleUnblockUser = async (blocked: PendingView): Promise<void> => {
+		setBlockedUsers((prev) => (prev ? removeById(prev, blocked.userId) : prev));
+		try {
+			await api.getCsrfToken();
+			await api.unblockUser(blocked.userId);
+			showToast({
+				message: `Unblocked ${blocked.turtleName ?? blocked.username}`,
+				variant: "info",
+			});
+		} catch (err: unknown) {
+			showToast({
+				message: err instanceof Error ? err.message : "Could not unblock user.",
+				variant: "error",
+			});
+			void refreshSocial();
 		}
 	};
 
@@ -1527,7 +1647,9 @@ function HomeMenu(): JSX.Element {
 	};
 
 	const handleSendFriendRequest = async () => {
-		const trimmed = friendUsername.trim();
+		// Accept a pasted friend code (`@username`) as well as a bare username
+		// (Bug Audit M4).
+		const trimmed = parseFriendCode(friendUsername);
 		if (!trimmed || friendActionLoading) return;
 		setFriendActionLoading(true);
 		try {
@@ -1626,6 +1748,22 @@ function HomeMenu(): JSX.Element {
 		}
 	};
 
+	/**
+	 * Commit every still-pending friend removal immediately. Called before
+	 * (re)loading the friends list so a friend whose undo window hasn't elapsed
+	 * isn't briefly re-shown by the fresh fetch only to vanish again seconds
+	 * later (Bug Audit L2).
+	 */
+	const flushPendingRemovals = async (): Promise<void> => {
+		const entries = [...removalTimers.current.entries()];
+		await Promise.all(
+			entries.map(([userId, timer]) => {
+				clearTimeout(timer);
+				return commitRemoveFriend(userId);
+			}),
+		);
+	};
+
 	const handleRemoveFriend = (friend: FriendView) => {
 		// Optimistically drop the friend, leaving a window to undo before commit.
 		setFriends((prev) => (prev ? removeById(prev, friend.userId) : prev));
@@ -1670,6 +1808,9 @@ function HomeMenu(): JSX.Element {
 		setOutgoingRequests((prev) =>
 			prev ? removeById(prev, friend.userId) : prev,
 		);
+		// Also drop from suggestions — otherwise a blocked user lingers there
+		// with an Add button that 409s against the new block row (Bug Audit M5).
+		setSuggestions((prev) => (prev ? removeById(prev, friend.userId) : prev));
 		try {
 			await api.getCsrfToken();
 			await api.blockUser(friend.userId);
@@ -1677,6 +1818,8 @@ function HomeMenu(): JSX.Element {
 				message: `Blocked ${friend.turtleName ?? friend.username}`,
 				variant: "info",
 			});
+			// Refresh so the new entry appears in the Blocked list (Bug Audit H3).
+			void refreshSocial();
 		} catch (err: unknown) {
 			showToast({
 				message: err instanceof Error ? err.message : "Could not block user.",
@@ -1710,6 +1853,10 @@ function HomeMenu(): JSX.Element {
 			setOutgoingRequests((prev) =>
 				prev ? removeById(prev, reportTarget.userId) : prev,
 			);
+			// Reporting auto-blocks, so drop from suggestions too (Bug Audit M5).
+			setSuggestions((prev) =>
+				prev ? removeById(prev, reportTarget.userId) : prev,
+			);
 			showToast({
 				message: `Reported and blocked ${reportTarget.turtleName ?? reportTarget.username}`,
 				variant: "info",
@@ -1717,6 +1864,8 @@ function HomeMenu(): JSX.Element {
 			setReportTarget(null);
 			setReportMessage("");
 			setReportCategory(REPORT_CATEGORIES[0].id);
+			// Refresh so the Blocked list picks up the auto-block (Bug Audit H3/M5).
+			void refreshSocial();
 		} catch (err: unknown) {
 			showToast({
 				message:
@@ -2913,7 +3062,11 @@ function HomeMenu(): JSX.Element {
 							maxLength={32}
 							value={friendUsername}
 							onChange={(e) => setFriendUsername(e.target.value)}
-							onKeyDown={(e) => { if (e.key === "Enter") void handleSendFriendRequest(); }}
+							onKeyDown={(e) => {
+								// Ignore Enter while an IME composition is active (Bug Audit L4).
+								if (e.key === "Enter" && !e.nativeEvent.isComposing)
+									void handleSendFriendRequest();
+							}}
 						/>
 						<button
 							className="hub-modal__save-button"
@@ -3012,6 +3165,21 @@ function HomeMenu(): JSX.Element {
 											<p>Loading…</p>
 										) : (
 											<ul className="hub-modal__chat-message-list">
+												{chatHasMoreOlder ? (
+													<li className="hub-modal__chat-load-older">
+														<button
+															type="button"
+															disabled={chatLoadingOlder}
+															onClick={() =>
+																void handleLoadOlderMessages()
+															}
+														>
+															{chatLoadingOlder
+																? "Loading…"
+																: "Load older messages"}
+														</button>
+													</li>
+												) : null}
 												{chatMessages.map((message) => {
 													const gif =
 														message.type === "gif"
@@ -3114,7 +3282,9 @@ function HomeMenu(): JSX.Element {
 												value={chatMessageDraft}
 												onChange={(e) => setChatMessageDraft(e.target.value)}
 												onKeyDown={(e) => {
-													if (e.key === "Enter") handleSendChatMessage();
+													// Ignore Enter while an IME composition is active (Bug Audit L4).
+													if (e.key === "Enter" && !e.nativeEvent.isComposing)
+														handleSendChatMessage();
 												}}
 											/>
 											<button
@@ -3427,6 +3597,33 @@ function HomeMenu(): JSX.Element {
 														onClick={() => void handleAddSuggestion(suggestion)}
 													>
 														Add
+													</button>
+												</div>
+											</li>
+										))}
+									</ul>
+								</section>
+							) : null}
+
+							{blockedUsers && blockedUsers.length > 0 ? (
+								<section className="hub-modal__social-section">
+									<h3>Blocked users</h3>
+									<ul className="hub-modal__social-list">
+										{blockedUsers.map((blocked) => (
+											<li
+												key={blocked.userId}
+												className="hub-modal__social-row"
+											>
+												<span className="hub-modal__social-name">
+													{blocked.turtleName ?? blocked.username}
+													<small> @{blocked.username}</small>
+												</span>
+												<div className="hub-modal__social-actions">
+													<button
+														type="button"
+														onClick={() => void handleUnblockUser(blocked)}
+													>
+														Unblock
 													</button>
 												</div>
 											</li>

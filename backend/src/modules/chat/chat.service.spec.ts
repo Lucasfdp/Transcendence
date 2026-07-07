@@ -45,6 +45,7 @@ const mockConversationRepo = () => {
 		find: jest.fn(),
 		save: jest.fn(async (v) => v),
 		create: jest.fn((v) => v),
+		delete: jest.fn().mockResolvedValue(undefined),
 	};
 	repo.manager = {
 		transaction: jest.fn(async (cb: (em: unknown) => Promise<unknown>) =>
@@ -57,6 +58,9 @@ const mockConversationRepo = () => {
 const mockParticipantRepo = () => ({
 	findOne: jest.fn(),
 	find: jest.fn().mockResolvedValue([]),
+	// Default >0 so leaveGroup takes the "members remain" path unless a test
+	// opts into the empty-group cleanup branch (Bug Audit M10).
+	count: jest.fn().mockResolvedValue(1),
 	save: jest.fn(async (v) => v),
 	create: jest.fn((v) => v),
 	delete: jest.fn().mockResolvedValue(undefined),
@@ -67,6 +71,7 @@ const mockMessageRepo = () => ({
 	find: jest.fn().mockResolvedValue([]),
 	save: jest.fn(async (v) => ({ id: 1, createdAt: new Date("2026-07-04T00:00:00Z"), ...v })),
 	create: jest.fn((v) => v),
+	delete: jest.fn().mockResolvedValue(undefined),
 });
 
 const mockUserRepo = () => ({
@@ -596,6 +601,23 @@ describe("ChatService", () => {
 			await expect(service.leaveGroup(10, 1)).resolves.toBeUndefined();
 		});
 
+		it("should delete the conversation and its messages when the last member leaves (Bug Audit M10)", async () => {
+			conversationRepo.findOne.mockResolvedValueOnce(
+				makeConversation({ type: "group" }),
+			);
+			participantRepo.findOne.mockResolvedValueOnce(makeParticipant({ userId: 1 }));
+			userRepo.findOne.mockResolvedValueOnce(makeUser({ id: 1, username: "kame" }));
+			// No participants remain after this leave.
+			participantRepo.count.mockResolvedValueOnce(0);
+
+			await service.leaveGroup(10, 1);
+
+			expect(messageRepo.delete).toHaveBeenCalledWith({ conversationId: 10 });
+			expect(conversationRepo.delete).toHaveBeenCalledWith({ id: 10 });
+			// No farewell system message when nobody is left to see it.
+			expect(messageRepo.save).not.toHaveBeenCalled();
+		});
+
 		it("should throw NotFoundException when the conversation does not exist", async () => {
 			conversationRepo.findOne.mockResolvedValueOnce(null);
 
@@ -672,9 +694,10 @@ describe("ChatService", () => {
 
 			const result = await service.sendMessage(10, 1, "hey");
 
-			// No sender relation available — blank username rather than a thrown error.
+			// No sender relation available — "Someone" fallback rather than a
+			// blank username or a thrown error (Bug Audit L8).
 			expect(result.body).toBe("hey");
-			expect(result.senderUsername).toBe("");
+			expect(result.senderUsername).toBe("Someone");
 		});
 
 		it("should throw BadRequestException when the body is empty", async () => {

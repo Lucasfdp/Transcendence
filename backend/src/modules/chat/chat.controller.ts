@@ -39,6 +39,18 @@ const TooManyRequests = (msg: string): HttpException => new HttpException(msg, 4
 const GIF_SEARCH_RATE_LIMIT_MAX = 30;
 const GIF_SEARCH_RATE_LIMIT_WINDOW_MS = 60_000;
 
+/**
+ * Per-user cap on outbound messages (text + gif share the bucket), keyed on
+ * the authenticated user id so it applies regardless of source IP. Mirrors the
+ * socket-side limit in MatchmakingGateway so neither path can flood a
+ * conversation (Bug Audit M7).
+ */
+const MESSAGE_SEND_RATE_LIMIT_MAX = 30;
+const MESSAGE_SEND_RATE_LIMIT_WINDOW_MS = 10_000;
+
+/** Hard cap on a single message-history page, to bound the query (Bug Audit M6). */
+const MESSAGE_PAGE_MAX_LIMIT = 100;
+
 @ApiTags("chat")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -107,12 +119,19 @@ export class ChatController {
 	/** POST /api/chat/conversations/:id/messages — send a message (REST fallback path). */
 	@Post("conversations/:id/messages")
 	@HttpCode(201)
-	sendMessage(
+	async sendMessage(
 		@Request() req: { user: { id: number } },
 		@Param("id", ParseIntPipe) conversationId: number,
 		@Body() body: SendMessageDto,
 	): Promise<MessageView> {
-		return this.chatService.sendMessage(conversationId, req.user.id, body.body);
+		this.enforceSendRateLimit(req.user.id);
+		const view = await this.chatService.sendMessage(
+			conversationId,
+			req.user.id,
+			body.body,
+		);
+		this.chatService.broadcastMessage(view);
+		return view;
 	}
 
 	/**
@@ -144,12 +163,33 @@ export class ChatController {
 	 */
 	@Post("conversations/:id/messages/gif")
 	@HttpCode(201)
-	sendGifMessage(
+	async sendGifMessage(
 		@Request() req: { user: { id: number } },
 		@Param("id", ParseIntPipe) conversationId: number,
 		@Body() body: SendGifMessageDto,
 	): Promise<MessageView> {
-		return this.chatService.sendGifMessage(conversationId, req.user.id, body.slug);
+		this.enforceSendRateLimit(req.user.id);
+		const view = await this.chatService.sendGifMessage(
+			conversationId,
+			req.user.id,
+			body.slug,
+		);
+		this.chatService.broadcastMessage(view);
+		return view;
+	}
+
+	/** Throw 429 if the user has exceeded the shared text+gif send window. */
+	private enforceSendRateLimit(userId: number): void {
+		if (
+			!this.rateLimiter.allowKey(
+				"chat-send",
+				String(userId),
+				MESSAGE_SEND_RATE_LIMIT_MAX,
+				MESSAGE_SEND_RATE_LIMIT_WINDOW_MS,
+			)
+		) {
+			throw TooManyRequests("You're sending messages too fast.");
+		}
 	}
 
 	/**
@@ -211,6 +251,9 @@ export class ChatController {
 		if (!Number.isInteger(parsed) || parsed <= 0) {
 			throw new BadRequestException("Invalid 'limit' value");
 		}
-		return parsed;
+		// Clamp rather than reject: an over-large page is a client bug (or an
+		// attempt to load an unbounded page with sender relations), not worth a
+		// 400 — but it must never reach the DB uncapped (Bug Audit M6).
+		return Math.min(parsed, MESSAGE_PAGE_MAX_LIMIT);
 	}
 }
