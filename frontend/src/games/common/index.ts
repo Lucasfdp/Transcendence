@@ -28,6 +28,10 @@ export {
 	type LocalReplayPersistenceOptions,
 } from "./runtime/LocalReplayPersistenceRuntime";
 export {
+	LocalReplayCaptureRuntime,
+	type LocalReplayCaptureRuntimeOptions,
+} from "./runtime/LocalReplayCaptureRuntime";
+export {
 	buildCommonLocalReplayPlayers,
 	type LocalReplayRegistry,
 } from "./runtime/LocalReplayPlayers";

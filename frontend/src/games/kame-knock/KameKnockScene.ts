@@ -123,6 +123,7 @@ import {
 	buildCommonLocalReplayPlayers,
 	buildReplayProjectileEntities,
 	CommonGameSceneHost,
+	LocalReplayCaptureRuntime,
 	LocalReplayPersistenceRuntime,
 	SlingshotLaunchRuntime,
 	WorldMapRuntime,
@@ -323,6 +324,17 @@ export class KameKnockScene extends ResponsiveScene {
 	private localMode: "solo" | "versus" = "solo";
 	private readonly localReplayRecorder =
 		new SceneReplayRecorder<KameKnockSnapshot>();
+	private readonly localReplayCapture = new LocalReplayCaptureRuntime<
+		KameKnockSnapshot,
+		KameKnockSnapshot["phase"]
+	>({
+		recorder: this.localReplayRecorder,
+		gameId: "kame-knock",
+		captureStepMs: REPLAY_CAPTURE_STEP_MS,
+		shouldSkip: () => !!this.onlineMatch,
+		buildSnapshot: (phaseOverride) =>
+			this.createLocalReplaySnapshot(phaseOverride),
+	});
 	private readonly replayPersistence = new LocalReplayPersistenceRuntime();
 
 	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
@@ -659,14 +671,7 @@ export class KameKnockScene extends ResponsiveScene {
 		const shouldCaptureReplayFrame =
 			!this.onlineMatch && (this.launchedThisBall || moving);
 		if (shouldCaptureReplayFrame) {
-			this.localReplayRecorder.captureOnInterval(
-				delta,
-				REPLAY_CAPTURE_STEP_MS,
-				(phaseOverride) =>
-					this.buildLocalReplaySnapshot(
-						phaseOverride as KameKnockSnapshot["phase"] | undefined,
-					),
-			);
+			this.localReplayCapture.captureTick(delta);
 		} else this.localReplayRecorder.resetCaptureAccumulator();
 	}
 
@@ -1304,32 +1309,17 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	private initLocalReplayRecording(): void {
-		this.localReplayRecorder.start("kame-knock", (phaseOverride) =>
-			this.buildLocalReplaySnapshot(
-				phaseOverride as KameKnockSnapshot["phase"] | undefined,
-			),
-		);
+		this.localReplayCapture.start();
 	}
 
 	private captureLocalReplayFrame(
 		force = false,
 		phaseOverride?: KameKnockSnapshot["phase"],
 	): void {
-		if (this.onlineMatch) return;
-		this.localReplayRecorder.captureSnapshot(
-			(snapshotPhase) =>
-				this.buildLocalReplaySnapshot(
-					(snapshotPhase as KameKnockSnapshot["phase"] | undefined) ??
-						phaseOverride,
-				),
-			{
-				force,
-				...(phaseOverride ? { phaseOverride } : {}),
-			},
-		);
+		this.localReplayCapture.captureFrame(force, phaseOverride);
 	}
 
-	private buildLocalReplaySnapshot(
+	private createLocalReplaySnapshot(
 		phaseOverride?: KameKnockSnapshot["phase"],
 	): KameKnockSnapshot {
 		const activeSide = this.currentPlayerIndex();

@@ -368,14 +368,17 @@ Results:
 
 ## Phase 8
 
-**Status:** `In progress` (first useful iteration)
+**Status:** `In progress` (first useful iteration applied, completion
+criteria not yet met)
 
 Applied in:
 
 -   `frontend/src/games/common/runtime/LocalReplayPersistenceRuntime.ts`
+-   `frontend/src/games/common/runtime/LocalReplayCaptureRuntime.ts`
 -   `frontend/src/games/common/runtime/LocalReplayPlayers.ts`
 -   `frontend/src/games/common/runtime/ReplayEntities.ts`
 -   `frontend/src/games/common/tests/LocalReplayPersistenceRuntime.test.ts`
+-   `frontend/src/games/common/tests/LocalReplayCaptureRuntime.test.ts`
 -   `frontend/src/games/common/tests/LocalReplayPlayers.test.ts`
 -   `frontend/src/games/common/tests/ReplayEntities.test.ts`
 -   `frontend/src/games/bamboo-bash/BambooBashScene.ts`
@@ -394,8 +397,9 @@ This now centralises:
 -   `api.importReplay` success and failure logging through a shared callback
     boundary
 -   pending replay persistence ownership and wait/reset handling
+-   local replay start, interval capture, and forced frame capture
 
-### Impact
+### Impact So Far
 
 -   The four audited games no longer own duplicated `pendingReplayPersist`
     state.
@@ -412,16 +416,40 @@ This now centralises:
 -   Bamboo Bash, Kame Knock, Bell Clash, and Shell Curl now wait through the
     shared runtime before restart or return actions that leave the local end
     overlay.
+-   The old `buildLocalReplaySnapshot()` method name was removed from the four
+    scenes, but this did not complete the intended extraction because the
+    scene-specific snapshot bodies still live in each scene as
+    `createLocalReplaySnapshot()`.
+
+### Line Reduction Audit
+
+Measured against commit `57c84e7d` and commit `29a6ca76`:
+
+-   `frontend/src/games/bamboo-bash/BambooBashScene.ts`: `95` insertions,
+    `95` deletions, net `0`.
+-   `frontend/src/games/kame-knock/KameKnockScene.ts`: `61` insertions,
+    `71` deletions, net `-10`.
+-   `frontend/src/games/bell-clash/BellClashScene.ts`: `71` insertions,
+    `69` deletions, net `+2`.
+-   `frontend/src/games/shell-curl/ShellCurlScene.ts`: `62` insertions,
+    `63` deletions, net `-1`.
+-   Combined scene net reduction: `-9` lines.
+
+This is not sufficient for the intended Phase 8 outcome. The expected
+direction for this phase is a substantial scene reduction by moving replay
+snapshot construction out of the scenes, not only moving common replay
+plumbing.
 
 ### Coverage
 
 -   `frontend/src/games/common/tests/LocalReplayPersistenceRuntime.test.ts`
+-   `frontend/src/games/common/tests/LocalReplayCaptureRuntime.test.ts`
 -   `frontend/src/games/common/tests/LocalReplayPlayers.test.ts`
 -   `frontend/src/games/common/tests/ReplayEntities.test.ts`
 
 ### Validation
 
--   `cd frontend && npm run test:run -- src/games/common/tests/ReplayEntities.test.ts src/games/common/tests/LocalReplayPlayers.test.ts src/games/common/tests/LocalReplayPersistenceRuntime.test.ts src/games/shared/localReplay.test.ts src/shared/mechanics/game-rule-hooks.test.ts`
+-   `cd frontend && npm run test:run -- src/games/common/tests/LocalReplayCaptureRuntime.test.ts src/games/common/tests/ReplayEntities.test.ts src/games/common/tests/LocalReplayPlayers.test.ts src/games/common/tests/LocalReplayPersistenceRuntime.test.ts src/games/shared/localReplay.test.ts src/shared/mechanics/game-rule-hooks.test.ts`
 -   `cd frontend && npm run build`
 
 Results:
@@ -430,22 +458,57 @@ Results:
 -   Frontend production build passed.
 -   Vite still reports the existing large chunk warning.
 
-### Current limitation
+### Remaining Work Required Before Phase 8 Can Be Closed
 
--   Scene-specific `buildLocalReplaySnapshot()` methods remain local.
+-   Local replay recorder ownership still remains in each scene through
+    `localReplayRecorder` fields and direct lifecycle calls such as `reset()`,
+    `addElapsed()`, `getReplayId()`, `nextSeq()`, and `getStartedAtIso()`.
+    Phase 8 requires this ownership to move out of scenes.
+-   Scene-local replay persistence wrapper methods named `persistLocalReplay()`
+    still remain in the four scenes. They delegate payload construction to
+    common code, but Phase 8 requires scenes not to implement replay
+    persistence methods.
+-   Scene-local capture wrapper methods such as `initLocalReplayRecording()`,
+    `captureReplayTick()`, and `captureLocalReplayFrame()` still remain in
+    scenes. They are thin wrappers around `LocalReplayCaptureRuntime`, but
+    Phase 8 requires capture runtime ownership to be moved out of scene code
+    as far as practical.
+-   Scene-specific `createLocalReplaySnapshot()` methods remain local because
+    the snapshot contracts still differ by game.
 -   Scene-specific replay object snapshot construction remains local where it
     depends on world objects, trails, powers, and online snapshot shape.
 -   Scene-specific replay player counts remain local because each game derives
     the active local player count differently.
+-   Replay entity list mapping now goes through common helpers, but it is not
+    yet descriptor-driven. The plan's acceptance criteria require
+    descriptor-driven replay entity mapping.
+-   Per-game replay snapshot builders must be extracted out of:
+    `BambooBashScene.ts`, `KameKnockScene.ts`, `BellClashScene.ts`, and
+    `ShellCurlScene.ts`.
+-   The next Phase 8 pass must create common-owned replay snapshot builder
+    modules under `frontend/src/games/common/` or a clearly named child
+    directory of it. No new replay runtime code may be added under
+    `frontend/src/games/shared/`.
+-   Each scene should retain only minimal state gathering and callback wiring
+    for replay capture. The replay snapshot assembly itself must not remain
+    in scene methods.
+-   The follow-up must report line counts before and after for all four scene
+    files.
+-   Phase 8 must not be marked `Completed` until the scene line reduction is
+    substantial and consistent with the refactor goal, or until the checkpoint
+    records a concrete technical reason why a specific game cannot be reduced
+    further.
 
 # Recommended Next Sequence
 
-## Phase 8 follow-up
+## Phase 8 Corrective Pass
 
-Continue the replay extraction by introducing descriptor-driven world-object
-snapshot builders, then reduce the scene-owned `buildLocalReplaySnapshot()`
-methods only where the snapshot contract is identical. Do not move
-game-specific scoring rules into the shared layer.
+Do not proceed to Phase 9 yet. Continue Phase 8 by moving replay recorder
+ownership, scene-local persistence wrappers, scene-local capture wrappers,
+per-game local replay snapshot builders, descriptor-driven entity mapping, and
+world-object snapshot construction out of the four scene files. Preserve
+game-specific scoring and gameplay rules, but move replay serialisation
+structure into common-owned modules.
 
 # Executive Summary
 

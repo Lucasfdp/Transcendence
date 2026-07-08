@@ -119,6 +119,7 @@ import {
 	buildCommonLocalReplayPlayers,
 	buildReplayProjectileEntities,
 	CommonGameSceneHost,
+	LocalReplayCaptureRuntime,
 	LocalReplayPersistenceRuntime,
 	SlingshotLaunchRuntime,
 	WorldMapRuntime,
@@ -280,6 +281,17 @@ export class BellClashScene extends ResponsiveScene {
 	private localScores: number[] = [0];
 	private readonly localReplayRecorder =
 		new SceneReplayRecorder<BellClashSnapshot>();
+	private readonly localReplayCapture = new LocalReplayCaptureRuntime<
+		BellClashSnapshot,
+		BellClashSnapshot["phase"]
+	>({
+		recorder: this.localReplayRecorder,
+		gameId: "bell-clash",
+		captureStepMs: REPLAY_CAPTURE_STEP_MS,
+		shouldSkip: () => !!this.onlineMatch,
+		buildSnapshot: (phaseOverride) =>
+			this.createLocalReplaySnapshot(phaseOverride),
+	});
 	private readonly replayPersistence = new LocalReplayPersistenceRuntime();
 
 	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
@@ -940,44 +952,21 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private initLocalReplayRecording(): void {
-		this.localReplayRecorder.start("bell-clash", (phaseOverride) =>
-			this.buildLocalReplaySnapshot(
-				phaseOverride as BellClashSnapshot["phase"] | undefined,
-			),
-		);
+		this.localReplayCapture.start();
 	}
 
 	private captureReplayTick(delta: number): void {
-		if (this.onlineMatch) return;
-		this.localReplayRecorder.captureOnInterval(
-			delta,
-			REPLAY_CAPTURE_STEP_MS,
-			(phaseOverride) =>
-				this.buildLocalReplaySnapshot(
-					phaseOverride as BellClashSnapshot["phase"] | undefined,
-				),
-		);
+		this.localReplayCapture.captureTick(delta);
 	}
 
 	private captureLocalReplayFrame(
 		force = false,
 		phaseOverride?: BellClashSnapshot["phase"],
 	): void {
-		if (this.onlineMatch) return;
-		this.localReplayRecorder.captureSnapshot(
-			(snapshotPhase) =>
-				this.buildLocalReplaySnapshot(
-					(snapshotPhase as BellClashSnapshot["phase"] | undefined) ??
-						phaseOverride,
-				),
-			{
-				force,
-				...(phaseOverride ? { phaseOverride } : {}),
-			},
-		);
+		this.localReplayCapture.captureFrame(force, phaseOverride);
 	}
 
-	private buildLocalReplaySnapshot(
+	private createLocalReplaySnapshot(
 		phaseOverride?: BellClashSnapshot["phase"],
 	): BellClashSnapshot {
 		const phase = phaseOverride ?? "active";

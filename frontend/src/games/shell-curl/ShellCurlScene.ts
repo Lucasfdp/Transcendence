@@ -112,6 +112,7 @@ import {
 	buildCommonLocalReplayPlayers,
 	buildReplayStoneEntities,
 	CommonGameSceneHost,
+	LocalReplayCaptureRuntime,
 	LocalReplayPersistenceRuntime,
 	SlingshotLaunchRuntime,
 	WorldRuntime,
@@ -294,6 +295,17 @@ export class ShellCurlScene extends ResponsiveScene {
 	private onlineConfirmedStoneIds: Set<number> = new Set();
 	private readonly localReplayRecorder =
 		new SceneReplayRecorder<CurlingSnapshot>();
+	private readonly localReplayCapture = new LocalReplayCaptureRuntime<
+		CurlingSnapshot,
+		CurlingSnapshot["phase"]
+	>({
+		recorder: this.localReplayRecorder,
+		gameId: "temple-curling",
+		captureStepMs: REPLAY_CAPTURE_STEP_MS,
+		shouldSkip: () => !!this.onlineMatch,
+		buildSnapshot: (phaseOverride) =>
+			this.createLocalReplaySnapshot(phaseOverride),
+	});
 	private readonly replayPersistence = new LocalReplayPersistenceRuntime();
 
 	// ── Per-player power pools (read from registry, set in create()) ──────────
@@ -1439,44 +1451,21 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private initLocalReplayRecording(): void {
-		this.localReplayRecorder.start("temple-curling", (phaseOverride) =>
-			this.buildLocalReplaySnapshot(
-				phaseOverride as CurlingSnapshot["phase"] | undefined,
-			),
-		);
+		this.localReplayCapture.start();
 	}
 
 	private captureReplayTick(delta: number): void {
-		if (this.onlineMatch) return;
-		this.localReplayRecorder.captureOnInterval(
-			delta,
-			REPLAY_CAPTURE_STEP_MS,
-			(phaseOverride) =>
-				this.buildLocalReplaySnapshot(
-					phaseOverride as CurlingSnapshot["phase"] | undefined,
-				),
-		);
+		this.localReplayCapture.captureTick(delta);
 	}
 
 	private captureLocalReplayFrame(
 		force = false,
 		phaseOverride?: CurlingSnapshot["phase"],
 	): void {
-		if (this.onlineMatch) return;
-		this.localReplayRecorder.captureSnapshot(
-			(snapshotPhase) =>
-				this.buildLocalReplaySnapshot(
-					(snapshotPhase as CurlingSnapshot["phase"] | undefined) ??
-						phaseOverride,
-				),
-			{
-				force,
-				...(phaseOverride ? { phaseOverride } : {}),
-			},
-		);
+		this.localReplayCapture.captureFrame(force, phaseOverride);
 	}
 
-	private buildLocalReplaySnapshot(
+	private createLocalReplaySnapshot(
 		phaseOverride?: CurlingSnapshot["phase"],
 	): CurlingSnapshot {
 		const state = this.turnManager.state;

@@ -128,6 +128,7 @@ import {
 	buildCommonLocalReplayPlayers,
 	buildReplayProjectileEntities,
 	CommonGameSceneHost,
+	LocalReplayCaptureRuntime,
 	LocalReplayPersistenceRuntime,
 	SceneSocketChannel,
 	SlingshotLaunchRuntime,
@@ -284,6 +285,17 @@ export class BambooBashScene extends ResponsiveScene {
 	private onlineBambooSyncAccMs = 0;
 	private readonly localReplayRecorder =
 		new SceneReplayRecorder<BambooBashSnapshot>();
+	private readonly localReplayCapture = new LocalReplayCaptureRuntime<
+		BambooBashSnapshot,
+		BambooBashSnapshot["phase"]
+	>({
+		recorder: this.localReplayRecorder,
+		gameId: "bamboo-bash",
+		captureStepMs: REPLAY_CAPTURE_STEP_MS,
+		shouldSkip: () => !!this.onlineMatch,
+		buildSnapshot: (phaseOverride) =>
+			this.createLocalReplaySnapshot(phaseOverride),
+	});
 	private readonly replayPersistence = new LocalReplayPersistenceRuntime();
 
 	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
@@ -2008,45 +2020,21 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private initLocalReplayRecording(): void {
-		this.localReplayRecorder.start("bamboo-bash", (phaseOverride) =>
-			this.buildLocalReplaySnapshot(
-				phaseOverride as BambooBashSnapshot["phase"] | undefined,
-			),
-		);
+		this.localReplayCapture.start();
 	}
 
 	private captureReplayTick(delta: number): void {
-		if (this.onlineMatch) return;
-		this.localReplayRecorder.captureOnInterval(
-			delta,
-			REPLAY_CAPTURE_STEP_MS,
-			(phaseOverride) =>
-				this.buildLocalReplaySnapshot(
-					phaseOverride as BambooBashSnapshot["phase"] | undefined,
-				),
-		);
+		this.localReplayCapture.captureTick(delta);
 	}
 
 	private captureLocalReplayFrame(
 		force = false,
 		phaseOverride?: BambooBashSnapshot["phase"],
 	): void {
-		if (this.onlineMatch) return;
-		this.localReplayRecorder.captureSnapshot(
-			(snapshotPhase) =>
-				this.buildLocalReplaySnapshot(
-					(snapshotPhase as
-						| BambooBashSnapshot["phase"]
-						| undefined) ?? phaseOverride,
-				),
-			{
-				force,
-				...(phaseOverride ? { phaseOverride } : {}),
-			},
-		);
+		this.localReplayCapture.captureFrame(force, phaseOverride);
 	}
 
-	private buildLocalReplaySnapshot(
+	private createLocalReplaySnapshot(
 		phaseOverride?: BambooBashSnapshot["phase"],
 	): BambooBashSnapshot {
 		const scores = this.localParticipants.map(
