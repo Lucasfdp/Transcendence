@@ -7,7 +7,7 @@
  */
 
 import Phaser from "phaser";
-import { api, type ReplayImportRequest } from "../../features/hub/api";
+import { api } from "../../features/hub/api";
 import { ResponsiveScene } from "../../shared/responsive-scene";
 import { CURL_SHEET } from "../../shared/arenas/curl-sheet";
 import {
@@ -53,7 +53,13 @@ import {
 	type TurnPhase,
 	type TurnState,
 } from "../../shared/mechanics/turn-manager";
-import { buildTurnStateFromGameRuleHooks } from "../../shared/mechanics/game-rule-hooks";
+import {
+	buildTurnStateFromGameRuleHooks,
+	computeGameRuleWinner,
+	notifyGameRuleProjectileSettled,
+	notifyGameRuleRelease,
+	type GameRuleHooks,
+} from "../../shared/mechanics/game-rule-hooks";
 import { SweepController } from "../../shared/mechanics/sweep-controller";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
@@ -89,7 +95,6 @@ import {
 	type CurlingSnapshot,
 	type CurlingThrowEvent,
 	type OnlineMatchContext,
-	type SnapshotPlayer,
 } from "../../services/network/gameSocket";
 import { THEME } from "../../shared/theme";
 import {
@@ -99,16 +104,15 @@ import {
 } from "../../shared/game-ui";
 import { hudPlayerLabel } from "../../shared/player-labels";
 import {
-	buildLocalReplayImportRequest,
-	buildLocalReplayPlayerUserIds,
-	buildLocalReplayPlayers,
-	replayStoneToEntity,
 	resolveReplayWinnerSide,
 	SceneReplayRecorder,
 	withPowerStateFlags,
 } from "../shared/localReplay";
 import {
+	buildCommonLocalReplayPlayers,
+	buildReplayStoneEntities,
 	CommonGameSceneHost,
+	LocalReplayPersistenceRuntime,
 	SlingshotLaunchRuntime,
 	WorldRuntime,
 	type GameDescriptor,
@@ -290,7 +294,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private onlineConfirmedStoneIds: Set<number> = new Set();
 	private readonly localReplayRecorder =
 		new SceneReplayRecorder<CurlingSnapshot>();
-	private pendingReplayPersist: Promise<void> | null = null;
+	private readonly replayPersistence = new LocalReplayPersistenceRuntime();
 
 	// ── Per-player power pools (read from registry, set in create()) ──────────
 	private playerPowers: PowerType[][] = [FALLBACK_POWERS, FALLBACK_POWERS];
@@ -350,7 +354,7 @@ export class ShellCurlScene extends ResponsiveScene {
 				| undefined) ?? null;
 		this.lastOnlineSeq = -1;
 		this.localReplayRecorder.reset();
-		this.pendingReplayPersist = null;
+		this.replayPersistence.reset();
 		this.activePower = PowerType.NONE;
 		this.powerUsed = Array.from({ length: 5 }, () => new Set<PowerType>());
 		this.arena = this.resolveArena();
@@ -668,7 +672,11 @@ export class ShellCurlScene extends ResponsiveScene {
 			if (!anyMoving) {
 				this.settlingTimer += delta;
 				if (this.settlingTimer >= SETTLING_DELAY_MS) {
-					this.finishThrow();
+					if (this.activeStone)
+						notifyGameRuleProjectileSettled(
+							this.buildGameRuleHooks(),
+							this.activeStone,
+						);
 				}
 			} else {
 				this.settlingTimer = 0;
@@ -753,6 +761,10 @@ export class ShellCurlScene extends ResponsiveScene {
 			this.launchInput.recreate();
 			this.clearActiveRing();
 			this.turnManager.setPhase("settling");
+			notifyGameRuleRelease(
+				this.buildGameRuleHooks(),
+				this.activeStone,
+			);
 			this.updateOnlineStatus("Launching...");
 			return;
 		}
@@ -781,9 +793,8 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.sweepCtrl.attach();
 
 		this.turnManager.setPhase("sweeping");
-		this.scoreHud.update(this.buildScoreHudState());
 		this.updateSidePanels();
-		this.captureLocalReplayFrame(true);
+		notifyGameRuleRelease(this.buildGameRuleHooks(), this.activeStone);
 	}
 
 	private finishThrow(): void {
@@ -1364,7 +1375,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private showGameOverOverlay(): void {
 		const scores = this.turnManager.state.score;
 		this.captureLocalReplayFrame(true, "finished");
-		this.pendingReplayPersist = this.persistLocalReplay();
+		this.persistLocalReplay();
 		this.submitResult();
 		this.scoreHud.update(this.buildScoreHudState());
 
@@ -1372,7 +1383,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		// The null/null pattern triggers an auto-dismiss that calls beginTurn(),
 		// which sees phase==='gameover' and calls showGameOverOverlay() again —
 		// creating an infinite 1.5s timer loop that survives scene transitions.
-		const winner = resolveReplayWinnerSide([...scores]);
+		const winner = computeGameRuleWinner(this.buildGameRuleHooks());
 		this.overlayContainer = showGameEndModal(this, this.overlayContainer, {
 			title: "TEMPLE CURLING",
 			result:
@@ -1391,12 +1402,18 @@ export class ShellCurlScene extends ResponsiveScene {
 					label: "RETURN",
 					onClick: () => {
 						this.overlayContainer = null;
-						this.scene.start("HubScene");
+						void this.waitForPendingReplayPersist().finally(() =>
+							this.scene.start("HubScene"),
+						);
 					},
 				},
 			],
 			depth: DEPTH_OVERLAY,
 		});
+	}
+
+	private async waitForPendingReplayPersist(): Promise<void> {
+		await this.replayPersistence.waitForPending();
 	}
 
 	/**
@@ -1535,9 +1552,12 @@ export class ShellCurlScene extends ResponsiveScene {
 					fy: bumper.fy,
 				})),
 			},
-			players: this.buildLocalReplayPlayers(),
+			players: buildCommonLocalReplayPlayers(
+				this.registry,
+				this.localReplayPlayerCount(),
+			),
 			objects,
-			entities: objects.map((stone) => replayStoneToEntity(stone)),
+			entities: buildReplayStoneEntities(objects),
 			activeStoneId: this.activeStone?.id ?? null,
 			winnerSide:
 				phase === "finished" && this.localMode !== "solo"
@@ -1546,25 +1566,17 @@ export class ShellCurlScene extends ResponsiveScene {
 		};
 	}
 
-	private buildLocalReplayPlayers(): SnapshotPlayer[] {
-		const user = this.registry.get("user") as
-			| { id?: number; username?: string; turtleName?: string | null }
-			| undefined;
-		return buildLocalReplayPlayers(
-			user,
-			Math.max(1, this.turnManager.state.score.length),
-			{
-				shellSkins: this.registry.get("shellSkins") as Record<
-					string,
-					string
-				>,
-			},
-		);
+	private localReplayPlayerCount(): number {
+		return Math.max(1, this.turnManager.state.score.length);
 	}
 
 	private buildScoreHudState(): TurnState {
+		return buildTurnStateFromGameRuleHooks(this.buildGameRuleHooks());
+	}
+
+	private buildGameRuleHooks(): GameRuleHooks<StoneState> {
 		const state = this.turnManager.state;
-		return buildTurnStateFromGameRuleHooks({
+		return {
 			getPlayerCount: () => Math.max(1, state.score.length),
 			getCurrentPlayer: () => state.currentTeam,
 			getCurrentRound: () => state.currentEnd,
@@ -1572,7 +1584,13 @@ export class ShellCurlScene extends ResponsiveScene {
 			getScore: () => state.score,
 			getPhase: () => state.phase,
 			hasHammer: () => state.hasHammer,
-		});
+			onRelease: () => {
+				this.scoreHud.update(this.buildScoreHudState());
+				if (!this.onlineMatch) this.captureLocalReplayFrame(true);
+			},
+			onProjectileSettled: () => this.finishThrow(),
+			computeWinner: () => resolveReplayWinnerSide([...state.score]),
+		};
 	}
 
 	private hudPlayerLabel(player: number): string {
@@ -1601,12 +1619,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		return Math.max(0, this.nextStoneId - (this.activeStone ? 1 : 0));
 	}
 
-	private async persistLocalReplay(): Promise<void> {
-		if (
-			!this.localReplayRecorder.getReplayId() ||
-			!this.localReplayRecorder.hasFrames()
-		)
-			return;
+	private persistLocalReplay(): void {
 		const user = this.registry.get("user") as
 			| {
 					id?: number;
@@ -1615,42 +1628,28 @@ export class ShellCurlScene extends ResponsiveScene {
 					isGuest?: boolean;
 			  }
 			| undefined;
-		if (user?.isGuest) return;
-		const finishedAt = new Date().toISOString();
 		const playerCount = Math.max(1, this.turnManager.state.score.length);
-		const importPayload = buildLocalReplayImportRequest({
+		this.replayPersistence.start({
+			recorder: this.localReplayRecorder,
 			gameId: "temple-curling",
 			mode: this.localMode === "solo" ? "singleplayer" : "local-versus",
-			createdAt: this.localReplayRecorder.getStartedAtIso() || finishedAt,
-			finishedAt,
+			user,
+			playerCount,
 			winnerSide:
 				this.localMode === "solo"
 					? null
 					: resolveReplayWinnerSide([
 							...this.turnManager.state.score,
 						]),
-			playerUserIds: buildLocalReplayPlayerUserIds(
-				user?.id ?? null,
-				playerCount,
-			),
-			playerNames: this.buildLocalReplayPlayers().map(
+			playerNames: buildCommonLocalReplayPlayers(
+				this.registry,
+				this.localReplayPlayerCount(),
+			).map(
 				(player) => player.username,
 			),
-			frames: this.buildReplayImportFrames(),
+			importReplay: (payload) => api.importReplay(payload),
+			logLabel: "ShellCurl",
 		});
-		try {
-			await api.importReplay(importPayload);
-			console.info("[ShellCurl] replay persisted");
-		} catch (err: unknown) {
-			console.warn(
-				"[ShellCurl] failed to persist replay to backend:",
-				err,
-			);
-		}
-	}
-
-	private buildReplayImportFrames(): ReplayImportRequest["frames"] {
-		return this.localReplayRecorder.buildImportFrames();
 	}
 
 	private initOnlineMatch(): void {

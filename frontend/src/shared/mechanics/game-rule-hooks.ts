@@ -47,3 +47,29 @@ export function buildTurnStateFromGameRuleHooks(
 		hasHammer: hooks.hasHammer?.() ?? false,
 	});
 }
+
+export function notifyGameRuleRelease<TProjectile>(
+	hooks: Pick<GameRuleHooks<TProjectile>, "onRelease">,
+	projectile: TProjectile,
+): void {
+	hooks.onRelease?.(projectile);
+}
+
+export function notifyGameRuleProjectileSettled<TProjectile>(
+	hooks: Pick<GameRuleHooks<TProjectile>, "onProjectileSettled">,
+	projectile: TProjectile,
+): void {
+	hooks.onProjectileSettled?.(projectile);
+}
+
+export function notifyGameRuleRoundComplete(
+	hooks: Pick<GameRuleHooks, "onRoundComplete">,
+): void {
+	hooks.onRoundComplete?.();
+}
+
+export function computeGameRuleWinner(
+	hooks: Pick<GameRuleHooks, "computeWinner">,
+): number | null {
+	return hooks.computeWinner?.() ?? null;
+}

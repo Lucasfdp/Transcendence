@@ -3,7 +3,7 @@
 ## Context
 
 This checkpoint summarises the work completed from
-`docs/games-common-code-audit.md` during phases 1, 2, 3, 4 and 5 of the
+`docs/games-common-code-audit.md` through phase 7 of the
 extraction process for the `arena + ball` family and its related shared
 infrastructure.
 
@@ -265,12 +265,15 @@ This now centralises:
 -   HUD adapter
 -   Scene replay recorder
 -   Replay import payload builder
+-   Replay persistence runtime for local replay import and pending persistence
+    waits
 -   Base arena engine
 -   Ball power lifecycle for the `arena + ball` family
 -   Shared obstacle descriptor for bamboo, timed targets, the bell, and
     bumpers
 -   Shared collectible descriptor for power pickups
--   Shared game rule hooks for round HUD state
+-   Shared game rule hooks for round HUD state plus lifecycle dispatch for
+    release, projectile settlement, round completion, and winner resolution
 -   Unified projectile module: `ball.ts` now owns both oval arena ball helpers
     and rectangular-sheet curling-shell helpers
 
@@ -283,6 +286,7 @@ This now centralises:
 -   `ObstacleDescriptor`
 -   `CollectibleDescriptor`
 -   `GameRuleHooks`
+-   `LocalReplayPersistenceRuntime`
 
 ## Not yet extracted
 
@@ -305,12 +309,142 @@ This now centralises:
 -   Bell Clash score zones are intentionally left local because they are not
     physical obstacles.
 
-# Recommended Next Sequence
+# Latest Applied Phases
 
 ## Phase 7
 
-Adopt `GameRuleHooks` beyond HUD state where it reduces duplicated release,
-settlement, round-complete, and winner-resolution plumbing without moving
+**Status:** `Completed` (first useful iteration)
+
+Applied in:
+
+-   `frontend/src/shared/mechanics/game-rule-hooks.ts`
+-   `frontend/src/shared/mechanics/game-rule-hooks.test.ts`
+-   `frontend/src/games/bamboo-bash/BambooBashScene.ts`
+-   `frontend/src/games/kame-knock/KameKnockScene.ts`
+-   `frontend/src/games/bell-clash/BellClashScene.ts`
+-   `frontend/src/games/shell-curl/ShellCurlScene.ts`
+
+This now centralises:
+
+-   optional release notification through `GameRuleHooks`
+-   optional projectile-settled notification through `GameRuleHooks`
+-   optional round-complete notification through `GameRuleHooks`
+-   optional winner computation through `GameRuleHooks`
+
+### Impact
+
+-   `KameKnockScene`, `BellClashScene`, and `ShellCurlScene` now route
+    projectile settlement through shared hook dispatch while keeping their
+    local scoring, turn advancement, and online state rules unchanged.
+-   `KameKnockScene`, `BellClashScene`, and `ShellCurlScene` now route launch
+    side effects through shared release dispatch where that removes repeated
+    post-release plumbing.
+-   `BambooBashScene` now routes timer-driven round completion through shared
+    round-complete dispatch.
+-   Local replay winner serialisation now uses the shared winner-resolution
+    hook in the migrated scenes where it was safe to do so.
+
+### Coverage
+
+-   `frontend/src/shared/mechanics/game-rule-hooks.test.ts`
+
+### Validation
+
+-   `cd frontend && npm run test:run -- src/shared/mechanics/game-rule-hooks.test.ts`
+-   `cd frontend && npm run build`
+
+Results:
+
+-   Targeted frontend tests passed.
+-   Frontend production build passed.
+-   Vite still reports the existing large chunk warning.
+
+### Current limitation
+
+-   Gameplay rule ownership remains local to each scene by design.
+-   Shared hooks now provide lifecycle dispatch points, but they do not yet
+    model full round-flow state transitions or online authoritative
+    settlement.
+
+## Phase 8
+
+**Status:** `In progress` (first useful iteration)
+
+Applied in:
+
+-   `frontend/src/games/common/runtime/LocalReplayPersistenceRuntime.ts`
+-   `frontend/src/games/common/runtime/LocalReplayPlayers.ts`
+-   `frontend/src/games/common/runtime/ReplayEntities.ts`
+-   `frontend/src/games/common/tests/LocalReplayPersistenceRuntime.test.ts`
+-   `frontend/src/games/common/tests/LocalReplayPlayers.test.ts`
+-   `frontend/src/games/common/tests/ReplayEntities.test.ts`
+-   `frontend/src/games/bamboo-bash/BambooBashScene.ts`
+-   `frontend/src/games/kame-knock/KameKnockScene.ts`
+-   `frontend/src/games/bell-clash/BellClashScene.ts`
+-   `frontend/src/games/shell-curl/ShellCurlScene.ts`
+
+This now centralises:
+
+-   local replay persistence eligibility checks
+-   guest exclusion for replay import
+-   finished replay import payload construction
+-   replay player user-id mapping
+-   replay player metadata construction from registry user and shell skins
+-   replay projectile and stone entity list mapping
+-   `api.importReplay` success and failure logging through a shared callback
+    boundary
+-   pending replay persistence ownership and wait/reset handling
+
+### Impact
+
+-   The four audited games no longer own duplicated `pendingReplayPersist`
+    state.
+-   The four audited games no longer implement repeated
+    `buildReplayImportFrames()` wrappers.
+-   The four audited games no longer implement repeated
+    `buildLocalReplayPlayers()` metadata helpers.
+-   The four audited games now route replay entity list construction through
+    common projectile or stone entity helpers instead of mapping directly in
+    scene snapshots.
+-   Local replay persistence now goes through
+    `LocalReplayPersistenceRuntime`, while scenes still provide their
+    game-specific mode, player count, winner, and entity snapshots.
+-   Bamboo Bash, Kame Knock, Bell Clash, and Shell Curl now wait through the
+    shared runtime before restart or return actions that leave the local end
+    overlay.
+
+### Coverage
+
+-   `frontend/src/games/common/tests/LocalReplayPersistenceRuntime.test.ts`
+-   `frontend/src/games/common/tests/LocalReplayPlayers.test.ts`
+-   `frontend/src/games/common/tests/ReplayEntities.test.ts`
+
+### Validation
+
+-   `cd frontend && npm run test:run -- src/games/common/tests/ReplayEntities.test.ts src/games/common/tests/LocalReplayPlayers.test.ts src/games/common/tests/LocalReplayPersistenceRuntime.test.ts src/games/shared/localReplay.test.ts src/shared/mechanics/game-rule-hooks.test.ts`
+-   `cd frontend && npm run build`
+
+Results:
+
+-   Targeted frontend tests passed.
+-   Frontend production build passed.
+-   Vite still reports the existing large chunk warning.
+
+### Current limitation
+
+-   Scene-specific `buildLocalReplaySnapshot()` methods remain local.
+-   Scene-specific replay object snapshot construction remains local where it
+    depends on world objects, trails, powers, and online snapshot shape.
+-   Scene-specific replay player counts remain local because each game derives
+    the active local player count differently.
+
+# Recommended Next Sequence
+
+## Phase 8 follow-up
+
+Continue the replay extraction by introducing descriptor-driven world-object
+snapshot builders, then reduce the scene-owned `buildLocalReplaySnapshot()`
+methods only where the snapshot contract is identical. Do not move
 game-specific scoring rules into the shared layer.
 
 # Executive Summary
@@ -320,10 +454,12 @@ visuals, HUD adaptation, replay support, backend arena lifecycle
 management, the shared power runtime for the `arena + ball` family, and a
 common obstacle contract adopted by the audited physical obstacles.
 Power pickups now also expose a common collectible contract, and the
-audited arena games expose HUD-facing round state through shared
-`GameRuleHooks`, including Shell Curl's `TurnManager` state. Remaining
-duplication is now primarily centred around gameplay rule execution and
-broader world snapshot contracts rather than shared plumbing.
+audited arena games expose HUD-facing round state and lifecycle dispatch
+through shared `GameRuleHooks`, including Shell Curl's `TurnManager` state.
+Local replay persistence and pending persistence waits now go through a shared
+runtime. Remaining duplication is now primarily centred around gameplay rule
+execution, scene-specific replay snapshots, and broader world snapshot
+contracts rather than shared plumbing.
 
 # Module Status
 

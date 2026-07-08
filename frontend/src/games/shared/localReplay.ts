@@ -29,6 +29,7 @@ export interface LocalReplayUser {
 	shellSkin?: string;
 	hubBackground?: string;
 	hubBackgroundAlter?: string | null;
+	isGuest?: boolean;
 }
 
 export interface LocalReplayPlayerVisuals {

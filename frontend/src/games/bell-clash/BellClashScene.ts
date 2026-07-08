@@ -9,7 +9,7 @@
  */
 
 import Phaser from "phaser";
-import { api, type ReplayImportRequest } from "../../features/hub/api";
+import { api } from "../../features/hub/api";
 import { ResponsiveScene } from "../../shared/responsive-scene";
 import { ARENA_01 } from "../../shared/arenas/arena01";
 import {
@@ -86,7 +86,13 @@ import {
 	resetPlayerTrail,
 	type PlayerTrailStore,
 } from "../../shared/mechanics/player-trails";
-import { buildTurnStateFromGameRuleHooks } from "../../shared/mechanics/game-rule-hooks";
+import {
+	buildTurnStateFromGameRuleHooks,
+	computeGameRuleWinner,
+	notifyGameRuleProjectileSettled,
+	notifyGameRuleRelease,
+	type GameRuleHooks,
+} from "../../shared/mechanics/game-rule-hooks";
 import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
 import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
 import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
@@ -97,7 +103,6 @@ import {
 	type GameSnapshot,
 	type OnlineMatchContext,
 	type ReplayFrameSnapshotEntity,
-	type SnapshotPlayer,
 } from "../../services/network/gameSocket";
 import {
 	PLAYER_COLOUR_VALUES,
@@ -106,16 +111,15 @@ import {
 } from "../../shared/game-ui";
 import { hudPlayerLabel } from "../../shared/player-labels";
 import {
-	buildLocalReplayImportRequest,
-	buildLocalReplayPlayerUserIds,
-	buildLocalReplayPlayers,
-	replayBallToEntity,
 	resolveReplayWinnerSide,
 	SceneReplayRecorder,
 	withPowerStateFlags,
 } from "../shared/localReplay";
 import {
+	buildCommonLocalReplayPlayers,
+	buildReplayProjectileEntities,
 	CommonGameSceneHost,
+	LocalReplayPersistenceRuntime,
 	SlingshotLaunchRuntime,
 	WorldMapRuntime,
 	WorldRuntime,
@@ -276,7 +280,7 @@ export class BellClashScene extends ResponsiveScene {
 	private localScores: number[] = [0];
 	private readonly localReplayRecorder =
 		new SceneReplayRecorder<BellClashSnapshot>();
-	private pendingReplayPersist: Promise<void> | null = null;
+	private readonly replayPersistence = new LocalReplayPersistenceRuntime();
 
 	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
 		if (isBellClashSnapshot(snapshot)) this.applyOnlineSnapshot(snapshot);
@@ -406,7 +410,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.localScores = [0];
 		this.localBalls.clear();
 		this.localReplayRecorder.reset();
-		this.pendingReplayPersist = null;
+		this.replayPersistence.reset();
 
 		this.zones = [];
 		this.currentShot = 0;
@@ -609,7 +613,11 @@ export class BellClashScene extends ResponsiveScene {
 				isBallMoving(ball),
 			) || this.powerBalls.some((entry) => isBallMoving(entry.ball));
 
-		if (this.launchedThisShot && !anyMoving) this.finishShot();
+		if (this.launchedThisShot && !anyMoving)
+			notifyGameRuleProjectileSettled(
+				this.buildGameRuleHooks(),
+				this.ball,
+			);
 
 		this.recordBallTrails();
 		this.drawBell();
@@ -664,6 +672,7 @@ export class BellClashScene extends ResponsiveScene {
 			this.activePower = PowerType.NONE;
 			this.powerSidePanel?.hide();
 			this.launchInput.recreate();
+			notifyGameRuleRelease(this.buildGameRuleHooks(), this.ball);
 			this.updateOnlineStatus("Launching...");
 			getGameSocket().emit("game:input", {
 				matchId: this.onlineMatch.matchId,
@@ -702,7 +711,7 @@ export class BellClashScene extends ResponsiveScene {
 
 		this.activePower = PowerType.NONE;
 		this.powerSidePanel?.hide();
-		this.captureLocalReplayFrame(true);
+		notifyGameRuleRelease(this.buildGameRuleHooks(), this.ball);
 	}
 
 	// ── Shot helpers ──────────────────────────────────────────────────────────────
@@ -925,7 +934,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.powerSidePanel?.hide();
 		this.updateSidePanels();
 		this.captureLocalReplayFrame(true, "finished");
-		this.pendingReplayPersist = this.persistLocalReplay();
+		this.persistLocalReplay();
 		this.submitResult();
 		this.showEndScreen();
 	}
@@ -1043,7 +1052,10 @@ export class BellClashScene extends ResponsiveScene {
 			roundScores,
 			shotCounts,
 			zones: this.zones.map((zone) => ({ ...zone })),
-			players: this.buildLocalReplayPlayers(),
+			players: buildCommonLocalReplayPlayers(
+				this.registry,
+				this.localPlayerCount,
+			),
 			balls,
 			activeBallIdBySide: Array.from(
 				{ length: this.localPlayerCount },
@@ -1053,24 +1065,13 @@ export class BellClashScene extends ResponsiveScene {
 						: null,
 			),
 			nextBallId: this.localPlayerCount,
-			entities: balls.map((ball) =>
-				replayBallToEntity(ball, "bell-clash-shell"),
+			entities: buildReplayProjectileEntities(
+				balls,
+				"bell-clash-shell",
 			),
 			winnerSide:
 				phase === "finished" ? this.resolveLocalWinnerSide() : null,
 		};
-	}
-
-	private buildLocalReplayPlayers(): SnapshotPlayer[] {
-		const user = this.registry.get("user") as
-			| { id?: number; username?: string; turtleName?: string | null }
-			| undefined;
-		return buildLocalReplayPlayers(user, this.localPlayerCount, {
-			shellSkins: this.registry.get("shellSkins") as Record<
-				string,
-				string
-			>,
-		});
 	}
 
 	private resolveLocalWinnerSide(): number | null {
@@ -1088,12 +1089,7 @@ export class BellClashScene extends ResponsiveScene {
 		}));
 	}
 
-	private async persistLocalReplay(): Promise<void> {
-		if (
-			!this.localReplayRecorder.getReplayId() ||
-			!this.localReplayRecorder.hasFrames()
-		)
-			return;
+	private persistLocalReplay(): void {
 		const user = this.registry.get("user") as
 			| {
 					id?: number;
@@ -1102,36 +1098,22 @@ export class BellClashScene extends ResponsiveScene {
 					isGuest?: boolean;
 			  }
 			| undefined;
-		if (user?.isGuest) return;
-		const finishedAt = new Date().toISOString();
-		const importPayload = buildLocalReplayImportRequest({
+		this.replayPersistence.start({
+			recorder: this.localReplayRecorder,
 			gameId: "bell-clash",
 			mode: this.localMode === "versus" ? "local-versus" : "singleplayer",
-			createdAt: this.localReplayRecorder.getStartedAtIso() || finishedAt,
-			finishedAt,
-			winnerSide: this.resolveLocalWinnerSide(),
-			playerUserIds: buildLocalReplayPlayerUserIds(
-				user?.id ?? null,
+			user,
+			playerCount: this.localPlayerCount,
+			winnerSide: computeGameRuleWinner(this.buildGameRuleHooks()),
+			playerNames: buildCommonLocalReplayPlayers(
+				this.registry,
 				this.localPlayerCount,
-			),
-			playerNames: this.buildLocalReplayPlayers().map(
+			).map(
 				(player) => player.username,
 			),
-			frames: this.buildReplayImportFrames(),
+			importReplay: (payload) => api.importReplay(payload),
+			logLabel: "BellClash",
 		});
-		try {
-			await api.importReplay(importPayload);
-			console.info("[BellClash] replay persisted");
-		} catch (err: unknown) {
-			console.warn(
-				"[BellClash] failed to persist replay to backend:",
-				err,
-			);
-		}
-	}
-
-	private buildReplayImportFrames(): ReplayImportRequest["frames"] {
-		return this.localReplayRecorder.buildImportFrames();
 	}
 
 	private submitResult(): void {
@@ -2023,17 +2005,16 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private buildScoreHudState(): TurnState {
-		const score =
-			this.onlineMatch?.snapshot?.gameId === "bell-clash"
-				? this.onlineMatch.snapshot.score
-				: this.localPlayerCount > 1
-					? this.localScores
-					: [this.score];
+		return buildTurnStateFromGameRuleHooks(this.buildGameRuleHooks());
+	}
+
+	private buildGameRuleHooks(): GameRuleHooks<BallState> {
+		const score = this.currentScoresForRules();
 		const playerCount = Math.max(1, score.length, this.localPlayerCount);
 		const shellIndex = this.onlineMatch
 			? Math.min(this.onlineLocalShotNumber, this.onlineShotsPerRound - 1)
 			: this.currentShot;
-		return buildTurnStateFromGameRuleHooks({
+		return {
 			getPlayerCount: () => playerCount,
 			getCurrentPlayer: () => this.currentPlayerIndex(),
 			getCurrentRound: () =>
@@ -2044,7 +2025,20 @@ export class BellClashScene extends ResponsiveScene {
 				this.buildTurnDots(playerCount, shellIndex),
 			getScore: () => score,
 			getPhase: () => this.currentTurnPhase(),
-		});
+			onRelease: () => {
+				if (!this.onlineMatch) this.captureLocalReplayFrame(true);
+			},
+			onProjectileSettled: () => this.finishShot(),
+			computeWinner: () => this.resolveLocalWinnerSide(),
+		};
+	}
+
+	private currentScoresForRules(): readonly number[] {
+		return this.onlineMatch?.snapshot?.gameId === "bell-clash"
+			? this.onlineMatch.snapshot.score
+			: this.localPlayerCount > 1
+				? this.localScores
+				: [this.score];
 	}
 
 	private buildTurnDots(playerCount: number, shellIndex: number): number[] {
@@ -2443,21 +2437,29 @@ export class BellClashScene extends ResponsiveScene {
 					label: "PLAY AGAIN",
 					onClick: () => {
 						this.overlayState = null;
-						this.cleanupSceneResources();
-						this.scene.restart();
+						void this.waitForPendingReplayPersist().finally(() => {
+							this.cleanupSceneResources();
+							this.scene.restart();
+						});
 					},
 				},
 				{
 					label: "RETURN",
 					onClick: () => {
 						this.overlayState = null;
-						this.cleanupSceneResources();
-						this.scene.start("HubScene");
+						void this.waitForPendingReplayPersist().finally(() => {
+							this.cleanupSceneResources();
+							this.scene.start("HubScene");
+						});
 					},
 				},
 			],
 			depth: DEPTH_OVERLAY,
 		});
+	}
+
+	private async waitForPendingReplayPersist(): Promise<void> {
+		await this.replayPersistence.waitForPending();
 	}
 
 	private showOnlineEndScreen(snapshot: BellClashSnapshot): void {

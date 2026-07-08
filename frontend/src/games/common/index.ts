@@ -22,3 +22,17 @@ export {
 	SlingshotLaunchRuntime,
 	type SlingshotLaunchRuntimeOptions,
 } from "./runtime/SlingshotLaunchRuntime";
+export {
+	LocalReplayPersistenceRuntime,
+	persistLocalReplayImport,
+	type LocalReplayPersistenceOptions,
+} from "./runtime/LocalReplayPersistenceRuntime";
+export {
+	buildCommonLocalReplayPlayers,
+	type LocalReplayRegistry,
+} from "./runtime/LocalReplayPlayers";
+export {
+	buildReplayProjectileEntities,
+	buildReplayStoneEntities,
+	type ReplayStoneSnapshot,
+} from "./runtime/ReplayEntities";

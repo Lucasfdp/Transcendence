@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildTurnStateFromGameRuleHooks } from "./game-rule-hooks";
+import {
+	buildTurnStateFromGameRuleHooks,
+	computeGameRuleWinner,
+	notifyGameRuleProjectileSettled,
+	notifyGameRuleRelease,
+	notifyGameRuleRoundComplete,
+} from "./game-rule-hooks";
 import type { TurnState } from "./turn-manager";
 
 describe("game-rule-hooks", () => {
@@ -45,5 +51,33 @@ describe("game-rule-hooks", () => {
 				getPhase: () => "gameover",
 			}),
 		).toBe(hudState);
+	});
+
+	it("routes lifecycle events through optional game rule hooks", () => {
+		const calls: string[] = [];
+		const projectile = { id: "shell" };
+
+		notifyGameRuleRelease(
+			{ onRelease: (value) => calls.push(`release:${value.id}`) },
+			projectile,
+		);
+		notifyGameRuleProjectileSettled(
+			{ onProjectileSettled: (value) => calls.push(`settled:${value.id}`) },
+			projectile,
+		);
+		notifyGameRuleRoundComplete({
+			onRoundComplete: () => calls.push("round-complete"),
+		});
+
+		expect(calls).toEqual([
+			"release:shell",
+			"settled:shell",
+			"round-complete",
+		]);
+	});
+
+	it("resolves winners through optional game rule hooks", () => {
+		expect(computeGameRuleWinner({ computeWinner: () => 1 })).toBe(1);
+		expect(computeGameRuleWinner({})).toBeNull();
 	});
 });
