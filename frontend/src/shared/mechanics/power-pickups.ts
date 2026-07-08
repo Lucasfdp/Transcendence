@@ -4,6 +4,15 @@ import {
 	PowerType,
 } from "./power-system";
 import { POWER_UP_TEXTURES } from "./game-powers";
+import {
+	buildCircularCollectibleDescriptor,
+	hitsCircularCollectible,
+	remapCollectibleDescriptors,
+	resolveCollectiblePosition,
+	resolveCollectibleRadius,
+	type CollectibleDescriptor,
+} from "./collectible-descriptor";
+import type { ObstacleArenaFrame } from "./obstacle-descriptor";
 
 export interface PowerPickup {
 	id: number;
@@ -13,11 +22,33 @@ export interface PowerPickup {
 	r: number;
 }
 
+export interface PowerPickupRendering {
+	readonly texture?: string;
+	readonly accentColour: number;
+}
+
+export type PowerPickupCollectibleDescriptor = CollectibleDescriptor<
+	"power-pickup",
+	PowerType,
+	PowerPickupRendering,
+	PowerPickup
+>;
+
+export interface NormalisedPowerPickupSnapshot {
+	readonly id: number;
+	readonly type: string;
+	readonly nx: number;
+	readonly ny: number;
+}
+
 export function remapPowerPickups(
 	pickups: readonly PowerPickup[],
 	mapPickup: (pickup: PowerPickup) => PowerPickup,
 ): PowerPickup[] {
-	return pickups.map((pickup) => mapPickup({ ...pickup }));
+	return remapCollectibleDescriptors(
+		pickups.map((pickup) => powerPickupDescriptor(pickup)),
+		(descriptor) => powerPickupDescriptor(mapPickup(powerPickupFromDescriptor(descriptor))),
+	).map((descriptor) => powerPickupFromDescriptor(descriptor));
 }
 
 export interface PowerPickupSpawnArea {
@@ -92,13 +123,13 @@ export class PowerPickupManager {
 			if (!area.contains(point.x, point.y, this.radius)) continue;
 			if (!this.canPlace(point.x, point.y, blockers)) continue;
 
-			const pickup: PowerPickup = {
+			const pickup = powerPickupFromDescriptor(powerPickupDescriptor({
 				id: this.nextId++,
 				type: pickRandom(this.pool),
 				x: point.x,
 				y: point.y,
 				r: this.radius,
-			};
+			}));
 			this.pickups.push(pickup);
 			return pickup;
 		}
@@ -108,7 +139,8 @@ export class PowerPickupManager {
 
 	collect(x: number, y: number, r: number): PowerPickup | null {
 		for (const pickup of [...this.pickups]) {
-			if (Math.hypot(x - pickup.x, y - pickup.y) > r + pickup.r) continue;
+			if (!hitsCircularCollectible(powerPickupDescriptor(pickup), undefined, x, y, r))
+				continue;
 			this.remove(pickup.id);
 			return pickup;
 		}
@@ -125,22 +157,26 @@ export class PowerPickupManager {
 		this.clearImages();
 
 		for (const pickup of this.pickups) {
-			const def = ALL_POWERS[pickup.type];
-			const texture = POWER_UP_TEXTURES[pickup.type];
-			this.graphics.fillStyle(def.accentColour, 0.25);
-			this.graphics.fillCircle(pickup.x, pickup.y, pickup.r * 1.65);
-			this.graphics.lineStyle(Math.max(1, pickup.r * 0.11), 0xffffff, 0.75);
-			this.graphics.strokeCircle(pickup.x, pickup.y, pickup.r * 1.15);
+			const descriptor = powerPickupDescriptor(pickup);
+			const position = resolveCollectiblePosition(descriptor);
+			const radius = resolveCollectibleRadius(descriptor);
+			const accentColour =
+				descriptor.rendering?.accentColour ?? ALL_POWERS[pickup.type].accentColour;
+			const texture = descriptor.rendering?.texture;
+			this.graphics.fillStyle(accentColour, 0.25);
+			this.graphics.fillCircle(position.x, position.y, radius * 1.65);
+			this.graphics.lineStyle(Math.max(1, radius * 0.11), 0xffffff, 0.75);
+			this.graphics.strokeCircle(position.x, position.y, radius * 1.15);
 
 			if (texture && this.scene.textures.exists(texture)) {
 				const image = this.scene.add
-					.image(pickup.x, pickup.y, texture)
+					.image(position.x, position.y, texture)
 					.setDepth(this.depth)
-					.setDisplaySize(pickup.r * 2.45, pickup.r * 2.45);
+					.setDisplaySize(radius * 2.45, radius * 2.45);
 				this.images.push(image);
 			} else {
-				this.graphics.fillStyle(def.accentColour, 0.9);
-				this.graphics.fillCircle(pickup.x, pickup.y, pickup.r);
+				this.graphics.fillStyle(accentColour, 0.9);
+				this.graphics.fillCircle(position.x, position.y, radius);
 			}
 		}
 	}
@@ -163,6 +199,75 @@ export class PowerPickupManager {
 		for (const image of this.images) image.destroy();
 		this.images.length = 0;
 	}
+}
+
+export function powerPickupDescriptor(
+	pickup: PowerPickup,
+): PowerPickupCollectibleDescriptor {
+	const def = ALL_POWERS[pickup.type];
+	return buildCircularCollectibleDescriptor({
+		id: pickup.id,
+		type: "power-pickup",
+		effect: pickup.type,
+		position: { mode: "absolute", x: pickup.x, y: pickup.y },
+		radius: pickup.r,
+		radiusUnit: "pixels",
+		serialise: { id: pickup.id, type: pickup.type },
+		rendering: {
+			texture: POWER_UP_TEXTURES[pickup.type],
+			accentColour: def.accentColour,
+		},
+	});
+}
+
+export function powerPickupFromDescriptor(
+	descriptor: PowerPickupCollectibleDescriptor,
+	arena?: ObstacleArenaFrame,
+): PowerPickup {
+	const position = resolveCollectiblePosition(descriptor, arena);
+	return {
+		id: Number(descriptor.id),
+		type: descriptor.effect,
+		x: position.x,
+		y: position.y,
+		r: resolveCollectibleRadius(descriptor, arena),
+	};
+}
+
+export function powerPickupFromNormalisedSnapshot(
+	pickup: NormalisedPowerPickupSnapshot,
+	arena: ObstacleArenaFrame,
+	radius: number,
+	resolveType: (type: string) => PowerType,
+): PowerPickup {
+	return powerPickupFromDescriptor(
+		buildCircularCollectibleDescriptor({
+			id: pickup.id,
+			type: "power-pickup",
+			effect: resolveType(pickup.type),
+			position: { mode: "normalised", x: pickup.nx, y: pickup.ny },
+			radius,
+			radiusUnit: "pixels",
+			serialise: { ...pickup },
+			rendering: {
+				texture: POWER_UP_TEXTURES[resolveType(pickup.type)],
+				accentColour: ALL_POWERS[resolveType(pickup.type)].accentColour,
+			},
+		}),
+		arena,
+	);
+}
+
+export function powerPickupToNormalisedSnapshot(
+	pickup: PowerPickup,
+	arena: ObstacleArenaFrame,
+): NormalisedPowerPickupSnapshot {
+	return {
+		id: pickup.id,
+		type: pickup.type,
+		nx: (pickup.x - arena.cx) / arena.rx,
+		ny: (pickup.y - arena.cy) / arena.ry,
+	};
 }
 
 export function createRectPowerPickupArea(bounds: {

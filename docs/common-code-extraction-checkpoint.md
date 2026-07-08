@@ -3,7 +3,7 @@
 ## Context
 
 This checkpoint summarises the work completed from
-`docs/games-common-code-audit.md` during phases 1, 2, 3 and 4 of the
+`docs/games-common-code-audit.md` during phases 1, 2, 3, 4 and 5 of the
 extraction process for the `arena + ball` family and its related shared
 infrastructure.
 
@@ -21,6 +21,8 @@ Checkpoint date: `2026-07-08`
 -   `frontend/src/shared/mechanics/*`
 -   `frontend/src/games/bamboo-bash/bamboo.ts`
 -   `frontend/src/shared/mechanics/timed-targets.ts`
+-   `frontend/src/shared/mechanics/collectible-descriptor.ts`
+-   `frontend/src/shared/mechanics/power-pickups.ts`
 
 ### Backend
 
@@ -181,6 +183,42 @@ expiry, and scoring
     regions rather than physical obstacles.
 -   Snapshot serialisation for world objects remains separate.
 
+## 7. Shared Collectible Descriptor
+
+**Status:** `Completed` (first useful iteration)
+
+Extracted into: - `frontend/src/shared/mechanics/collectible-descriptor.ts`
+
+This now centralises: - collectible identity and type - effect payload -
+normalised or absolute position metadata - circular geometry and
+source/pixel/normalised radius units - collect radius - common serialise
+metadata - rendering metadata - optional collect and expiry hooks
+
+### Impact
+
+-   `PowerPickupManager` now routes power pickups through a
+    `CollectibleDescriptor` while keeping the existing `PowerPickup` API for
+    scenes.
+-   Shared helpers now resolve collectible positions and radii, test
+    circular collection, build blockers, and remap descriptor lists without
+    mutating source values.
+-   Bamboo Bash's online pickup snapshot mapping now uses a shared
+    normalised snapshot helper instead of local coordinate conversion.
+-   Power pickup rendering metadata, collection effect, and serialisation
+    metadata now share one descriptor boundary.
+
+### Coverage
+
+-   `frontend/src/shared/mechanics/collectible-descriptor.test.ts`
+-   `frontend/src/shared/mechanics/power-pickups.test.ts`
+
+### Current limitation
+
+-   Backend authoritative Bamboo Bash pickup spawning still keeps its local
+    normalised coordinate generator.
+-   Game-specific collection effects remain local to each scene or power
+    runtime by design.
+
 # Current Status by Area
 
 ## Successfully extracted
@@ -193,6 +231,7 @@ expiry, and scoring
 -   Ball power lifecycle for the `arena + ball` family
 -   Shared obstacle descriptor for bamboo, timed targets, the bell, and
     bumpers
+-   Shared collectible descriptor for power pickups
 
 ## Partially extracted
 
@@ -200,10 +239,10 @@ expiry, and scoring
 -   `BaseArenaEngine`
 -   `ArenaPowerRuntime`
 -   `ObstacleDescriptor`
+-   `CollectibleDescriptor`
 
 ## Not yet extracted
 
--   `CollectibleDescriptor`
 -   `GameRuleHooks`
 -   `LaunchableActor`
 -   Shared frontend/backend contracts for `LaunchSnapshotEntity` and
@@ -225,10 +264,6 @@ expiry, and scoring
 
 # Recommended Next Sequence
 
-## Phase 5
-
-Extract `CollectibleDescriptor`.
-
 ## Phase 6
 
 Extract `GameRuleHooks`.
@@ -239,9 +274,9 @@ The project now includes genuine shared infrastructure for player
 visuals, HUD adaptation, replay support, backend arena lifecycle
 management, the shared power runtime for the `arena + ball` family, and a
 common obstacle contract adopted by the audited physical obstacles.
-Remaining duplication is now primarily centred around collectible
-integration, gameplay rules, and broader world snapshot contracts rather
-than shared plumbing.
+Power pickups now also expose a common collectible contract. Remaining
+duplication is now primarily centred around gameplay rules and broader
+world snapshot contracts rather than shared plumbing.
 
 # Module Status
 

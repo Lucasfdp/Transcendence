@@ -59,6 +59,7 @@ import {
 import {
 	PowerPickupManager,
 	createEllipsePowerPickupArea,
+	powerPickupFromNormalisedSnapshot,
 	type PowerPickupBlocker,
 } from "../../shared/mechanics/power-pickups";
 import {
@@ -2466,13 +2467,14 @@ export class BambooBashScene extends ResponsiveScene {
 			const snapshot = this.onlineMatch.snapshot;
 			this.powerPickups.setPickups(
 				snapshot.gameId === "bamboo-bash"
-					? snapshot.powerPickups.map((pickup) => ({
-							id: pickup.id,
-							type: this.toPowerType(pickup.type),
-							x: this.arena.cx + pickup.nx * this.arena.rx,
-							y: this.arena.cy + pickup.ny * this.arena.ry,
-							r: PICKUP_RADIUS_SRC * this.arena.scale,
-						}))
+					? snapshot.powerPickups.map((pickup) =>
+							powerPickupFromNormalisedSnapshot(
+								pickup,
+								this.arena,
+								PICKUP_RADIUS_SRC * this.arena.scale,
+								(type) => this.toPowerType(type),
+							),
+						)
 					: [],
 			);
 			return;

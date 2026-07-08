@@ -655,7 +655,10 @@ Acceptance criteria:
 Default migration mode:
 
 - Work on Bamboo Bash, Kame Knock, Bell Clash, and Shell Curl in the same phase.
-- Use multi-agent parallel work for game-specific slices whenever the user asks for a phase or shared-system migration.
+- Before starting each phase, make an explicit multi-agent suitability decision.
+- Use multi-agent parallel work only when it creates real value: independent per-game edits, substantial game-specific reasoning, broad review coverage, or a high risk of missing one game's variant.
+- Do not use multi-agent workers when the phase is mainly a small shared-contract change, a narrow central runtime edit, or a serial integration where parallel workers would add coordination cost without reducing risk.
+- Record the decision in the phase notes or checkpoint: `Multi-agent decision: used` or `Multi-agent decision: not used`, with a short reason.
 - Assign one bounded worker per game when edits are large enough to conflict or require game-specific reasoning.
 - Keep the main agent responsible for shared contracts, integration, final review, validation, and checkpoint updates.
 - Do not migrate only one game as the default path.
@@ -677,12 +680,13 @@ Integration rule:
 - Workers must have disjoint write scopes wherever possible.
 - If a shared API changes, the main agent owns the shared files and workers adapt their game files to that API.
 - The final result for a phase must compile and validate all four games unless a single-game scope was explicitly requested.
+- If multi-agent work is not used, the main agent must still verify the phase against all four audited games and document why parallel workers were unnecessary.
 
 ## Implementation Rules
 
 - Every phase must leave the game playable.
 - Every code change related to this refactor must update `docs/commom-code-extraction-checkpoint.md` in the same task.
-- Unless the user explicitly requests a specific game, each phase must address Bamboo Bash, Kame Knock, Bell Clash, and Shell Curl together using multi-agent parallel work where useful.
+- Unless the user explicitly requests a specific game, each phase must address Bamboo Bash, Kame Knock, Bell Clash, and Shell Curl together. Multi-agent parallel work is optional and must follow the per-phase suitability decision above.
 - Do not keep two long-term implementations of the same lifecycle.
 - Move code first, then simplify. Avoid changing gameplay semantics during extraction unless a bug is explicitly being fixed.
 - Shared runtime files must be Phaser-free unless they are explicitly render adapters.
@@ -714,10 +718,11 @@ Update these documents as phases land:
 
 ## Immediate Next Step
 
-Continue with Phase 4:
+Continue with Phase 6:
 
-1. Define common obstacle and scoring descriptor contracts in `frontend/src/games/common/descriptors/`.
-2. Use multi-agent workers to apply the descriptor path to Bamboo Bash, Kame Knock, Bell Clash, and Shell Curl in parallel.
-3. Keep game-specific rule identity in descriptors and hooks rather than scene-local orchestration.
-4. Add focused descriptor and scoring tests for all four games in the same phase.
-5. Update `docs/commom-code-extraction-checkpoint.md` with per-game status, validation, risks, and the next step.
+1. Decide whether Phase 6 benefits from multi-agent workers before editing code.
+2. If multi-agent work is useful, split Bamboo Bash, Kame Knock, Bell Clash, and Shell Curl flow analysis into bounded per-game workers while the main agent owns the shared `GameRuleHooks` and `RoundFlowRuntime` contracts.
+3. If multi-agent work is not useful, document why and have the main agent verify all four games directly.
+4. Keep game-specific rule identity in descriptors and hooks rather than scene-local orchestration.
+5. Add focused round-flow and rule-hook tests for the shared contract and the affected games.
+6. Update `docs/commom-code-extraction-checkpoint.md` with the multi-agent decision, per-game status, validation, risks, and the next step.
