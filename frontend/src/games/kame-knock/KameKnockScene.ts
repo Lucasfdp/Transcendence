@@ -26,7 +26,6 @@ import {
 	drawShellBall,
 	stepBall,
 } from "../../shared/mechanics/ball";
-import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
@@ -116,6 +115,14 @@ import {
 	SceneReplayRecorder,
 	withPowerStateFlags,
 } from "../shared/localReplay";
+import {
+	CommonGameSceneHost,
+	SlingshotLaunchRuntime,
+	WorldMapRuntime,
+	WorldRuntime,
+	remapLaunchableToArena,
+	type GameDescriptor,
+} from "../common";
 
 // Online ball state with powerup visual properties
 interface OnlineBallState extends BallState {
@@ -229,7 +236,22 @@ const FALLBACK_POWERS: PowerType[] = [
 	...KAME_AVAILABLE_POWERS,
 ];
 
+const KAME_KNOCK_DESCRIPTOR: GameDescriptor = {
+	gameId: "kame-knock",
+	sceneKey: "KameKnockScene",
+	playerCount: { min: 1, max: 5 },
+	localModes: ["solo", "versus"],
+};
+
 export class KameKnockScene extends ResponsiveScene {
+	private readonly sceneHost: CommonGameSceneHost;
+	private readonly targetWorld = new WorldRuntime<TimedTarget>();
+	private readonly onlineBallWorld = new WorldMapRuntime<
+		number,
+		OnlineBallState
+	>();
+	private readonly launchInput: SlingshotLaunchRuntime<BallState>;
+
 	private bgGfx!: Phaser.GameObjects.Graphics;
 	private arenaSkin!: Phaser.GameObjects.Image;
 	private targetGfx!: Phaser.GameObjects.Graphics;
@@ -242,10 +264,8 @@ export class KameKnockScene extends ResponsiveScene {
 	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
 	private powerBalls = new ArenaPowerRuntime();
 	private powerBallTexCount = 0;
-	private slingshot: Slingshot | null = null;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 
-	private targets: TimedTarget[] = [];
 	private targetSprites = new Map<number, Phaser.GameObjects.Image>();
 	private nextTargetId = 0;
 	private currentBallIndex = 0;
@@ -288,7 +308,6 @@ export class KameKnockScene extends ResponsiveScene {
 	private onlineSettledSubmitted = false;
 	private onlineReleasePending = false;
 	private visibleBallSide = 0;
-	private onlineBalls = new Map<number, OnlineBallState>();
 	private ballTrails: PlayerTrailStore = new Map();
 	private completedTrailPlayers = new Map<number | string, number>();
 	private localMode: "solo" | "versus" = "solo";
@@ -332,6 +351,37 @@ export class KameKnockScene extends ResponsiveScene {
 
 	constructor() {
 		super({ key: "KameKnockScene" });
+		this.sceneHost = new CommonGameSceneHost(this, {
+			descriptor: KAME_KNOCK_DESCRIPTOR,
+			update: (_time, delta) => this.updateKameKnock(delta),
+			relayout: () => this.relayoutKameKnock(),
+			shutdown: () => this.cleanupSceneResources(),
+		});
+		this.launchInput = new SlingshotLaunchRuntime({
+			scene: this,
+			getLaunchable: () => this.ball,
+			getScale: () => this.arena.scale,
+			maxDragSrc: MAX_DRAG_SRC,
+			launchSpeedSrc: LAUNCH_SPEED_SRC,
+			depth: DEPTH_AIM,
+			onLaunch: () => this.onLaunch(),
+		});
+	}
+
+	private get targets(): TimedTarget[] {
+		return this.targetWorld.all();
+	}
+
+	private set targets(targets: readonly TimedTarget[]) {
+		this.targetWorld.replace(targets);
+	}
+
+	private get onlineBalls(): Map<number, OnlineBallState> {
+		return this.onlineBallWorld.map();
+	}
+
+	private set onlineBalls(onlineBalls: ReadonlyMap<number, OnlineBallState>) {
+		this.onlineBallWorld.replace(onlineBalls);
 	}
 
 	preload(): void {
@@ -343,10 +393,11 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	protected onShutdown(): void {
-		this.cleanupSceneResources();
+		this.sceneHost.shutdown();
 	}
 
 	create(): void {
+		this.sceneHost.activate();
 		const registryOnlineMatch =
 			(this.registry.get("onlineMatch") as
 				| OnlineMatchContext
@@ -459,16 +510,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.ballGfx = this.add.graphics().setDepth(DEPTH_BALL);
 		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
 
-		this.slingshot = new Slingshot(
-			this,
-			this.ball,
-			{
-				maxDrag: MAX_DRAG_SRC * this.arena.scale,
-				launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
-				depth: DEPTH_AIM,
-			},
-			() => this.onLaunch(),
-		);
+		this.launchInput.recreate();
 
 		const initialOnlineSnapshot =
 			this.onlineMatch?.snapshot?.gameId === "kame-knock"
@@ -501,8 +543,7 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	private cleanupSceneResources(): void {
-		this.slingshot?.destroy();
-		this.slingshot = null;
+		this.launchInput.destroy();
 		this.destroyTargetSprites();
 		this.overlay?.destroy(true);
 		this.overlay = undefined;
@@ -532,7 +573,11 @@ export class KameKnockScene extends ResponsiveScene {
 		this.onlineStatusText = null;
 	}
 
-	update(_time: number, delta: number): void {
+	update(time: number, delta: number): void {
+		this.sceneHost.update(time, delta);
+	}
+
+	private updateKameKnock(delta: number): void {
 		if (!this.running) return;
 		if (!this.onlineMatch) this.localReplayRecorder.addElapsed(delta);
 
@@ -624,7 +669,7 @@ export class KameKnockScene extends ResponsiveScene {
 				(this.powerUsed[p] ?? this.powerUsed[0]).add(power);
 			this.activePower = PowerType.NONE;
 			this.powerSidePanel?.hide();
-			this.slingshot?.destroy();
+			this.launchInput.destroy();
 			this.updateScoreHud();
 			this.updateOnlineStatus("Launching...");
 			getGameSocket().emit("game:input", {
@@ -897,7 +942,7 @@ export class KameKnockScene extends ResponsiveScene {
 
 	private endRound(): void {
 		this.running = false;
-		this.slingshot?.cancel();
+		this.launchInput.cancel();
 		this.ball.vx = 0;
 		this.ball.vy = 0;
 		this.combo = 0;
@@ -933,7 +978,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private startOnlineCountdown(): void {
 		if (!this.onlineMatch || this.countdownText) return;
 		this.running = false;
-		this.slingshot?.destroy();
+			this.launchInput.destroy();
 		this.powerSidePanel?.hide();
 
 		const steps = ["3", "2", "1", "GO!"];
@@ -1093,7 +1138,7 @@ export class KameKnockScene extends ResponsiveScene {
 		if (event.roundNumber !== this.onlineRoundNumber()) return;
 
 		this.clearPowerBalls();
-		this.slingshot?.destroy();
+		this.launchInput.destroy();
 		this.onlineReplayThrower = event.side;
 		this.onlineReplayTurnNumber = event.turnNumber;
 		this.onlineSettledSubmitted = false;
@@ -1149,7 +1194,6 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	private syncSlingshotForTurn(): void {
-		if (!this.slingshot) return;
 		if (
 			!this.onlineMatch ||
 			(this.running &&
@@ -1157,8 +1201,8 @@ export class KameKnockScene extends ResponsiveScene {
 				!this.launchedThisBall &&
 				!this.onlineReleasePending)
 		)
-			this.slingshot.attach();
-		else this.slingshot.destroy();
+			this.launchInput.attach();
+		else this.launchInput.destroy();
 	}
 
 	private isLocalOnlineTurn(): boolean {
@@ -1184,7 +1228,7 @@ export class KameKnockScene extends ResponsiveScene {
 
 	private showOnlineEndScreen(snapshot: KameKnockSnapshot): void {
 		this.running = false;
-		this.slingshot?.destroy();
+		this.launchInput.destroy();
 		this.powerSidePanel?.hide();
 		this.overlay?.destroy(true);
 		this.overlayState = {
@@ -2318,24 +2362,23 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	protected relayout(): void {
+		this.sceneHost.relayout();
+	}
+
+	private relayoutKameKnock(): void {
 		const oldArena = this.arena;
 		this.arena = this.resolveArena();
-		const velocityScale = this.arena.scale / oldArena.scale;
 
-		this.slingshot?.cancel();
-		if (this.slingshot) {
-			this.slingshot.maxDrag = MAX_DRAG_SRC * this.arena.scale;
-			this.slingshot.launchSpeed = LAUNCH_SPEED_SRC * this.arena.scale;
-		}
+		this.launchInput.cancel();
+		this.launchInput.syncScale();
 
 		const resizeBall = (ball: BallState): void => {
-			const relX = (ball.x - oldArena.cx) / oldArena.rx;
-			const relY = (ball.y - oldArena.cy) / oldArena.ry;
-			ball.x = this.arena.cx + relX * this.arena.rx;
-			ball.y = this.arena.cy + relY * this.arena.ry;
-			ball.r = BALL_SRC_R * this.arena.scale;
-			ball.vx *= velocityScale;
-			ball.vy *= velocityScale;
+			remapLaunchableToArena({
+				oldArena,
+				newArena: this.arena,
+				launchable: ball,
+				radius: BALL_SRC_R * this.arena.scale,
+			});
 		};
 		if (
 			this.onlineMatch?.snapshot?.gameId === "kame-knock" &&

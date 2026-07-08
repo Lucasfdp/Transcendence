@@ -26,7 +26,6 @@ import {
 	isBallMoving,
 	stepBall,
 } from "../../shared/mechanics/ball";
-import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
@@ -51,6 +50,14 @@ import {
 	remapPowerPickups,
 	type PowerPickupBlocker,
 } from "../../shared/mechanics/power-pickups";
+import {
+	buildCircularObstacleDescriptor,
+	hitsCircularObstacle,
+	obstacleToBlocker,
+	resolveObstaclePosition,
+	resolveObstacleRadius,
+	type ObstacleDescriptor,
+} from "../../shared/mechanics/obstacle-descriptor";
 import {
 	applyBallCurl,
 	BallExtState,
@@ -104,6 +111,14 @@ import {
 	SceneReplayRecorder,
 	withPowerStateFlags,
 } from "../shared/localReplay";
+import {
+	CommonGameSceneHost,
+	SlingshotLaunchRuntime,
+	WorldMapRuntime,
+	WorldRuntime,
+	remapLaunchableToArena,
+	type GameDescriptor,
+} from "../common";
 
 // Online ball state with powerup visual properties
 interface OnlineBallState extends BallState {
@@ -113,6 +128,11 @@ interface OnlineBallState extends BallState {
 	trail?: Array<{ x: number; y: number }>;
 	stateFlags?: string[];
 }
+
+type BellObstacleDescriptor = ObstacleDescriptor<
+	"bell",
+	{ readonly pulseMs: number }
+>;
 
 type ZoneKind = "red" | "yellow" | "green";
 
@@ -177,7 +197,25 @@ const FALLBACK_POWERS: PowerType[] = [
 	...GAME_POWERS["bell-clash"],
 ];
 
+const BELL_CLASH_DESCRIPTOR: GameDescriptor = {
+	gameId: "bell-clash",
+	sceneKey: "BellClashScene",
+	playerCount: { min: 1, max: 5 },
+	localModes: ["solo", "versus"],
+};
+
 export class BellClashScene extends ResponsiveScene {
+	private readonly sceneHost: CommonGameSceneHost;
+	private readonly zoneWorld = new WorldRuntime<ScoreZone>(
+		(zone) => `${zone.kind}:${zone.start}:${zone.end}`,
+	);
+	private readonly onlineBallWorld = new WorldMapRuntime<
+		number,
+		OnlineBallState
+	>();
+	private readonly localBallWorld = new WorldMapRuntime<number, BallState>();
+	private readonly launchInput: SlingshotLaunchRuntime<BallState>;
+
 	private bgGfx!: Phaser.GameObjects.Graphics;
 	private arenaSkin!: Phaser.GameObjects.Image;
 	private zoneGfx!: Phaser.GameObjects.Graphics;
@@ -190,12 +228,10 @@ export class BellClashScene extends ResponsiveScene {
 	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
 	private powerBalls = new ArenaPowerRuntime();
 	private powerBallTexCount = 0;
-	private slingshot: Slingshot | null = null;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 	private overlay?: Phaser.GameObjects.Container;
 	private overlayState: OverlayState | null = null;
 
-	private zones: ScoreZone[] = [];
 	private currentShot = 0;
 	private launchedThisShot = false;
 	private score = 0;
@@ -215,7 +251,6 @@ export class BellClashScene extends ResponsiveScene {
 	private onlineMatch: OnlineMatchContext | null = null;
 	private lastOnlineSeq = -1;
 	private onlineStatusText: Phaser.GameObjects.Text | null = null;
-	private onlineBalls = new Map<number, OnlineBallState>();
 	private ballTrails: PlayerTrailStore = new Map();
 	private onlineRoundNumber = 1;
 	private onlineTotalRounds = 3;
@@ -230,7 +265,6 @@ export class BellClashScene extends ResponsiveScene {
 	private playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
 	private localTurnNumber = 0;
 	private localScores: number[] = [0];
-	private localBalls = new Map<number, BallState>();
 	private readonly localReplayRecorder =
 		new SceneReplayRecorder<BellClashSnapshot>();
 	private pendingReplayPersist: Promise<void> | null = null;
@@ -282,6 +316,45 @@ export class BellClashScene extends ResponsiveScene {
 
 	constructor() {
 		super({ key: "BellClashScene" });
+		this.sceneHost = new CommonGameSceneHost(this, {
+			descriptor: BELL_CLASH_DESCRIPTOR,
+			update: (_time, delta) => this.updateBellClash(delta),
+			relayout: () => this.relayoutBellClash(),
+			shutdown: () => this.cleanupSceneResources(),
+		});
+		this.launchInput = new SlingshotLaunchRuntime({
+			scene: this,
+			getLaunchable: () => this.ball,
+			getScale: () => this.arena.scale,
+			maxDragSrc: MAX_DRAG_SRC,
+			launchSpeedSrc: LAUNCH_SPEED_SRC,
+			depth: DEPTH_AIM,
+			onLaunch: () => this.onLaunch(),
+		});
+	}
+
+	private get zones(): ScoreZone[] {
+		return this.zoneWorld.all();
+	}
+
+	private set zones(zones: readonly ScoreZone[]) {
+		this.zoneWorld.replace(zones);
+	}
+
+	private get onlineBalls(): Map<number, OnlineBallState> {
+		return this.onlineBallWorld.map();
+	}
+
+	private set onlineBalls(onlineBalls: ReadonlyMap<number, OnlineBallState>) {
+		this.onlineBallWorld.replace(onlineBalls);
+	}
+
+	private get localBalls(): Map<number, BallState> {
+		return this.localBallWorld.map();
+	}
+
+	private set localBalls(localBalls: ReadonlyMap<number, BallState>) {
+		this.localBallWorld.replace(localBalls);
 	}
 
 	preload(): void {
@@ -291,10 +364,11 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	protected onShutdown(): void {
-		this.cleanupSceneResources();
+		this.sceneHost.shutdown();
 	}
 
 	create(): void {
+		this.sceneHost.activate();
 		const registryOnlineMatch =
 			(this.registry.get("onlineMatch") as
 				| OnlineMatchContext
@@ -422,17 +496,8 @@ export class BellClashScene extends ResponsiveScene {
 		this.ballGfx = this.add.graphics().setDepth(DEPTH_BALL);
 		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
 
-		this.slingshot = new Slingshot(
-			this,
-			this.ball,
-			{
-				maxDrag: MAX_DRAG_SRC * this.arena.scale,
-				launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
-				depth: DEPTH_AIM,
-			},
-			() => this.onLaunch(),
-		);
-		this.slingshot.attach();
+		this.launchInput.recreate();
+		this.launchInput.attach();
 
 		this.drawBackground();
 		this.drawZones();
@@ -462,8 +527,7 @@ export class BellClashScene extends ResponsiveScene {
 			socket.off("game:bell-throw", this.handleOnlineThrow);
 			socket.off("game:bell-power-pickup", this.handleOnlinePowerPickup);
 		}
-		this.slingshot?.destroy();
-		this.slingshot = null;
+		this.launchInput.destroy();
 		this.overlay?.destroy(true);
 		this.overlay = undefined;
 		this.overlayState = null;
@@ -484,7 +548,11 @@ export class BellClashScene extends ResponsiveScene {
 		this.destroySidePanels();
 	}
 
-	update(_time: number, delta: number): void {
+	update(time: number, delta: number): void {
+		this.sceneHost.update(time, delta);
+	}
+
+	private updateBellClash(delta: number): void {
 		if (!this.onlineMatch) this.localReplayRecorder.addElapsed(delta);
 		if (!this.running) return;
 
@@ -578,17 +646,7 @@ export class BellClashScene extends ResponsiveScene {
 				this.powerUsed[this.onlineMatch.side]?.add(power);
 			this.activePower = PowerType.NONE;
 			this.powerSidePanel?.hide();
-			this.slingshot?.destroy();
-			this.slingshot = new Slingshot(
-				this,
-				this.ball,
-				{
-					maxDrag: MAX_DRAG_SRC * this.arena.scale,
-					launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
-					depth: DEPTH_AIM,
-				},
-				() => this.onLaunch(),
-			);
+			this.launchInput.recreate();
 			this.updateOnlineStatus("Launching...");
 			getGameSocket().emit("game:input", {
 				matchId: this.onlineMatch.matchId,
@@ -744,18 +802,20 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private checkBellHitForBall(ball: BallState, canScore: boolean): void {
-		const dx = ball.x - this.arena.cx;
-		const dy = ball.y - this.arena.cy;
+		const bell = this.bellObstacleDescriptor();
+		if (!hitsCircularObstacle(bell, this.arena, ball.x, ball.y, ball.r))
+			return;
+
+		const bellPosition = resolveObstaclePosition(bell, this.arena);
+		const bellRadius = resolveObstacleRadius(bell, this.arena) ?? this.bellRadius();
+		const dx = ball.x - bellPosition.x;
+		const dy = ball.y - bellPosition.y;
 		const dist = Math.max(0.001, Math.hypot(dx, dy));
 		const nx = dx / dist;
 		const ny = dy / dist;
-		const bellRadius = this.bellRadius();
 		const minDist = bellRadius + ball.r;
-
-		if (dist >= minDist) return;
-
-		ball.x = this.arena.cx + nx * minDist;
-		ball.y = this.arena.cy + ny * minDist;
+		ball.x = bellPosition.x + nx * minDist;
+		ball.y = bellPosition.y + ny * minDist;
 
 		const dot = ball.vx * nx + ball.vy * ny;
 		if (dot >= 0) return;
@@ -839,7 +899,7 @@ export class BellClashScene extends ResponsiveScene {
 
 	private endRound(): void {
 		this.running = false;
-		this.slingshot?.cancel();
+		this.launchInput.cancel();
 		this.ball.vx = 0;
 		this.ball.vy = 0;
 		this.powerSidePanel?.hide();
@@ -1296,24 +1356,14 @@ export class BellClashScene extends ResponsiveScene {
 			this.onlineLocalShotNumber >= this.onlineShotsPerRound ||
 			isBallMoving(this.ball)
 		) {
-			this.slingshot?.destroy();
+			this.launchInput.destroy();
 			return;
 		}
-		this.slingshot?.attach();
+		this.launchInput.attach();
 	}
 
 	private recreateSlingshot(): void {
-		this.slingshot?.destroy();
-		this.slingshot = new Slingshot(
-			this,
-			this.ball,
-			{
-				maxDrag: MAX_DRAG_SRC * this.arena.scale,
-				launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
-				depth: DEPTH_AIM,
-			},
-			() => this.onLaunch(),
-		);
+		this.launchInput.recreate();
 	}
 
 	private syncOnlineBalls(
@@ -1425,13 +1475,12 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private powerPickupBlockers(): PowerPickupBlocker[] {
-		return [
-			{
-				x: this.arena.cx,
-				y: this.arena.cy,
-				r: this.bellRadius() + PICKUP_CLEARANCE_SRC * this.arena.scale,
-			},
-		];
+		const bellBlocker = obstacleToBlocker(
+			this.bellObstacleDescriptor(),
+			this.arena,
+			PICKUP_CLEARANCE_SRC * this.arena.scale,
+		);
+		return bellBlocker ? [bellBlocker] : [];
 	}
 
 	private showPowerPickupNotice(type: PowerType, x: number, y: number): void {
@@ -1635,10 +1684,8 @@ export class BellClashScene extends ResponsiveScene {
 		const ball = this.localBalls.get(side);
 		if (!ball) return;
 		this.ball = ball;
-		if (this.slingshot) {
-			this.recreateSlingshot();
-			this.slingshot?.attach();
-		}
+		this.recreateSlingshot();
+		this.launchInput.attach();
 		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
 	}
 
@@ -1740,6 +1787,18 @@ export class BellClashScene extends ResponsiveScene {
 
 	private bellRadius(): number {
 		return BELL_RADIUS_SRC * this.arena.scale;
+	}
+
+	private bellObstacleDescriptor(): BellObstacleDescriptor {
+		return buildCircularObstacleDescriptor({
+			id: "bell",
+			type: "bell",
+			position: { mode: "normalised", x: 0, y: 0 },
+			radius: BELL_RADIUS_SRC,
+			radiusUnit: "source",
+			collision: { blocks: true, bounces: true, awardsPoints: true },
+			rendering: { pulseMs: this.bellPulseMs },
+		});
 	}
 
 	// ── Side panels ─────────────────────────────────────────────────────────────
@@ -2324,7 +2383,7 @@ export class BellClashScene extends ResponsiveScene {
 	private showOnlineEndScreen(snapshot: BellClashSnapshot): void {
 		if (this.overlayState?.kind === "online-end" && this.overlay?.active) return;
 		this.running = false;
-		this.slingshot?.destroy();
+		this.launchInput.destroy();
 		this.powerSidePanel?.hide();
 		this.overlayState = {
 			kind: "online-end",
@@ -2366,30 +2425,28 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	protected relayout(): void {
+		this.sceneHost.relayout();
+	}
+
+	private relayoutBellClash(): void {
 		const oldArena = this.arena;
 		const previousPickups = this.powerPickups
 			? remapPowerPickups(this.powerPickups.all(), (pickup) => pickup)
 			: [];
 		this.arena = this.resolveArena();
-		const velocityScale = this.arena.scale / oldArena.scale;
 		const nextPickupRadius = PICKUP_RADIUS_SRC * this.arena.scale;
 
-		this.slingshot?.cancel();
-		if (this.slingshot) {
-			this.slingshot.maxDrag = MAX_DRAG_SRC * this.arena.scale;
-			this.slingshot.launchSpeed = LAUNCH_SPEED_SRC * this.arena.scale;
-		}
+		this.launchInput.cancel();
+		this.launchInput.syncScale();
 
 		const resizeBall = (ball: BallState): void => {
-			const relX = (ball.x - oldArena.cx) / oldArena.rx;
-			const relY = (ball.y - oldArena.cy) / oldArena.ry;
-			ball.x = this.arena.cx + relX * this.arena.rx;
-			ball.y = this.arena.cy + relY * this.arena.ry;
-			ball.r = BALL_SRC_R * this.arena.scale;
-			if (isBallMoving(ball)) {
-				ball.vx *= velocityScale;
-				ball.vy *= velocityScale;
-			}
+			remapLaunchableToArena({
+				oldArena,
+				newArena: this.arena,
+				launchable: ball,
+				radius: BALL_SRC_R * this.arena.scale,
+				isMoving: isBallMoving,
+			});
 		};
 		resizeBall(this.ball);
 		if (!this.onlineMatch && this.localPlayerCount > 1) {

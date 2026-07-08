@@ -650,25 +650,39 @@ Acceptance criteria:
 - `graphify-out` build artefacts are removed from source trees and ignored.
 - `docs/games-common-code-audit.md` is superseded by this plan or rewritten to match the new architecture.
 
-## Migration Order
+## Multi-Agent Migration Strategy
 
-Recommended order:
+Default migration mode:
 
-1. Bamboo Bash
-2. Kame Knock
-3. Bell Clash
-4. Shell Curl
+- Work on Bamboo Bash, Kame Knock, Bell Clash, and Shell Curl in the same phase.
+- Use multi-agent parallel work for game-specific slices whenever the user asks for a phase or shared-system migration.
+- Assign one bounded worker per game when edits are large enough to conflict or require game-specific reasoning.
+- Keep the main agent responsible for shared contracts, integration, final review, validation, and checkpoint updates.
+- Do not migrate only one game as the default path.
 
-Reasoning:
+Exception:
 
-- Bamboo already has the strongest server-owned model.
-- Kame is close to Bamboo in launch and target behaviour.
-- Bell needs scoring validation and pickup ownership work.
-- Shell Curl has different physics and scoring, so it should migrate after the common contracts prove they can support both ball and stone launchables.
+- If the user explicitly names one game, scope the task to that game and document the deliberate single-game scope in `docs/commom-code-extraction-checkpoint.md`.
+
+Recommended per-phase split:
+
+1. Main agent: define or adjust the shared contract, tests, exports, and integration rules.
+2. Bamboo Bash worker: apply the contract to bamboo growth, scoring, pickups, replay, or flow.
+3. Kame Knock worker: apply the contract to timed targets, combo scoring, pickups, replay, or turn flow.
+4. Bell Clash worker: apply the contract to zones, bell hits, pickups, replay, or shot flow.
+5. Shell Curl worker: apply the contract to stones, bumpers, house scoring, pickups, replay, or end flow.
+
+Integration rule:
+
+- Workers must have disjoint write scopes wherever possible.
+- If a shared API changes, the main agent owns the shared files and workers adapt their game files to that API.
+- The final result for a phase must compile and validate all four games unless a single-game scope was explicitly requested.
 
 ## Implementation Rules
 
 - Every phase must leave the game playable.
+- Every code change related to this refactor must update `docs/commom-code-extraction-checkpoint.md` in the same task.
+- Unless the user explicitly requests a specific game, each phase must address Bamboo Bash, Kame Knock, Bell Clash, and Shell Curl together using multi-agent parallel work where useful.
 - Do not keep two long-term implementations of the same lifecycle.
 - Move code first, then simplify. Avoid changing gameplay semantics during extraction unless a bug is explicitly being fixed.
 - Shared runtime files must be Phaser-free unless they are explicitly render adapters.
@@ -695,15 +709,15 @@ Update these documents as phases land:
 
 - `docs/modules-progress.md` only if a module status or evidence changes.
 - `docs/games-common-code-audit.md` should be replaced, deprecated, or rewritten once this plan becomes the source of truth.
-- `docs/common-code-extraction-checkpoint.md` should track phase completion if it remains in use.
+- `docs/commom-code-extraction-checkpoint.md` must track every code change related to this refactor, including phase status, validation, risks, and the next recommended step.
 - Any new design or implementation note must live in `docs/` and be written in British English.
 
 ## Immediate Next Step
 
-Start with Phase 0 and Phase 1:
+Continue with Phase 4:
 
-1. Add focused tests around current Bamboo Bash local and online launch flow.
-2. Create `CommonGameSceneHost` with lifecycle, update, shutdown, and relayout dispatch only.
-3. Move Bamboo Bash onto the host without changing gameplay rules.
-4. Measure scene size before and after.
-5. Repeat only after the Bamboo checkpoint is playable and tested.
+1. Define common obstacle and scoring descriptor contracts in `frontend/src/games/common/descriptors/`.
+2. Use multi-agent workers to apply the descriptor path to Bamboo Bash, Kame Knock, Bell Clash, and Shell Curl in parallel.
+3. Keep game-specific rule identity in descriptors and hooks rather than scene-local orchestration.
+4. Add focused descriptor and scoring tests for all four games in the same phase.
+5. Update `docs/commom-code-extraction-checkpoint.md` with per-game status, validation, risks, and the next step.

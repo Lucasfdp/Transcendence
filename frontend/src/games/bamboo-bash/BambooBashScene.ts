@@ -123,6 +123,9 @@ import {
 import {
 	CommonGameSceneHost,
 	SceneSocketChannel,
+	SlingshotLaunchRuntime,
+	WorldRuntime,
+	remapLaunchableToArena,
 	type GameDescriptor,
 } from "../common";
 
@@ -196,6 +199,8 @@ interface LocalParticipant {
 export class BambooBashScene extends ResponsiveScene {
 	private readonly sceneHost: CommonGameSceneHost;
 	private readonly socketChannel = new SceneSocketChannel(getGameSocket);
+	private readonly bambooWorld = new WorldRuntime<Bamboo>();
+	private readonly launchInput: SlingshotLaunchRuntime<BallState>;
 
 	private bgGfx!: Phaser.GameObjects.Graphics;
 	private arenaSkin!: Phaser.GameObjects.Image;
@@ -211,14 +216,12 @@ export class BambooBashScene extends ResponsiveScene {
 	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
 	private powerBalls = new ArenaPowerRuntime();
 	private powerBallTexCount = 0;
-	private slingshot!: Slingshot;
 	private localParticipants: LocalParticipant[] = [];
 	private playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
 	private localTimeLeftMs: number[] = [];
 	private activeLocalParticipantIndex = 0;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 
-	private bamboos: Bamboo[] = [];
 	private spawnAccMs = 0;
 	private spawnFreezeMs = 0; // FREEZE power: pauses spawn accumulation when > 0
 
@@ -301,6 +304,23 @@ export class BambooBashScene extends ResponsiveScene {
 			relayout: () => this.relayoutBambooBash(),
 			shutdown: () => this.shutdownBambooBash(),
 		});
+		this.launchInput = new SlingshotLaunchRuntime({
+			scene: this,
+			getLaunchable: () => this.ball,
+			getScale: () => this.arena.scale,
+			maxDragSrc: MAX_DRAG_SRC,
+			launchSpeedSrc: LAUNCH_SPEED_SRC,
+			depth: 2,
+			onLaunch: () => this.onLaunch(),
+		});
+	}
+
+	private get bamboos(): Bamboo[] {
+		return this.bambooWorld.all();
+	}
+
+	private set bamboos(bamboos: readonly Bamboo[]) {
+		this.bambooWorld.replace(bamboos);
 	}
 
 	preload(): void {
@@ -422,16 +442,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.ballGfx = this.add.graphics().setDepth(3);
 		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
 
-		this.slingshot = new Slingshot(
-			this,
-			this.ball,
-			{
-				maxDrag: MAX_DRAG_SRC * this.arena.scale,
-				launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
-				depth: 2,
-			},
-			() => this.onLaunch(),
-		);
+		this.launchInput.recreate();
 		// Slingshot stays detached until the countdown ends so the player can't
 		// launch early (attached in beginPlay()).
 
@@ -478,7 +489,7 @@ export class BambooBashScene extends ResponsiveScene {
 					ballWasMoving: false,
 				};
 			});
-			this.slingshot.destroy();
+			this.launchInput.destroy();
 		} else {
 			this.localTimeLeftMs = [];
 		}
@@ -580,7 +591,7 @@ export class BambooBashScene extends ResponsiveScene {
 		if (this.localParticipants.length > 0) {
 			this.syncLocalSlingshots();
 		} else {
-			this.slingshot.attach();
+			this.launchInput.attach();
 		}
 		this.running = true;
 	}
@@ -590,7 +601,7 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private shutdownBambooBash(): void {
-		this.slingshot.destroy();
+		this.launchInput.destroy();
 		this.localParticipants.forEach((participant) =>
 			participant.slingshot.destroy(),
 		);
@@ -711,7 +722,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 		// Show power panel once ball has stopped (transition detection)
 		if (!moving && this.ballWasMoving && this.running) {
-			if (this.onlineMatch) this.slingshot.attach();
+			if (this.onlineMatch) this.launchInput.attach();
 			this.showPowerPanel();
 		}
 		this.ballWasMoving = moving;
@@ -742,17 +753,7 @@ export class BambooBashScene extends ResponsiveScene {
 			if (power !== PowerType.NONE) this.powerUsed.add(power);
 			this.activePower = PowerType.NONE;
 			this.powerSidePanel?.hide();
-			this.slingshot.destroy();
-			this.slingshot = new Slingshot(
-				this,
-				this.ball,
-				{
-					maxDrag: MAX_DRAG_SRC * this.arena.scale,
-					launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
-					depth: 2,
-				},
-				() => this.onLaunch(),
-			);
+			this.launchInput.recreate();
 			this.updateOnlineStatus("Launching...");
 			getGameSocket().emit("game:input", {
 				matchId: this.onlineMatch.matchId,
@@ -939,7 +940,7 @@ export class BambooBashScene extends ResponsiveScene {
 	private endRound(): void {
 		this.running = false;
 		this.timerText.setText(this.formatTime());
-		this.slingshot.cancel();
+		this.launchInput.cancel();
 		for (const participant of this.localParticipants) {
 			participant.slingshot.cancel();
 			participant.ball.vx = 0;
@@ -954,7 +955,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.powerSidePanel?.hide();
 		this.updateSidePanels();
 		if (this.onlineMatch) {
-			this.slingshot.destroy();
+			this.launchInput.destroy();
 			this.submitOnlineRoundScore();
 			return;
 		}
@@ -1067,17 +1068,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.onlineBambooSyncAccMs = 0;
 		this.resetBall();
 		this.resetOnlineBalls(snapshot);
-		this.slingshot.destroy();
-		this.slingshot = new Slingshot(
-			this,
-			this.ball,
-			{
-				maxDrag: MAX_DRAG_SRC * this.arena.scale,
-				launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
-				depth: 2,
-			},
-			() => this.onLaunch(),
-		);
+		this.launchInput.recreate();
 		this.bamboos = snapshot.bamboos.map((bamboo) => ({ ...bamboo }));
 		this.pendingOnlineBambooHits.clear();
 		this.spawnPowerPickup();
@@ -1287,7 +1278,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private showOnlineEndScreen(snapshot: BambooBashSnapshot): void {
 		this.running = false;
-		this.slingshot.cancel();
+		this.launchInput.cancel();
 		this.powerSidePanel?.hide();
 		this.overlay?.destroy(true);
 
@@ -2331,43 +2322,38 @@ export class BambooBashScene extends ResponsiveScene {
 		const oldArena = this.arena;
 		this.arena = this.resolveArena();
 
-		this.slingshot.cancel();
-		this.slingshot.maxDrag = MAX_DRAG_SRC * this.arena.scale;
-		this.slingshot.launchSpeed = LAUNCH_SPEED_SRC * this.arena.scale;
+		this.launchInput.cancel();
+		this.launchInput.syncScale();
 
-		const relX = (this.ball.x - oldArena.cx) / oldArena.rx;
-		const relY = (this.ball.y - oldArena.cy) / oldArena.ry;
-		this.ball.x = this.arena.cx + relX * this.arena.rx;
-		this.ball.y = this.arena.cy + relY * this.arena.ry;
-		this.ball.r = BALL_SRC_R * this.arena.scale;
-
-		if (isBallMoving(this.ball)) {
-			const vScale = this.arena.scale / oldArena.scale;
-			this.ball.vx *= vScale;
-			this.ball.vy *= vScale;
-		}
+		remapLaunchableToArena({
+			oldArena,
+			newArena: this.arena,
+			launchable: this.ball,
+			radius: BALL_SRC_R * this.arena.scale,
+			isMoving: isBallMoving,
+		});
 
 		for (const [side, ball] of this.onlineBalls.entries()) {
 			if (ball === this.ball) continue;
-			const relX = (ball.x - oldArena.cx) / oldArena.rx;
-			const relY = (ball.y - oldArena.cy) / oldArena.ry;
-			ball.x = this.arena.cx + relX * this.arena.rx;
-			ball.y = this.arena.cy + relY * this.arena.ry;
-			ball.r = BALL_SRC_R * this.arena.scale;
-			if (isBallMoving(ball)) {
-				const vScale = this.arena.scale / oldArena.scale;
-				ball.vx *= vScale;
-				ball.vy *= vScale;
-			} else if (this.onlineMatch?.snapshot?.gameId === "bamboo-bash") {
-				const players = [...this.onlineMatch.snapshot.players].sort(
-					(a, b) => a.side - b.side,
-				);
-				const index = players.findIndex(
-					(player) => player.side === side,
-				);
-				if (index >= 0)
-					this.resetOnlineBall(ball, index, players.length);
-			}
+			remapLaunchableToArena({
+				oldArena,
+				newArena: this.arena,
+				launchable: ball,
+				radius: BALL_SRC_R * this.arena.scale,
+				isMoving: isBallMoving,
+				resetWhenStopped: (target) => {
+					if (this.onlineMatch?.snapshot?.gameId !== "bamboo-bash")
+						return;
+					const players = [...this.onlineMatch.snapshot.players].sort(
+						(a, b) => a.side - b.side,
+					);
+					const index = players.findIndex(
+						(player) => player.side === side,
+					);
+					if (index >= 0)
+						this.resetOnlineBall(target, index, players.length);
+				},
+			});
 		}
 
 		this.localParticipants.forEach((participant, index) => {
@@ -2375,24 +2361,22 @@ export class BambooBashScene extends ResponsiveScene {
 			participant.slingshot.maxDrag = MAX_DRAG_SRC * this.arena.scale;
 			participant.slingshot.launchSpeed =
 				LAUNCH_SPEED_SRC * this.arena.scale;
-			if (oldArena) {
-				const pRelX = (participant.ball.x - oldArena.cx) / oldArena.rx;
-				const pRelY = (participant.ball.y - oldArena.cy) / oldArena.ry;
-				participant.ball.x = this.arena.cx + pRelX * this.arena.rx;
-				participant.ball.y = this.arena.cy + pRelY * this.arena.ry;
-			} else {
-				this.resetLocalBall(participant.ball, index);
-			}
-			participant.ball.r = BALL_SRC_R * this.arena.scale;
+			remapLaunchableToArena({
+				oldArena,
+				newArena: this.arena,
+				launchable: participant.ball,
+				radius: BALL_SRC_R * this.arena.scale,
+				isMoving: isBallMoving,
+				resetWhenStopped: (target) => this.resetLocalBall(target, index),
+			});
 		});
 		for (const entry of this.powerBalls) {
-			const pRelX = (entry.ball.x - oldArena.cx) / oldArena.rx;
-			const pRelY = (entry.ball.y - oldArena.cy) / oldArena.ry;
-			entry.ball.x = this.arena.cx + pRelX * this.arena.rx;
-			entry.ball.y = this.arena.cy + pRelY * this.arena.ry;
-			entry.ball.r *= this.arena.scale / oldArena.scale;
-			entry.ball.vx *= this.arena.scale / oldArena.scale;
-			entry.ball.vy *= this.arena.scale / oldArena.scale;
+			remapLaunchableToArena({
+				oldArena,
+				newArena: this.arena,
+				launchable: entry.ball,
+				isMoving: isBallMoving,
+			});
 		}
 
 		this.drawBackground();

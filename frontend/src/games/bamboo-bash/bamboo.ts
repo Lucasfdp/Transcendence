@@ -11,7 +11,14 @@
  */
 
 import Phaser from "phaser";
-import { ArenaPixels } from "../arenas/arena";
+import { ArenaPixels } from "../../shared/arenas/arena";
+import {
+	buildCircularObstacleDescriptor,
+	hitsCircularObstacle,
+	resolveObstaclePosition,
+	resolveObstacleRadius,
+	type ObstacleDescriptor,
+} from "../../shared/mechanics/obstacle-descriptor";
 
 // ── Tuning ──────────────────────────────────────────────────────────────────
 
@@ -31,6 +38,17 @@ export interface Bamboo {
 	ageMs: number; // time alive, drives growth
 }
 
+export interface BambooObstacleRendering {
+	readonly stage: number;
+	readonly ageMs: number;
+}
+
+export type BambooObstacleDescriptor = ObstacleDescriptor<
+	"bamboo",
+	BambooObstacleRendering,
+	Bamboo
+>;
+
 /** Stage for a given age: 1 cane, +1 every GROW_INTERVAL_MS, capped. */
 export function stageForAge(ageMs: number): number {
 	return Math.min(MAX_STAGE, 1 + Math.floor(ageMs / GROW_INTERVAL_MS));
@@ -46,12 +64,12 @@ export function stepBamboo(b: Bamboo, deltaMs: number): void {
 
 /** Canvas-space centre of a bamboo for the current arena. */
 export function bambooPos(b: Bamboo, a: ArenaPixels): { x: number; y: number } {
-	return { x: a.cx + b.nx * a.rx, y: a.cy + b.ny * a.ry };
+	return resolveObstaclePosition(bambooObstacleDescriptor(b), a);
 }
 
 /** Collision radius in canvas px — wider clusters are bigger targets. */
 export function bambooRadius(b: Bamboo, a: ArenaPixels): number {
-	return BAMBOO_SRC_R * a.scale * (0.7 + 0.35 * b.stage);
+	return resolveObstacleRadius(bambooObstacleDescriptor(b), a) ?? 0;
 }
 
 /** True if the ball (centre cx,cy radius cr) overlaps the bamboo. */
@@ -62,11 +80,33 @@ export function hitsBamboo(
 	cy: number,
 	cr: number,
 ): boolean {
-	const p = bambooPos(b, a);
-	const dx = p.x - cx;
-	const dy = p.y - cy;
-	const reach = cr + bambooRadius(b, a);
-	return dx * dx + dy * dy <= reach * reach;
+	return hitsCircularObstacle(bambooObstacleDescriptor(b), a, cx, cy, cr);
+}
+
+export function bambooObstacleDescriptor(
+	bamboo: Bamboo,
+	id: string | number = resolveBambooId(bamboo),
+): BambooObstacleDescriptor {
+	return buildCircularObstacleDescriptor({
+		id,
+		type: "bamboo",
+		position: { mode: "normalised", x: bamboo.nx, y: bamboo.ny },
+		radius: BAMBOO_SRC_R * (0.7 + 0.35 * bamboo.stage),
+		radiusUnit: "source",
+		scoreValue: STAGE_POINTS[bamboo.stage] ?? 0,
+		collision: { breaks: true, awardsPoints: true },
+		rendering: { stage: bamboo.stage, ageMs: bamboo.ageMs },
+	});
+}
+
+function resolveBambooId(bamboo: Bamboo): string | number {
+	const candidate = bamboo as Bamboo & { id?: unknown };
+	if (
+		typeof candidate.id === "string" ||
+		typeof candidate.id === "number"
+	)
+		return candidate.id;
+	return `${bamboo.nx}:${bamboo.ny}:${bamboo.ageMs}`;
 }
 
 /**

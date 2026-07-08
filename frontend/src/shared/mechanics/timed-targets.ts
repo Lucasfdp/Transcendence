@@ -1,4 +1,11 @@
 import { ArenaPixels } from "../arenas/arena";
+import {
+	buildCircularObstacleDescriptor,
+	hitsCircularObstacle,
+	resolveObstaclePosition,
+	resolveObstacleRadius,
+	type ObstacleDescriptor,
+} from "./obstacle-descriptor";
 
 export type TimedTargetKind = "daruma" | "crate" | "drum";
 
@@ -13,6 +20,19 @@ export interface TimedTarget {
 	radiusSrc: number;
 	points: number;
 }
+
+export interface TimedTargetObstacleRendering {
+	readonly kind: TimedTargetKind;
+	readonly breakable: boolean;
+	readonly ageMs: number;
+	readonly lifetimeMs: number;
+}
+
+export type TimedTargetObstacleDescriptor = ObstacleDescriptor<
+	"timed-target",
+	TimedTargetObstacleRendering,
+	TimedTarget
+>;
 
 export interface TimedTargetSpot {
 	readonly nx: number;
@@ -64,17 +84,14 @@ export function timedTargetPosition(
 	target: TimedTarget,
 	arena: ArenaPixels,
 ): { x: number; y: number } {
-	return {
-		x: arena.cx + target.nx * arena.rx,
-		y: arena.cy + target.ny * arena.ry,
-	};
+	return resolveObstaclePosition(timedTargetObstacleDescriptor(target), arena);
 }
 
 export function timedTargetRadius(
 	target: TimedTarget,
 	arena: ArenaPixels,
 ): number {
-	return target.radiusSrc * arena.scale;
+	return resolveObstacleRadius(timedTargetObstacleDescriptor(target), arena) ?? 0;
 }
 
 export function hitsTimedTarget(
@@ -84,11 +101,38 @@ export function hitsTimedTarget(
 	cy: number,
 	cr: number,
 ): boolean {
-	const pos = timedTargetPosition(target, arena);
-	const dx = pos.x - cx;
-	const dy = pos.y - cy;
-	const reach = cr + timedTargetRadius(target, arena);
-	return dx * dx + dy * dy <= reach * reach;
+	return hitsCircularObstacle(
+		timedTargetObstacleDescriptor(target),
+		arena,
+		cx,
+		cy,
+		cr,
+	);
+}
+
+export function timedTargetObstacleDescriptor(
+	target: TimedTarget,
+): TimedTargetObstacleDescriptor {
+	return buildCircularObstacleDescriptor({
+		id: target.id,
+		type: "timed-target",
+		position: { mode: "normalised", x: target.nx, y: target.ny },
+		radius: target.radiusSrc,
+		radiusUnit: "source",
+		scoreValue: target.points,
+		collision: {
+			blocks: !target.breakable,
+			bounces: !target.breakable,
+			breaks: target.breakable,
+			awardsPoints: target.breakable,
+		},
+		rendering: {
+			kind: target.kind,
+			breakable: target.breakable,
+			ageMs: target.ageMs,
+			lifetimeMs: target.lifetimeMs,
+		},
+	});
 }
 
 export function targetHitAccuracy(

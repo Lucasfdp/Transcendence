@@ -42,6 +42,13 @@ import {
 	type PowerPickupBlocker,
 } from "../../shared/mechanics/power-pickups";
 import {
+	buildCircularObstacleDescriptor,
+	obstacleToBlocker,
+	resolveObstaclePosition,
+	resolveObstacleRadius,
+	type ObstacleDescriptor,
+} from "../../shared/mechanics/obstacle-descriptor";
+import {
 	TurnManager,
 	type TurnPhase,
 } from "../../shared/mechanics/turn-manager";
@@ -49,7 +56,6 @@ import { SweepController } from "../../shared/mechanics/sweep-controller";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
 import { showCardDropPopup } from "../../shared/card-drop-popup";
-import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
@@ -96,6 +102,12 @@ import {
 	SceneReplayRecorder,
 	withPowerStateFlags,
 } from "../shared/localReplay";
+import {
+	CommonGameSceneHost,
+	SlingshotLaunchRuntime,
+	WorldRuntime,
+	type GameDescriptor,
+} from "../common";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -117,6 +129,13 @@ const LAUNCH_SPEED_SRC = 3300;
 const ONLINE_REPLAY_STEP_MS = 1000 / 60;
 const ONLINE_REPLAY_MAX_FRAME_MS = 100;
 const REPLAY_CAPTURE_STEP_MS = 100;
+
+const SHELL_CURL_DESCRIPTOR: GameDescriptor = {
+	gameId: "shell-curl",
+	sceneKey: "ShellCurlScene",
+	playerCount: { min: 1, max: 5 },
+	localModes: ["solo", "versus"],
+};
 
 /**
  * Fallback power set used when no shell selection is in the registry
@@ -158,6 +177,15 @@ interface Bumper {
 	flashTimer: number; // ms remaining for hit-flash visual
 }
 
+type BumperObstacleDescriptor = ObstacleDescriptor<
+	"bumper",
+	{
+		readonly fx: number;
+		readonly fy: number;
+		readonly flashTimer: number;
+	}
+>;
+
 /**
  * Generate random bumper positions for one end.
  * Bumpers are placed in the middle 15%–58% of the sheet width so the
@@ -198,12 +226,17 @@ const DELIVERY_CLEARANCE_SRC = 10;
 // ── Scene ─────────────────────────────────────────────────────────────────────
 
 export class ShellCurlScene extends ResponsiveScene {
+	private readonly sceneHost: CommonGameSceneHost;
+	private readonly stoneWorld = new WorldRuntime<StoneState>(
+		(stone) => stone.id,
+	);
+	private readonly launchInput: SlingshotLaunchRuntime<StoneState>;
+
 	private arena!: RectArenaPixels;
 
 	// ── Game state ────────────────────────────────────────────────────────────
 	private turnManager!: TurnManager;
 	private powerRegistry!: PowerRegistry;
-	private allStones: StoneState[] = [];
 	private stoneGfx: Map<number, Phaser.GameObjects.Graphics> = new Map();
 	private activeStone: StoneState | null = null;
 	private activeRingGfx: Phaser.GameObjects.Graphics | null = null;
@@ -213,7 +246,6 @@ export class ShellCurlScene extends ResponsiveScene {
 	private settlingTimer = 0;
 
 	// ── Mechanics ─────────────────────────────────────────────────────────────
-	private slingshot!: Slingshot;
 	private sweepCtrl!: SweepController;
 	private scoreHud!: ScoreHud;
 
@@ -264,6 +296,30 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	constructor() {
 		super({ key: "ShellCurlScene" });
+		this.sceneHost = new CommonGameSceneHost(this, {
+			descriptor: SHELL_CURL_DESCRIPTOR,
+			update: (_time, delta) => this.updateShellCurl(delta),
+			relayout: () => this.relayoutShellCurl(),
+			shutdown: () => this.shutdownShellCurl(),
+		});
+		this.launchInput = new SlingshotLaunchRuntime({
+			scene: this,
+			getLaunchable: () => this.activeStone ?? this.makeEmptyStone(),
+			getScale: () => this.arena.scale,
+			maxDragSrc: MAX_DRAG_SRC,
+			launchSpeedSrc: LAUNCH_SPEED_SRC,
+			grabRadiusFactor: GRAB_RADIUS_FACTOR,
+			depth: DEPTH_AIM,
+			onLaunch: (vx, vy) => this.onLaunch(vx, vy),
+		});
+	}
+
+	private get allStones(): StoneState[] {
+		return this.stoneWorld.all();
+	}
+
+	private set allStones(stones: readonly StoneState[]) {
+		this.stoneWorld.replace(stones);
 	}
 
 	preload(): void {
@@ -282,6 +338,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	// ── Lifecycle ─────────────────────────────────────────────────────────────
 
 	create(): void {
+		this.sceneHost.activate();
 		this.onlineMatch =
 			(this.registry.get("onlineMatch") as
 				| OnlineMatchContext
@@ -389,18 +446,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		);
 
 		// Slingshot (shared mechanic) — starts detached; attached when stone is placed
-		this.slingshot = new Slingshot(
-			this,
-			// Slingshot needs a BallState-like object; we'll swap the target when turns change
-			{ x: 0, y: 0, vx: 0, vy: 0, r: STONE_SRC_R * this.arena.scale },
-			{
-				maxDrag: MAX_DRAG_SRC * this.arena.scale,
-				launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
-				grabRadiusFactor: GRAB_RADIUS_FACTOR,
-				depth: DEPTH_AIM,
-			},
-			(vx, vy) => this.onLaunch(vx, vy),
-		);
+		this.launchInput.recreate();
 
 		// Sweep controller — created with a placeholder stone, swapped each turn
 		this.sweepCtrl = new SweepController(
@@ -433,7 +479,11 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	protected onShutdown(): void {
-		this.slingshot.destroy();
+		this.sceneHost.shutdown();
+	}
+
+	private shutdownShellCurl(): void {
+		this.launchInput.destroy();
 		this.sweepCtrl.destroy();
 		this.scoreHud.destroy();
 		this.powerSidePanel?.destroy();
@@ -457,7 +507,11 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.onlineStatusText = null;
 	}
 
-	update(_time: number, delta: number): void {
+	update(time: number, delta: number): void {
+		this.sceneHost.update(time, delta);
+	}
+
+	private updateShellCurl(delta: number): void {
 		if (this.onlineMatch) {
 			this.updateOnlineReplay(delta);
 			return;
@@ -637,9 +691,9 @@ export class ShellCurlScene extends ResponsiveScene {
 		const stone = this.spawnActiveStone(state.currentTeam);
 		this.activeStone = stone;
 
-		// Point the slingshot at this stone
-		this.updateSlingshotTarget(stone);
-		this.slingshot.attach();
+		// Point the slingshot at this stone.
+		this.launchInput.recreate();
+		this.launchInput.attach();
 
 		this.scoreHud.update(state);
 		this.addActiveRing(stone);
@@ -686,8 +740,7 @@ export class ShellCurlScene extends ResponsiveScene {
 				},
 			});
 			this.powerSidePanel?.hide();
-			this.slingshot.destroy();
-			this.slingshot = this.createSlingshot();
+			this.launchInput.recreate();
 			this.clearActiveRing();
 			this.turnManager.setPhase("settling");
 			this.updateOnlineStatus("Launching...");
@@ -708,19 +761,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			{ x: this.activeStone.x, y: this.activeStone.y },
 		]);
 
-		this.slingshot.destroy();
-		// Recreate slingshot pointing at the stone for next turn — will be re-attached in beginTurn
-		this.slingshot = new Slingshot(
-			this,
-			{ x: 0, y: 0, vx: 0, vy: 0, r: STONE_SRC_R * this.arena.scale },
-			{
-				maxDrag: MAX_DRAG_SRC * this.arena.scale,
-				launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
-				grabRadiusFactor: GRAB_RADIUS_FACTOR,
-				depth: DEPTH_AIM,
-			},
-			(lvx, lvy) => this.onLaunch(lvx, lvy),
-		);
+		this.launchInput.recreate();
 
 		this.powerSidePanel?.hide();
 		this.clearActiveRing();
@@ -1883,8 +1924,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			);
 			this.showRemotePlacedStone(snapshot.currentTurn);
 			this.powerSidePanel?.hide();
-			this.slingshot.destroy();
-			this.slingshot = this.createSlingshot();
+			this.launchInput.recreate();
 		}
 	}
 
@@ -2027,19 +2067,6 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
 
-	private updateSlingshotTarget(stone: StoneState): void {
-		// The Slingshot class holds a reference to the ball object; we update the
-		// underlying object's properties so it tracks the new stone position.
-		const ball = (this.slingshot as unknown as { ball: StoneState }).ball;
-		if (ball) {
-			ball.x = stone.x;
-			ball.y = stone.y;
-			ball.vx = 0;
-			ball.vy = 0;
-			ball.r = stone.r;
-		}
-	}
-
 	private drawPlayerStone(
 		gfx: Phaser.GameObjects.Graphics,
 		stone: StoneState,
@@ -2107,20 +2134,6 @@ export class ShellCurlScene extends ResponsiveScene {
 		}
 	}
 
-	private createSlingshot(): Slingshot {
-		return new Slingshot(
-			this,
-			{ x: 0, y: 0, vx: 0, vy: 0, r: STONE_SRC_R * this.arena.scale },
-			{
-				maxDrag: MAX_DRAG_SRC * this.arena.scale,
-				launchSpeed: LAUNCH_SPEED_SRC * this.arena.scale,
-				grabRadiusFactor: GRAB_RADIUS_FACTOR,
-				depth: DEPTH_AIM,
-			},
-			(vx, vy) => this.onLaunch(vx, vy),
-		);
-	}
-
 	private makeEmptyStone(): StoneState {
 		return {
 			id: -1,
@@ -2181,18 +2194,21 @@ export class ShellCurlScene extends ResponsiveScene {
 	private drawBumpers(): void {
 		this.bumperGfx.clear();
 		for (const b of this.bumpers) {
+			const descriptor = this.bumperObstacleDescriptor(b);
+			const position = resolveObstaclePosition(descriptor);
+			const radius = resolveObstacleRadius(descriptor) ?? b.r;
 			const flashing = b.flashTimer > 0;
 
 			// Glow halo when flashing
 			if (flashing) {
 				const glowAlpha = (b.flashTimer / BUMPER_FLASH_MS) * 0.55;
 				this.bumperGfx.fillStyle(0xffd700, glowAlpha);
-				this.bumperGfx.fillCircle(b.x, b.y, b.r * 1.75);
+				this.bumperGfx.fillCircle(position.x, position.y, radius * 1.75);
 			}
 
 			// Dark wood body
 			this.bumperGfx.fillStyle(0x2a1a08, 1);
-			this.bumperGfx.fillCircle(b.x, b.y, b.r);
+			this.bumperGfx.fillCircle(position.x, position.y, radius);
 
 			// Gold ring
 			const ringAlpha = flashing ? 1.0 : 0.85;
@@ -2201,11 +2217,11 @@ export class ShellCurlScene extends ResponsiveScene {
 				0xd4a843,
 				ringAlpha,
 			);
-			this.bumperGfx.strokeCircle(b.x, b.y, b.r);
+			this.bumperGfx.strokeCircle(position.x, position.y, radius);
 
 			// Centre dot
 			this.bumperGfx.fillStyle(0xd4a843, flashing ? 1.0 : 0.6);
-			this.bumperGfx.fillCircle(b.x, b.y, b.r * 0.22);
+			this.bumperGfx.fillCircle(position.x, position.y, radius * 0.22);
 		}
 	}
 
@@ -2217,10 +2233,13 @@ export class ShellCurlScene extends ResponsiveScene {
 		for (const s of stones) {
 			if (s.stopped && s.frozen) continue;
 			for (const b of this.bumpers) {
-				const dx = s.x - b.x;
-				const dy = s.y - b.y;
+				const descriptor = this.bumperObstacleDescriptor(b);
+				const position = resolveObstaclePosition(descriptor);
+				const radius = resolveObstacleRadius(descriptor) ?? b.r;
+				const dx = s.x - position.x;
+				const dy = s.y - position.y;
 				const dist = Math.sqrt(dx * dx + dy * dy);
-				const minD = s.r + b.r;
+				const minD = s.r + radius;
 				if (dist >= minD || dist < 0.001) continue;
 
 				// Push stone out of overlap
@@ -2317,11 +2336,10 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	private powerPickupBlockers(): PowerPickupBlocker[] {
 		return [
-			...this.bumpers.map((bumper) => ({
-				x: bumper.x,
-				y: bumper.y,
-				r: bumper.r,
-			})),
+			...this.bumpers.flatMap((bumper) => {
+				const blocker = obstacleToBlocker(this.bumperObstacleDescriptor(bumper));
+				return blocker ? [blocker] : [];
+			}),
 			...this.allStones.map((stone) => ({
 				x: stone.x,
 				y: stone.y,
@@ -2330,9 +2348,29 @@ export class ShellCurlScene extends ResponsiveScene {
 		];
 	}
 
+	private bumperObstacleDescriptor(bumper: Bumper): BumperObstacleDescriptor {
+		return buildCircularObstacleDescriptor({
+			id: `${bumper.fx}:${bumper.fy}`,
+			type: "bumper",
+			position: { mode: "absolute", x: bumper.x, y: bumper.y },
+			radius: bumper.r,
+			radiusUnit: "pixels",
+			collision: { blocks: true, bounces: true },
+			rendering: {
+				fx: bumper.fx,
+				fy: bumper.fy,
+				flashTimer: bumper.flashTimer,
+			},
+		});
+	}
+
 	// ── Resize ────────────────────────────────────────────────────────────────
 
 	protected relayout(): void {
+		this.sceneHost.relayout();
+	}
+
+	private relayoutShellCurl(): void {
 		const oldArena = this.arena;
 		this.arena = this.resolveArena();
 
@@ -2351,11 +2389,8 @@ export class ShellCurlScene extends ResponsiveScene {
 			s.vy *= vScale;
 		}
 
-		this.slingshot.cancel();
-		this.slingshot.maxDrag = MAX_DRAG_SRC * this.arena.scale;
-		this.slingshot.launchSpeed = LAUNCH_SPEED_SRC * this.arena.scale;
-
-		if (this.activeStone) this.updateSlingshotTarget(this.activeStone);
+		this.launchInput.cancel();
+		this.launchInput.syncScale();
 
 		this.drawBackground();
 		drawIceSheet(this.sheetGfx, this.arena);

@@ -3,11 +3,11 @@
 ## Context
 
 This checkpoint summarises the work completed from
-`docs/games-common-code-audit.md` during phases 1, 2 and 3 of the
+`docs/games-common-code-audit.md` during phases 1, 2, 3 and 4 of the
 extraction process for the `arena + ball` family and its related shared
 infrastructure.
 
-Checkpoint date: `2026-07-06`
+Checkpoint date: `2026-07-08`
 
 ## Scope Applied
 
@@ -19,6 +19,8 @@ Checkpoint date: `2026-07-06`
 -   `frontend/src/games/shell-curl/ShellCurlScene.ts`
 -   `frontend/src/games/shared/localReplay.ts`
 -   `frontend/src/shared/mechanics/*`
+-   `frontend/src/games/bamboo-bash/bamboo.ts`
+-   `frontend/src/shared/mechanics/timed-targets.ts`
 
 ### Backend
 
@@ -140,6 +142,45 @@ pool - cleanup of auxiliary textures
 -   Pickup logic, scoring, and world effects are still implemented
     within each scene.
 
+## 6. Shared Obstacle Descriptor
+
+**Status:** `Completed` (first useful iteration)
+
+Extracted into: - `frontend/src/shared/mechanics/obstacle-descriptor.ts`
+
+This now centralises: - obstacle identity and type - normalised or
+absolute position metadata - circular geometry and source/pixel/normalised
+radius units - score value - collision semantics for blocking, bouncing,
+breaking, and point awards - rendering metadata - optional hooks for hit,
+expiry, and scoring
+
+### Impact
+
+-   `bamboo-bash` bamboo, `kame-knock` timed targets, `bell-clash`'s
+    central bell, and `shell-curl` bumpers now expose a common
+    `ObstacleDescriptor` while retaining their game-specific growth,
+    rendering, scoring, bounce, cooldown, and round rules.
+-   Shared helpers now resolve obstacle positions and radii against the
+    active arena or absolute pixel geometry, test circular collisions, and
+    build pickup blockers from circular obstacles.
+-   Existing `bambooPos`, `bambooRadius`, `hitsBamboo`,
+    `timedTargetPosition`, `timedTargetRadius`, and `hitsTimedTarget`
+    functions now route through the common descriptor helpers, preserving
+    the public game APIs while removing duplicated geometry logic.
+-   Bell Clash's central bell collision and Shell Curl's bumper collision
+    now use descriptor-derived position/radius data without moving their
+    local gameplay-specific response logic into the shared layer.
+
+### Coverage
+
+-   `frontend/src/shared/mechanics/obstacle-descriptor.test.ts`
+
+### Current limitation
+
+-   Score zones in Bell Clash are still local because they are scoring
+    regions rather than physical obstacles.
+-   Snapshot serialisation for world objects remains separate.
+
 # Current Status by Area
 
 ## Successfully extracted
@@ -150,16 +191,18 @@ pool - cleanup of auxiliary textures
 -   Replay import payload builder
 -   Base arena engine
 -   Ball power lifecycle for the `arena + ball` family
+-   Shared obstacle descriptor for bamboo, timed targets, the bell, and
+    bumpers
 
 ## Partially extracted
 
 -   `PlayerEntityConfig`
 -   `BaseArenaEngine`
 -   `ArenaPowerRuntime`
+-   `ObstacleDescriptor`
 
 ## Not yet extracted
 
--   `ObstacleDescriptor`
 -   `CollectibleDescriptor`
 -   `GameRuleHooks`
 -   `LaunchableActor`
@@ -177,14 +220,10 @@ pool - cleanup of auxiliary textures
 
 -   No shared base scene by design.
 -   `shell-curl` remains mechanically independent.
--   Runtime validation could not be completed because `npm` was
-    unavailable.
+-   Bell Clash score zones are intentionally left local because they are not
+    physical obstacles.
 
 # Recommended Next Sequence
-
-## Phase 4
-
-Extract `ObstacleDescriptor`.
 
 ## Phase 5
 
@@ -198,9 +237,11 @@ Extract `GameRuleHooks`.
 
 The project now includes genuine shared infrastructure for player
 visuals, HUD adaptation, replay support, backend arena lifecycle
-management, and the shared power runtime for the `arena + ball` family.
-Remaining duplication is now primarily centred around gameplay rules and
-world contracts rather than shared plumbing.
+management, the shared power runtime for the `arena + ball` family, and a
+common obstacle contract adopted by the audited physical obstacles.
+Remaining duplication is now primarily centred around collectible
+integration, gameplay rules, and broader world snapshot contracts rather
+than shared plumbing.
 
 # Module Status
 
