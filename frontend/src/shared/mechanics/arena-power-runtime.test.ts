@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ArenaPixels } from "../arenas/arena";
-import { applyArenaBallPowerCycle } from "./arena-power-runtime";
+import {
+	applyArenaBallPowerCycle,
+	ArenaPowerRuntime,
+} from "./arena-power-runtime";
 import { PowerType } from "./power-system";
 
 const arena = {
@@ -14,9 +17,10 @@ const arena = {
 
 describe("arena-power-runtime", () => {
 	it("creates two auxiliary balls for splitter", () => {
+		const ball = { x: 100, y: 120, vx: 10, vy: 0, r: 20 };
 		const entries = applyArenaBallPowerCycle(
 			PowerType.SPLITTER,
-			{ x: 100, y: 120, vx: 10, vy: 0, r: 20 },
+			ball,
 			arena,
 			2,
 		);
@@ -24,6 +28,11 @@ describe("arena-power-runtime", () => {
 		expect(entries).toHaveLength(2);
 		expect(entries.every((entry) => entry.player === 2)).toBe(true);
 		expect(entries.every((entry) => entry.ball.r < 20)).toBe(true);
+		expect(ball.x).toBeCloseTo(106.75, 5);
+		expect(ball.y).toBe(120);
+		expect(ball.vx).toBeCloseTo(8.5, 5);
+		expect(ball.vy).toBe(0);
+		expect(ball.r).toBe(15);
 	});
 
 	it("creates a mirrored auxiliary ball for mirror", () => {
@@ -58,5 +67,29 @@ describe("arena-power-runtime", () => {
 
 		expect(entries).toEqual([]);
 		expect(ball.r).toBeGreaterThan(10);
+	});
+
+	it("prunes settled auxiliary balls after firing onSettled once", () => {
+		const runtime = new ArenaPowerRuntime();
+		const settled: Array<{ player: number; radius: number }> = [];
+
+		runtime.push({
+			player: 1,
+			ball: { x: 10, y: 15, vx: 0, vy: 0, r: 12 },
+		});
+
+		runtime.update(16, arena, {
+			onSettled: ({ player, ball }) => {
+				settled.push({ player, radius: ball.r });
+			},
+		});
+		runtime.update(16, arena, {
+			onSettled: ({ player, ball }) => {
+				settled.push({ player, radius: ball.r });
+			},
+		});
+
+		expect(settled).toEqual([{ player: 1, radius: 12 }]);
+		expect(runtime.length).toBe(0);
 	});
 });

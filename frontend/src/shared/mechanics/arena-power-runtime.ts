@@ -1,13 +1,10 @@
-import Phaser from "phaser";
-
 import type { ArenaPixels } from "../arenas/arena";
 import {
 	type BallState,
-	drawShellBall,
 	isBallMoving,
 	resolveBallCollision,
 	stepBall,
-} from "./ball";
+} from "./ball-core";
 import {
 	applyBallCurl,
 	applyBallPower,
@@ -15,11 +12,6 @@ import {
 	BALL_FRICTION_BASE,
 } from "./ball-powers";
 import { createMirrorBall, createSplitBalls } from "./ball-spawn-powers";
-import {
-	destroyIngamePlayerTexture,
-	drawIngamePlayerTexture,
-	hideIngamePlayerTexture,
-} from "./player-renderer";
 import { PowerType } from "./power-system";
 
 export interface ArenaPowerBallEntry {
@@ -35,6 +27,7 @@ export function applyArenaBallPowerCycle(
 ): ArenaPowerBallEntry[] {
 	if (power === PowerType.SPLITTER) {
 		const children = createSplitBalls(ball);
+		Object.assign(ball, children[1]);
 		return [
 			{ ball: children[0], player },
 			{ ball: children[2], player },
@@ -93,50 +86,76 @@ export function resolveArenaPowerBallCollisions(
 	}
 }
 
-export function clearArenaPowerBallTextures(
-	scene: Phaser.Scene,
-	prefix: string,
-	renderedCount: number,
-): void {
-	for (let i = 0; i < renderedCount; i++) {
-		destroyIngamePlayerTexture(scene, `${prefix}-${i}`);
-	}
-}
+export class ArenaPowerRuntime implements Iterable<ArenaPowerBallEntry> {
+	private entries: ArenaPowerBallEntry[] = [];
 
-export function drawArenaPowerBalls(
-	scene: Phaser.Scene,
-	gfx: Phaser.GameObjects.Graphics,
-	entries: ArenaPowerBallEntry[],
-	renderedCount: number,
-	options: {
-		prefix: string;
-		depth: number;
-		playerShellSkins: readonly string[];
-		colourForPlayer: (player: number) => number;
-		ringScale?: number;
-	},
-): number {
-	for (let i = entries.length; i < renderedCount; i++) {
-		hideIngamePlayerTexture(scene, `${options.prefix}-${i}`);
+	get length(): number {
+		return this.entries.length;
 	}
-	for (let i = 0; i < entries.length; i++) {
-		const { ball, player } = entries[i];
-		if (
-			!drawIngamePlayerTexture(
-				scene,
-				`${options.prefix}-${i}`,
-				ball,
-				options.depth,
-				options.playerShellSkins[player],
-			)
-		)
-			drawShellBall(gfx, ball, false);
-		gfx.lineStyle(
-			Math.max(2, ball.r * 0.14),
-			options.colourForPlayer(player),
-			0.75,
-		);
-		gfx.strokeCircle(ball.x, ball.y, ball.r * (options.ringScale ?? 1.06));
+
+	all(): readonly ArenaPowerBallEntry[] {
+		return this.entries;
 	}
-	return entries.length;
+
+	push(...entries: ArenaPowerBallEntry[]): number {
+		return this.entries.push(...entries);
+	}
+
+	clear(): void {
+		this.entries.length = 0;
+	}
+
+	map<T>(
+		callback: (
+			entry: ArenaPowerBallEntry,
+			index: number,
+			entries: ArenaPowerBallEntry[],
+		) => T,
+	): T[] {
+		return this.entries.map(callback);
+	}
+
+	at(index: number): ArenaPowerBallEntry | undefined {
+		return this.entries[index];
+	}
+
+	forEach(
+		callback: (
+			entry: ArenaPowerBallEntry,
+			index: number,
+			entries: ArenaPowerBallEntry[],
+		) => void,
+	): void {
+		this.entries.forEach(callback);
+	}
+
+	some(
+		callback: (
+			entry: ArenaPowerBallEntry,
+			index: number,
+			entries: ArenaPowerBallEntry[],
+		) => boolean,
+	): boolean {
+		return this.entries.some(callback);
+	}
+
+	update(
+		delta: number,
+		arena: ArenaPixels,
+		handlers: {
+			onMoving?: (entry: ArenaPowerBallEntry) => void;
+			onSettled?: (entry: ArenaPowerBallEntry, ext: BallExtState) => void;
+		},
+	): readonly ArenaPowerBallEntry[] {
+		this.entries = updateArenaPowerBalls(this.entries, delta, arena, handlers);
+		return this.entries;
+	}
+
+	resolveCollisions(baseBalls: BallState[]): void {
+		resolveArenaPowerBallCollisions(baseBalls, this.entries);
+	}
+
+	[Symbol.iterator](): Iterator<ArenaPowerBallEntry> {
+		return this.entries[Symbol.iterator]();
+	}
 }

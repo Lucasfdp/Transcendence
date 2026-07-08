@@ -16,6 +16,18 @@ type ArenaReplaySnapshot =
 	| KameKnockSnapshot
 	| BellClashSnapshot;
 
+const ARENA_ALLOWED_POWERS = new Set([
+	"none",
+	"heavy",
+	"splitter",
+	"spinning",
+	"rocket",
+	"giant",
+	"tiny",
+	"mirror",
+	"phantom",
+]);
+
 export abstract class BaseArenaEngine extends BaseEngine {
 	protected buildArenaReplayState(
 		roomPlayers: RoomPlayer[],
@@ -59,31 +71,17 @@ export abstract class BaseArenaEngine extends BaseEngine {
 		return room.players.find((candidate) => candidate.user.id === userId);
 	}
 
-	protected getWinnerSide(score: number[]): number | null {
-		const maxScore = Math.max(...score);
-		const winners = score
-			.map((value, side) => ({ value, side }))
-			.filter((entry) => entry.value === maxScore);
-		return winners.length === 1 ? winners[0].side : null;
-	}
-
-	protected resolveAbandonWinner(
-		room: MatchRoom,
-		abandonedPlayer: RoomPlayer,
-		score: number[],
-	): number | null {
-		const remaining = room.players
-			.filter(
-				(player) =>
-					player.side !== abandonedPlayer.side && player.connected,
-			)
-			.map((player) => ({
-				side: player.side,
-				score: score[player.side] ?? 0,
-			}));
-		if (!remaining.length) return null;
-		const maxScore = Math.max(...remaining.map((entry) => entry.score));
-		const winners = remaining.filter((entry) => entry.score === maxScore);
-		return winners.length === 1 ? winners[0].side : null;
+	protected consumeArenaPower(
+		state: { powerupsEnabled: boolean; usedPowersBySide: string[][] },
+		side: number,
+		value: unknown,
+	): string {
+		if (!state.powerupsEnabled) return "none";
+		const power = String(value ?? "none");
+		if (power === "none" || !ARENA_ALLOWED_POWERS.has(power)) return "none";
+		state.usedPowersBySide[side] ??= [];
+		if (state.usedPowersBySide[side].includes(power)) return "none";
+		state.usedPowersBySide[side].push(power);
+		return power;
 	}
 }

@@ -51,7 +51,7 @@ export function createLocalReplayId(gameId: string): string {
 	return `local:${gameId}:${Date.now()}`;
 }
 
-export class SceneReplayRecorder<TSnapshot extends Record<string, unknown>> {
+export class SceneReplayRecorder<TSnapshot extends object> {
 	private replayId: string | null = null;
 	private frames: LocalReplayFrameDraft[] = [];
 	private startedAtIso = "";
@@ -120,7 +120,7 @@ export class SceneReplayRecorder<TSnapshot extends Record<string, unknown>> {
 			seq: this.frames.length,
 			recordedAt: new Date().toISOString(),
 			...(deltaMs !== undefined ? { deltaMs } : {}),
-			snapshot: buildSnapshot(options.phaseOverride),
+			snapshot: buildSnapshot(options.phaseOverride) as Record<string, unknown>,
 		});
 	}
 
@@ -303,7 +303,16 @@ export function normalizeReplayImportFrames(
 	maxFrames = DEFAULT_MAX_IMPORTED_REPLAY_FRAMES,
 ): ReplayImportRequest["frames"] {
 	const firstFrameTime = parseFrameTime(frames[0]?.recordedAt);
-	const normalizedFrames = frames.map((frame, index) => ({
+	const resolveWallClockDelta = (
+		frame: LocalReplayFrameDraft,
+		previousFrame: LocalReplayFrameDraft | undefined,
+	): number => {
+		const currentTime = parseFrameTime(frame.recordedAt) ?? 0;
+		const previousTime =
+			parseFrameTime(previousFrame?.recordedAt) ?? currentTime;
+		return Math.max(0, currentTime - previousTime);
+	};
+	const normalizedFrames: ReplayImportRequest["frames"] = frames.map((frame, index) => ({
 		replayVersion: REPLAY_CONTRACT_VERSION,
 		seq: index,
 		recordedAt: frame.recordedAt,
@@ -314,13 +323,8 @@ export function normalizeReplayImportFrames(
 		deltaMs:
 			index === 0
 				? frame.deltaMs
-				: Math.max(
-					0,
-					(parseFrameTime(frame.recordedAt) ?? 0) -
-						(parseFrameTime(frames[index - 1]?.recordedAt) ??
-							parseFrameTime(frame.recordedAt) ??
-							0),
-				),
+				: frame.deltaMs ??
+					resolveWallClockDelta(frame, frames[index - 1]),
 		snapshot: frame.snapshot,
 	}));
 
@@ -334,7 +338,7 @@ export function normalizeReplayImportFrames(
 		keptIndices.add(index);
 	}
 
-	return [...keptIndices]
+	const compactedFrames: ReplayImportRequest["frames"] = [...keptIndices]
 		.sort((left, right) => left - right)
 		.map((sourceIndex, compactIndex, indices) => {
 			const frame = normalizedFrames[sourceIndex];
@@ -343,15 +347,12 @@ export function normalizeReplayImportFrames(
 			return {
 				...frame,
 				seq: compactIndex,
-				deltaMs: Math.max(
-					0,
-					(parseFrameTime(frame.recordedAt) ?? 0) -
-						(parseFrameTime(previousFrame.recordedAt) ??
-							parseFrameTime(frame.recordedAt) ??
-							0),
-				),
+				deltaMs:
+					frame.deltaMs ??
+					resolveWallClockDelta(frame, previousFrame),
 			};
 		});
+	return compactedFrames;
 }
 
 function parseFrameTime(value: string | undefined): number | null {

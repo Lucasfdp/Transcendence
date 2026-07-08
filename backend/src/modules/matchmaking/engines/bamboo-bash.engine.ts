@@ -32,7 +32,6 @@ const POWER_POOL = [
 	"mirror",
 	"phantom",
 ];
-const ALLOWED_POWERS = new Set(["none", ...POWER_POOL]);
 
 @Injectable()
 export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
@@ -183,7 +182,7 @@ export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 			!Number.isFinite(vy)
 		)
 			return null;
-		const power = this.consumePower(state, player.side, payload.power);
+		const power = this.consumeArenaPower(state, player.side, payload.power);
 		initializeArenaReplayBall(state, player.side, vx, vy, { x, y }, power);
 		state.lastPowerBySide[player.side] = power;
 		this.bumpRoomState(room);
@@ -350,20 +349,6 @@ export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 			nx: spot.nx,
 			ny: spot.ny,
 		});
-	}
-
-	private consumePower(
-		state: BambooBashSnapshot,
-		side: number,
-		value: unknown,
-	): string {
-		if (!state.powerupsEnabled) return "none";
-		const power = String(value ?? "none");
-		if (power === "none" || !ALLOWED_POWERS.has(power)) return "none";
-		state.usedPowersBySide[side] ??= [];
-		if (state.usedPowersBySide[side].includes(power)) return "none";
-		state.usedPowersBySide[side].push(power);
-		return power;
 	}
 
 	private randomSpot(

@@ -23,7 +23,7 @@
  */
 
 import type { ArenaPixels } from "../arenas/arena";
-import { BALL_FRICTION_BASE, type BallState } from "./ball";
+import { BALL_FRICTION_BASE, type BallState } from "./ball-core";
 import {
 	PowerType,
 	HEAVY_SPEED_FACTOR,

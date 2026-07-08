@@ -51,6 +51,10 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 			activeTurnNumber: null,
 			score: Array.from({ length: roomPlayers.length }, () => 0),
 			roundScores: Array.from({ length: roomPlayers.length }, () => 0),
+			usedPowersBySide: Array.from(
+				{ length: roomPlayers.length },
+				() => [],
+			),
 			targets: [],
 			nextTargetId: 1,
 			...this.buildArenaReplayState(roomPlayers),
@@ -84,6 +88,10 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 		return this.resolveAbandonWinner(room, abandonedPlayer, state.score);
 	}
 
+	onRoomClosed(room: MatchRoom): void {
+		this.roundTargetSets.delete(room.matchId);
+	}
+
 	private applyRelease(
 		room: MatchRoom,
 		userId: number,
@@ -108,13 +116,14 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 		if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
 
 		state.activeTurnNumber = state.turnNumber;
+		const power = this.consumeArenaPower(state, player.side, payload.power);
 		initializeArenaReplayBall(
 			state,
 			player.side,
 			vx,
 			vy,
 			undefined,
-			String(payload.power ?? "none"),
+			power,
 		);
 		this.bumpRoomState(room);
 		return room;
@@ -204,6 +213,10 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 			state.roundScores = Array.from(
 				{ length: room.players.length },
 				() => 0,
+			);
+			state.usedPowersBySide = Array.from(
+				{ length: room.players.length },
+				() => [],
 			);
 			this.createRoundTargetSet(room.matchId, state.roundNumber);
 		}

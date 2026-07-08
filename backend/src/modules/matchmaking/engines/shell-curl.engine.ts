@@ -39,6 +39,7 @@ interface SettledObject {
 @Injectable()
 export class ShellCurlEngine extends BaseEngine implements GameEngine {
 	readonly gameId = "temple-curling";
+	private readonly pendingSettledTurns = new Map<string, number>();
 
 	createInitialState(
 		context: GameEngineCreateContext,
@@ -79,6 +80,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		room.status = "active";
 		room.state.phase = "active";
 		room.state.seq = ++room.seq;
+		this.pendingSettledTurns.delete(room.matchId);
 		this.refreshSnapshotPlayers(room);
 	}
 
@@ -94,8 +96,13 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		return room;
 	}
 
-	abandon(_room: MatchRoom, abandonedPlayer: RoomPlayer): number | null {
-		return abandonedPlayer.side === 0 ? 1 : 0;
+	abandon(room: MatchRoom, abandonedPlayer: RoomPlayer): number | null {
+		const state = room.state as CurlingSnapshot;
+		return this.resolveAbandonWinner(room, abandonedPlayer, state.score);
+	}
+
+	onRoomClosed(room: MatchRoom): void {
+		this.pendingSettledTurns.delete(room.matchId);
 	}
 
 	private applyRelease(
@@ -118,6 +125,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			Number(payload.vy ?? 0),
 			String(payload.power ?? "none"),
 		);
+		this.pendingSettledTurns.set(room.matchId, state.turnNumber);
 		state.seq = ++room.seq;
 		this.refreshSnapshotPlayers(room);
 		return room;
@@ -132,11 +140,20 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		const player = room.players.find((p) => p.user.id === userId);
 		if (!player || room.status !== "active") return null;
 		if (player.side !== state.currentTurn) return null;
+		const expectedTurnNumber = this.pendingSettledTurns.get(room.matchId);
+		if (expectedTurnNumber !== state.turnNumber) return null;
+
+		if (payload.turnNumber !== undefined) {
+			const turnNumber = Math.floor(Number(payload.turnNumber));
+			if (!Number.isFinite(turnNumber) || turnNumber !== state.turnNumber)
+				return null;
+		}
 
 		const objects = Array.isArray(payload.objects) ? payload.objects : null;
 		if (!objects) return null;
 
 		syncCurlingReplayStateFromPayload(state, payload);
+		this.pendingSettledTurns.delete(room.matchId);
 
 		state.turnNumber += 1;
 		state.throwsInEnd += 1;
@@ -229,13 +246,4 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		const dy = (object.y - HOUSE_CY) * SHEET_H_SRC;
 		return Math.hypot(dx, dy);
 	}
-
-	private getWinnerSide(score: number[]): number | null {
-		const maxScore = Math.max(...score);
-		const winners = score
-			.map((value, side) => ({ value, side }))
-			.filter((entry) => entry.value === maxScore);
-		return winners.length === 1 ? winners[0].side : null;
-	}
-
 }

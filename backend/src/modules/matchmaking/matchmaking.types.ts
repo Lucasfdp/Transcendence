@@ -251,6 +251,7 @@ export interface KameKnockSnapshot {
 	activeTurnNumber: number | null;
 	score: number[];
 	roundScores: number[];
+	usedPowersBySide: string[][];
 	targets: Array<{
 		id: number;
 		kind: "daruma" | "crate" | "drum";
@@ -285,6 +286,7 @@ export interface BellClashSnapshot {
 	liveRoundScores: number[];
 	roundScores: Array<number | null>;
 	shotCounts: number[];
+	usedPowersBySide: string[][];
 	zones: Array<{
 		kind: "red" | "yellow" | "green";
 		start: number;
@@ -349,5 +351,4 @@ export interface MatchRoom {
 	replayLastCapturedSeq: number | null;
 	replayStartedAt: number | null;
 	replayLastRecordedAt: number | null;
-	replayLastSimulationAt: number | null;
 }

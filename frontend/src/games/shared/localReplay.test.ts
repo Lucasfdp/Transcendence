@@ -55,6 +55,38 @@ describe("localReplay", () => {
 		expect(normalized.map((frame) => frame.seq)).toEqual([0, 1, 2]);
 	});
 
+	it("preserves recorder deltaMs when compacting imported frames", () => {
+		const frames = [
+			{
+				seq: 0,
+				recordedAt: "2026-07-04T10:00:00.000Z",
+				deltaMs: 0,
+				snapshot: { index: 0 },
+			},
+			{
+				seq: 1,
+				recordedAt: "2026-07-04T10:00:00.000Z",
+				deltaMs: 120,
+				snapshot: { index: 1 },
+			},
+			{
+				seq: 2,
+				recordedAt: "2026-07-04T10:00:00.000Z",
+				deltaMs: 240,
+				snapshot: { index: 2 },
+			},
+		];
+
+		const normalized = normalizeReplayImportFrames(frames, 2);
+
+		expect(normalized).toHaveLength(2);
+		expect(normalized[1]).toMatchObject({
+			seq: 1,
+			deltaMs: 240,
+			snapshot: { index: 2 },
+		});
+	});
+
 	it("captures player visuals and visible power metadata", () => {
 		const players = buildLocalReplayPlayers(
 			{

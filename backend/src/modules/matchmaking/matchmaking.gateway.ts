@@ -522,6 +522,7 @@ export class MatchmakingGateway
 					"balls" in room.state
 						? room.state.balls.find((candidate) => candidate.side === player.side)
 						: null;
+				const power = ball?.power ?? "none";
 				const throwEvent: KameKnockThrowEvent = {
 					matchId: room.matchId,
 					roundNumber: room.state.roundNumber,
@@ -531,7 +532,7 @@ export class MatchmakingGateway
 					y: ball?.y ?? 0,
 					vx: Number(payload.payload?.vx ?? 0),
 					vy: Number(payload.payload?.vy ?? 0),
-					power: String(payload.payload?.power ?? "none"),
+					power,
 				};
 				this.replays.recordEvent(
 					room,
@@ -541,7 +542,6 @@ export class MatchmakingGateway
 				this.server
 					.to(room.matchId)
 					.emit("game:kame-throw", throwEvent);
-				const power = String(payload.payload?.power ?? "none");
 				if (power !== "none") {
 					this.server.to(room.matchId).emit("game:kame-power-pickup", {
 						matchId: room.matchId,
@@ -570,6 +570,7 @@ export class MatchmakingGateway
 					"balls" in room.state
 						? room.state.balls.find((candidate) => candidate.side === player.side)
 						: null;
+				const power = ball?.power ?? "none";
 				const throwEvent: BellClashThrowEvent = {
 					matchId: room.matchId,
 					roundNumber: room.state.roundNumber,
@@ -579,7 +580,7 @@ export class MatchmakingGateway
 					y: ball?.y ?? 0,
 					vx: Number(payload.payload?.vx ?? 0),
 					vy: Number(payload.payload?.vy ?? 0),
-					power: String(payload.payload?.power ?? "none"),
+					power,
 				};
 				this.replays.recordEvent(
 					room,
@@ -589,7 +590,6 @@ export class MatchmakingGateway
 				this.server
 					.to(room.matchId)
 					.emit("game:bell-throw", throwEvent);
-				const power = String(payload.payload?.power ?? "none");
 				if (power !== "none") {
 					this.server.to(room.matchId).emit("game:bell-power-pickup", {
 						matchId: room.matchId,

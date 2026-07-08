@@ -65,7 +65,6 @@ function makeRoom(overrides: Partial<MatchRoom> = {}): MatchRoom {
 		replayLastCapturedSeq: null,
 		replayStartedAt: null,
 		replayLastRecordedAt: null,
-		replayLastSimulationAt: null,
 		...overrides,
 	};
 }
@@ -74,6 +73,10 @@ describe("GameSessionService", () => {
 	let service: GameSessionService;
 	let roomService: jest.Mocked<RoomService>;
 	let engines: jest.Mocked<GameEngineRegistry>;
+	let engine: {
+		abandon: jest.Mock;
+		onRoomClosed: jest.Mock;
+	};
 	let usersService: jest.Mocked<UsersService>;
 	let gameResultsService: jest.Mocked<GameResultsService>;
 	let replayService: { persistReplayForRoom: jest.Mock };
@@ -96,6 +99,11 @@ describe("GameSessionService", () => {
 			}),
 		} as unknown as jest.Mocked<RoomService>;
 		engines = { get: jest.fn() } as unknown as jest.Mocked<GameEngineRegistry>;
+		engine = {
+			abandon: jest.fn(),
+			onRoomClosed: jest.fn(),
+		};
+		engines.get.mockReturnValue(engine as never);
 		usersService = {
 			findById: jest.fn(async (id: number) => ({ id, isGuest: false })),
 		} as unknown as jest.Mocked<UsersService>;
@@ -257,6 +265,33 @@ describe("GameSessionService", () => {
 			{ gameId: "temple-curling", outcome: "win" },
 		);
 	});
+
+	it("persists winnerUserId by matching player.side instead of player array position", async () => {
+		const room = makeRoom({
+			players: [makePlayer(1), makePlayer(0)],
+		});
+		room.state.winnerSide = 0;
+		room.state.score = [3, 1];
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		expect(matchRepo.update).toHaveBeenCalledWith(
+			room.matchId,
+			expect.objectContaining({ winnerUserId: 1, winnerSide: 0 }),
+		);
+	});
+
+	it("cleans engine room state when an abandon is persisted", async () => {
+		const room = makeRoom({ status: "active" });
+		room.state.phase = "active";
+		roomService.getRoom.mockReturnValue(room);
+		engine.abandon.mockReturnValue(0);
+
+		await service.abandon(room, room.players[1]);
+
+		expect(engine.onRoomClosed).toHaveBeenCalledWith(room);
+	});
 });
 
 describe("GameSessionService — applyEloRatings (Bug Audit H1)", () => {
@@ -324,7 +359,9 @@ describe("GameSessionService — applyEloRatings (Bug Audit H1)", () => {
 		};
 		service = new GameSessionService(
 			roomService,
-			{ get: jest.fn() } as unknown as jest.Mocked<GameEngineRegistry>,
+			{
+				get: jest.fn(() => ({ onRoomClosed: jest.fn() })),
+			} as unknown as jest.Mocked<GameEngineRegistry>,
 			usersService,
 			gameResultsService,
 			replayService as never,

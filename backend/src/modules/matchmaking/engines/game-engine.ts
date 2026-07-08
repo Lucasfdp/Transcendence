@@ -32,4 +32,5 @@ export interface GameEngine {
 		input: GameInputPayload,
 	): MatchRoom | null;
 	abandon(room: MatchRoom, abandonedPlayer: RoomPlayer): number | null;
+	onRoomClosed?(room: MatchRoom): void;
 }

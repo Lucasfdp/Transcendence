@@ -45,6 +45,10 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 			),
 			roundScores: Array.from({ length: roomPlayers.length }, () => null),
 			shotCounts: Array.from({ length: roomPlayers.length }, () => 0),
+			usedPowersBySide: Array.from(
+				{ length: roomPlayers.length },
+				() => [],
+			),
 			zones: [],
 			...this.buildArenaReplayState(roomPlayers),
 		};
@@ -97,13 +101,14 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 
 		state.shotCounts[player.side] =
 			(state.shotCounts[player.side] ?? 0) + 1;
+		const power = this.consumeArenaPower(state, player.side, payload.power);
 		initializeArenaReplayBall(
 			state,
 			player.side,
 			vx,
 			vy,
 			undefined,
-			String(payload.power ?? "none"),
+			power,
 		);
 		this.bumpRoomState(room);
 		return room;
@@ -180,6 +185,7 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 		state.liveRoundScores = Array.from({ length: playerCount }, () => 0);
 		state.roundScores = Array.from({ length: playerCount }, () => null);
 		state.shotCounts = Array.from({ length: playerCount }, () => 0);
+		state.usedPowersBySide = Array.from({ length: playerCount }, () => []);
 		state.zones = this.generateZones();
 	}
 

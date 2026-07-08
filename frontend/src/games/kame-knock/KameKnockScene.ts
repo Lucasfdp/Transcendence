@@ -66,12 +66,12 @@ import {
 } from "../../shared/mechanics/ball-powers";
 import {
 	applyArenaBallPowerCycle,
+	ArenaPowerRuntime,
+} from "../../shared/mechanics/arena-power-runtime";
+import {
 	clearArenaPowerBallTextures,
 	drawArenaPowerBalls,
-	resolveArenaPowerBallCollisions,
-	type ArenaPowerBallEntry,
-	updateArenaPowerBalls,
-} from "../../shared/mechanics/arena-power-runtime";
+} from "../../shared/mechanics/arena-power-runtime.render";
 import {
 	drawIngamePlayerTexture,
 	preloadIngamePlayerTexture,
@@ -134,6 +134,11 @@ interface BallRoundConfig {
 interface KameKnockLayout {
 	readonly leftPanel?: PanelRect;
 	readonly rightPanel?: PanelRect;
+}
+
+interface OverlayState {
+	readonly kind: "round-transition" | "local-end" | "online-end";
+	readonly rebuild: () => void;
 }
 
 const BALL_ROUNDS: BallRoundConfig[] = [
@@ -235,7 +240,7 @@ export class KameKnockScene extends ResponsiveScene {
 
 	private arena!: ArenaPixels;
 	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
-	private powerBalls: ArenaPowerBallEntry[] = [];
+	private powerBalls = new ArenaPowerRuntime();
 	private powerBallTexCount = 0;
 	private slingshot: Slingshot | null = null;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
@@ -259,6 +264,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private scoreLogPanel: SidePanel | null = null;
 	private scoreHud: ScoreHud | null = null;
 	private overlay?: Phaser.GameObjects.Container;
+	private overlayState: OverlayState | null = null;
 
 	// ── Power state ──────────────────────────────────────────────────────────────
 	private powerSidePanel: GameInfoSidePanel | null = null;
@@ -500,6 +506,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.destroyTargetSprites();
 		this.overlay?.destroy(true);
 		this.overlay = undefined;
+		this.overlayState = null;
 		this.powerSidePanel?.destroy();
 		this.powerSidePanel = null;
 		this.powerPickups?.destroy();
@@ -519,6 +526,7 @@ export class KameKnockScene extends ResponsiveScene {
 			socket.off("game:state", this.handleOnlineState);
 			socket.off("game:end", this.handleOnlineState);
 			socket.off("game:kame-throw", this.handleOnlineThrow);
+			socket.off("game:kame-power-pickup", this.handleOnlinePowerPickup);
 		}
 		this.onlineStatusText?.destroy();
 		this.onlineStatusText = null;
@@ -902,6 +910,13 @@ export class KameKnockScene extends ResponsiveScene {
 		this.showEndScreen();
 	}
 
+	private rebuildOverlay(): void {
+		if (!this.overlayState) return;
+		this.overlay?.destroy(true);
+		this.overlay = undefined;
+		this.overlayState.rebuild();
+	}
+
 	private initOnlineMatch(): void {
 		const socket = getGameSocket();
 		socket.off("game:state", this.handleOnlineState);
@@ -1039,8 +1054,10 @@ export class KameKnockScene extends ResponsiveScene {
 				this.pendingOnlineTargetHits.delete(pendingId);
 		}
 
-		if (!this.launchedThisBall)
+		if (!this.launchedThisBall) {
+			this.clearPowerBalls();
 			this.resetBallForPlayer(snapshot.currentTurn);
+		}
 		this.ballText?.setText(this.formatBallText());
 		this.updateScoreHud();
 		this.drawTargets();
@@ -1075,6 +1092,7 @@ export class KameKnockScene extends ResponsiveScene {
 			return;
 		if (event.roundNumber !== this.onlineRoundNumber()) return;
 
+		this.clearPowerBalls();
 		this.slingshot?.destroy();
 		this.onlineReplayThrower = event.side;
 		this.onlineReplayTurnNumber = event.turnNumber;
@@ -1169,6 +1187,10 @@ export class KameKnockScene extends ResponsiveScene {
 		this.slingshot?.destroy();
 		this.powerSidePanel?.hide();
 		this.overlay?.destroy(true);
+		this.overlayState = {
+			kind: "online-end",
+			rebuild: () => this.showOnlineEndScreen(snapshot),
+		};
 
 		const title =
 			snapshot.winnerSide === null
@@ -1483,7 +1505,7 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	private updatePowerBalls(delta: number): BallState[] {
-		return updateArenaPowerBalls(this.powerBalls, delta, this.arena, {
+		return this.powerBalls.update(delta, this.arena, {
 			onMoving: ({ ball }) => {
 				this.collectPowerPickup(ball);
 			},
@@ -1494,7 +1516,7 @@ export class KameKnockScene extends ResponsiveScene {
 	}
 
 	private resolvePowerBallCollisions(): void {
-		resolveArenaPowerBallCollisions([this.activeBall()], this.powerBalls);
+		this.powerBalls.resolveCollisions([this.activeBall()]);
 	}
 
 	private powerPickupBlockers(): PowerPickupBlocker[] {
@@ -1877,7 +1899,9 @@ export class KameKnockScene extends ResponsiveScene {
 				this.resetOnlineBall(ball, index, players.length);
 			// Sync powerup visual properties from server entity
 			if (serverBall) {
-				(ball as OnlineBallState).scale = serverBall.scale ?? 1;
+				(ball as OnlineBallState).scale = serverBall.stopped
+					? 1
+					: (serverBall.scale ?? 1);
 				(ball as OnlineBallState).alpha = serverBall.alpha ?? 1;
 				(ball as OnlineBallState).power = serverBall.power ?? "none";
 				(ball as OnlineBallState).trail = serverBall.trail ? serverBall.trail.map(p => ({ ...p })) : undefined;
@@ -1925,6 +1949,11 @@ export class KameKnockScene extends ResponsiveScene {
 		ball.vx = 0;
 		ball.vy = 0;
 		ball.r = BALL_SRC_R * this.arena.scale;
+		(ball as OnlineBallState).scale = 1;
+		(ball as OnlineBallState).alpha = 1;
+		(ball as OnlineBallState).power = "none";
+		(ball as OnlineBallState).trail = undefined;
+		(ball as OnlineBallState).stateFlags = [];
 	}
 
 	private isBallMoving(ball: BallState): boolean {
@@ -1956,44 +1985,42 @@ export class KameKnockScene extends ResponsiveScene {
 			: this.onlineMatch.snapshot.currentTurn;
 		const ball = this.ballForOnlineSide(side);
 		const onlineBall = ball as OnlineBallState;
-		// Apply powerup scale to radius
-		const renderRadius = ball.r * (onlineBall.scale ?? 1);
 		const colour =
 			PLAYER_COLOUR_VALUES[side % PLAYER_COLOUR_VALUES.length] ?? THEME.gold;
 		if (
 			!drawIngamePlayerTexture(
 				this,
 				`kame-knock-player-${side}`,
-				{ ...ball, r: renderRadius },
+				ball,
 				DEPTH_BALL,
 				this.playerShellSkins[side],
 			)
 		) {
 			// Apply alpha for translucent powers (ghost, phantom)
 			this.ballGfx.setAlpha(onlineBall.alpha ?? 1);
-			drawShellBall(this.ballGfx, { ...ball, r: renderRadius }, false);
+			drawShellBall(this.ballGfx, ball, false);
 			this.ballGfx.setAlpha(1);
 		}
 		// Draw trail for spinning/other powers
 		if (onlineBall.trail?.length) {
 			this.drawBallTrail(onlineBall.trail, colour);
 		}
-		this.ballGfx.lineStyle(Math.max(2, renderRadius * 0.14), colour, 0.95);
-		this.ballGfx.strokeCircle(ball.x, ball.y, renderRadius * 1.08);
+		this.ballGfx.lineStyle(Math.max(2, ball.r * 0.14), colour, 0.95);
+		this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.08);
 		this.drawPowerBalls();
 	}
 
 	private clearPowerBalls(): void {
 		clearArenaPowerBallTextures(this, "kame-knock-pb", this.powerBallTexCount);
 		this.powerBallTexCount = 0;
-		this.powerBalls = [];
+		this.powerBalls.clear();
 	}
 
 	private drawPowerBalls(): void {
 		this.powerBallTexCount = drawArenaPowerBalls(
 			this,
 			this.ballGfx,
-			this.powerBalls,
+			this.powerBalls.all(),
 			this.powerBallTexCount,
 			{
 				prefix: "kame-knock-pb",
@@ -2052,7 +2079,7 @@ export class KameKnockScene extends ResponsiveScene {
 		for (const [id, player] of this.completedTrailPlayers)
 			playersById.set(id, player);
 		for (let index = 0; index < this.powerBalls.length; index++)
-			playersById.set(`power-${index}`, this.powerBalls[index]?.player ?? 0);
+			playersById.set(`power-${index}`, this.powerBalls.at(index)?.player ?? 0);
 		for (const side of this.onlineBalls.keys()) playersById.set(side, side);
 		drawPlayerTrails(this.trailGfx, this.ballTrails, playersById, {
 			...BALL_TRAIL_OPTIONS,
@@ -2113,10 +2140,15 @@ export class KameKnockScene extends ResponsiveScene {
 
 	private showNextRoundOverlay(onNext: () => void): void {
 		this.running = false;
+		this.overlayState = {
+			kind: "round-transition",
+			rebuild: () => this.showNextRoundOverlay(onNext),
+		};
 		this.overlay = showRoundTransitionOverlay(this, this.overlay, {
 			message: `ROUND ${this.currentBallIndex + 1}\nGet ready for the next shell!`,
 			buttonLabel: "NEXT ROUND",
 			onButton: () => {
+				this.overlayState = null;
 				this.overlay = undefined;
 				this.running = true;
 				onNext();
@@ -2233,6 +2265,10 @@ export class KameKnockScene extends ResponsiveScene {
 
 	private showEndScreen(): void {
 		const winner = this.resolveLocalWinnerSide();
+		this.overlayState = {
+			kind: "local-end",
+			rebuild: () => this.showEndScreen(),
+		};
 		this.overlay = showGameEndModal(this, this.overlay, {
 			title: "KAME KNOCK",
 			result:
@@ -2259,6 +2295,7 @@ export class KameKnockScene extends ResponsiveScene {
 				{
 					label: "PLAY AGAIN",
 					onClick: () => {
+						this.overlayState = null;
 						void this.waitForPendingReplayPersist().finally(() => {
 							this.cleanupSceneResources();
 							this.scene.restart();
@@ -2268,6 +2305,7 @@ export class KameKnockScene extends ResponsiveScene {
 				{
 					label: "RETURN",
 					onClick: () => {
+						this.overlayState = null;
 						void this.waitForPendingReplayPersist().finally(() => {
 							this.cleanupSceneResources();
 							this.scene.start("HubScene");
@@ -2331,19 +2369,7 @@ export class KameKnockScene extends ResponsiveScene {
 		if (this.powerSidePanel?.isVisible()) this.showPowerPanel();
 		this.syncSlingshotForTurn();
 
-		if (this.overlay) {
-			this.overlay.destroy(true);
-			const onlineSnapshot =
-				this.onlineMatch?.snapshot?.gameId === "kame-knock"
-					? this.onlineMatch.snapshot
-					: null;
-			if (
-				onlineSnapshot?.phase === "finished" ||
-				onlineSnapshot?.phase === "abandoned"
-			)
-				this.showOnlineEndScreen(onlineSnapshot);
-			else this.showEndScreen();
-		}
+		this.rebuildOverlay();
 	}
 
 	// ── Icon helpers (used in info rows - kept for reference, info panel removed) ─

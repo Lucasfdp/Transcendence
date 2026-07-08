@@ -1,5 +1,5 @@
 import type { ArenaPixels } from "../arenas/arena";
-import { type BallState } from "./ball";
+import { type BallState } from "./ball-core";
 import { SPLITTER_RADIUS, SPLITTER_SPREAD } from "./power-system";
 
 function cloneBall(ball: BallState): BallState {

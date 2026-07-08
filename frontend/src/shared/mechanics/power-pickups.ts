@@ -13,6 +13,13 @@ export interface PowerPickup {
 	r: number;
 }
 
+export function remapPowerPickups(
+	pickups: readonly PowerPickup[],
+	mapPickup: (pickup: PowerPickup) => PowerPickup,
+): PowerPickup[] {
+	return pickups.map((pickup) => mapPickup({ ...pickup }));
+}
+
 export interface PowerPickupSpawnArea {
 	contains(x: number, y: number, r: number): boolean;
 	randomPoint(): { x: number; y: number };
@@ -87,7 +94,7 @@ export class PowerPickupManager {
 
 			const pickup: PowerPickup = {
 				id: this.nextId++,
-				type: Phaser.Math.RND.pick(this.pool),
+				type: pickRandom(this.pool),
 				x: point.x,
 				y: point.y,
 				r: this.radius,
@@ -170,8 +177,8 @@ export function createRectPowerPickupArea(bounds: {
 		},
 		randomPoint() {
 			return {
-				x: Phaser.Math.FloatBetween(bounds.x, bounds.x + bounds.w),
-				y: Phaser.Math.FloatBetween(bounds.y, bounds.y + bounds.h),
+				x: randomFloatBetween(bounds.x, bounds.x + bounds.w),
+				y: randomFloatBetween(bounds.y, bounds.y + bounds.h),
 			};
 		},
 	};
@@ -192,7 +199,7 @@ export function createEllipsePowerPickupArea(arena: {
 			return dx * dx + dy * dy <= 1;
 		},
 		randomPoint() {
-			const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+			const angle = randomFloatBetween(0, Math.PI * 2);
 			const radius = Math.sqrt(Math.random());
 			return {
 				x: arena.cx + Math.cos(angle) * arena.rx * radius,
@@ -200,4 +207,12 @@ export function createEllipsePowerPickupArea(arena: {
 			};
 		},
 	};
+}
+
+function pickRandom<T>(items: readonly T[]): T {
+	return items[Math.floor(Math.random() * items.length)] as T;
+}
+
+function randomFloatBetween(min: number, max: number): number {
+	return min + Math.random() * (max - min);
 }

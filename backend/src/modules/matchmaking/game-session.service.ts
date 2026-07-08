@@ -80,12 +80,14 @@ export class GameSessionService implements OnModuleInit {
 
 	async finishIfEnded(room: MatchRoom): Promise<void> {
 		if (room.status !== "finished" && room.status !== "abandoned") return;
-		this.roomService.finish(
+		const finished =
+			this.roomService.finish(
 			room.matchId,
 			room.state.winnerSide,
 			room.status === "abandoned",
-		);
-		await this.persistFinishedRoom(room, room.status === "abandoned");
+		) ?? room;
+		this.cleanupEngineRoomState(finished);
+		await this.persistFinishedRoom(finished, finished.status === "abandoned");
 	}
 
 	async abandon(
@@ -96,8 +98,15 @@ export class GameSessionService implements OnModuleInit {
 			.get(room.gameId)
 			.abandon(room, abandonedPlayer);
 		const finished = this.roomService.finish(room.matchId, winnerSide, true);
-		if (finished) await this.persistFinishedRoom(finished, true);
+		if (finished) {
+			this.cleanupEngineRoomState(finished);
+			await this.persistFinishedRoom(finished, true);
+		}
 		return finished;
+	}
+
+	private cleanupEngineRoomState(room: MatchRoom): void {
+		this.engines.get(room.gameId).onRoomClosed?.(room);
 	}
 
 	private async persistFinishedRoom(
@@ -107,7 +116,10 @@ export class GameSessionService implements OnModuleInit {
 		if (room.rewardsGranted) return;
 		const winnerSide = room.state.winnerSide;
 		const winnerUserId =
-			winnerSide === null ? null : room.players[winnerSide].user.id;
+			winnerSide === null
+				? null
+				: room.players.find((player) => player.side === winnerSide)?.user.id ??
+					null;
 
 		try {
 			await this.dataSource.transaction(async (manager) => {
