@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCommonLocalReplayPlayers } from "../runtime/LocalReplayPlayers";
+import {
+	buildCommonLocalReplayParticipantContext,
+	buildCommonLocalReplayPlayers,
+} from "../runtime/LocalReplayPlayers";
 
 describe("LocalReplayPlayers", () => {
 	it("builds replay player metadata from a scene registry-like source", () => {
@@ -35,6 +38,33 @@ describe("LocalReplayPlayers", () => {
 				username: "Player 2",
 				shellSkin: "blue-shell",
 			}),
+		]);
+	});
+
+	it("builds replay participant context for snapshots and persistence", () => {
+		const values = new Map<string, unknown>([
+			[
+				"user",
+				{
+					id: 9,
+					username: "user",
+					turtleName: "turtle",
+				},
+			],
+		]);
+
+		const context = buildCommonLocalReplayParticipantContext(
+			{ get: (key) => values.get(key) },
+			2,
+		);
+
+		expect(context.user).toEqual(
+			expect.objectContaining({ id: 9, username: "user" }),
+		);
+		expect(context.playerNames).toEqual(["turtle", "Player 2"]);
+		expect(context.players).toEqual([
+			expect.objectContaining({ userId: 9, username: "turtle" }),
+			expect.objectContaining({ userId: null, username: "Player 2" }),
 		]);
 	});
 });

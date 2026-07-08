@@ -32,7 +32,14 @@ export {
 	type LocalReplayCaptureRuntimeOptions,
 } from "./runtime/LocalReplayCaptureRuntime";
 export {
+	LocalReplayRuntime,
+	type LocalReplayRuntimeOptions,
+	type LocalReplayRuntimePersistenceOptions,
+} from "./runtime/LocalReplayRuntime";
+export {
+	buildCommonLocalReplayParticipantContext,
 	buildCommonLocalReplayPlayers,
+	type LocalReplayParticipantContext,
 	type LocalReplayRegistry,
 } from "./runtime/LocalReplayPlayers";
 export {
@@ -40,3 +47,21 @@ export {
 	buildReplayStoneEntities,
 	type ReplayStoneSnapshot,
 } from "./runtime/ReplayEntities";
+export {
+	buildArenaReplayProjectileSnapshot,
+	buildBambooBashLocalReplaySnapshot,
+	buildBambooReplayObjects,
+	buildBellClashLocalReplaySnapshot,
+	buildBellClashReplayZones,
+	buildBellClashScoreZoneDescriptor,
+	buildBumperReplayObjects,
+	buildCurlingReplayStoneSnapshot,
+	buildKameKnockLocalReplaySnapshot,
+	buildShellCurlLocalReplaySnapshot,
+	buildTimedTargetReplayObjects,
+	type BambooBashLocalReplaySnapshotOptions,
+	type BellClashLocalReplaySnapshotOptions,
+	type KameKnockLocalReplaySnapshotOptions,
+	type ScoreRegionDescriptor,
+	type ShellCurlLocalReplaySnapshotOptions,
+} from "./replay/LocalReplaySnapshots";

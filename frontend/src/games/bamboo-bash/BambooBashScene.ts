@@ -44,6 +44,7 @@ import {
 	randomSpot,
 	bambooPos,
 	hitsBamboo,
+	bambooObstacleDescriptor,
 } from "./bamboo";
 import {
 	PanelRect,
@@ -119,17 +120,12 @@ import {
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
 import { hudPlayerLabel } from "../../shared/player-labels";
+import { resolveReplayWinnerSide } from "../shared/localReplay";
 import {
-	resolveReplayWinnerSide,
-	SceneReplayRecorder,
-	withPowerStateFlags,
-} from "../shared/localReplay";
-import {
-	buildCommonLocalReplayPlayers,
-	buildReplayProjectileEntities,
+	buildBambooBashLocalReplaySnapshot,
+	buildCommonLocalReplayParticipantContext,
 	CommonGameSceneHost,
-	LocalReplayCaptureRuntime,
-	LocalReplayPersistenceRuntime,
+	LocalReplayRuntime,
 	SceneSocketChannel,
 	SlingshotLaunchRuntime,
 	WorldRuntime,
@@ -283,20 +279,16 @@ export class BambooBashScene extends ResponsiveScene {
 	private ballTrails: PlayerTrailStore = new Map();
 	private pendingOnlineBambooHits = new Set<number>();
 	private onlineBambooSyncAccMs = 0;
-	private readonly localReplayRecorder =
-		new SceneReplayRecorder<BambooBashSnapshot>();
-	private readonly localReplayCapture = new LocalReplayCaptureRuntime<
+	private readonly localReplay = new LocalReplayRuntime<
 		BambooBashSnapshot,
 		BambooBashSnapshot["phase"]
 	>({
-		recorder: this.localReplayRecorder,
 		gameId: "bamboo-bash",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
 		shouldSkip: () => !!this.onlineMatch,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
-	private readonly replayPersistence = new LocalReplayPersistenceRuntime();
 
 	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
 		if (isBambooBashSnapshot(snapshot)) this.applyOnlineSnapshot(snapshot);
@@ -376,8 +368,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.pendingOnlineBambooHits.clear();
 		this.onlineBambooSyncAccMs = 0;
 		this.activeLocalParticipantIndex = 0;
-		this.localReplayRecorder.reset();
-		this.replayPersistence.reset();
+		this.localReplay.reset();
 
 		const initialOnlineSnapshotCandidate = this.onlineMatch?.snapshot;
 		const initialOnlineSnapshot = isBambooBashSnapshot(
@@ -545,7 +536,7 @@ export class BambooBashScene extends ResponsiveScene {
 		if (initialOnlineSnapshot)
 			this.applyOnlineSnapshot(initialOnlineSnapshot, true);
 		if (this.onlineMatch) this.initOnlineMatch();
-		else this.initLocalReplayRecording();
+		else this.localReplay.startCapture();
 
 		const shouldStartRound =
 			!initialOnlineSnapshot ||
@@ -659,7 +650,7 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private updateBambooBash(delta: number): void {
-		if (!this.onlineMatch) this.localReplayRecorder.addElapsed(delta);
+		if (!this.onlineMatch) this.localReplay.addElapsed(delta);
 		if (!this.running) return;
 
 		// Countdown. Online rounds use the server-provided deadline so simultaneous
@@ -703,7 +694,7 @@ export class BambooBashScene extends ResponsiveScene {
 			this.drawBamboos();
 			this.drawBallTrails();
 			this.drawBalls();
-			this.captureReplayTick(delta);
+			this.localReplay.captureTick(delta);
 			return;
 		}
 
@@ -763,7 +754,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.drawBamboos();
 		this.drawBallTrails();
 		this.drawBalls();
-		this.captureReplayTick(delta);
+		this.localReplay.captureTick(delta);
 	}
 
 	// ── Launch handler ────────────────────────────────────────────────────────────
@@ -844,7 +835,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 		participant.activePower = PowerType.NONE;
 		this.powerSidePanel?.hide();
-		this.captureLocalReplayFrame(true);
+		this.localReplay.captureFrame(true);
 	}
 
 	// ── Stop-flag resolvers ───────────────────────────────────────────────────────
@@ -980,8 +971,27 @@ export class BambooBashScene extends ResponsiveScene {
 			this.submitOnlineRoundScore();
 			return;
 		}
-		this.captureLocalReplayFrame(true, "finished");
-		this.persistLocalReplay();
+		this.localReplay.captureFrame(true, "finished");
+		const replayParticipants = buildCommonLocalReplayParticipantContext(
+			this.registry,
+			this.localReplayPlayerCount(),
+		);
+		this.localReplay.persist({
+			gameId: "bamboo-bash",
+			mode: this.isLocalVersus() ? "local-versus" : "singleplayer",
+			user: replayParticipants.user,
+			playerCount: this.localReplayPlayerCount(),
+			winnerSide: computeGameRuleWinner(
+				this.buildGameRuleHooks(
+					this.localParticipants.map(
+						(participant) => participant.score,
+					),
+				),
+			),
+			playerNames: replayParticipants.playerNames,
+			importReplay: (payload) => api.importReplay(payload),
+			logLabel: "BambooBash",
+		});
 		this.submitResult();
 		this.showEndScreen();
 	}
@@ -1294,26 +1304,22 @@ export class BambooBashScene extends ResponsiveScene {
 				{
 					label: "PLAY AGAIN",
 					onClick: () => {
-						void this.waitForPendingReplayPersist().finally(() =>
-							this.scene.restart(),
-						);
+						void this.localReplay
+							.waitForPendingPersist()
+							.finally(() => this.scene.restart());
 					},
 				},
 				{
 					label: "RETURN",
 					onClick: () => {
-						void this.waitForPendingReplayPersist().finally(() =>
-							this.scene.start("HubScene"),
-						);
+						void this.localReplay
+							.waitForPendingPersist()
+							.finally(() => this.scene.start("HubScene"));
 					},
 				},
 			],
 			depth: DEPTH_OVERLAY,
 		});
-	}
-
-	private async waitForPendingReplayPersist(): Promise<void> {
-		await this.replayPersistence.waitForPending();
 	}
 
 	private showOnlineEndScreen(snapshot: BambooBashSnapshot): void {
@@ -1957,7 +1963,7 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 
 		this.activeLocalParticipantIndex = next;
-		this.captureLocalReplayFrame(true);
+		this.localReplay.captureFrame(true);
 		this.showLocalTurnAnnouncement(next);
 		this.updateHudText();
 		this.updateSidePanels();
@@ -2019,98 +2025,36 @@ export class BambooBashScene extends ResponsiveScene {
 		return -1;
 	}
 
-	private initLocalReplayRecording(): void {
-		this.localReplayCapture.start();
-	}
-
-	private captureReplayTick(delta: number): void {
-		this.localReplayCapture.captureTick(delta);
-	}
-
-	private captureLocalReplayFrame(
-		force = false,
-		phaseOverride?: BambooBashSnapshot["phase"],
-	): void {
-		this.localReplayCapture.captureFrame(force, phaseOverride);
-	}
-
 	private createLocalReplaySnapshot(
 		phaseOverride?: BambooBashSnapshot["phase"],
 	): BambooBashSnapshot {
-		const scores = this.localParticipants.map(
-			(participant) => participant.score,
-		);
 		const phase = phaseOverride ?? "active";
-		const balls = this.localParticipants.map((participant, index) =>
-			this.buildReplayBallSnapshot(
-				participant.ball,
-				index,
-				this.readArenaTrail(`local-${index}`),
-				participant.replayPower,
-			),
+		const startedAtMs =
+			Date.parse(this.localReplay.getStartedAtIso()) || Date.now();
+		const replayParticipants = buildCommonLocalReplayParticipantContext(
+			this.registry,
+			this.localReplayPlayerCount(),
 		);
-		return {
+		return buildBambooBashLocalReplaySnapshot({
 			matchId:
-				this.localReplayRecorder.getReplayId() ??
-				"local:bamboo-bash:unknown",
-			seq: this.localReplayRecorder.nextSeq(),
-			gameId: "bamboo-bash",
-			mode: this.isLocalVersus() ? "casual" : "casual",
+				this.localReplay.getReplayId() ?? "local:bamboo-bash:unknown",
+			seq: this.localReplay.nextSeq(),
 			powerupsEnabled:
 				this.registry.get("localPowerupsEnabled") !== false,
 			phase,
-			roundNumber: 1,
-			totalRounds: 1,
-			roundTimeMs: ROUND_MS,
-			roundStartedAt:
-				Date.parse(this.localReplayRecorder.getStartedAtIso()) ||
-				Date.now(),
-			roundEndsAt:
-				(Date.parse(this.localReplayRecorder.getStartedAtIso()) ||
-					Date.now()) + ROUND_MS,
-			score: [...scores],
-			liveRoundScores: [...scores],
-			roundScores: scores.map((score) =>
-				phase === "finished" ? score : null,
+			arena: this.arena,
+			sourceRadius: BALL_SRC_R,
+			roundMs: ROUND_MS,
+			startedAtMs,
+			participants: this.localParticipants,
+			bamboos: this.bamboos.map((bamboo, index) =>
+				bambooObstacleDescriptor(bamboo, index),
 			),
-			bamboos: this.bamboos.map((bamboo, index) => ({
-				id:
-					"id" in bamboo && typeof bamboo.id === "number"
-						? bamboo.id
-						: index,
-				nx: bamboo.nx,
-				ny: bamboo.ny,
-				stage: bamboo.stage,
-				ageMs: bamboo.ageMs,
-			})),
-			nextBambooId: this.bamboos.length,
 			spawnAccMs: this.spawnAccMs,
-			lastBambooUpdateAt: Date.now(),
-			usedPowersBySide: this.localParticipants.map((participant) => [
-				...participant.powerUsed,
-			]),
-			lastPowerBySide: this.localParticipants.map(() => PowerType.NONE),
-			lastPowerPickupIdBySide: this.localParticipants.map(() => null),
-			powerPickups: [],
-			nextPowerPickupId: 1,
-			powerPickupAccMs: 0,
-			players: buildCommonLocalReplayPlayers(
-				this.registry,
-				this.localReplayPlayerCount(),
-			),
-			balls,
-			activeBallIdBySide: this.localParticipants.map(
-				(participant, index) =>
-					this.isReplayBallMoving(participant.ball) ? index : null,
-			),
-			nextBallId: this.localParticipants.length,
-			entities: buildReplayProjectileEntities(
-				balls,
-				"bamboo-bash-shell",
-			),
-			winnerSide:
-				phase === "finished" ? resolveReplayWinnerSide(scores) : null,
-		};
+			readTrail: (key) => this.readArenaTrail(key),
+			isMoving: (ball) => this.isReplayBallMoving(ball),
+			players: replayParticipants.players,
+		});
 	}
 
 	private localReplayPlayerCount(): number {
@@ -2118,43 +2062,6 @@ export class BambooBashScene extends ResponsiveScene {
 			1,
 			this.localParticipants.length || this.localTimeLeftMs.length || 1,
 		);
-	}
-
-	private buildReplayBallSnapshot(
-		ball: BallState,
-		side: number,
-		trail?: Array<{ x: number; y: number }>,
-		power: PowerType = this.replayPower,
-	): BambooBashSnapshot["balls"][number] {
-		const moving = this.isReplayBallMoving(ball);
-		const scale = ball.r / (BALL_SRC_R * this.arena.scale);
-		return {
-			id: side,
-			type: "projectile",
-			side,
-			ownerSide: side,
-			x: (ball.x - this.arena.cx) / this.arena.rx,
-			y: (ball.y - this.arena.cy) / this.arena.ry,
-			vx: ball.vx / this.arena.scale,
-			vy: ball.vy / this.arena.scale,
-			rotation: 0,
-			angularVelocity: 0,
-			moving,
-			stopped: !moving,
-			visible: true,
-			alpha:
-				power === PowerType.PHANTOM || power === PowerType.GHOST
-					? 0.52
-					: 1,
-			spriteKey: "bamboo-bash-shell",
-			stateFlags: withPowerStateFlags(
-				[moving ? "moving" : "settled"],
-				power,
-			),
-			power,
-			scale,
-			...(trail?.length ? { trail } : {}),
-		};
 	}
 
 	private readArenaTrail(
@@ -2170,43 +2077,6 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private isReplayBallMoving(ball: BallState): boolean {
 		return Math.hypot(ball.vx, ball.vy) > 0.01;
-	}
-
-	private persistLocalReplay(): void {
-		const user = this.registry.get("user") as
-			| {
-					id?: number;
-					username?: string;
-					turtleName?: string | null;
-					isGuest?: boolean;
-			  }
-			| undefined;
-		const playerCount = Math.max(
-			1,
-			this.localParticipants.length || this.localTimeLeftMs.length || 1,
-		);
-		this.replayPersistence.start({
-			recorder: this.localReplayRecorder,
-			gameId: "bamboo-bash",
-			mode: this.isLocalVersus() ? "local-versus" : "singleplayer",
-			user,
-			playerCount,
-			winnerSide: computeGameRuleWinner(
-				this.buildGameRuleHooks(
-					this.localParticipants.map(
-						(participant) => participant.score,
-					),
-				),
-			),
-			playerNames: buildCommonLocalReplayPlayers(
-				this.registry,
-				this.localReplayPlayerCount(),
-			).map(
-				(player) => player.username,
-			),
-			importReplay: (payload) => api.importReplay(payload),
-			logLabel: "BambooBash",
-		});
 	}
 
 	private updateLocalParticipants(delta: number): void {
