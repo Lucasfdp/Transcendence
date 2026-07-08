@@ -6,7 +6,7 @@
  * This file has zero imports from any specific minigame directory.
  */
 
-import type { StoneState } from "./stone";
+import type { StoneState } from "./ball";
 import type { RectArenaPixels } from "./rect-arena";
 
 // ── Power enum ────────────────────────────────────────────────────────────────
@@ -349,7 +349,8 @@ const BOOMERANG_DEF: PowerDef = {
 	type: PowerType.BOOMERANG,
 	label: "Boomerang Shell",
 	accentColour: 0xffcc44,
-	description: "Travels forward, then curves back towards the delivery point.",
+	description:
+		"Travels forward, then curves back towards the delivery point.",
 	onApply(stone) {
 		const s = stone as unknown as BoomerangStone;
 		s.boomerangFlipped = false;

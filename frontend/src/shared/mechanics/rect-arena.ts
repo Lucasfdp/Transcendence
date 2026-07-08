@@ -9,7 +9,7 @@
  */
 
 import Phaser from "phaser";
-import type { StoneState } from "./stone";
+import type { StoneState } from "./ball";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 

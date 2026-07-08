@@ -1,14 +1,15 @@
 import type { ArenaPixels } from "../arenas/arena";
 import type { RectArenaPixels } from "./rect-arena";
-import { BALL_SRC_R, BALL_FRICTION_BASE } from "./ball";
 import {
+	BALL_SRC_R,
+	BALL_FRICTION_BASE,
 	STONE_SRC_R,
 	FRICTION_ICE,
 	BOUNCE_DAMP as STONE_BOUNCE_DAMP,
 	MIN_SPEED_SRC as STONE_MIN_SPEED_SRC,
 	CURL_STRENGTH,
 	DEFAULT_CURL_BIAS,
-} from "./stone";
+} from "./ball";
 import {
 	type PowerType,
 	FRICTION_SLICK,

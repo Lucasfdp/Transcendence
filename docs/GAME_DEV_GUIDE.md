@@ -36,8 +36,7 @@ src/
       arena01.ts          ← ARENA_01 definition (sumo ring)
       curl-sheet.ts       ← CURL_SHEET definition (ice sheet)
     mechanics/
-      ball.ts             ← BallState, stepBall, isBallMoving, drawShellBall
-      stone.ts            ← StoneState, stepStone, resolveStoneCollision
+      ball.ts             ← BallState/StoneState, projectile physics and rendering
       slingshot.ts        ← Slingshot drag-to-launch controller
       turn-manager.ts     ← TurnManager turn-based state machine
       score-hud.ts        ← ScoreHud top-bar widget
@@ -257,9 +256,10 @@ Lets players reduce friction on a moving stone by tapping/clicking during the sw
 
 ---
 
-### 3.6 Ball physics — `shared/mechanics/ball.ts`
+### 3.6 Projectile physics — `shared/mechanics/ball.ts`
 
-Used by Bamboo Bash (single-ball, bouncing-off-ellipse game). Not needed for stone-based games.
+Used by the oval arena games and Shell Curl. The same module exposes the
+elliptical arena ball helpers and the rectangular sheet curling-shell helpers.
 
 | Export | Description |
 |---|---|
@@ -267,15 +267,7 @@ Used by Bamboo Bash (single-ball, bouncing-off-ellipse game). Not needed for sto
 | `stepBall(ball, delta, arena)` | Advance physics one frame. Returns `true` if ball is still moving. |
 | `isBallMoving(ball)` | `true` when speed exceeds `MIN_SPEED`. |
 | `drawShellBall(gfx, ball)` | Draw the decorative shell-pattern ball onto a `Graphics` object. |
-
----
-
-### 3.7 Stone physics — `shared/mechanics/stone.ts`
-
-Used by Shell Curl and any future curling-style game. Supports friction, curl bias, freeze state, and elastic collision resolution.
-
-| Export | Description |
-|---|---|
+| `StoneState` | Curling-shell state used by Shell Curl and replay rendering. |
 | `stepStone(stone, delta, arena)` | Advance physics one frame. Enforces frozen-stone invariant. Returns `true` while moving. |
 | `resolveStoneCollision(a, b)` | Elastic collision. Treats frozen stones as infinite-mass walls. |
 | `isStoneOutOfBounds(stone, arena)` | `true` when stone has left the sheet (always `false` for enclosed horizontal sheets). |

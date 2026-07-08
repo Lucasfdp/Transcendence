@@ -70,7 +70,8 @@ state
 ### Current limitation
 
 -   Round flow itself remains local to each scene.
--   `GameRuleHooks` has not yet been introduced.
+-   `GameRuleHooks` now describes the shared rule boundary, but round flow
+    itself remains local to each scene.
 
 ## 3. Shared Local Replay Runtime
 
@@ -219,6 +220,43 @@ metadata - rendering metadata - optional collect and expiry hooks
 -   Game-specific collection effects remain local to each scene or power
     runtime by design.
 
+## 8. Shared Game Rule Hooks
+
+**Status:** `Completed` (first useful iteration)
+
+Extracted into: - `frontend/src/shared/mechanics/game-rule-hooks.ts`
+
+This now centralises:
+
+-   the shared rule boundary for player count, active player, round index,
+    remaining turns, score, phase, optional hammer state, winner
+    computation, and lifecycle hooks for release, projectile settlement,
+    obstacle hits, and round completion
+-   HUD state construction from generic game rule hooks
+
+### Impact
+
+-   `bamboo-bash`, `kame-knock`, `bell-clash`, and `shell-curl` now expose
+    their local rule state through `GameRuleHooks` when updating `ScoreHud`.
+-   The scenes keep their game-specific scoring, online/local state handling,
+    round advancement, and projectile settlement logic local.
+-   `shell-curl` keeps `TurnManager` as the authority for ends, hammer,
+    stones left, score, and phase; `GameRuleHooks` is only the shared
+    boundary into HUD state.
+-   The shared layer now has a stable contract for future rule-flow
+    extraction without introducing a base scene.
+
+### Coverage
+
+-   `frontend/src/shared/mechanics/game-rule-hooks.test.ts`
+
+### Current limitation
+
+-   The hooks are currently adopted for HUD state construction only across
+    the audited games.
+-   Release, settlement, obstacle-hit, round-complete, and winner hooks are
+    contract-level extension points for the next extraction pass.
+
 # Current Status by Area
 
 ## Successfully extracted
@@ -232,19 +270,22 @@ metadata - rendering metadata - optional collect and expiry hooks
 -   Shared obstacle descriptor for bamboo, timed targets, the bell, and
     bumpers
 -   Shared collectible descriptor for power pickups
+-   Shared game rule hooks for round HUD state
+-   Unified projectile module: `ball.ts` now owns both oval arena ball helpers
+    and rectangular-sheet curling-shell helpers
 
 ## Partially extracted
 
 -   `PlayerEntityConfig`
+-   `LaunchableActor`
 -   `BaseArenaEngine`
 -   `ArenaPowerRuntime`
 -   `ObstacleDescriptor`
 -   `CollectibleDescriptor`
+-   `GameRuleHooks`
 
 ## Not yet extracted
 
--   `GameRuleHooks`
--   `LaunchableActor`
 -   Shared frontend/backend contracts for `LaunchSnapshotEntity` and
     `WorldObjectSnapshot`
 
@@ -258,15 +299,19 @@ metadata - rendering metadata - optional collect and expiry hooks
 # Risks and Considerations
 
 -   No shared base scene by design.
--   `shell-curl` remains mechanically independent.
+-   `shell-curl` still keeps its rectangular arena, sweeping, house scoring,
+    and turn-manager rules even though its projectile helpers now live in
+    `ball.ts`.
 -   Bell Clash score zones are intentionally left local because they are not
     physical obstacles.
 
 # Recommended Next Sequence
 
-## Phase 6
+## Phase 7
 
-Extract `GameRuleHooks`.
+Adopt `GameRuleHooks` beyond HUD state where it reduces duplicated release,
+settlement, round-complete, and winner-resolution plumbing without moving
+game-specific scoring rules into the shared layer.
 
 # Executive Summary
 
@@ -274,9 +319,11 @@ The project now includes genuine shared infrastructure for player
 visuals, HUD adaptation, replay support, backend arena lifecycle
 management, the shared power runtime for the `arena + ball` family, and a
 common obstacle contract adopted by the audited physical obstacles.
-Power pickups now also expose a common collectible contract. Remaining
-duplication is now primarily centred around gameplay rules and broader
-world snapshot contracts rather than shared plumbing.
+Power pickups now also expose a common collectible contract, and the
+audited arena games expose HUD-facing round state through shared
+`GameRuleHooks`, including Shell Curl's `TurnManager` state. Remaining
+duplication is now primarily centred around gameplay rule execution and
+broader world snapshot contracts rather than shared plumbing.
 
 # Module Status
 

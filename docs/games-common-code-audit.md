@@ -28,7 +28,7 @@ There are two clearly defined game families:
 | Family | Games | Status |
 | --- | --- | --- |
 | `arena + ball + slingshot` | `bamboo-bash`, `kame-knock`, `bell-clash` | These games share a substantial amount of real infrastructure, but each scene still reimplements much of the round lifecycle, local HUD, pickups, and world objects. |
-| `rect-arena + stone + turn-manager` | `shell-curl` | This game already reuses several shared layers, but it still relies on curling-specific contracts and gameplay rules that should not be diluted into the `ball` family. |
+| `rect-arena + curling-shell + turn-manager` | `shell-curl` | This game now shares the projectile module and HUD-facing rule hooks, but it still relies on curling-specific contracts and gameplay rules that should not be diluted into the oval-arena family. |
 
 The best immediate opportunity is **not** to merge all four games into a single base scene. Instead, effort should be focused on consolidating three areas:
 
@@ -59,7 +59,9 @@ The best immediate opportunity is **not** to merge all four games into a single 
   - `games/shared/localReplay.ts`
 
 - Key structural difference:
-  - Depends on `stone.ts`, `rect-arena.ts`, and `turn-manager.ts` rather than `ball.ts` and `arena.ts`.
+  - Depends on the rectangular-sheet helpers in `rect-arena.ts` and
+    `turn-manager.ts` rather than `arena.ts`; its curling-shell physics now
+    lives in `ball.ts` alongside the oval arena projectile helpers.
 
 ---
 
@@ -136,8 +138,7 @@ The best immediate opportunity is **not** to merge all four games into a single 
 
 | Domain | Shared Code | Evidence |
 | --- | --- | --- |
-| Arena projectile | Ball physics, collision, and basic rendering | `frontend/src/shared/mechanics/ball.ts`; used by `frontend/src/games/bamboo-bash/BambooBashScene.ts`, `frontend/src/games/kame-knock/KameKnockScene.ts`, `frontend/src/games/bell-clash/BellClashScene.ts` |
-| Curling projectile | Stone physics, collision, and rendering | `frontend/src/shared/mechanics/stone.ts`; used by `frontend/src/games/shell-curl/ShellCurlScene.ts` |
+| Projectile physics | Oval arena ball physics plus rectangular-sheet curling-shell physics, collision, and rendering | `frontend/src/shared/mechanics/ball.ts`; used by `frontend/src/games/bamboo-bash/BambooBashScene.ts`, `frontend/src/games/kame-knock/KameKnockScene.ts`, `frontend/src/games/bell-clash/BellClashScene.ts`, and `frontend/src/games/shell-curl/ShellCurlScene.ts` |
 | Launch system | Shared drag-to-launch implementation | `frontend/src/shared/mechanics/slingshot.ts`; imported by all four games |
 | Elliptical arenas | Arena geometry and responsive layout | `frontend/src/shared/arenas/arena.ts`; used by `bamboo-bash`, `kame-knock`, and `bell-clash` |
 | Rectangular arena | Sheet geometry and house scoring | `frontend/src/shared/mechanics/rect-arena.ts`; used by `shell-curl` |
@@ -166,13 +167,13 @@ The best immediate opportunity is **not** to merge all four games into a single 
 
 | Component | Current Implementation | Degree of Reuse | Proposed Extraction | Risk | Priority | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Launchable projectile layer | `ball.ts` and `stone.ts` with a shared `Slingshot` | Similar but tightly coupled | Introduce a `LaunchableActor` contract for launching, visual flags, and movement hooks while retaining separate physics engines (`ball` and `stone`) | Medium | High | `frontend/src/shared/mechanics/ball.ts`; `frontend/src/shared/mechanics/stone.ts`; `frontend/src/shared/mechanics/slingshot.ts` |
+| Launchable projectile layer | `ball.ts` now owns both oval ball and rectangular curling-shell helpers with a shared `Slingshot` | Similar but still mode-specific | Introduce a `LaunchableActor` contract for launching, visual flags, and movement hooks while retaining separate `stepBall()` and `stepStone()` behaviours inside `ball.ts` | Medium | High | `frontend/src/shared/mechanics/ball.ts`; `frontend/src/shared/mechanics/slingshot.ts` |
 | Player visual configuration | Each scene duplicates skin/colour arrays and calls to `drawIngamePlayerTexture` or `drawIngameShellTexture` | Duplicated | Create a `PlayerEntityConfig` covering skin, colour, scale, alpha, sprite key, trail, and rendering rules | Low | High | `frontend/src/games/bamboo-bash/BambooBashScene.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts`; `frontend/src/shared/mechanics/player-renderer.ts`; `frontend/src/shared/mechanics/player-trails.ts` |
 | Obstacles and objectives | `bamboo.ts`, `timed-targets.ts`, bell/zones inside `BellClashScene`, bumpers inside `ShellCurlScene` | Similar but tightly coupled | Introduce an `ObstacleDescriptor` containing geometry, collision, scoring, health, and rendering metadata while allowing each game to retain its own hooks | Medium | High | `frontend/src/games/bamboo-bash/bamboo.ts`; `frontend/src/shared/mechanics/timed-targets.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts` |
 | Collectibles / pickups | Shared manager, but local pickup contracts and separate backend payloads | Shared visually, duplicated at integration level | Introduce a `CollectibleDescriptor` covering pickup behaviour, effects, and common serialisation | Low | Medium | `frontend/src/shared/mechanics/power-pickups.ts`; `backend/src/modules/matchmaking/engines/bamboo-bash.engine.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts` |
 | Power lifecycle in non-curling games | The three ball games duplicate `applyBallPower`, split, mirror, pickup consumption, flags, and replay metadata | Duplicated | Create a shared `ArenaPowerRuntime` or `BallPowerCycle` covering release, pickups, split, mirror, and visual synchronisation | Medium | High | `frontend/src/games/bamboo-bash/BambooBashScene.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/shared/mechanics/ball-powers.ts`; `frontend/src/shared/mechanics/ball-spawn-powers.ts` |
 | Terrain / arena / collisions | Elliptical arena already shared; rectangular arena separate; spawn locations and coordinate normalisation repeated across world objects | Partially shared | Keep `arena.ts` and `rect-arena.ts` separate; extract only normalised positioning helpers and spawn-clearance utilities | Low | Medium | `frontend/src/shared/arenas/arena.ts`; `frontend/src/shared/mechanics/rect-arena.ts`; `frontend/src/shared/mechanics/timed-targets.ts`; `frontend/src/games/bamboo-bash/bamboo.ts` |
-| Scoring / turns / rounds | `TurnManager` only supports curling; the other three games build round/turn state manually | Duplicated | Introduce `GameRuleHooks` together with `RoundFlowState` to describe rounds, shots, turns, submissions, and completion without enforcing a single scoring model | Medium | High | `frontend/src/shared/mechanics/turn-manager.ts`; `frontend/src/games/bamboo-bash/BambooBashScene.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts` |
+| Scoring / turns / rounds | `TurnManager` remains the curling authority, while the other three games build round/turn state manually; all audited games now expose HUD-facing rule state through `GameRuleHooks` | Partially shared | Extend `GameRuleHooks` beyond HUD state only where it removes duplicated release, settlement, winner, or round-complete plumbing without enforcing a single scoring model | Medium | High | `frontend/src/shared/mechanics/turn-manager.ts`; `frontend/src/shared/mechanics/game-rule-hooks.ts`; `frontend/src/games/bamboo-bash/BambooBashScene.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts` |
 | HUD / overlays / game end | UI components are shared, but each scene manually maps `TurnState` or builds equivalent structures | Shared UI, duplicated adapters | Create a shared `buildHudStateFromRoundFlow()` adapter to eliminate repeated mapping logic | Low | Medium | `frontend/src/shared/mechanics/score-hud.ts`; `frontend/src/shared/mechanics/round-overlay.ts`; `frontend/src/shared/mechanics/game-end-modal.ts`; `frontend/src/shared/mechanics/online-rematch.ts` |
 | Local replay / frontend snapshots | Replay layer is already well extracted, but each scene still constructs entities and players using similar code | Mostly shared with residual duplication | Extract a `SceneReplayRecorder` with helpers for players, frames, and local persistence | Low | Medium | `frontend/src/games/shared/localReplay.ts`; `frontend/src/games/shared/ReplayController.ts`; `frontend/src/games/shared/ReplayScene.ts`; all four game scenes |
 | Backend snapshot / replay for arena games | Three engines share the same projectile replay helper and very similar structures | Duplicated lifecycle, shared replay entities | Introduce a `BaseArenaEngine` covering winner resolution, round reset, basic release validation, and scoring/objective hooks | Medium | High | `backend/src/modules/matchmaking/replay-state.helpers.ts`; `backend/src/modules/matchmaking/engines/bamboo-bash.engine.ts`; `kame-knock.engine.ts`; `bell-clash.engine.ts` |
@@ -203,7 +204,7 @@ The best immediate opportunity is **not** to merge all four games into a single 
 
 ## Best Left Local
 
-- `stone.ts` physics versus `ball.ts` physics.
+- Curling-sheet physics versus oval-arena physics inside `ball.ts`.
 - Curling house scoring.
 - The angular scoring geometry in `bell-clash`.
 - Stage-based bamboo growth.
@@ -239,7 +240,9 @@ Should unify:
 - Power flags
 - Integration with `Slingshot`
 
-It should **not** enforce a single physics model. `ball.ts` and `stone.ts` should continue to maintain their own `step*()` implementations.
+It should **not** enforce a single physics model. `ball.ts` should continue
+to expose separate `stepBall()` and `stepStone()` behaviours for the two
+arena families.
 
 ---
 
@@ -341,7 +344,10 @@ Although it shares less gameplay physics, it already reuses many of the appropri
 - Player trails
 - Local replay
 
-**Conclusion:** the goal with `shell-curl` should not be to migrate it onto the `ball` architecture. Instead, effort should focus on extracting shared contracts for visuals, pickups, replay, and world objects.
+**Conclusion:** the goal with `shell-curl` should not be to migrate it onto
+the oval-arena rule architecture. It now shares the unified projectile module
+and the HUD-facing `GameRuleHooks` boundary, while its rectangular arena,
+sweeping, house scoring, and `TurnManager` flow remain local.
 
 ---
 

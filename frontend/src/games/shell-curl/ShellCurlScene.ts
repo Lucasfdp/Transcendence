@@ -24,7 +24,7 @@ import {
 	DEFAULT_CURL_BIAS,
 	stepStone,
 	resolveStoneCollision,
-} from "../../shared/mechanics/stone";
+} from "../../shared/mechanics/ball";
 import {
 	PowerType,
 	PowerRegistry,
@@ -51,7 +51,9 @@ import {
 import {
 	TurnManager,
 	type TurnPhase,
+	type TurnState,
 } from "../../shared/mechanics/turn-manager";
+import { buildTurnStateFromGameRuleHooks } from "../../shared/mechanics/game-rule-hooks";
 import { SweepController } from "../../shared/mechanics/sweep-controller";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
@@ -69,7 +71,10 @@ import {
 	drawIngameShellTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
-import { DEFAULT_PLAYER_SHELL_SKINS, resolvePlayerShellSkins } from "../../shared/mechanics/player-config";
+import {
+	DEFAULT_PLAYER_SHELL_SKINS,
+	resolvePlayerShellSkins,
+} from "../../shared/mechanics/player-config";
 import {
 	drawPlayerTrails,
 	recordPlayerTrails,
@@ -375,7 +380,10 @@ export class ShellCurlScene extends ResponsiveScene {
 					: localPlayerCount,
 		});
 		this.localEndScores = Array.from({ length: TOTAL_ENDS }, () =>
-			Array.from({ length: this.turnManager.state.score.length }, () => null),
+			Array.from(
+				{ length: this.turnManager.state.score.length },
+				() => null,
+			),
 		);
 
 		// Read per-player shell selections from the registry (set by ShellPickerScene).
@@ -455,7 +463,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			DEPTH_PARTICLES,
 		);
 
-		this.scoreHud.update(this.turnManager.state);
+		this.scoreHud.update(this.buildScoreHudState());
 		// Build the side panels (TEMPLE CURLING info + SCORE LOG) unconditionally,
 		// mirroring Bell Clash / Kame Knock. Previously these were only created
 		// inside beginTurn()/updateSidePanels() calls reachable from the "active"
@@ -552,7 +560,8 @@ export class ShellCurlScene extends ResponsiveScene {
 					if (!this.activeStone) break;
 					if (other.id === this.activeStone.id) continue;
 					if (
-						(this.activeStone as { phantomHidden?: boolean }).phantomHidden ||
+						(this.activeStone as { phantomHidden?: boolean })
+							.phantomHidden ||
 						(other as { phantomHidden?: boolean }).phantomHidden
 					)
 						continue;
@@ -695,7 +704,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.launchInput.recreate();
 		this.launchInput.attach();
 
-		this.scoreHud.update(state);
+		this.scoreHud.update(this.buildScoreHudState());
 		this.addActiveRing(stone);
 		this.powerPickups?.clear();
 		this.updateSidePanels();
@@ -713,8 +722,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			// game:throw transports source px/s; clients convert to their local canvas scale.
 			const sourceVx = vx / this.arena.scale;
 			const sourceVy = vy / this.arena.scale;
-			if (power !== PowerType.NONE)
-				this.currentPowerUsed().add(power);
+			if (power !== PowerType.NONE) this.currentPowerUsed().add(power);
 			this.activePower = PowerType.NONE;
 			getGameSocket().emit("game:input", {
 				matchId: this.onlineMatch.matchId,
@@ -724,14 +732,16 @@ export class ShellCurlScene extends ResponsiveScene {
 						0,
 						Math.min(
 							1,
-							(this.activeStone.x - this.arena.sheetX) / this.arena.sheetW,
+							(this.activeStone.x - this.arena.sheetX) /
+								this.arena.sheetW,
 						),
 					),
 					y: Math.max(
 						0,
 						Math.min(
 							1,
-							(this.activeStone.y - this.arena.sheetY) / this.arena.sheetH,
+							(this.activeStone.y - this.arena.sheetY) /
+								this.arena.sheetH,
 						),
 					),
 					vx: sourceVx,
@@ -753,8 +763,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.activeStone.r = STONE_SRC_R * this.arena.scale;
 		this.activeStone.power = power;
 		this.powerRegistry.get(power).onApply(this.activeStone, this.arena);
-		if (power !== PowerType.NONE)
-			this.currentPowerUsed().add(power);
+		if (power !== PowerType.NONE) this.currentPowerUsed().add(power);
 		this.activePower = PowerType.NONE;
 		this.activeStone.stopped = false;
 		this.stoneTrails.set(this.activeStone.id, [
@@ -772,7 +781,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.sweepCtrl.attach();
 
 		this.turnManager.setPhase("sweeping");
-		this.scoreHud.update(this.turnManager.state);
+		this.scoreHud.update(this.buildScoreHudState());
 		this.updateSidePanels();
 		this.captureLocalReplayFrame(true);
 	}
@@ -911,7 +920,8 @@ export class ShellCurlScene extends ResponsiveScene {
 		const pad = 18 * this.arena.scale;
 		const offset = slot * stone.r * 0.45;
 		stone.x = this.arena.sheetX + stone.r + pad + offset;
-		stone.y = this.arena.sheetY + this.arena.sheetH - stone.r - pad - offset;
+		stone.y =
+			this.arena.sheetY + this.arena.sheetH - stone.r - pad - offset;
 		stone.vx = 0;
 		stone.vy = 0;
 		stone.stopped = true;
@@ -984,7 +994,10 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private spawnMirrorStone(parent: StoneState): void {
-		const mirroredY = this.arena.sheetY + this.arena.sheetH - (parent.y - this.arena.sheetY);
+		const mirroredY =
+			this.arena.sheetY +
+			this.arena.sheetH -
+			(parent.y - this.arena.sheetY);
 		const mirror: StoneState = {
 			id: this.nextStoneId++,
 			teamId: parent.teamId,
@@ -1287,9 +1300,14 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private drawStoneTrails(): void {
-		drawPlayerTrails(this.trailGfx, this.stoneTrails, this.stonePlayersById(), {
-			scale: this.arena.scale,
-		});
+		drawPlayerTrails(
+			this.trailGfx,
+			this.stoneTrails,
+			this.stonePlayersById(),
+			{
+				scale: this.arena.scale,
+			},
+		);
 	}
 
 	private stonePlayersById(): Map<number | string, number> {
@@ -1348,41 +1366,37 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.captureLocalReplayFrame(true, "finished");
 		this.pendingReplayPersist = this.persistLocalReplay();
 		this.submitResult();
-		this.scoreHud.update(this.turnManager.state);
+		this.scoreHud.update(this.buildScoreHudState());
 
 		// Show a RETURN button rather than auto-dismissing with null/null.
 		// The null/null pattern triggers an auto-dismiss that calls beginTurn(),
 		// which sees phase==='gameover' and calls showGameOverOverlay() again —
 		// creating an infinite 1.5s timer loop that survives scene transitions.
-		const winner = resolveReplayWinnerSide(scores);
-		this.overlayContainer = showGameEndModal(
-			this,
-			this.overlayContainer,
-			{
-				title: "TEMPLE CURLING",
-				result:
-					this.localMode === "solo"
-						? "RUN COMPLETE"
-						: winner !== null
-							? `WINNER P${winner + 1}`
-							: "DRAW",
-				players: scores.map((score, index) => ({
-					label: `P${index + 1}`,
-					score,
-					color: this.playerHexColour(index),
-				})),
-				actions: [
-					{
-						label: "RETURN",
-						onClick: () => {
-							this.overlayContainer = null;
-							this.scene.start("HubScene");
-						},
+		const winner = resolveReplayWinnerSide([...scores]);
+		this.overlayContainer = showGameEndModal(this, this.overlayContainer, {
+			title: "TEMPLE CURLING",
+			result:
+				this.localMode === "solo"
+					? "RUN COMPLETE"
+					: winner !== null
+						? `WINNER P${winner + 1}`
+						: "DRAW",
+			players: scores.map((score, index) => ({
+				label: `P${index + 1}`,
+				score,
+				color: this.playerHexColour(index),
+			})),
+			actions: [
+				{
+					label: "RETURN",
+					onClick: () => {
+						this.overlayContainer = null;
+						this.scene.start("HubScene");
 					},
-				],
-				depth: DEPTH_OVERLAY,
-			},
-		);
+				},
+			],
+			depth: DEPTH_OVERLAY,
+		});
 	}
 
 	/**
@@ -1452,7 +1466,8 @@ export class ShellCurlScene extends ResponsiveScene {
 		const playerCount = Math.max(1, state.score.length);
 		const deliveredTurns = this.localDeliveredTurns();
 		const phase =
-			phaseOverride ?? (state.phase === "gameover" ? "finished" : "active");
+			phaseOverride ??
+			(state.phase === "gameover" ? "finished" : "active");
 		const objects = this.allStones.map((stone) => {
 			const power = stone.power;
 			const stateFlags = withPowerStateFlags(
@@ -1474,8 +1489,10 @@ export class ShellCurlScene extends ResponsiveScene {
 				scale: stone.r / (28 * this.arena.scale),
 				visible: true,
 				alpha:
-					(power === PowerType.PHANTOM || power === PowerType.GHOST) &&
-					(stone as { phantomHidden?: boolean }).phantomHidden !== false
+					(power === PowerType.PHANTOM ||
+						power === PowerType.GHOST) &&
+					(stone as { phantomHidden?: boolean }).phantomHidden !==
+						false
 						? 0.52
 						: 1,
 				spriteKey: "temple-curling-stone",
@@ -1496,8 +1513,13 @@ export class ShellCurlScene extends ResponsiveScene {
 			seq: this.localReplayRecorder.nextSeq(),
 			gameId: "temple-curling",
 			mode: "casual",
+			powerupsEnabled: this.powerupsEnabled,
 			phase,
-			currentTurn: Phaser.Math.Clamp(state.currentTeam, 0, playerCount - 1),
+			currentTurn: Phaser.Math.Clamp(
+				state.currentTeam,
+				0,
+				playerCount - 1,
+			),
 			turnNumber: deliveredTurns,
 			maxTurns: playerCount * STONES_PER_TEAM * TOTAL_ENDS,
 			currentEnd: Math.min(state.currentEnd, TOTAL_ENDS - 1),
@@ -1540,6 +1562,19 @@ export class ShellCurlScene extends ResponsiveScene {
 		);
 	}
 
+	private buildScoreHudState(): TurnState {
+		const state = this.turnManager.state;
+		return buildTurnStateFromGameRuleHooks({
+			getPlayerCount: () => Math.max(1, state.score.length),
+			getCurrentPlayer: () => state.currentTeam,
+			getCurrentRound: () => state.currentEnd,
+			getRemainingTurns: () => state.stonesLeft,
+			getScore: () => state.score,
+			getPhase: () => state.phase,
+			hasHammer: () => state.hasHammer,
+		});
+	}
+
 	private hudPlayerLabel(player: number): string {
 		return hudPlayerLabel({
 			player,
@@ -1573,7 +1608,12 @@ export class ShellCurlScene extends ResponsiveScene {
 		)
 			return;
 		const user = this.registry.get("user") as
-			| { id?: number; username?: string; turtleName?: string | null; isGuest?: boolean }
+			| {
+					id?: number;
+					username?: string;
+					turtleName?: string | null;
+					isGuest?: boolean;
+			  }
 			| undefined;
 		if (user?.isGuest) return;
 		const finishedAt = new Date().toISOString();
@@ -1586,16 +1626,26 @@ export class ShellCurlScene extends ResponsiveScene {
 			winnerSide:
 				this.localMode === "solo"
 					? null
-					: resolveReplayWinnerSide([...this.turnManager.state.score]),
-			playerUserIds: buildLocalReplayPlayerUserIds(user?.id ?? null, playerCount),
-			playerNames: this.buildLocalReplayPlayers().map((player) => player.username),
+					: resolveReplayWinnerSide([
+							...this.turnManager.state.score,
+						]),
+			playerUserIds: buildLocalReplayPlayerUserIds(
+				user?.id ?? null,
+				playerCount,
+			),
+			playerNames: this.buildLocalReplayPlayers().map(
+				(player) => player.username,
+			),
 			frames: this.buildReplayImportFrames(),
 		});
 		try {
 			await api.importReplay(importPayload);
 			console.info("[ShellCurl] replay persisted");
 		} catch (err: unknown) {
-			console.warn("[ShellCurl] failed to persist replay to backend:", err);
+			console.warn(
+				"[ShellCurl] failed to persist replay to backend:",
+				err,
+			);
 		}
 	}
 
@@ -1863,7 +1913,7 @@ export class ShellCurlScene extends ResponsiveScene {
 						: "settling",
 			hasHammer: false,
 		};
-		this.scoreHud.update(this.turnManager.state);
+		this.scoreHud.update(this.buildScoreHudState());
 		this.renderOnlineObjects(snapshot);
 
 		if (snapshot.phase === "finished" || snapshot.phase === "abandoned") {
@@ -1929,7 +1979,10 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private showRemotePlacedStone(side: number): void {
-		if (this.activeStone && !this.onlineConfirmedStoneIds.has(this.activeStone.id))
+		if (
+			this.activeStone &&
+			!this.onlineConfirmedStoneIds.has(this.activeStone.id)
+		)
 			this.removeStone(this.activeStone);
 		this.activeStone = null;
 		this.clearActiveRing();
@@ -2049,18 +2102,18 @@ export class ShellCurlScene extends ResponsiveScene {
 				buttonLabel,
 				onButton: onButton
 					? () => {
-						this.overlayContainer = null;
-						onButton();
-					}
+							this.overlayContainer = null;
+							onButton();
+						}
 					: null,
 				depth: DEPTH_OVERLAY,
 				autoDismissMs: buttonLabel ? undefined : 1500,
 				onAutoDismiss: buttonLabel
 					? null
 					: () => {
-						this.overlayContainer = null;
-						this.beginTurn();
-					},
+							this.overlayContainer = null;
+							this.beginTurn();
+						},
 			},
 		);
 	}
@@ -2167,7 +2220,9 @@ export class ShellCurlScene extends ResponsiveScene {
 				: null;
 		const onlineBumpers: BumperDef[] | null =
 			onlineMap?.gameId === "temple-curling"
-				? (onlineMap as unknown as { bumpers: BumperDef[] }).bumpers.map((bumper) => ({
+				? (
+						onlineMap as unknown as { bumpers: BumperDef[] }
+					).bumpers.map((bumper) => ({
 						fx: bumper.fx,
 						fy: bumper.fy,
 					}))
@@ -2203,7 +2258,11 @@ export class ShellCurlScene extends ResponsiveScene {
 			if (flashing) {
 				const glowAlpha = (b.flashTimer / BUMPER_FLASH_MS) * 0.55;
 				this.bumperGfx.fillStyle(0xffd700, glowAlpha);
-				this.bumperGfx.fillCircle(position.x, position.y, radius * 1.75);
+				this.bumperGfx.fillCircle(
+					position.x,
+					position.y,
+					radius * 1.75,
+				);
 			}
 
 			// Dark wood body
@@ -2289,7 +2348,8 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private collectPowerPickup(stone: StoneState | null): void {
-		if (!stone || stone.power !== PowerType.NONE || !this.powerPickups) return;
+		if (!stone || stone.power !== PowerType.NONE || !this.powerPickups)
+			return;
 		const pickup = this.powerPickups.collect(stone.x, stone.y, stone.r);
 		if (!pickup) return;
 
@@ -2337,7 +2397,9 @@ export class ShellCurlScene extends ResponsiveScene {
 	private powerPickupBlockers(): PowerPickupBlocker[] {
 		return [
 			...this.bumpers.flatMap((bumper) => {
-				const blocker = obstacleToBlocker(this.bumperObstacleDescriptor(bumper));
+				const blocker = obstacleToBlocker(
+					this.bumperObstacleDescriptor(bumper),
+				);
 				return blocker ? [blocker] : [];
 			}),
 			...this.allStones.map((stone) => ({
@@ -2400,7 +2462,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.drawPowerPickups();
 		this.redrawAllStones();
 
-		this.scoreHud.update(this.turnManager.state);
+		this.scoreHud.update(this.buildScoreHudState());
 
 		this.hudObjects.forEach((o) => o.destroy());
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
@@ -2474,9 +2536,13 @@ export class ShellCurlScene extends ResponsiveScene {
 		}
 
 		const powers = this.powerupsEnabled
-			? this.currentTeamPowers().filter((power) => power !== PowerType.NONE)
+			? this.currentTeamPowers().filter(
+					(power) => power !== PowerType.NONE,
+				)
 			: [PowerType.NONE];
-		const selected = this.powerupsEnabled ? this.activePower : PowerType.NONE;
+		const selected = this.powerupsEnabled
+			? this.activePower
+			: PowerType.NONE;
 		const usedPowers = this.currentPowerUsed();
 		if (!layout.leftPanel) {
 			this.powerSidePanel.showCollapsible(
@@ -2488,7 +2554,12 @@ export class ShellCurlScene extends ResponsiveScene {
 			return;
 		}
 
-		this.powerSidePanel.show(layout.leftPanel, powers, selected, usedPowers);
+		this.powerSidePanel.show(
+			layout.leftPanel,
+			powers,
+			selected,
+			usedPowers,
+		);
 	}
 
 	/** Refresh the power panel on resize — preserves the current selection. */
@@ -2563,7 +2634,8 @@ export class ShellCurlScene extends ResponsiveScene {
 			{
 				label: "IN HOUSE",
 				value: String(
-					this.allStones.filter((s) => isStoneInHouse(s, this.arena)).length,
+					this.allStones.filter((s) => isStoneInHouse(s, this.arena))
+						.length,
 				),
 				labelColor: THEME.text,
 				valueColor: THEME.text,
@@ -2572,13 +2644,16 @@ export class ShellCurlScene extends ResponsiveScene {
 			},
 			{
 				label: "ACTIVE POWER",
-				value: this.activeStone?.power && this.activeStone.power !== PowerType.NONE
-					? ALL_POWERS[this.activeStone.power].label
-					: this.activePower !== PowerType.NONE
-						? ALL_POWERS[this.activePower].label
-					: "None",
+				value:
+					this.activeStone?.power &&
+					this.activeStone.power !== PowerType.NONE
+						? ALL_POWERS[this.activeStone.power].label
+						: this.activePower !== PowerType.NONE
+							? ALL_POWERS[this.activePower].label
+							: "None",
 				valueColor:
-					(this.activeStone?.power && this.activeStone.power !== PowerType.NONE) ||
+					(this.activeStone?.power &&
+						this.activeStone.power !== PowerType.NONE) ||
 					this.activePower !== PowerType.NONE
 						? THEME.textGold
 						: undefined,

@@ -37,7 +37,7 @@ import {
 	hideIngamePlayerTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
-import { type StoneState, drawStone } from "../../shared/mechanics/stone";
+import { type StoneState, drawStone } from "../../shared/mechanics/ball";
 import { type PowerType } from "../../shared/mechanics/power-system";
 import { THEME } from "../../shared/theme";
 import { ResponsiveScene } from "../../shared/responsive-scene";
@@ -95,11 +95,7 @@ const REPLAY_BACKGROUND_ASSETS: Record<string, string> = {
 };
 
 const PLAYER_COLOURS = [
-	0x2255cc,
-	0xcc3333,
-	0x4aa564,
-	0xbb55dd,
-	0xd4a843,
+	0x2255cc, 0xcc3333, 0x4aa564, 0xbb55dd, 0xd4a843,
 ] as const;
 
 interface ReplaySceneData {
@@ -167,7 +163,9 @@ export class ReplayScene extends ResponsiveScene {
 
 	init(data: ReplaySceneData): void {
 		this.replay = data.replay;
-		this.controller = data.controller ?? (data.replay ? new ReplayController(data.replay) : null);
+		this.controller =
+			data.controller ??
+			(data.replay ? new ReplayController(data.replay) : null);
 		this.autoAdvance = data.autoAdvance ?? true;
 		this.needsRender = true;
 	}
@@ -179,7 +177,9 @@ export class ReplayScene extends ResponsiveScene {
 			if (!this.textures.exists(BAMBOO_TEXTURES[stage]))
 				this.load.image(BAMBOO_TEXTURES[stage], BAMBOO_ASSETS[stage]);
 		}
-		for (const kind of Object.keys(TARGET_TEXTURES) as Array<keyof typeof TARGET_TEXTURES>) {
+		for (const kind of Object.keys(TARGET_TEXTURES) as Array<
+			keyof typeof TARGET_TEXTURES
+		>) {
 			if (!this.textures.exists(TARGET_TEXTURES[kind]))
 				this.load.image(TARGET_TEXTURES[kind], TARGET_ASSETS[kind]);
 		}
@@ -312,13 +312,25 @@ export class ReplayScene extends ResponsiveScene {
 				);
 				break;
 			case "bamboo-bash":
-				this.renderBambooReplay(playback.frame, playback.nextFrame, playback.progress);
+				this.renderBambooReplay(
+					playback.frame,
+					playback.nextFrame,
+					playback.progress,
+				);
 				break;
 			case "kame-knock":
-				this.renderKameReplay(playback.frame, playback.nextFrame, playback.progress);
+				this.renderKameReplay(
+					playback.frame,
+					playback.nextFrame,
+					playback.progress,
+				);
 				break;
 			case "bell-clash":
-				this.renderBellReplay(playback.frame, playback.nextFrame, playback.progress);
+				this.renderBellReplay(
+					playback.frame,
+					playback.nextFrame,
+					playback.progress,
+				);
 				break;
 			default:
 				break;
@@ -353,7 +365,8 @@ export class ReplayScene extends ResponsiveScene {
 			snapshot.entities,
 		)) {
 			const nextObject =
-				nextStones.find((candidate) => candidate.id === object.id) ?? null;
+				nextStones.find((candidate) => candidate.id === object.id) ??
+				null;
 			rendered.set(object.id, {
 				key: `curling-${object.id}`,
 				id: object.id,
@@ -384,14 +397,21 @@ export class ReplayScene extends ResponsiveScene {
 				),
 				active:
 					Boolean(nextObject?.moving ?? object.moving) ||
-					Math.hypot(nextObject?.vx ?? object.vx ?? 0, nextObject?.vy ?? object.vy ?? 0) >
-						0.001,
+					Math.hypot(
+						nextObject?.vx ?? object.vx ?? 0,
+						nextObject?.vy ?? object.vy ?? 0,
+					) > 0.001,
 			});
 		}
 
 		const stones = [...rendered.values()].sort((a, b) => a.id - b.id);
 		for (const stone of stones) {
-			this.drawTrailLine(stone.trail, PLAYER_COLOURS[stone.side % PLAYER_COLOURS.length] ?? THEME.gold, 0.3);
+			this.drawTrailLine(
+				stone.trail,
+				PLAYER_COLOURS[stone.side % PLAYER_COLOURS.length] ??
+					THEME.gold,
+				0.3,
+			);
 			this.drawStoneActor(stone);
 		}
 	}
@@ -430,7 +450,11 @@ export class ReplayScene extends ResponsiveScene {
 			nextSnapshot?.entities,
 			progress,
 		)) {
-			this.drawTrailDots(projectile.trail, PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ?? THEME.gold);
+			this.drawTrailDots(
+				projectile.trail,
+				PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ??
+					THEME.gold,
+			);
 			this.drawProjectileActor("bamboo", projectile);
 		}
 	}
@@ -482,7 +506,11 @@ export class ReplayScene extends ResponsiveScene {
 		}
 
 		for (const projectile of visibleProjectiles) {
-			this.drawTrailDots(projectile.trail, PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ?? THEME.gold);
+			this.drawTrailDots(
+				projectile.trail,
+				PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ??
+					THEME.gold,
+			);
 			this.drawProjectileActor("kame", projectile);
 		}
 	}
@@ -509,7 +537,11 @@ export class ReplayScene extends ResponsiveScene {
 			nextSnapshot?.entities,
 			progress,
 		)) {
-			this.drawTrailDots(projectile.trail, PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ?? THEME.gold);
+			this.drawTrailDots(
+				projectile.trail,
+				PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ??
+					THEME.gold,
+			);
 			this.drawProjectileActor("bell", projectile);
 		}
 	}
@@ -525,21 +557,37 @@ export class ReplayScene extends ResponsiveScene {
 		if (!this.arena) return [];
 
 		const nextByKey = new Map(
-			normalizeReplayBalls(nextBalls, nextEntities).map((ball) => [ball.key, ball]),
+			normalizeReplayBalls(nextBalls, nextEntities).map((ball) => [
+				ball.key,
+				ball,
+			]),
 		);
 		return normalizeReplayBalls(balls, entities)
 			.filter((ball) => ball.visible !== false)
 			.map((ball) => {
 				const nextBall = nextByKey.get(ball.key);
-				const radiusScale = Math.max(0.7, Number(ball.scale ?? nextBall?.scale ?? 1));
+				const radiusScale = Math.max(
+					0.7,
+					Number(ball.scale ?? nextBall?.scale ?? 1),
+				);
 				return {
 					key: `${prefix}-${ball.key}`,
 					side: ball.side,
-					x: toArenaX(this.arena!, lerpNumber(ball.x, nextBall?.x ?? ball.x, progress)),
-					y: toArenaY(this.arena!, lerpNumber(ball.y, nextBall?.y ?? ball.y, progress)),
+					x: toArenaX(
+						this.arena!,
+						lerpNumber(ball.x, nextBall?.x ?? ball.x, progress),
+					),
+					y: toArenaY(
+						this.arena!,
+						lerpNumber(ball.y, nextBall?.y ?? ball.y, progress),
+					),
 					r: BALL_SRC_R * this.arena!.scale * radiusScale,
-					vx: lerpNumber(ball.vx, nextBall?.vx ?? ball.vx, progress) * this.arena!.scale,
-					vy: lerpNumber(ball.vy, nextBall?.vy ?? ball.vy, progress) * this.arena!.scale,
+					vx:
+						lerpNumber(ball.vx, nextBall?.vx ?? ball.vx, progress) *
+						this.arena!.scale,
+					vy:
+						lerpNumber(ball.vy, nextBall?.vy ?? ball.vy, progress) *
+						this.arena!.scale,
 					alpha: lerpNumber(
 						Number(ball.alpha ?? 1),
 						Number(nextBall?.alpha ?? ball.alpha ?? 1),
@@ -555,8 +603,13 @@ export class ReplayScene extends ResponsiveScene {
 			});
 	}
 
-	private drawProjectileActor(prefix: string, projectile: ProjectileRenderState): void {
-		const colour = PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ?? THEME.gold;
+	private drawProjectileActor(
+		prefix: string,
+		projectile: ProjectileRenderState,
+	): void {
+		const colour =
+			PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ??
+			THEME.gold;
 		const ball: BallState = {
 			x: projectile.x,
 			y: projectile.y,
@@ -575,7 +628,11 @@ export class ReplayScene extends ResponsiveScene {
 		}
 
 		this.actorGfx.lineStyle(Math.max(2, projectile.r * 0.12), colour, 0.95);
-		this.actorGfx.strokeCircle(projectile.x, projectile.y, projectile.r * 1.08);
+		this.actorGfx.strokeCircle(
+			projectile.x,
+			projectile.y,
+			projectile.r * 1.08,
+		);
 		this.actorGfx.fillStyle(colour, 0.96);
 		this.actorGfx.fillCircle(
 			projectile.x,
@@ -613,7 +670,9 @@ export class ReplayScene extends ResponsiveScene {
 		this.visibleObjectKeys.add(key);
 		let image = this.objectImages.get(key);
 		if (!image) {
-			image = this.add.image(x, y, textureKey).setDepth(DEPTH_DECOR + 0.1);
+			image = this.add
+				.image(x, y, textureKey)
+				.setDepth(DEPTH_DECOR + 0.1);
 			this.objectImages.set(key, image);
 		}
 		image
@@ -640,7 +699,11 @@ export class ReplayScene extends ResponsiveScene {
 	}
 
 	private setPlayerActorAlpha(actorName: string, alpha: number): void {
-		for (const childName of [`${actorName}-body`, `${actorName}-shell`, actorName]) {
+		for (const childName of [
+			`${actorName}-body`,
+			`${actorName}-shell`,
+			actorName,
+		]) {
 			const existing = this.children.getByName(childName);
 			if (existing instanceof Phaser.GameObjects.Image)
 				existing.setAlpha(Phaser.Math.Clamp(alpha, 0.2, 1));
@@ -671,7 +734,10 @@ export class ReplayScene extends ResponsiveScene {
 			this.lastActiveReplaySide,
 		);
 		this.lastActiveReplaySide = activeSide;
-		const backgroundId = resolveActiveReplayBackground(snapshot, activeSide);
+		const backgroundId = resolveActiveReplayBackground(
+			snapshot,
+			activeSide,
+		);
 		if (backgroundId === this.currentBackgroundId) return;
 
 		this.currentBackgroundId = backgroundId;
@@ -710,7 +776,11 @@ export class ReplayScene extends ResponsiveScene {
 		const { width, height } = this.scale;
 		this.decorGfx.fillStyle(top, 0.42);
 		this.decorGfx.fillRect(0, 0, width, height);
-		this.decorGfx.lineStyle(Math.max(1, this.arena.scale * 2), THEME.jade, 0.12);
+		this.decorGfx.lineStyle(
+			Math.max(1, this.arena.scale * 2),
+			THEME.jade,
+			0.12,
+		);
 		const gridStep = Math.max(24, 48 * this.arena.scale);
 		for (let x = 0; x < width; x += gridStep)
 			this.decorGfx.lineBetween(x, 0, x, height);
@@ -854,7 +924,10 @@ export class ReplayScene extends ResponsiveScene {
 			);
 			const simulated = simulateReplayProjectile(
 				initial,
-				Math.max(0, playbackTimeMs - new Date(event.recordedAt).getTime()),
+				Math.max(
+					0,
+					playbackTimeMs - new Date(event.recordedAt).getTime(),
+				),
 				this.arena!,
 			);
 			return {
@@ -875,16 +948,41 @@ export class ReplayScene extends ResponsiveScene {
 		const scale = arena.scale;
 		const bw = Math.max(18, 42 * scale);
 		this.decorGfx.fillStyle(0x1c1208, 1);
-		this.decorGfx.fillRect(arena.sheetX, arena.sheetY - bw, arena.sheetW, bw);
-		this.decorGfx.fillRect(arena.sheetX, arena.sheetY + arena.sheetH, arena.sheetW, bw);
-		this.decorGfx.fillRect(arena.sheetX - bw, arena.sheetY, bw, arena.sheetH);
-		this.decorGfx.fillRect(arena.sheetX + arena.sheetW, arena.sheetY, bw, arena.sheetH);
+		this.decorGfx.fillRect(
+			arena.sheetX,
+			arena.sheetY - bw,
+			arena.sheetW,
+			bw,
+		);
+		this.decorGfx.fillRect(
+			arena.sheetX,
+			arena.sheetY + arena.sheetH,
+			arena.sheetW,
+			bw,
+		);
+		this.decorGfx.fillRect(
+			arena.sheetX - bw,
+			arena.sheetY,
+			bw,
+			arena.sheetH,
+		);
+		this.decorGfx.fillRect(
+			arena.sheetX + arena.sheetW,
+			arena.sheetY,
+			bw,
+			arena.sheetH,
+		);
 
 		for (let i = 0; i < 5; i++) {
 			const band = Math.max(12, 24 * scale) * (i + 1);
 			this.decorGfx.fillStyle(0x000000, 0.05 * (5 - i));
 			this.decorGfx.fillRect(0, 0, this.scale.width, band);
-			this.decorGfx.fillRect(0, this.scale.height - band, this.scale.width, band);
+			this.decorGfx.fillRect(
+				0,
+				this.scale.height - band,
+				this.scale.width,
+				band,
+			);
 		}
 	}
 
@@ -901,7 +999,11 @@ export class ReplayScene extends ResponsiveScene {
 			const r = this.curlArena.scale * 28;
 			this.overlayGfx.fillStyle(0x2a1a08, 1);
 			this.overlayGfx.fillCircle(x, y, r);
-			this.overlayGfx.lineStyle(Math.max(2, this.curlArena.scale * 3), 0xd4a843, 0.92);
+			this.overlayGfx.lineStyle(
+				Math.max(2, this.curlArena.scale * 3),
+				0xd4a843,
+				0.92,
+			);
 			this.overlayGfx.strokeCircle(x, y, r);
 			this.overlayGfx.fillStyle(0xd4a843, 0.75);
 			this.overlayGfx.fillCircle(x, y, r * 0.22);
@@ -913,7 +1015,11 @@ export class ReplayScene extends ResponsiveScene {
 		const zoneRadius = this.bellRadius() * 1.55;
 		for (const zone of snapshot.zones ?? []) {
 			const colour = resolveZoneColour(zone.kind);
-			this.overlayGfx.lineStyle(Math.max(6, this.arena.scale * 12), colour, 0.32);
+			this.overlayGfx.lineStyle(
+				Math.max(6, this.arena.scale * 12),
+				colour,
+				0.32,
+			);
 			this.overlayGfx.beginPath();
 			this.overlayGfx.arc(
 				this.arena.cx,
@@ -934,7 +1040,12 @@ export class ReplayScene extends ResponsiveScene {
 		const y = this.arena.cy;
 
 		this.overlayGfx.fillStyle(0x000000, 0.28);
-		this.overlayGfx.fillEllipse(x + r * 0.18, y + r * 0.48, r * 2.28, r * 0.7);
+		this.overlayGfx.fillEllipse(
+			x + r * 0.18,
+			y + r * 0.48,
+			r * 2.28,
+			r * 0.7,
+		);
 		this.overlayGfx.fillStyle(0x5a3410, 1);
 		this.overlayGfx.fillCircle(x, y, r * 1.03);
 		this.overlayGfx.fillStyle(0x8a5516, 1);
@@ -942,10 +1053,25 @@ export class ReplayScene extends ResponsiveScene {
 		this.overlayGfx.fillStyle(0xd4a843, 1);
 		this.overlayGfx.fillEllipse(x, y, r * 1.18, r * 1.18);
 		this.overlayGfx.fillStyle(0xf2d47a, 0.58);
-		this.overlayGfx.fillEllipse(x - r * 0.28, y - r * 0.25, r * 0.42, r * 0.34);
+		this.overlayGfx.fillEllipse(
+			x - r * 0.28,
+			y - r * 0.25,
+			r * 0.42,
+			r * 0.34,
+		);
 		this.overlayGfx.lineStyle(Math.max(3, r * 0.045), 0x5a3410, 0.86);
-		this.overlayGfx.lineBetween(x - r * 0.78, y + r * 0.44, x + r * 0.78, y + r * 0.44);
-		this.overlayGfx.lineBetween(x - r * 0.63, y + r * 0.14, x + r * 0.63, y + r * 0.14);
+		this.overlayGfx.lineBetween(
+			x - r * 0.78,
+			y + r * 0.44,
+			x + r * 0.78,
+			y + r * 0.44,
+		);
+		this.overlayGfx.lineBetween(
+			x - r * 0.63,
+			y + r * 0.14,
+			x + r * 0.63,
+			y + r * 0.14,
+		);
 		this.overlayGfx.fillStyle(0x3c230c, 1);
 		this.overlayGfx.fillCircle(x, y + r * 0.18, r * 0.11);
 	}
@@ -964,10 +1090,18 @@ export class ReplayScene extends ResponsiveScene {
 		}
 	}
 
-	private drawTrailLine(trail: ReplayTrailPoint[], colour: number, alphaBase: number): void {
+	private drawTrailLine(
+		trail: ReplayTrailPoint[],
+		colour: number,
+		alphaBase: number,
+	): void {
 		if (trail.length < 2) return;
 		for (let index = 1; index < trail.length; index++) {
-			this.trailGfx.lineStyle(2.5, colour, alphaBase + (index / trail.length) * 0.28);
+			this.trailGfx.lineStyle(
+				2.5,
+				colour,
+				alphaBase + (index / trail.length) * 0.28,
+			);
 			this.trailGfx.lineBetween(
 				trail[index - 1].x,
 				trail[index - 1].y,
@@ -1088,15 +1222,10 @@ function interpolateArenaTrail(
 	nextTrail: Array<{ x: number; y: number }> | undefined,
 	progress: number,
 ): ReplayTrailPoint[] {
-	return interpolatePoints(
-		trail,
-		nextTrail,
-		progress,
-		(point) => ({
-			x: toArenaX(arena, point.x),
-			y: toArenaY(arena, point.y),
-		}),
-	);
+	return interpolatePoints(trail, nextTrail, progress, (point) => ({
+		x: toArenaX(arena, point.x),
+		y: toArenaY(arena, point.y),
+	}));
 }
 
 function interpolateNormalizedTrail(
@@ -1108,15 +1237,10 @@ function interpolateNormalizedTrail(
 	width: number,
 	height: number,
 ): ReplayTrailPoint[] {
-	return interpolatePoints(
-		trail,
-		nextTrail,
-		progress,
-		(point) => ({
-			x: offsetX + point.x * width,
-			y: offsetY + point.y * height,
-		}),
-	);
+	return interpolatePoints(trail, nextTrail, progress, (point) => ({
+		x: offsetX + point.x * width,
+		y: offsetY + point.y * height,
+	}));
 }
 
 function interpolatePoints(
@@ -1133,7 +1257,7 @@ function interpolatePoints(
 		if (!point) continue;
 		const nextPoint =
 			nextPoints && nextPoints.length > 0
-				? nextPoints[index] ?? nextPoints[nextPoints.length - 1]
+				? (nextPoints[index] ?? nextPoints[nextPoints.length - 1])
 				: point;
 		output.push(
 			mapPoint({
