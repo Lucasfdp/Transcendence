@@ -1,181 +1,381 @@
-# Graph Report - .  (2026-07-06)
+# Graph Report - frontend  (2026-07-08)
 
 ## Corpus Check
-- cluster-only mode — file stats not available
+- 168 files · ~125,564 words
+- Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1121 nodes · 2644 edges · 40 communities (22 shown, 18 thin omitted)
-- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
+- 1717 nodes · 4728 edges · 76 communities (67 shown, 9 thin omitted)
+- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 22 edges (avg confidence: 0.79)
 - Token cost: 0 input · 0 output
 
-## Graph Freshness
-- Built from commit: `936d85e4`
-- Run `git rev-parse HEAD` and compare to check if the graph is stale.
-- Run `graphify update .` after code changes (no API cost).
-
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_KameKnockScene|KameKnockScene]]
-- [[_COMMUNITY_BellClashScene|BellClashScene]]
-- [[_COMMUNITY_KameKnockScene.ts|KameKnockScene.ts]]
-- [[_COMMUNITY_ShellCurlScene|ShellCurlScene]]
-- [[_COMMUNITY_ScoreHud|ScoreHud]]
-- [[_COMMUNITY_ReplayScene|ReplayScene]]
-- [[_COMMUNITY_ReplayScene.ts|ReplayScene.ts]]
-- [[_COMMUNITY_kame-knock.engine.ts|kame-knock.engine.ts]]
-- [[_COMMUNITY_ReplayController|ReplayController]]
-- [[_COMMUNITY_ShellCurlScene.ts|ShellCurlScene.ts]]
-- [[_COMMUNITY_power-system.ts|power-system.ts]]
-- [[_COMMUNITY_arena-power-runtime.ts|arena-power-runtime.ts]]
-- [[_COMMUNITY_physics.ts|physics.ts]]
-- [[_COMMUNITY_BambooBashScene|BambooBashScene]]
-- [[_COMMUNITY_.update|.update]]
-- [[_COMMUNITY_localReplay.ts|localReplay.ts]]
-- [[_COMMUNITY_BambooBashEngine|BambooBashEngine]]
-- [[_COMMUNITY_stone.ts|stone.ts]]
-- [[_COMMUNITY_PowerType|PowerType]]
-- [[_COMMUNITY_player-renderer.ts|player-renderer.ts]]
-- [[_COMMUNITY_PowerPickupManager|PowerPickupManager]]
-- [[_COMMUNITY_BellClashEngine|BellClashEngine]]
-- [[_COMMUNITY_KameKnockEngine|KameKnockEngine]]
-- [[_COMMUNITY_ShellCurlEngine|ShellCurlEngine]]
-- [[_COMMUNITY_SceneReplayRecorder|SceneReplayRecorder]]
-- [[_COMMUNITY_rect-arena.ts|rect-arena.ts]]
-- [[_COMMUNITY_bamboo.ts|bamboo.ts]]
-- [[_COMMUNITY_PowerPicker|PowerPicker]]
-- [[_COMMUNITY_BaseArenaEngine|BaseArenaEngine]]
-- [[_COMMUNITY_timed-targets.ts|timed-targets.ts]]
-- [[_COMMUNITY_GameEngine|GameEngine]]
-- [[_COMMUNITY_PowerPicker.ts|PowerPicker.ts]]
-- [[_COMMUNITY_Slingshot|Slingshot]]
-- [[_COMMUNITY_SweepController|SweepController]]
-- [[_COMMUNITY_GameEngineCreateContext|GameEngineCreateContext]]
-- [[_COMMUNITY_player-config.ts|player-config.ts]]
-- [[_COMMUNITY_PowerRegistry|PowerRegistry]]
+- Bamboo Bash Scene
+- Bell Clash Scene
+- Kame Knock Scene
+- Chat Operations
+- Shell Inventory Boot
+- Launch Runtime
+- Card Binder
+- Game Descriptors
+- Hub API Client
+- Shell Curl Setup
+- Power Picker
+- Power System
+- App Legal Flow
+- Local Replay
+- Rule Hooks HUD
+- Casino Fairness
+- Shell Curl Replay
+- Frontend Package
+- Common Scene Host
+- Board Canvas
+- Replay Data Normalisation
+- Bamboo Obstacles
+- Route And Auth
+- Replay Controller
+- Replay Scene Drawing
+- Plinko Drop Path
+- Auth Components
+- Slots Rendering
+- Collectible Descriptor
+- Shell Picker Socket
+- Casino Tests
+- Dice Utilities
+- Curl Bumper Flow
+- TypeScript Config
+- Fairness Crypto
+- Bell Clash Types
+- Power Pickups
+- Arena Power Runtime
+- Replay Projectiles
+- World Descriptors
+- Player Assets
+- World Entity Store
+- Curl Scene Rendering
+- Curl Online Flow
+- Replay Physics
+- Replay Visuals
+- Rect Arena
+- Side Panels
+- Launchable Remap
+- Curl Stone Drawing
+- Sweep Controller
+- Power Ball Runtime
+- Card Drop Popup
+- Oval Arena
+- End Modals
+- Friend Filtering
+- Profile Cache
+- Preload Assets
+- Notification Dedup
+- Player Labels
+- Responsive Scene
+- Work In Progress UI
+- Presence Grouping
+- Friends Operations
+- Profile Card
+- Index Bootstrap
+- Nine Slice Button
+- Procedural Background
+- Game Effect Hook
+- Entrypoint Script
 
 ## God Nodes (most connected - your core abstractions)
-1. `BambooBashScene` - 104 edges
-2. `BellClashScene` - 98 edges
-3. `KameKnockScene` - 98 edges
-4. `ShellCurlScene` - 86 edges
-5. `ReplayScene` - 41 edges
-6. `BambooBashEngine` - 23 edges
-7. `BellClashEngine` - 19 edges
-8. `KameKnockEngine` - 19 edges
-9. `SceneReplayRecorder` - 18 edges
-10. `ShellCurlEngine` - 18 edges
+1. `BambooBashScene` - 120 edges
+2. `BellClashScene` - 119 edges
+3. `KameKnockScene` - 118 edges
+4. `ShellCurlScene` - 108 edges
+5. `PowerType` - 66 edges
+6. `BallState` - 48 edges
+7. `ReplayScene` - 46 edges
+8. `getGameSocket()` - 41 edges
+9. `ShellPickerScene` - 39 edges
+10. `HomeMenu()` - 38 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `ArenaPowerBallEntry` --references--> `BallState`  [EXTRACTED]
-  arena-power-runtime.ts → ball.ts
-- `drawArenaPowerBalls()` --calls--> `drawShellBall()`  [EXTRACTED]
-  arena-power-runtime.ts → ball.ts
-- `ReplayProjectileState` --references--> `PowerType`  [EXTRACTED]
-  physics.ts → power-system.ts
-- `ReplayStoneState` --references--> `PowerType`  [EXTRACTED]
-  physics.ts → power-system.ts
-- `PowerPickup` --references--> `PowerType`  [EXTRACTED]
-  power-pickups.ts → power-system.ts
+- `createShellSmashGame()` --indirect_call--> `BambooBashScene`  [INFERRED]
+  src/lib/createShellSmashGame.ts → src/games/bamboo-bash/BambooBashScene.ts
+- `createShellSmashGame()` --indirect_call--> `BellClashScene`  [INFERRED]
+  src/lib/createShellSmashGame.ts → src/games/bell-clash/BellClashScene.ts
+- `createShellSmashGame()` --indirect_call--> `KameKnockScene`  [INFERRED]
+  src/lib/createShellSmashGame.ts → src/games/kame-knock/KameKnockScene.ts
+- `createShellSmashGame()` --indirect_call--> `ShellCurlScene`  [INFERRED]
+  src/lib/createShellSmashGame.ts → src/games/shell-curl/ShellCurlScene.ts
+- `MatchStatusPayload` --references--> `GameSnapshot`  [EXTRACTED]
+  src/routes/GamePage.tsx → src/services/network/gameSocket.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (40 total, 18 thin omitted)
+## Hyperedges (group relationships)
+- **Application Shell Bootstrap** — frontend_index_document, frontend_index_root, frontend_index_src_main_tsx [INFERRED 0.85]
 
-### Community 2 - "KameKnockScene.ts"
+## Communities (76 total, 9 thin omitted)
+
+### Community 0 - "Bamboo Bash Scene"
 Cohesion: 0.05
-Nodes (85): BALL_TRAIL_OPTIONS, BAMBOO_ASSETS, BAMBOO_TEXTURES, GameStateDelta, LocalParticipant, OnlineBallState, BALL_TRAIL_OPTIONS, FALLBACK_POWERS (+77 more)
+Nodes (10): Bamboo, bambooPos(), BambooBashScene, isBambooBashSnapshot(), OnlineBallState, OnlineBallState, OnlineBallState, BambooBashSnapshot (+2 more)
 
-### Community 4 - "ScoreHud"
+### Community 1 - "Bell Clash Scene"
 Cohesion: 0.05
-Nodes (30): addModalButton(), GameEndModalAction, GameEndModalOptions, GameEndModalPlayer, showGameEndModal(), mechanics::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_gamesnapshot, mechanics::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_getgamesocket, mechanics::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_ts (+22 more)
+Nodes (9): BellClashScene, isBellClashSnapshot(), BellClashSnapshot, BellClashThrowEvent, updateArenaPowerBalls(), isBallMoving(), stepBall(), applyBallCurl() (+1 more)
 
-### Community 5 - "ReplayScene"
-Cohesion: 0.07
-Nodes (14): interpolateArenaTrail(), interpolateNormalizedTrail(), interpolatePoints(), isLegacyReplayFrame(), normalizeReplayBalls(), normalizeReplayStones(), parsePowerType(), ReplayScene (+6 more)
+### Community 2 - "Kame Knock Scene"
+Cohesion: 0.05
+Nodes (9): isKameKnockSnapshot(), KAME_AVAILABLE_POWERS, KameKnockScene, KameKnockSnapshot, KameKnockThrowEvent, targetHitAccuracy(), TimedTarget, timedTargetPosition() (+1 more)
 
-### Community 6 - "ReplayScene.ts"
-Cohesion: 0.04
-Nodes (46): games::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_bamboobashsnapshot, games::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_bellclashsnapshot, games::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_curlingsnapshot, games::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_kameknocksnapshot, games::home_marcos_programming_transgender_frontend_src_shared_arenas_arena01_arena_01, games::home_marcos_programming_transgender_frontend_src_shared_arenas_arena01_ts, games::home_marcos_programming_transgender_frontend_src_shared_arenas_arena_arenapixels, games::home_marcos_programming_transgender_frontend_src_shared_arenas_arena_layoutovalarenaskin (+38 more)
+### Community 3 - "Chat Operations"
+Cohesion: 0.06
+Nodes (58): addUnread(), ConversationPreviewUpdate, conversationTitle(), GifMetadata, parseGifMetadata(), removeUnread(), sortConversationsByRecency(), unreadIdsFromInbox() (+50 more)
 
-### Community 7 - "kame-knock.engine.ts"
-Cohesion: 0.10
-Nodes (34): ALLOWED_POWERS, POWER_POOL, STAGE_POINTS, ArenaReplaySnapshot, BellZoneKind, engines::home_marcos_programming_transgender_backend_src_modules_matchmaking_entities_match_entity_matchmode, engines::home_marcos_programming_transgender_backend_src_modules_matchmaking_entities_match_entity_ts, engines::home_marcos_programming_transgender_backend_src_modules_matchmaking_game_map_createshellcurlmap (+26 more)
+### Community 4 - "Shell Inventory Boot"
+Cohesion: 0.06
+Nodes (26): ShellInventory, User, PhaserBootScene, ReturnToHubScene, ShellPickerScene, createShellSmashGame(), buildEmptyShellSelection(), GAME_SCENES (+18 more)
 
-### Community 8 - "ReplayController"
+### Community 5 - "Launch Runtime"
+Cohesion: 0.06
+Nodes (18): LocalParticipant, BallLaunchableState, LaunchableRelayoutOptions, LaunchableState, LaunchStepOptions, remapLaunchableToArena(), stepLaunchable(), SlingshotLaunchRuntime (+10 more)
+
+### Community 6 - "Card Binder"
+Cohesion: 0.08
+Nodes (30): BinderFilterOptions, BinderSortOrder, filterAndSortCards(), RARITY_ORDER, CardTilt, clamp01(), computeCardTilt(), FOIL_SHINE_INTENSITY (+22 more)
+
+### Community 7 - "Game Descriptors"
 Cohesion: 0.09
-Nodes (25): games::home_marcos_programming_transgender_frontend_src_features_hub_api_replaydetail, games::home_marcos_programming_transgender_frontend_src_features_hub_api_replayevent, games::home_marcos_programming_transgender_frontend_src_features_hub_api_replayframe, games::home_marcos_programming_transgender_frontend_src_features_hub_api_replayframesnapshot, games::home_marcos_programming_transgender_frontend_src_features_hub_api_replaysnapshotentity, games::home_marcos_programming_transgender_frontend_src_features_hub_api_replayvisualplayer, games::ref_vitest, clamp01() (+17 more)
+Nodes (35): BALL_TRAIL_OPTIONS, BAMBOO_ASSETS, BAMBOO_BASH_DESCRIPTOR, BAMBOO_TEXTURES, GameDescriptor, BALL_ROUNDS, BALL_TRAIL_OPTIONS, BallRoundConfig (+27 more)
 
-### Community 9 - "ShellCurlScene.ts"
-Cohesion: 0.05
-Nodes (37): games::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_curlingthrowevent, games::home_marcos_programming_transgender_frontend_src_shared_game_info_game_info_panel_details, games::home_marcos_programming_transgender_frontend_src_shared_game_info_ts, games::home_marcos_programming_transgender_frontend_src_shared_mechanics_game_end_modal_ts, games::home_marcos_programming_transgender_frontend_src_shared_mechanics_game_powers_game_powers, games::home_marcos_programming_transgender_frontend_src_shared_mechanics_hud_ts, games::home_marcos_programming_transgender_frontend_src_shared_mechanics_online_rematch_showonlinerematchendmodal, games::home_marcos_programming_transgender_frontend_src_shared_mechanics_online_rematch_ts (+29 more)
+### Community 8 - "Hub API Client"
+Cohesion: 0.07
+Nodes (38): Achievement, apiFetch(), ApiFetchOptions, apiUploadFile(), CardSetProgress, CasinoGame, ChatMessageType, ChatMessageView (+30 more)
 
-### Community 10 - "power-system.ts"
-Cohesion: 0.05
-Nodes (36): BOMB_DEF, BOOMERANG_DEF, BoomerangStone, BoomerangStoneState, BOUNCER_DEF, FREEZE_DEF, FrozenStone, GameEffectHook (+28 more)
+### Community 9 - "Shell Curl Setup"
+Cohesion: 0.09
+Nodes (28): Bumper, BumperDef, BumperObstacleDescriptor, FALLBACK_POWERS, SHELL_CURL_DESCRIPTOR, showAchievementPopup(), showAchievementUnlocks(), COMPLETION_REWARDS (+20 more)
 
-### Community 11 - "arena-power-runtime.ts"
-Cohesion: 0.14
-Nodes (26): applyArenaBallPowerCycle(), ArenaPowerBallEntry, clearArenaPowerBallTextures(), resolveArenaPowerBallCollisions(), arena, updateArenaPowerBalls(), BallState, drawShellBall() (+18 more)
+### Community 10 - "Power Picker"
+Cohesion: 0.11
+Nodes (7): CardState, POWER_DESC, PowerPicker, TokenRecord, PowerRegistry, PowerType, GameInfoSidePanel
 
-### Community 12 - "physics.ts"
-Cohesion: 0.10
-Nodes (23): mechanics::home_marcos_programming_transgender_frontend_src_shared_mechanics_ball_ball_friction_base, mechanics::home_marcos_programming_transgender_frontend_src_shared_mechanics_ball_ball_src_r, mechanics::home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_giant_radius_factor, mechanics::home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_heavy_speed_factor, mechanics::home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_rocket_speed_factor, mechanics::home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_spinning_curl_bias, mechanics::home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_tiny_radius_factor, mechanics::home_marcos_programming_transgender_frontend_src_shared_mechanics_stone_bounce_damp (+15 more)
+### Community 11 - "Power System"
+Cohesion: 0.06
+Nodes (35): BOMB_DEF, BOOMERANG_DEF, BoomerangStone, BoomerangStoneState, BOUNCER_DEF, FREEZE_DEF, FrozenStone, GHOST_DEF (+27 more)
 
-### Community 15 - "localReplay.ts"
+### Community 12 - "App Legal Flow"
+Cohesion: 0.09
+Nodes (23): App(), ConsentState, DOCUMENTS, INITIAL_READ_STATE, LegalDocument, LegalDocumentId, LegalHub(), ReadState (+15 more)
+
+### Community 13 - "Local Replay"
+Cohesion: 0.09
+Nodes (19): ReplayImportRequest, buildLocalReplayImportRequest(), buildLocalReplayPlayers(), buildLocalReplayPlayerUserIds(), createLocalReplayId(), LocalReplayFrameDraft, LocalReplayImportOptions, LocalReplayPlayerVisuals (+11 more)
+
+### Community 14 - "Rule Hooks HUD"
 Cohesion: 0.12
-Nodes (22): games::home_marcos_programming_transgender_frontend_src_features_hub_api_replayimportrequest, games::home_marcos_programming_transgender_frontend_src_features_hub_api_ts, games::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_ballsnapshotdata, games::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_replayframesnapshotentity, games::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_snapshotplayer, games::home_marcos_programming_transgender_frontend_src_services_network_gamesocket_ts, buildLocalReplayImportRequest(), buildLocalReplayPlayers() (+14 more)
+Nodes (9): GameRuleHooks, buildHudStateFromRoundFlow(), clamp(), RoundFlowState, ScoreHud, ScoreHudOptions, TurnManager, TurnPhase (+1 more)
 
-### Community 18 - "stone.ts"
-Cohesion: 0.16
-Nodes (9): mechanics::home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_friction_slick, mechanics::home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_heavy_mass_ratio, PowerDef, RectArenaPixels, StoneState, TEAM_COLOUR, TEAM_DARK, NOTE: stone param is accepted but not used internally — the controller only (+1 more)
-
-### Community 19 - "PowerType"
+### Community 15 - "Casino Fairness"
 Cohesion: 0.15
-Nodes (12): ALL_SPECIAL_POWERS, GAME_POWERS, GameId, POWER_UP_ASSETS, POWER_UP_TEXTURES, ReplayProjectileState, ReplayStoneState, PowerPickup (+4 more)
+Nodes (25): FairnessCheck, flipSideColor(), flipSideLabel(), isBackFacing(), sideAtAngle(), FortuneWheelModal(), FortuneWheelModalProps, isBigWinSegment() (+17 more)
 
-### Community 21 - "player-renderer.ts"
-Cohesion: 0.20
-Nodes (14): drawArenaPowerBalls(), mechanics::home_marcos_programming_transgender_frontend_src_shared_assets_ingame_player_asset, mechanics::home_marcos_programming_transgender_frontend_src_shared_assets_resolveshellskinasset, mechanics::home_marcos_programming_transgender_frontend_src_shared_assets_shell_skin_assets, mechanics::home_marcos_programming_transgender_frontend_src_shared_assets_ts, drawIngamePlayerTexture(), drawIngameShellTexture(), getOrCreatePlayerImage() (+6 more)
+### Community 17 - "Frontend Package"
+Cohesion: 0.07
+Nodes (29): dependencies, phaser, react, react-dom, react-router-dom, socket.io-client, description, devDependencies (+21 more)
 
-### Community 28 - "rect-arena.ts"
-Cohesion: 0.23
-Nodes (9): drawHorizontalSheet(), drawHouseRings(), drawIceSheet(), drawVerticalSheet(), HOUSE_COLORS, RectArenaDef, rectArenaPlayableToScreenInRect(), rectArenaToScreen() (+1 more)
+### Community 18 - "Common Scene Host"
+Cohesion: 0.10
+Nodes (7): CommonGameSceneHost, CommonGameSceneHostOptions, CommonGameSceneLifecycle, CommonSceneRuntime, SceneSocketChannel, SocketLike, SocketListenerRegistration
 
-### Community 29 - "bamboo.ts"
+### Community 19 - "Board Canvas"
+Cohesion: 0.16
+Nodes (24): BoardStep, clamp01(), easeInOutCubic(), easeInQuad(), easeOutBack(), easeOutBounce(), easeOutQuad(), runBoardAnimation() (+16 more)
+
+### Community 20 - "Replay Data Normalisation"
+Cohesion: 0.11
+Nodes (20): BAMBOO_ASSETS, BAMBOO_TEXTURES, interpolateNormalizedTrail(), interpolatePoints(), normalizeReplayStones(), parsePowerType(), PLAYER_COLOURS, ProjectileRenderState (+12 more)
+
+### Community 21 - "Bamboo Obstacles"
+Cohesion: 0.13
+Nodes (20): bambooObstacleDescriptor, BambooObstacleRendering, bambooRadius(), drawBamboo(), drawCane(), hitsBamboo(), randomSpot(), STAGE_POINTS (+12 more)
+
+### Community 22 - "Route And Auth"
+Cohesion: 0.14
+Nodes (14): RouteLoading(), TempleBackdrop(), TempleBackdropProps, api, AuthError, NetworkError, SessionStatus, useSessionGate() (+6 more)
+
+### Community 23 - "Replay Controller"
+Cohesion: 0.17
+Nodes (14): ReplayDetail, ReplayEvent, ReplayFrame, ReplaySummary, clamp01(), frameWindow(), getFrameDurationMs(), playbackTime() (+6 more)
+
+### Community 25 - "Plinko Drop Path"
+Cohesion: 0.16
+Nodes (19): computeDropPath(), DropStep, pegLattice(), PegPosition, verifyPlinko(), bucketFromOutcome(), bucketIndexFromRolls(), bucketView() (+11 more)
+
+### Community 26 - "Auth Components"
+Cohesion: 0.10
+Nodes (6): AuthCard(), AuthCardProps, OAuthButtons(), OAuthButtonsProps, OAuthProviderButton(), OAuthProviderButtonProps
+
+### Community 27 - "Slots Rendering"
+Cohesion: 0.19
+Nodes (20): verifySlots(), drawReelIdle(), drawReelStrip(), drawSymbolImage(), loadImage(), preloadSymbolImages(), ReelPlan, ShrineSlotsModal() (+12 more)
+
+### Community 28 - "Collectible Descriptor"
+Cohesion: 0.18
+Nodes (18): buildCircularCollectibleDescriptor(), collectibleToBlocker(), hitsCircularCollectible(), remapCollectibleDescriptors(), resolveCollectiblePosition(), resolveCollectibleRadius(), arena, createEllipsePowerPickupArea() (+10 more)
+
+### Community 29 - "Shell Picker Socket"
+Cohesion: 0.15
+Nodes (15): MatchStatusPayload, ONLINE_SCENES, ShellPickerData, ShellSmashStartData, CurlingThrowEvent, GameMap, GameSnapshot, MatchMode (+7 more)
+
+### Community 30 - "Casino Tests"
+Cohesion: 0.13
+Nodes (11): FakeImage, PendingReveal, DiceConfig, FlipConfig, MonteConfig, PlinkoView, SlotsView, SpinFairness (+3 more)
+
+### Community 31 - "Dice Utilities"
+Cohesion: 0.19
+Nodes (17): easeOutCubic(), lerp(), buildOdometerStrip(), diceMultiplier(), diceOutcomeId(), diceValue(), diceWinChance(), diceWinningOutcomes() (+9 more)
+
+### Community 32 - "Curl Bumper Flow"
 Cohesion: 0.21
-Nodes (10): bambooRadius(), drawBamboo(), drawCane(), hitsBamboo(), randomSpot(), STAGE_POINTS, stageForAge(), stepBamboo() (+2 more)
+Nodes (5): resolveStoneCollision(), stepStone(), obstacleToBlocker(), resolveObstaclePosition(), isStoneOutOfBounds()
 
-### Community 32 - "timed-targets.ts"
-Cohesion: 0.29
-Nodes (7): hitsTimedTarget(), targetHitAccuracy(), TimedTarget, TimedTargetKind, timedTargetPosition(), timedTargetRadius(), TimedTargetSpot
+### Community 33 - "TypeScript Config"
+Cohesion: 0.10
+Nodes (19): compilerOptions, allowJs, allowSyntheticDefaultImports, esModuleInterop, forceConsistentCasingInFileNames, ignoreDeprecations, isolatedModules, jsx (+11 more)
 
-### Community 33 - "GameEngine"
-Cohesion: 0.25
-Nodes (3): GameEngine, GameEngineRegistry, Injectable
+### Community 34 - "Fairness Crypto"
+Cohesion: 0.24
+Nodes (16): computeRollBrowser(), computeRollsBrowser(), encoder, importHmacKey(), rollFromMessage(), sha256Hex(), toHex(), verifyFlip() (+8 more)
 
-### Community 34 - "PowerPicker.ts"
+### Community 35 - "Bell Clash Types"
+Cohesion: 0.16
+Nodes (14): BALL_TRAIL_OPTIONS, BELL_CLASH_DESCRIPTOR, BellObstacleDescriptor, FALLBACK_POWERS, OverlayState, ScoreZone, ZONE_DEFS, ZoneKind (+6 more)
+
+### Community 36 - "Power Pickups"
+Cohesion: 0.18
+Nodes (4): pickRandom(), powerPickupDescriptor(), PowerPickupManager, PowerPickupSpawnArea
+
+### Community 37 - "Arena Power Runtime"
+Cohesion: 0.26
+Nodes (9): ArenaPixels, applyArenaBallPowerCycle(), resolveArenaPowerBallCollisions(), resolveBallCollision(), applyBallPower(), BallExtState, cloneBall(), createMirrorBall() (+1 more)
+
+### Community 38 - "Replay Projectiles"
+Cohesion: 0.18
+Nodes (6): interpolateArenaTrail(), isLegacyReplayFrame(), normalizeReplayBalls(), resolveTargetColour(), toArenaX(), toArenaY()
+
+### Community 39 - "World Descriptors"
+Cohesion: 0.18
+Nodes (14): CollectibleBlocker, CollectibleDescriptor, CollectibleHooks, ObstacleArenaFrame, ObstacleBlocker, ObstacleBoundsGeometry, ObstacleCircleGeometry, ObstacleCollisionDescriptor (+6 more)
+
+### Community 41 - "Player Assets"
+Cohesion: 0.26
+Nodes (13): INGAME_PLAYER_ASSET, resolveShellSkinAsset(), SHELL_SKIN_ASSETS, ShellSkinId, drawIngamePlayerTexture(), drawIngameShellTexture(), getOrCreatePlayerImage(), hideIngamePlayerTexture() (+5 more)
+
+### Community 42 - "World Entity Store"
+Cohesion: 0.19
+Nodes (3): WorldEntity, WorldEntityStore, TestEntity
+
+### Community 45 - "Replay Physics"
 Cohesion: 0.22
-Nodes (8): games::home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_powerregistry, games::home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_powertype, games::home_marcos_programming_transgender_frontend_src_shared_mechanics_power_system_ts, games::home_marcos_programming_transgender_frontend_src_shared_theme_theme, games::home_marcos_programming_transgender_frontend_src_shared_theme_ts, games::ref_phaser, POWER_DESC, TokenRecord
+Nodes (11): applyReplayProjectilePower(), createReplayProjectileState(), pushReplayTrailPoint(), ReplayProjectileState, ReplayStoneState, runFixedStepSimulation(), SimulatedReplayObject, simulateReplayProjectile() (+3 more)
+
+### Community 46 - "Replay Visuals"
+Cohesion: 0.26
+Nodes (11): ReplayFrameSnapshot, ReplaySnapshotEntity, ReplayVisualPlayer, normalizeReplayBackgroundId(), REPLAY_BACKGROUND_TEXTURES, resolveActiveReplayBackground(), resolveActiveReplaySide(), resolveReplayPlayer() (+3 more)
+
+### Community 47 - "Rect Arena"
+Cohesion: 0.24
+Nodes (11): CURL_SHEET, distanceToHouseButton(), drawHorizontalSheet(), drawHouseRings(), drawIceSheet(), drawVerticalSheet(), HOUSE_COLORS, RectArenaDef (+3 more)
+
+### Community 49 - "Launchable Remap"
+Cohesion: 0.29
+Nodes (10): assertValidFrame(), frameFromOvalArena(), frameFromRectArena(), OvalArenaLike, RectArenaLike, remapLaunchable(), remapLaunchables(), RemappedLaunchable (+2 more)
+
+### Community 50 - "Curl Stone Drawing"
+Cohesion: 0.29
+Nodes (3): StoneState, PowerDef, RectArenaPixels
+
+### Community 51 - "Sweep Controller"
+Cohesion: 0.20
+Nodes (3): NOTE: stone param is accepted but not used internally — the controller only, SweepController, TrailPoint
+
+### Community 53 - "Card Drop Popup"
+Cohesion: 0.33
+Nodes (5): PackPull, dropTagLabel(), RARITY_ACCENT, RARITY_GLYPH, showCardDropPopup()
+
+### Community 54 - "Oval Arena"
+Cohesion: 0.25
+Nodes (4): ArenaDef, arenaToScreen(), arenaToScreenInRect(), arena
+
+### Community 55 - "End Modals"
+Cohesion: 0.39
+Nodes (7): addModalButton(), GameEndModalAction, GameEndModalOptions, GameEndModalPlayer, showGameEndModal(), OnlineRematchOptions, showOnlineRematchEndModal()
+
+### Community 56 - "Friend Filtering"
+Cohesion: 0.29
+Nodes (6): filterFriends(), HasSearchableName, alice, bob, carol, Friend
+
+### Community 57 - "Profile Cache"
+Cohesion: 0.32
+Nodes (3): CacheEntry, createProfileCardCache(), ProfileCardCache
+
+### Community 58 - "Preload Assets"
+Cohesion: 0.46
+Nodes (3): preloadOvalArenaSkin(), preloadPowerUpAssets(), preloadIngamePlayerTexture()
+
+### Community 59 - "Notification Dedup"
+Cohesion: 0.43
+Nodes (5): HasNotificationShape, notificationIdsFrom(), prependNotificationDeduped(), removeNotificationsFrom(), Notif
+
+### Community 60 - "Player Labels"
+Cohesion: 0.48
+Nodes (6): SnapshotPlayer, compactHudName(), hudPlayerLabel(), localPlayerDisplayName(), playerDisplayName(), PlayerLabelUser
+
+### Community 62 - "Work In Progress UI"
+Cohesion: 0.47
+Nodes (4): WorkInProgressModal(), WorkInProgressModalProps, WorkInProgressNotice(), WorkInProgressNoticeProps
+
+### Community 63 - "Presence Grouping"
+Cohesion: 0.53
+Nodes (4): PresenceStatus, formatRelativeTime(), groupFriendsByPresence(), PresenceGroups
+
+### Community 64 - "Friends Operations"
+Cohesion: 0.53
+Nodes (4): friendCounts, HasUserId, removeById(), upsertById()
+
+### Community 65 - "Profile Card"
+Cohesion: 0.47
+Nodes (4): ProfileCard(), ProfileCardProps, ProfileCardUser, baseUser
+
+### Community 66 - "Index Bootstrap"
+Cohesion: 0.50
+Nodes (5): Frontend Index HTML Document, Application Favicon PNG, Root Mount Element, Shell Smash Page Title, Frontend Main TypeScript Module
+
+### Community 67 - "Nine Slice Button"
+Cohesion: 0.40
+Nodes (4): NineSliceButton(), NineSliceButtonProps, NineSliceStyle, UI_9SLICE_BUTTON_PANEL
+
+### Community 68 - "Procedural Background"
+Cohesion: 0.67
+Nodes (3): drawBackground(), drawBlossomTree(), PETAL_COLOURS
 
 ## Knowledge Gaps
-- **116 isolated node(s):** `GameStateDelta`, `OnlineBallState`, `BAMBOO_TEXTURES`, `BAMBOO_ASSETS`, `BALL_TRAIL_OPTIONS` (+111 more)
+- **275 isolated node(s):** `name`, `version`, `description`, `dev`, `build` (+270 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **18 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `BellClashScene` connect `BellClashScene` to `KameKnockScene.ts`?**
-  _High betweenness centrality (0.119) - this node is a cross-community bridge._
-- **Why does `ShellCurlScene` connect `ShellCurlScene` to `ShellCurlScene.ts`?**
-  _High betweenness centrality (0.098) - this node is a cross-community bridge._
-- **Why does `BambooBashScene` connect `BambooBashScene` to `KameKnockScene.ts`, `.update`, `.startOnlineRound`, `.isLocalVersus`, `.create`, `bamboo.ts`?**
-  _High betweenness centrality (0.095) - this node is a cross-community bridge._
-- **What connects `GameStateDelta`, `OnlineBallState`, `BAMBOO_TEXTURES` to the rest of the system?**
-  _117 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `KameKnockScene` be split into smaller, more focused modules?**
-  _Cohesion score 0.05772005772005772 - nodes in this community are weakly interconnected._
-- **Should `BellClashScene` be split into smaller, more focused modules?**
-  _Cohesion score 0.059120555438670314 - nodes in this community are weakly interconnected._
-- **Should `KameKnockScene.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.04754440961337513 - nodes in this community are weakly interconnected._
+- **Why does `ShellCurlScene` connect `Shell Curl Replay` to `Curl Bumper Flow`, `Power Pickups`, `Launch Runtime`, `Shell Inventory Boot`, `Game Descriptors`, `Curl Turn Flow`, `Shell Curl Setup`, `Power Picker`, `Curl Scene Rendering`, `Curl Online Flow`, `Rule Hooks HUD`, `Side Panels`, `Common Scene Host`, `Curl Stone Drawing`, `Sweep Controller`, `Responsive Scene`, `Preload Assets`, `Shell Picker Socket`?**
+  _High betweenness centrality (0.065) - this node is a cross-community bridge._
+- **Why does `api` connect `Route And Auth` to `Bell Clash Types`, `Chat Operations`, `Shell Inventory Boot`, `Card Binder`, `Game Descriptors`, `Hub API Client`, `Shell Curl Setup`, `Casino Fairness`, `Board Canvas`, `Plinko Drop Path`, `Auth Components`, `Slots Rendering`, `Shell Picker Socket`, `Casino Tests`, `Dice Utilities`?**
+  _High betweenness centrality (0.063) - this node is a cross-community bridge._
+- **Why does `KameKnockScene` connect `Kame Knock Scene` to `Bamboo Bash Scene`, `Power Pickups`, `Arena Power Runtime`, `Launch Runtime`, `Game Descriptors`, `Shell Inventory Boot`, `Power Picker`, `Rule Hooks HUD`, `Side Panels`, `Common Scene Host`, `Responsive Scene`, `Preload Assets`, `Shell Picker Socket`?**
+  _High betweenness centrality (0.063) - this node is a cross-community bridge._
+- **Are the 8 inferred relationships involving `PowerType` (e.g. with `.buildFullInventory()` and `.create()`) actually correct?**
+  _`PowerType` has 8 INFERRED edges - model-reasoned connections that need verification._
+- **What connects `name`, `version`, `description` to the rest of the system?**
+  _276 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `Bamboo Bash Scene` be split into smaller, more focused modules?**
+  _Cohesion score 0.05214917825537294 - nodes in this community are weakly interconnected._
+- **Should `Bell Clash Scene` be split into smaller, more focused modules?**
+  _Cohesion score 0.051962676962676965 - nodes in this community are weakly interconnected._
