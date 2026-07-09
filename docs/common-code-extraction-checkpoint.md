@@ -800,10 +800,59 @@ application, and stopped-power side effects.
 
 ## Phase 11
 
-Proceed to Phase 11 only after reviewing the remaining local/online flow
-duplication. The next useful target is likely a shared "projectile settled"
-or "local turn lifecycle" helper, but only where the scene-specific side
-effects can stay explicit.
+Status: `Reviewed`
+
+### Review Outcome
+
+Phase 11 should target online/session lifecycle duplication before attempting a
+larger "projectile settled" or turn-state extraction.
+
+The safest first cut is a shared online status runtime. All four audited scenes
+still own near-identical code for:
+
+- creating the online status text object,
+- updating its message,
+- moving it during relayout,
+- destroying it on shutdown,
+- marking an online match as away unless the server snapshot is already
+  `finished` or `abandoned`.
+
+This is a low-risk extraction because it does not affect scoring, projectile
+physics, turn order, or online authority. It should reduce repeated scene
+plumbing and make the next online-flow pass easier to reason about.
+
+### Recommended Phase 11 Checklist
+
+1. Add `OnlineMatchStatusRuntime` under `frontend/src/games/common/runtime/`.
+2. Move online status text creation, updates, relayout positioning, teardown,
+   and away signalling into that runtime.
+3. Replace scene-local `onlineStatusText`, `createOnlineStatusText()`,
+   `updateOnlineStatus()`, and `markOnlineAway()` usage in:
+   - `frontend/src/games/bamboo-bash/BambooBashScene.ts`
+   - `frontend/src/games/kame-knock/KameKnockScene.ts`
+   - `frontend/src/games/bell-clash/BellClashScene.ts`
+   - `frontend/src/games/shell-curl/ShellCurlScene.ts`
+4. Add focused tests for:
+   - message update,
+   - relayout position sync,
+   - destroy behaviour,
+   - away signalling only for active/non-finished matches.
+5. Re-run the targeted common-runtime tests and the frontend production build.
+
+### Deferred Phase 11 Candidates
+
+After the online status runtime, the remaining duplication is real but riskier:
+
+- online release payload construction,
+- `playOnlineThrow()` state setup,
+- launched/settling flags,
+- `notifyGameRuleRelease()` and `notifyGameRuleProjectileSettled()` timing,
+- local turn advancement,
+- stopped-power side effects.
+
+Those should not be merged into the first Phase 11 cut. They mix scene-specific
+rules, backend authority assumptions, and UI side effects, so they need a
+separate pass with narrower tests.
 
 # Executive Summary
 
@@ -826,6 +875,22 @@ rendering, stopped-power side effects, and higher-level runtime structure
 rather than replay plumbing or low-level arena-ball physics.
 
 # Module Status
+
+## Current Checkpoint - 2026-07-09
+
+- Phases 8, 9, and 10 are closed.
+- Phase 11 has been reviewed but not started.
+- The recommended next implementation cut is
+  `OnlineMatchStatusRuntime`.
+- The first Phase 11 cut should not include projectile settled lifecycle,
+  turn advancement, stopped-power side effects, or online release payload
+  extraction.
+- The last validated implementation checkpoint passed targeted frontend tests
+  and the frontend production build.
+- The Vite large chunk warning is fixed; the remaining Vite notice is the
+  existing CJS Node API deprecation warning.
+- `docs/modules-progress.md` was reviewed and does not require a status update
+  for this technical-debt extraction work.
 
 `docs/modules-progress.md` was reviewed. No update is required because
 these changes reduce technical debt without changing the functional
