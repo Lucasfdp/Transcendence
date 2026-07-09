@@ -23,6 +23,15 @@ export {
 	type SlingshotLaunchRuntimeOptions,
 } from "./runtime/SlingshotLaunchRuntime";
 export {
+	ArenaBallTrailRuntime,
+	buildArenaBallTrailObjects,
+	buildArenaPowerBallTrailObjects,
+	type ArenaBallMovingResolver,
+	type ArenaBallTrailId,
+	type ArenaBallTrailObject,
+	type ArenaBallTrailSetOptions,
+} from "./runtime/ArenaBallTrailRuntime";
+export {
 	LocalReplayPersistenceRuntime,
 	persistLocalReplayImport,
 	type LocalReplayPersistenceOptions,

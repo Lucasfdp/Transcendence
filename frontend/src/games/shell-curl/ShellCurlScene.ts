@@ -22,16 +22,13 @@ import {
 	type StoneState,
 	STONE_SRC_R,
 	DEFAULT_CURL_BIAS,
-	stepStone,
-	resolveStoneCollision,
 } from "../../shared/mechanics/ball";
 import {
 	PowerType,
 	PowerRegistry,
 	ALL_POWERS,
-	SPLITTER_RADIUS,
-	SPLITTER_SPREAD,
 } from "../../shared/mechanics/power-system";
+import { CurlingPowerRuntime } from "../../shared/mechanics/curling-power-runtime";
 import {
 	GAME_POWERS,
 	preloadPowerUpAssets,
@@ -81,12 +78,6 @@ import {
 	DEFAULT_PLAYER_SHELL_SKINS,
 	resolvePlayerShellSkins,
 } from "../../shared/mechanics/player-config";
-import {
-	drawPlayerTrails,
-	recordPlayerTrails,
-	resetPlayerTrail,
-	type PlayerTrailStore,
-} from "../../shared/mechanics/player-trails";
 import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
 import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
 import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
@@ -105,6 +96,7 @@ import {
 import { hudPlayerLabel } from "../../shared/player-labels";
 import { resolveReplayWinnerSide } from "../shared/localReplay";
 import {
+	ArenaBallTrailRuntime,
 	buildCommonLocalReplayParticipantContext,
 	buildShellCurlLocalReplaySnapshot,
 	CommonGameSceneHost,
@@ -242,6 +234,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	// ── Game state ────────────────────────────────────────────────────────────
 	private turnManager!: TurnManager;
 	private powerRegistry!: PowerRegistry;
+	private curlingPower!: CurlingPowerRuntime;
 	private stoneGfx: Map<number, Phaser.GameObjects.Graphics> = new Map();
 	private activeStone: StoneState | null = null;
 	private activeRingGfx: Phaser.GameObjects.Graphics | null = null;
@@ -261,7 +254,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private pickupGfx!: Phaser.GameObjects.Graphics;
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
-	private stoneTrails: PlayerTrailStore = new Map();
+	private stoneTrails = new ArenaBallTrailRuntime();
 
 	// ── Bumpers ───────────────────────────────────────────────────────────────
 	private bumpers: Bumper[] = [];
@@ -431,6 +424,10 @@ export class ShellCurlScene extends ResponsiveScene {
 		for (const type of Object.values(PowerType)) {
 			this.powerRegistry.register(ALL_POWERS[type]);
 		}
+		this.curlingPower = new CurlingPowerRuntime(
+			this.powerRegistry,
+			() => this.nextStoneId++,
+		);
 
 		// Graphics layers
 		this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
@@ -543,62 +540,27 @@ export class ShellCurlScene extends ResponsiveScene {
 
 			// Step ALL moving stones this frame so knocked stones move immediately
 			for (const s of this.allStones) {
-				if (!s.stopped) stepStone(s, delta, this.arena);
+				if (!s.stopped)
+					this.curlingPower.stepStone(s, delta, this.arena);
 			}
-			if (this.activeStone?.splitterPending) {
-				this.activeStone.splitterPending = false;
-				this.spawnSplitStones(this.activeStone);
-				this.activeStone = null;
-			}
-			if (this.activeStone?.mirrorPending) {
-				this.activeStone.mirrorPending = false;
-				this.spawnMirrorStone(this.activeStone);
-			}
+			this.consumeActiveStonePowerSpawns();
 
 			if (this.activeStone) {
 				// Apply active power update
-				const def = this.powerRegistry.get(this.activeStone.power);
-				def.onUpdate?.(this.activeStone, delta, this.arena);
+				this.curlingPower.updatePower(
+					this.activeStone,
+					delta,
+					this.arena,
+				);
 
-				// Active-stone collisions: check overlap BEFORE resolving so onCollide
-				// fires on first contact (resolution pushes stones apart, breaking the check).
-				for (const other of this.allStones) {
-					if (!this.activeStone) break;
-					if (other.id === this.activeStone.id) continue;
-					if (
-						(this.activeStone as { phantomHidden?: boolean })
-							.phantomHidden ||
-						(other as { phantomHidden?: boolean }).phantomHidden
-					)
-						continue;
-					const colliding = this.stonesOverlapping(
-						this.activeStone,
-						other,
-					);
-					resolveStoneCollision(this.activeStone, other);
-					if (colliding) {
-						def.onCollide?.(this.activeStone, other, this.arena);
-					}
-				}
-			}
-			// Resolve collisions between all other stone pairs
-			for (let i = 0; i < this.allStones.length; i++) {
-				for (let j = i + 1; j < this.allStones.length; j++) {
-					const si = this.allStones[i];
-					const sj = this.allStones[j];
-					if (
-						this.activeStone &&
-						(si.id === this.activeStone.id ||
-							sj.id === this.activeStone.id)
-					)
-						continue;
-					if (
-						(si as { phantomHidden?: boolean }).phantomHidden ||
-						(sj as { phantomHidden?: boolean }).phantomHidden
-					)
-						continue;
-					resolveStoneCollision(si, sj);
-				}
+				this.curlingPower.resolveCollisions(
+					this.allStones,
+					this.arena,
+					{
+						activeStone: this.activeStone,
+						triggerActiveCollisionPower: true,
+					},
+				);
 			}
 
 			// Bumper collisions for all moving stones
@@ -626,8 +588,11 @@ export class ShellCurlScene extends ResponsiveScene {
 					if (isStoneOutOfBounds(as, this.arena)) {
 						this.removeStone(as);
 					} else {
-						const stopDef = this.powerRegistry.get(as.power);
-						stopDef.onStop?.(as, this.arena, this.allStones);
+						this.curlingPower.stopPower(
+							as,
+							this.arena,
+							this.allStones,
+						);
 					}
 				}
 				this.activeStone = null;
@@ -641,7 +606,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			let anyMoving = false;
 			for (const s of this.allStones) {
 				if (!s.stopped) {
-					stepStone(s, delta, this.arena);
+					this.curlingPower.stepStone(s, delta, this.arena);
 					if (isStoneOutOfBounds(s, this.arena)) {
 						this.removeStone(s);
 					} else {
@@ -649,12 +614,7 @@ export class ShellCurlScene extends ResponsiveScene {
 					}
 				}
 			}
-			// Stone-stone collisions between coasting stones
-			for (let i = 0; i < this.allStones.length; i++) {
-				for (let j = i + 1; j < this.allStones.length; j++) {
-					resolveStoneCollision(this.allStones[i], this.allStones[j]);
-				}
-			}
+			this.curlingPower.resolveCollisions(this.allStones, this.arena);
 			// Bumper collisions in settling phase
 			this.resolveStoneBumperCollisions(this.allStones);
 			// Re-check anyMoving after bumper hits (bumpers can re-launch stopped stones)
@@ -772,8 +732,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.activeStone.vx = vx;
 		this.activeStone.vy = vy;
 		this.activeStone.r = STONE_SRC_R * this.arena.scale;
-		this.activeStone.power = power;
-		this.powerRegistry.get(power).onApply(this.activeStone, this.arena);
+		this.curlingPower.applyPower(power, this.activeStone, this.arena);
 		if (power !== PowerType.NONE) this.currentPowerUsed().add(power);
 		this.activePower = PowerType.NONE;
 		this.activeStone.stopped = false;
@@ -895,7 +854,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		const gfx = this.add.graphics().setDepth(DEPTH_STONES);
 		this.stoneGfx.set(stone.id, gfx);
 		this.allStones.push(stone);
-		resetPlayerTrail(this.stoneTrails, stone.id, stone.x, stone.y);
+		this.stoneTrails.reset(stone.id, stone.x, stone.y);
 		this.drawPlayerStone(gfx, stone, true);
 		return stone;
 	}
@@ -935,7 +894,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		stone.vx = 0;
 		stone.vy = 0;
 		stone.stopped = true;
-		resetPlayerTrail(this.stoneTrails, stone.id, stone.x, stone.y);
+		this.stoneTrails.reset(stone.id, stone.x, stone.y);
 	}
 
 	private showSpawnBlockedNotice(count: number): void {
@@ -969,65 +928,32 @@ export class ShellCurlScene extends ResponsiveScene {
 		});
 	}
 
-	private spawnSplitStones(parent: StoneState): void {
-		const angles = [-SPLITTER_SPREAD, 0, SPLITTER_SPREAD];
-		const parentSpeed = Math.hypot(parent.vx, parent.vy);
-		const parentAngle = Math.atan2(parent.vy, parent.vx);
-		const childRadius = parent.r * SPLITTER_RADIUS;
-		const spawnOffset = Math.max(1, childRadius * 0.45);
+	private consumeActiveStonePowerSpawns(): void {
+		if (!this.activeStone) return;
+		const source = this.activeStone;
+		const result = this.curlingPower.consumeSpawnRequests(
+			source,
+			this.arena,
+		);
+		if (!result.children.length && !result.removeSource) return;
 
-		for (const offset of angles) {
-			const angle = parentAngle + offset;
-			const child: StoneState = {
-				id: this.nextStoneId++,
-				teamId: parent.teamId,
-				x: parent.x + Math.cos(angle) * spawnOffset,
-				y: parent.y + Math.sin(angle) * spawnOffset,
-				vx: Math.cos(angle) * parentSpeed * 0.7,
-				vy: Math.sin(angle) * parentSpeed * 0.7,
-				r: childRadius,
-				power: PowerType.NONE,
-				stopped: false,
-				curlBias: parent.curlBias,
-			};
-
-			const gfx = this.add.graphics().setDepth(DEPTH_STONES);
-			this.stoneGfx.set(child.id, gfx);
-			this.allStones.push(child);
-			this.stoneTrails.set(child.id, [{ x: child.x, y: child.y }]);
+		for (const child of result.children) this.addRuntimeStone(child);
+		if (result.split) this.showSplitterNotice(source.x, source.y);
+		if (result.mirror)
+			this.showPowerPickupNotice(PowerType.MIRROR, source.x, source.y);
+		if (result.removeSource) {
+			this.removeStone(source);
+			this.activeStone = null;
 		}
-
-		this.showSplitterNotice(parent.x, parent.y);
-		this.removeStone(parent);
 		this.drawStoneTrails();
 		this.redrawAllStones();
 	}
 
-	private spawnMirrorStone(parent: StoneState): void {
-		const mirroredY =
-			this.arena.sheetY +
-			this.arena.sheetH -
-			(parent.y - this.arena.sheetY);
-		const mirror: StoneState = {
-			id: this.nextStoneId++,
-			teamId: parent.teamId,
-			x: parent.x,
-			y: mirroredY,
-			vx: parent.vx,
-			vy: -parent.vy,
-			r: parent.r,
-			power: PowerType.NONE,
-			stopped: false,
-			curlBias: -parent.curlBias,
-		};
-
+	private addRuntimeStone(stone: StoneState): void {
 		const gfx = this.add.graphics().setDepth(DEPTH_STONES);
-		this.stoneGfx.set(mirror.id, gfx);
-		this.allStones.push(mirror);
-		this.stoneTrails.set(mirror.id, [{ x: mirror.x, y: mirror.y }]);
-		this.showPowerPickupNotice(PowerType.MIRROR, parent.x, parent.y);
-		this.drawStoneTrails();
-		this.redrawAllStones();
+		this.stoneGfx.set(stone.id, gfx);
+		this.allStones.push(stone);
+		this.stoneTrails.set(stone.id, [{ x: stone.x, y: stone.y }]);
 	}
 
 	private showSplitterNotice(x: number, y: number): void {
@@ -1296,28 +1222,21 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private recordMovingStoneTrails(): void {
-		recordPlayerTrails(
-			this.stoneTrails,
-			this.allStones.map((stone) => ({
+		this.stoneTrails.recordSet({
+			balls: this.allStones.map((stone) => ({
 				id: stone.id,
 				player: stone.teamId,
-				x: stone.x,
-				y: stone.y,
-				moving: !stone.stopped,
+				ball: stone,
 			})),
-			{ scale: this.arena.scale },
-		);
+			isMoving: (stone) => !(stone as StoneState).stopped,
+			trailOptions: { scale: this.arena.scale },
+		});
 	}
 
 	private drawStoneTrails(): void {
-		drawPlayerTrails(
-			this.trailGfx,
-			this.stoneTrails,
-			this.stonePlayersById(),
-			{
-				scale: this.arena.scale,
-			},
-		);
+		this.stoneTrails.draw(this.trailGfx, this.stonePlayersById(), {
+			scale: this.arena.scale,
+		});
 	}
 
 	private stonePlayersById(): Map<number | string, number> {
@@ -1537,12 +1456,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private readStoneTrail(stoneId: number): Array<{ x: number; y: number }> {
-		const trail = this.stoneTrails.get(stoneId);
-		if (!trail?.length) return [];
-		return trail.map((point) => ({
-			x: (point.x - this.arena.sheetX) / this.arena.sheetW,
-			y: (point.y - this.arena.sheetY) / this.arena.sheetH,
-		}));
+		return this.stoneTrails.readRectNormalisedTrail(stoneId, this.arena);
 	}
 
 	private localDeliveredTurns(): number {
@@ -1609,8 +1523,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		stone.r = STONE_SRC_R * this.arena.scale;
 		stone.curlBias = DEFAULT_CURL_BIAS * (event.side === 0 ? 1 : -1);
 
-		const def = this.powerRegistry.get(stone.power);
-		def.onApply(stone, this.arena);
+		this.curlingPower.applyPower(stone.power, stone, this.arena);
 
 		this.activeStone = stone;
 		this.stoneTrails.set(stone.id, [{ x: stone.x, y: stone.y }]);
@@ -1642,15 +1555,16 @@ export class ShellCurlScene extends ResponsiveScene {
 
 			let anyMoving = false;
 			const active = this.activeStone;
-			const activeDef = active
-				? this.powerRegistry.get(active.power)
-				: null;
 
 			for (const stone of [...this.allStones]) {
 				if (stone.stopped) continue;
-				stepStone(stone, ONLINE_REPLAY_STEP_MS, this.arena);
+				this.curlingPower.stepStone(
+					stone,
+					ONLINE_REPLAY_STEP_MS,
+					this.arena,
+				);
 				if (stone === active)
-					activeDef?.onUpdate?.(
+					this.curlingPower.updatePower(
 						stone,
 						ONLINE_REPLAY_STEP_MS,
 						this.arena,
@@ -1663,23 +1577,10 @@ export class ShellCurlScene extends ResponsiveScene {
 				}
 			}
 
-			for (let i = 0; i < this.allStones.length; i++) {
-				for (let j = i + 1; j < this.allStones.length; j++) {
-					const a = this.allStones[i];
-					const b = this.allStones[j];
-					const colliding =
-						active &&
-						(a === active || b === active) &&
-						this.stonesOverlapping(a, b);
-					resolveStoneCollision(a, b);
-					if (colliding)
-						activeDef?.onCollide?.(
-							active,
-							a === active ? b : a,
-							this.arena,
-						);
-				}
-			}
+			this.curlingPower.resolveCollisions(this.allStones, this.arena, {
+				activeStone: active,
+				triggerActiveCollisionPower: true,
+			});
 
 			this.resolveStoneBumperCollisions(this.allStones);
 			for (const bumper of this.bumpers) {
@@ -1698,9 +1599,11 @@ export class ShellCurlScene extends ResponsiveScene {
 				this.activeStone.stopped &&
 				!this.onlineReplayStopApplied
 			) {
-				this.powerRegistry
-					.get(this.activeStone.power)
-					.onStop?.(this.activeStone, this.arena, this.allStones);
+				this.curlingPower.stopPower(
+					this.activeStone,
+					this.arena,
+					this.allStones,
+				);
 				this.onlineReplayStopApplied = true;
 			}
 
@@ -1890,7 +1793,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private renderOnlineObjects(snapshot: CurlingSnapshot): void {
-		const existingTrails = new Map(this.stoneTrails);
+		const existingTrails = new Map(this.stoneTrails.entries());
 		const existingStones = new Map(
 			this.allStones.map((stone) => [
 				stone.id,
@@ -1951,22 +1854,11 @@ export class ShellCurlScene extends ResponsiveScene {
 			vy: stone.vy / this.arena.scale,
 			moving: !stone.stopped,
 			power: stone.power,
-			trail: this.stoneTrails.get(stone.id)?.map((point) => ({
-				x: Math.max(
-					0,
-					Math.min(
-						1,
-						(point.x - this.arena.sheetX) / this.arena.sheetW,
-					),
-				),
-				y: Math.max(
-					0,
-					Math.min(
-						1,
-						(point.y - this.arena.sheetY) / this.arena.sheetH,
-					),
-				),
-			})),
+			trail: this.stoneTrails.readRectNormalisedTrail(
+				stone.id,
+				this.arena,
+				{ clamp: true },
+			),
 		}));
 	}
 
@@ -2096,12 +1988,6 @@ export class ShellCurlScene extends ResponsiveScene {
 			stopped: true,
 			curlBias: 0,
 		};
-	}
-
-	private stonesOverlapping(a: StoneState, b: StoneState): boolean {
-		const dx = b.x - a.x;
-		const dy = b.y - a.y;
-		return Math.sqrt(dx * dx + dy * dy) < a.r + b.r;
 	}
 
 	// ── Bumpers ───────────────────────────────────────────────────────────────
@@ -2249,8 +2135,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		const pickup = this.powerPickups.collect(stone.x, stone.y, stone.r);
 		if (!pickup) return;
 
-		stone.power = pickup.type;
-		this.powerRegistry.get(pickup.type).onApply(stone, this.arena);
+		this.curlingPower.applyPower(pickup.type, stone, this.arena);
 		this.powerPickups.draw();
 		this.showPowerPickupNotice(pickup.type, pickup.x, pickup.y);
 		this.updateSidePanels();

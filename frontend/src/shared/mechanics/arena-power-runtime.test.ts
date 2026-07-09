@@ -4,6 +4,7 @@ import type { ArenaPixels } from "../arenas/arena";
 import {
 	applyArenaBallPowerCycle,
 	ArenaPowerRuntime,
+	stepArenaBall,
 } from "./arena-power-runtime";
 import { PowerType } from "./power-system";
 
@@ -16,6 +17,23 @@ const arena = {
 } as ArenaPixels;
 
 describe("arena-power-runtime", () => {
+	it("steps arena balls with friction override correction", () => {
+		const ball = {
+			x: arena.cx,
+			y: arena.cy,
+			vx: 100,
+			vy: 0,
+			r: 10,
+			frictionOverride: 0.5,
+		};
+
+		const moving = stepArenaBall(ball, 16.67, arena);
+
+		expect(moving).toBe(true);
+		expect(ball.x).toBeCloseTo(arena.cx + 1.667, 3);
+		expect(ball.vx).toBeCloseTo(50, 1);
+	});
+
 	it("creates two auxiliary balls for splitter", () => {
 		const ball = { x: 100, y: 120, vx: 10, vy: 0, r: 20 };
 		const entries = applyArenaBallPowerCycle(
@@ -67,6 +85,17 @@ describe("arena-power-runtime", () => {
 
 		expect(entries).toEqual([]);
 		expect(ball.r).toBeGreaterThan(10);
+	});
+
+	it("owns power application and auxiliary ball registration", () => {
+		const runtime = new ArenaPowerRuntime();
+		const ball = { x: 100, y: 120, vx: 10, vy: 0, r: 20 };
+
+		const spawned = runtime.applyPower(PowerType.SPLITTER, ball, arena, 2);
+
+		expect(spawned).toBe(2);
+		expect(runtime.length).toBe(2);
+		expect(runtime.all().map((entry) => entry.player)).toEqual([2, 2]);
 	});
 
 	it("prunes settled auxiliary balls after firing onSettled once", () => {

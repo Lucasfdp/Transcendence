@@ -615,13 +615,195 @@ The scene line reduction is meaningful but not massive because gameplay rules,
 online synchronisation, scoring, rendering, and scene state ownership remain
 local by design.
 
-# Recommended Next Sequence
-
 ## Phase 9
 
-Proceed to Phase 9. Further line reduction should target higher-level shared
-gameplay/runtime flow, especially the `arena + ball` family, rather than
-continuing to optimise the now-thin local replay callback boundary.
+Status: `Completed`
+
+### Scope
+
+Phase 9 started the higher-level shared projectile extraction by moving shared
+trail ownership out of the audited game scenes.
+
+This phase deliberately kept scoring, rule resolution, online synchronisation,
+and per-game projectile ownership local. The shared layer is limited to the
+common trail store lifecycle, reset/record/draw operations, power-ball trail
+mapping, base projectile trail mapping, and oval/rectangular replay
+normalisation.
+
+### Changes
+
+- Added `frontend/src/games/common/runtime/ArenaBallTrailRuntime.ts`.
+- Added `frontend/src/games/common/tests/ArenaBallTrailRuntime.test.ts`.
+- Exported the arena ball trail runtime and helpers from
+  `frontend/src/games/common/index.ts`.
+- Centralised mixed base-ball and power-ball trail recording through
+  `ArenaBallTrailRuntime.recordSet()`.
+- Replaced direct `PlayerTrailStore`, `recordPlayerTrails()`,
+  `drawPlayerTrails()`, and `resetPlayerTrail()` scene usage in:
+  - `frontend/src/games/bamboo-bash/BambooBashScene.ts`
+  - `frontend/src/games/kame-knock/KameKnockScene.ts`
+  - `frontend/src/games/bell-clash/BellClashScene.ts`
+  - `frontend/src/games/shell-curl/ShellCurlScene.ts`
+- Replaced scene-local replay trail normalisation in the same four scenes with
+  `ArenaBallTrailRuntime.readNormalisedTrail()` and
+  `ArenaBallTrailRuntime.readRectNormalisedTrail()`.
+
+### Line Count Impact
+
+Measured against the Phase 8 closure counts:
+
+- `frontend/src/games/bamboo-bash/BambooBashScene.ts`: `2766` to `2718`,
+  net `-48`.
+- `frontend/src/games/kame-knock/KameKnockScene.ts`: `2411` to `2394`, net
+  `-17`.
+- `frontend/src/games/bell-clash/BellClashScene.ts`: `2512` to `2480`, net
+  `-32`.
+- `frontend/src/games/shell-curl/ShellCurlScene.ts`: `2584` to `2556`, net
+  `-28`.
+- Combined audited scene net reduction in Phase 9: `-125` lines.
+- New shared runtime added:
+  `frontend/src/games/common/runtime/ArenaBallTrailRuntime.ts` (`142` lines).
+- New focused test added:
+  `frontend/src/games/common/tests/ArenaBallTrailRuntime.test.ts` (`90`
+  lines).
+
+### Coverage
+
+- `frontend/src/games/common/tests/ArenaBallTrailRuntime.test.ts`
+- Existing local replay tests were also re-run to protect the trail
+  normalisation call sites used by replay snapshot builders.
+
+### Validation
+
+- `cd frontend && npm run test:run -- src/games/common/tests/ArenaBallTrailRuntime.test.ts src/games/common/tests/LocalReplayRuntime.test.ts src/games/common/tests/LocalReplaySnapshots.test.ts src/games/common/tests/LocalReplayPlayers.test.ts`
+- `cd frontend && npm run build`
+
+Results:
+
+- Targeted frontend tests passed.
+- Frontend production build passed.
+- Vite still reports the existing CJS Node API deprecation notice from the Vite
+  stack. The previous large chunk warning is gone after the build chunk
+  configuration update.
+
+### Closure Decision
+
+Phase 9 is closed as the first shared projectile trail runtime extraction. It
+extracted the trail lifecycle that was duplicated across Bamboo Bash, Kame
+Knock, Bell Clash, and Shell Curl while preserving scene-local rule and
+synchronisation boundaries.
+
+The remaining `arena + ball` duplication is larger-grained: launch/update
+cycles, power-ball settling hooks, local-versus turn flow, and online state
+application. Those should be considered Phase 10 material rather than folded
+into this trail-focused pass.
+
+# Recommended Next Sequence
+
+## Phase 10
+
+Status: `Completed`
+
+### Scope
+
+Phase 10 continued the shared projectile extraction by moving arena-ball
+stepping/power-ball application into `ArenaPowerRuntime` and curling-stone
+power flow into `CurlingPowerRuntime`.
+
+This phase deliberately kept scoring, collision consequences, stopped-power
+flag resolution, online authority, and local turn transitions in each scene.
+Those behaviours still carry game-specific side effects, but the low-level
+projectile power runtimes are no longer scene-owned.
+
+### Changes
+
+- Added `stepArenaBall()` to
+  `frontend/src/shared/mechanics/arena-power-runtime.ts`.
+- Reused `stepArenaBall()` inside `ArenaPowerRuntime.update()` so main balls
+  and auxiliary power balls follow the same friction-override and curl path.
+- Added `ArenaPowerRuntime.applyPower()` so scenes no longer call
+  `applyArenaBallPowerCycle()` and then push spawned auxiliary balls
+  themselves.
+- Replaced duplicated `stepBall()` + `frictionOverride` + `applyBallCurl()`
+  blocks in:
+  - `frontend/src/games/bamboo-bash/BambooBashScene.ts`
+  - `frontend/src/games/kame-knock/KameKnockScene.ts`
+  - `frontend/src/games/bell-clash/BellClashScene.ts`
+- Replaced scene-owned `powerBalls.push(...applyArenaBallPowerCycle(...))`
+  call sites in the same three scenes with `powerBalls.applyPower(...)`.
+- Extended `frontend/src/shared/mechanics/arena-power-runtime.test.ts` for the
+  new shared stepping and runtime-owned power application contracts.
+- Added `frontend/src/shared/mechanics/curling-power-runtime.ts`.
+- Added `frontend/src/shared/mechanics/curling-power-runtime.test.ts`.
+- Replaced Shell Curl direct `PowerRegistry.get(...).onApply/onUpdate/onCollide/onStop`
+  usage with `CurlingPowerRuntime`.
+- Replaced Shell Curl direct stone-stone collision resolution with
+  `CurlingPowerRuntime.resolveCollisions()`.
+- Moved Shell Curl splitter and mirror stone materialisation out of
+  `ShellCurlScene` and into the shared curling runtime; the scene now only
+  attaches graphics/trails for runtime-created stones.
+
+### Line Count Impact
+
+Measured against the Phase 9 closure counts:
+
+- `frontend/src/games/bamboo-bash/BambooBashScene.ts`: `2718` to `2668`,
+  net `-50`.
+- `frontend/src/games/kame-knock/KameKnockScene.ts`: `2394` to `2365`, net
+  `-29`.
+- `frontend/src/games/bell-clash/BellClashScene.ts`: `2480` to `2444`, net
+  `-36`.
+- `frontend/src/games/shell-curl/ShellCurlScene.ts`: `2556` to `2469`, net
+  `-87`.
+- Combined audited scene net reduction in Phase 10: `-202` lines.
+- Shared runtime growth:
+  `frontend/src/shared/mechanics/arena-power-runtime.ts` is now `187` lines.
+- New shared curling runtime:
+  `frontend/src/shared/mechanics/curling-power-runtime.ts` is `178` lines.
+- Focused shared runtime test:
+  `frontend/src/shared/mechanics/arena-power-runtime.test.ts` is now `124`
+  lines.
+- New focused curling runtime test:
+  `frontend/src/shared/mechanics/curling-power-runtime.test.ts` is `119`
+  lines.
+
+### Coverage
+
+- `frontend/src/shared/mechanics/arena-power-runtime.test.ts`
+- `frontend/src/shared/mechanics/curling-power-runtime.test.ts`
+- `frontend/src/games/common/tests/ArenaBallTrailRuntime.test.ts`
+
+### Validation
+
+- `cd frontend && npm run test:run -- src/shared/mechanics/arena-power-runtime.test.ts src/shared/mechanics/curling-power-runtime.test.ts src/games/common/tests/ArenaBallTrailRuntime.test.ts`
+- `cd frontend && npm run build`
+
+Results:
+
+- Targeted frontend tests passed.
+- Frontend production build passed.
+- Vite still reports the existing CJS Node API deprecation notice from the Vite
+  stack. The previous large chunk warning remains fixed.
+
+### Closure Decision
+
+Phase 10 is closed as the first shared projectile update/power lifecycle pass
+across all four audited games. Main arena balls and auxiliary power balls now
+share the same stepping path, and power application/spawn registration is owned
+by `ArenaPowerRuntime`. Shell Curl now routes stone power application, stepping,
+power hooks, splitter spawning, and mirror spawning through
+`CurlingPowerRuntime`.
+
+The remaining duplication is higher-risk and should be handled separately:
+scene-specific scoring hooks, local-versus turn transitions, online state
+application, and stopped-power side effects.
+
+## Phase 11
+
+Proceed to Phase 11 only after reviewing the remaining local/online flow
+duplication. The next useful target is likely a shared "projectile settled"
+or "local turn lifecycle" helper, but only where the scene-specific side
+effects can stay explicit.
 
 # Executive Summary
 
@@ -634,9 +816,14 @@ audited arena games expose HUD-facing round state and lifecycle dispatch
 through shared `GameRuleHooks`, including Shell Curl's `TurnManager` state.
 Local replay persistence, pending persistence waits, local replay snapshot
 assembly, replay participant metadata, and replay world-object serialisation
-now go through shared runtime and replay modules. Remaining duplication is now
-primarily centred around gameplay rule execution, online/local flow, rendering,
-and higher-level runtime structure rather than replay plumbing.
+now go through shared runtime and replay modules. Bamboo Bash, Kame Knock, and
+Bell Clash also share arena ball trail ownership, drawing, power-ball trail
+mapping, replay trail normalisation, arena-ball stepping, and power-ball spawn
+registration through shared runtime modules. Shell Curl shares the projectile
+trail runtime and rectangular replay trail normalisation. Remaining duplication
+is now primarily centred around gameplay rule execution, online/local flow,
+rendering, stopped-power side effects, and higher-level runtime structure
+rather than replay plumbing or low-level arena-ball physics.
 
 # Module Status
 

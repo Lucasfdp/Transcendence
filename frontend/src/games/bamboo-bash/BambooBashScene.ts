@@ -24,7 +24,6 @@ import {
 import {
 	BallState,
 	BALL_SRC_R,
-	stepBall,
 	isBallMoving,
 	resolveBallCollision,
 	drawShellBall,
@@ -63,14 +62,10 @@ import {
 	powerPickupFromNormalisedSnapshot,
 	type PowerPickupBlocker,
 } from "../../shared/mechanics/power-pickups";
+import { BallExtState } from "../../shared/mechanics/ball-powers";
 import {
-	applyBallCurl,
-	BallExtState,
-	BALL_FRICTION_BASE,
-} from "../../shared/mechanics/ball-powers";
-import {
-	applyArenaBallPowerCycle,
 	ArenaPowerRuntime,
+	stepArenaBall,
 } from "../../shared/mechanics/arena-power-runtime";
 import {
 	clearArenaPowerBallTextures,
@@ -86,13 +81,7 @@ import {
 	DEFAULT_PLAYER_SHELL_SKINS,
 	resolvePlayerShellSkins,
 } from "../../shared/mechanics/player-config";
-import {
-	drawPlayerTrails,
-	type PlayerTrailOptions,
-	recordPlayerTrails,
-	resetPlayerTrail,
-	type PlayerTrailStore,
-} from "../../shared/mechanics/player-trails";
+import { type PlayerTrailOptions } from "../../shared/mechanics/player-trails";
 import {
 	buildTurnStateFromGameRuleHooks,
 	computeGameRuleWinner,
@@ -122,8 +111,9 @@ import {
 import { hudPlayerLabel } from "../../shared/player-labels";
 import { resolveReplayWinnerSide } from "../shared/localReplay";
 import {
-	buildBambooBashLocalReplaySnapshot,
+	ArenaBallTrailRuntime,
 	buildCommonLocalReplayParticipantContext,
+	buildBambooBashLocalReplaySnapshot,
 	CommonGameSceneHost,
 	LocalReplayRuntime,
 	SceneSocketChannel,
@@ -276,7 +266,7 @@ export class BambooBashScene extends ResponsiveScene {
 	private onlineScores: number[] = [];
 	private onlineBalls = new Map<number, OnlineBallState>();
 	private onlineBallStopped = new Map<number, boolean>();
-	private ballTrails: PlayerTrailStore = new Map();
+	private ballTrails = new ArenaBallTrailRuntime();
 	private pendingOnlineBambooHits = new Set<number>();
 	private onlineBambooSyncAccMs = 0;
 	private readonly localReplay = new LocalReplayRuntime<
@@ -456,7 +446,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.recreatePowerPickups();
 		this.trailGfx = this.add.graphics().setDepth(2.75);
 		this.ballGfx = this.add.graphics().setDepth(3);
-		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
+		this.ballTrails.reset("local", this.ball.x, this.ball.y);
 
 		this.launchInput.recreate();
 		// Slingshot stays detached until the countdown ends so the player can't
@@ -483,12 +473,7 @@ export class BambooBashScene extends ResponsiveScene {
 					r: BALL_SRC_R * this.arena.scale,
 				};
 				this.resetLocalBall(ball, index);
-				resetPlayerTrail(
-					this.ballTrails,
-					`local-${index}`,
-					ball.x,
-					ball.y,
-				);
+				this.ballTrails.reset(`local-${index}`, ball.x, ball.y);
 				const slingshot = new Slingshot(
 					this,
 					ball,
@@ -699,19 +684,8 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 
 		// Ball physics
-		let moving = stepBall(this.ball, delta, this.arena);
+		let moving = stepArenaBall(this.ball, delta, this.arena);
 		const ext = this.ball as BallExtState;
-
-		// Apply frictionOverride correction (SLICK / BOUNCER / SPINNING)
-		if (moving && ext.frictionOverride !== undefined) {
-			const factor = Math.pow(
-				ext.frictionOverride / BALL_FRICTION_BASE,
-				delta / 16.67,
-			);
-			this.ball.vx *= factor;
-			this.ball.vy *= factor;
-		}
-		if (moving) applyBallCurl(this.ball, delta);
 
 		if (this.onlineMatch) {
 			this.updateOnlineRemoteBalls(delta);
@@ -795,14 +769,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.ball.r = BALL_SRC_R * this.arena.scale;
 
 		this.replayPower = this.activePower;
-		this.powerBalls.push(
-			...applyArenaBallPowerCycle(
-				this.activePower,
-				this.ball,
-				this.arena,
-				0,
-			),
-		);
+		this.powerBalls.applyPower(this.activePower, this.ball, this.arena, 0);
 
 		// Track used powers (NONE is always reusable)
 		if (this.activePower !== PowerType.NONE) {
@@ -820,13 +787,11 @@ export class BambooBashScene extends ResponsiveScene {
 
 		participant.ball.r = BALL_SRC_R * this.arena.scale;
 		participant.replayPower = participant.activePower;
-		this.powerBalls.push(
-			...applyArenaBallPowerCycle(
-				participant.activePower,
-				participant.ball,
-				this.arena,
-				index,
-			),
+		this.powerBalls.applyPower(
+			participant.activePower,
+			participant.ball,
+			this.arena,
+			index,
 		);
 
 		if (participant.activePower !== PowerType.NONE) {
@@ -1168,9 +1133,7 @@ export class BambooBashScene extends ResponsiveScene {
 		)
 			? (event.power as PowerType)
 			: PowerType.NONE;
-		this.powerBalls.push(
-			...applyArenaBallPowerCycle(power, ball, this.arena, event.side),
-		);
+		this.powerBalls.applyPower(power, ball, this.arena, event.side);
 
 		if (event.side === this.onlineMatch.side) {
 			this.ballWasMoving = true;
@@ -1206,9 +1169,7 @@ export class BambooBashScene extends ResponsiveScene {
 		ball.vy = event.vy * this.arena.scale;
 		ball.r = BALL_SRC_R * this.arena.scale;
 		const power = this.toPowerType(event.power);
-		this.powerBalls.push(
-			...applyArenaBallPowerCycle(power, ball, this.arena, event.side),
-		);
+		this.powerBalls.applyPower(power, ball, this.arena, event.side);
 		this.drawBalls();
 	}
 
@@ -1684,7 +1645,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.ball.vx = 0;
 		this.ball.vy = 0;
 		this.ball.r = BALL_SRC_R * this.arena.scale;
-		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
+		this.ballTrails.reset("local", this.ball.x, this.ball.y);
 	}
 
 	private syncOnlineBalls(snapshot: BambooBashSnapshot): void {
@@ -1712,12 +1673,7 @@ export class BambooBashScene extends ResponsiveScene {
 				existing.vx = 0;
 				existing.vy = 0;
 				existing.r = BALL_SRC_R * this.arena.scale;
-				resetPlayerTrail(
-					this.ballTrails,
-					player.side,
-					existing.x,
-					existing.y,
-				);
+				this.ballTrails.reset(player.side, existing.x, existing.y);
 			} else if (!isLocal && serverBall && !serverBall.stopped) {
 				existing.x = this.arena.cx + serverBall.x * this.arena.rx;
 				existing.y = this.arena.cy + serverBall.y * this.arena.ry;
@@ -1769,7 +1725,7 @@ export class BambooBashScene extends ResponsiveScene {
 							r: BALL_SRC_R * this.arena.scale,
 						});
 			this.resetOnlineBall(ball, index, players.length);
-			resetPlayerTrail(this.ballTrails, player.side, ball.x, ball.y);
+			this.ballTrails.reset(player.side, ball.x, ball.y);
 			this.onlineBallStopped.set(player.side, true);
 			this.onlineBalls.set(player.side, ball);
 		});
@@ -1820,78 +1776,50 @@ export class BambooBashScene extends ResponsiveScene {
 		ball.vx = 0;
 		ball.vy = 0;
 		ball.r = BALL_SRC_R * this.arena.scale;
-		resetPlayerTrail(this.ballTrails, `local-${index}`, ball.x, ball.y);
+		this.ballTrails.reset(`local-${index}`, ball.x, ball.y);
 	}
 
 	private recordBallTrails(): void {
 		if (this.onlineBalls.size > 0) {
-			recordPlayerTrails(
-				this.ballTrails,
-				[
-					...[...this.onlineBalls.entries()].map(([side, ball]) => ({
-						id: side,
-						player: side,
-						x: ball.x,
-						y: ball.y,
-						moving: isBallMoving(ball),
-					})),
-					...this.powerBalls.map((entry, index) => ({
-						id: `power-${index}`,
-						player: entry.player,
-						x: entry.ball.x,
-						y: entry.ball.y,
-						moving: isBallMoving(entry.ball),
-					})),
-				],
-				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
-			);
+			this.ballTrails.recordSet({
+				balls: [...this.onlineBalls.entries()].map(([side, ball]) => ({
+					id: side,
+					player: side,
+					ball,
+				})),
+				powerBalls: this.powerBalls,
+				isMoving: isBallMoving,
+				trailOptions: {
+					...BALL_TRAIL_OPTIONS,
+					scale: this.arena.scale,
+				},
+			});
 			return;
 		}
 
 		if (this.localParticipants.length > 0) {
-			recordPlayerTrails(
-				this.ballTrails,
-				[
-					...this.localParticipants.map((participant, index) => ({
-						id: `local-${index}`,
-						player: index,
-						x: participant.ball.x,
-						y: participant.ball.y,
-						moving: isBallMoving(participant.ball),
-					})),
-					...this.powerBalls.map((entry, index) => ({
-						id: `power-${index}`,
-						player: entry.player,
-						x: entry.ball.x,
-						y: entry.ball.y,
-						moving: isBallMoving(entry.ball),
-					})),
-				],
-				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
-			);
+			this.ballTrails.recordSet({
+				balls: this.localParticipants.map((participant, index) => ({
+					id: `local-${index}`,
+					player: index,
+					ball: participant.ball,
+				})),
+				powerBalls: this.powerBalls,
+				isMoving: isBallMoving,
+				trailOptions: {
+					...BALL_TRAIL_OPTIONS,
+					scale: this.arena.scale,
+				},
+			});
 			return;
 		}
 
-		recordPlayerTrails(
-			this.ballTrails,
-			[
-				{
-					id: "local",
-					player: 0,
-					x: this.ball.x,
-					y: this.ball.y,
-					moving: isBallMoving(this.ball),
-				},
-				...this.powerBalls.map((entry, index) => ({
-					id: `power-${index}`,
-					player: entry.player,
-					x: entry.ball.x,
-					y: entry.ball.y,
-					moving: isBallMoving(entry.ball),
-				})),
-			],
-			{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
-		);
+		this.ballTrails.recordSet({
+			balls: [{ id: "local", player: 0, ball: this.ball }],
+			powerBalls: this.powerBalls,
+			isMoving: isBallMoving,
+			trailOptions: { ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
+		});
 	}
 
 	private drawBallTrails(): void {
@@ -1903,7 +1831,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.powerBalls.forEach((entry, index) =>
 			playersById.set(`power-${index}`, entry.player),
 		);
-		drawPlayerTrails(this.trailGfx, this.ballTrails, playersById, {
+		this.ballTrails.draw(this.trailGfx, playersById, {
 			...BALL_TRAIL_OPTIONS,
 			scale: this.arena.scale,
 		});
@@ -2067,12 +1995,7 @@ export class BambooBashScene extends ResponsiveScene {
 	private readArenaTrail(
 		key: string | number,
 	): Array<{ x: number; y: number }> {
-		const trail = this.ballTrails.get(key);
-		if (!trail?.length) return [];
-		return trail.map((point) => ({
-			x: (point.x - this.arena.cx) / this.arena.rx,
-			y: (point.y - this.arena.cy) / this.arena.ry,
-		}));
+		return this.ballTrails.readNormalisedTrail(key, this.arena);
 	}
 
 	private isReplayBallMoving(ball: BallState): boolean {
@@ -2081,17 +2004,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private updateLocalParticipants(delta: number): void {
 		let moving = this.localParticipants.map((participant) => {
-			const isMoving = stepBall(participant.ball, delta, this.arena);
-			const ext = participant.ball as BallExtState;
-			if (isMoving && ext.frictionOverride !== undefined) {
-				const factor = Math.pow(
-					ext.frictionOverride / BALL_FRICTION_BASE,
-					delta / 16.67,
-				);
-				participant.ball.vx *= factor;
-				participant.ball.vy *= factor;
-			}
-			return isMoving;
+			return stepArenaBall(participant.ball, delta, this.arena);
 		});
 
 		this.resolveLocalBallCollisions();
@@ -2142,17 +2055,8 @@ export class BambooBashScene extends ResponsiveScene {
 		if (!this.onlineMatch) return;
 		for (const [side, ball] of this.onlineBalls.entries()) {
 			if (side === this.onlineMatch.side) continue;
-			const moving = stepBall(ball, delta, this.arena);
+			const moving = stepArenaBall(ball, delta, this.arena);
 			const ext = ball as BallExtState;
-			if (moving && ext.frictionOverride !== undefined) {
-				const factor = Math.pow(
-					ext.frictionOverride / BALL_FRICTION_BASE,
-					delta / 16.67,
-				);
-				ball.vx *= factor;
-				ball.vy *= factor;
-			}
-			if (moving) applyBallCurl(ball, delta);
 			if (!moving) {
 				ext.phantomHidden = false;
 				ext.bombPending = false;
@@ -2464,9 +2368,7 @@ export class BambooBashScene extends ResponsiveScene {
 			this.localParticipants.length > 0
 				? this.activeLocalParticipantIndex
 				: 0;
-		this.powerBalls.push(
-			...applyArenaBallPowerCycle(pickup.type, ball, this.arena, player),
-		);
+		this.powerBalls.applyPower(pickup.type, ball, this.arena, player);
 		if (this.onlineMatch)
 			this.reportOnlinePowerPickup(pickup.id, pickup.type, ball);
 		this.powerPickups.draw();

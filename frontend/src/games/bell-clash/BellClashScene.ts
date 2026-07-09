@@ -24,7 +24,6 @@ import {
 	BALL_SRC_R,
 	drawShellBall,
 	isBallMoving,
-	stepBall,
 } from "../../shared/mechanics/ball";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
@@ -58,14 +57,10 @@ import {
 	resolveObstacleRadius,
 	type ObstacleDescriptor,
 } from "../../shared/mechanics/obstacle-descriptor";
+import { BallExtState } from "../../shared/mechanics/ball-powers";
 import {
-	applyBallCurl,
-	BallExtState,
-	BALL_FRICTION_BASE,
-} from "../../shared/mechanics/ball-powers";
-import {
-	applyArenaBallPowerCycle,
 	ArenaPowerRuntime,
+	stepArenaBall,
 } from "../../shared/mechanics/arena-power-runtime";
 import {
 	clearArenaPowerBallTextures,
@@ -79,13 +74,7 @@ import {
 	DEFAULT_PLAYER_SHELL_SKINS,
 	resolvePlayerShellSkins,
 } from "../../shared/mechanics/player-config";
-import {
-	drawPlayerTrails,
-	type PlayerTrailOptions,
-	recordPlayerTrails,
-	resetPlayerTrail,
-	type PlayerTrailStore,
-} from "../../shared/mechanics/player-trails";
+import { type PlayerTrailOptions } from "../../shared/mechanics/player-trails";
 import {
 	buildTurnStateFromGameRuleHooks,
 	computeGameRuleWinner,
@@ -112,6 +101,7 @@ import {
 import { hudPlayerLabel } from "../../shared/player-labels";
 import { resolveReplayWinnerSide } from "../shared/localReplay";
 import {
+	ArenaBallTrailRuntime,
 	buildBellClashLocalReplaySnapshot,
 	buildBellClashScoreZoneDescriptor,
 	buildCommonLocalReplayParticipantContext,
@@ -261,7 +251,7 @@ export class BellClashScene extends ResponsiveScene {
 	private onlineMatch: OnlineMatchContext | null = null;
 	private lastOnlineSeq = -1;
 	private onlineStatusText: Phaser.GameObjects.Text | null = null;
-	private ballTrails: PlayerTrailStore = new Map();
+	private ballTrails = new ArenaBallTrailRuntime();
 	private onlineRoundNumber = 1;
 	private onlineTotalRounds = 3;
 	private onlineShotsPerRound = 3;
@@ -311,14 +301,7 @@ export class BellClashScene extends ResponsiveScene {
 		if (ball) {
 			const power = event.power as PowerType;
 			if (power !== PowerType.NONE) {
-				this.powerBalls.push(
-					...applyArenaBallPowerCycle(
-						power,
-						ball,
-						this.arena,
-						event.side,
-					),
-				);
+				this.powerBalls.applyPower(power, ball, this.arena, event.side);
 			}
 		}
 	};
@@ -517,7 +500,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.recreatePowerPickups();
 		this.trailGfx = this.add.graphics().setDepth(DEPTH_BALL - 0.25);
 		this.ballGfx = this.add.graphics().setDepth(DEPTH_BALL);
-		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
+		this.ballTrails.reset("local", this.ball.x, this.ball.y);
 
 		this.launchInput.recreate();
 		this.launchInput.attach();
@@ -590,17 +573,8 @@ export class BellClashScene extends ResponsiveScene {
 		const balls = this.localBallsForPhysics();
 		let anyMoving = false;
 		for (const [, ball] of balls) {
-			const moving = stepBall(ball, delta, this.arena);
+			const moving = stepArenaBall(ball, delta, this.arena);
 			const ext = ball as BallExtState;
-			if (moving && ext.frictionOverride !== undefined) {
-				const factor = Math.pow(
-					ext.frictionOverride / BALL_FRICTION_BASE,
-					delta / 16.67,
-				);
-				ball.vx *= factor;
-				ball.vy *= factor;
-			}
-			if (moving) applyBallCurl(ball, delta);
 			if (moving) {
 				this.collectPowerPickup(ball);
 				this.checkBellHitForBall(ball, ball === this.ball);
@@ -697,13 +671,11 @@ export class BellClashScene extends ResponsiveScene {
 
 		// Apply power to ball (velocity already set by Slingshot, radius reset in setupShot)
 		this.replayPowerBySide[this.currentPlayerIndex()] = this.activePower;
-		this.powerBalls.push(
-			...applyArenaBallPowerCycle(
-				this.activePower,
-				this.ball,
-				this.arena,
-				this.currentPlayerIndex(),
-			),
+		this.powerBalls.applyPower(
+			this.activePower,
+			this.ball,
+			this.arena,
+			this.currentPlayerIndex(),
 		);
 
 		// Track used powers for the current player
@@ -1004,12 +976,7 @@ export class BellClashScene extends ResponsiveScene {
 	private readArenaTrail(
 		key: string | number,
 	): Array<{ x: number; y: number }> {
-		const trail = this.ballTrails.get(key);
-		if (!trail?.length) return [];
-		return trail.map((point) => ({
-			x: (point.x - this.arena.cx) / this.arena.rx,
-			y: (point.y - this.arena.cy) / this.arena.ry,
-		}));
+		return this.ballTrails.readNormalisedTrail(key, this.arena);
 	}
 
 	private submitResult(): void {
@@ -1174,9 +1141,7 @@ export class BellClashScene extends ResponsiveScene {
 		)
 			? (event.power as PowerType)
 			: PowerType.NONE;
-		this.powerBalls.push(
-			...applyArenaBallPowerCycle(power, ball, this.arena, event.side),
-		);
+		this.powerBalls.applyPower(power, ball, this.arena, event.side);
 		if (event.side === this.onlineMatch.side) {
 			this.onlineLocalShotNumber = event.shotNumber;
 			this.onlineBallWasMoving = true;
@@ -1198,17 +1163,8 @@ export class BellClashScene extends ResponsiveScene {
 		this.bellPulseMs = Math.max(0, this.bellPulseMs - delta);
 
 		for (const [side, ball] of this.onlineBalls.entries()) {
-			const moving = stepBall(ball, delta, this.arena);
+			const moving = stepArenaBall(ball, delta, this.arena);
 			const ext = ball as BallExtState;
-			if (moving && ext.frictionOverride !== undefined) {
-				const factor = Math.pow(
-					ext.frictionOverride / BALL_FRICTION_BASE,
-					delta / 16.67,
-				);
-				ball.vx *= factor;
-				ball.vy *= factor;
-			}
-			if (moving) applyBallCurl(ball, delta);
 			if (moving) {
 				if (side === this.onlineMatch.side)
 					this.collectPowerPickup(ball);
@@ -1316,7 +1272,7 @@ export class BellClashScene extends ResponsiveScene {
 					});
 			if (resetPositions) {
 				this.resetOnlineBall(ball, index, players.length);
-				resetPlayerTrail(this.ballTrails, player.side, ball.x, ball.y);
+				this.ballTrails.reset(player.side, ball.x, ball.y);
 			}
 			// Sync powerup visual properties from server entity
 			if (serverBall) {
@@ -1400,9 +1356,7 @@ export class BellClashScene extends ResponsiveScene {
 		const pickup = this.powerPickups.collect(ball.x, ball.y, ball.r);
 		if (!pickup) return;
 		const player = this.currentPlayerIndex();
-		this.powerBalls.push(
-			...applyArenaBallPowerCycle(pickup.type, ball, this.arena, player),
-		);
+		this.powerBalls.applyPower(pickup.type, ball, this.arena, player);
 		this.powerPickups.draw();
 		this.showPowerPickupNotice(pickup.type, pickup.x, pickup.y);
 	}
@@ -1585,7 +1539,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.ball.vx = 0;
 		this.ball.vy = 0;
 		this.ball.r = BALL_SRC_R * this.arena.scale;
-		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
+		this.ballTrails.reset("local", this.ball.x, this.ball.y);
 	}
 
 	private resetLocalBallsForRound(): void {
@@ -1606,7 +1560,7 @@ export class BellClashScene extends ResponsiveScene {
 				r: BALL_SRC_R * this.arena.scale,
 			};
 			this.resetOnlineBall(ball, side, this.localPlayerCount);
-			resetPlayerTrail(this.ballTrails, side, ball.x, ball.y);
+			this.ballTrails.reset(side, ball.x, ball.y);
 			next.set(side, ball);
 		}
 		this.localBalls = next;
@@ -1620,77 +1574,55 @@ export class BellClashScene extends ResponsiveScene {
 		this.ball = ball;
 		this.recreateSlingshot();
 		this.launchInput.attach();
-		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
+		this.ballTrails.reset("local", this.ball.x, this.ball.y);
 	}
 
 	private recordBallTrails(): void {
 		if (!this.onlineMatch && this.localPlayerCount > 1) {
-			recordPlayerTrails(
-				this.ballTrails,
-				[
-					...this.localBallsForPhysics().map(([side, ball]) => ({
-						id: side,
-						player: side,
-						x: ball.x,
-						y: ball.y,
-						moving: isBallMoving(ball),
-					})),
-					...this.powerBalls.map((entry, index) => ({
-						id: `power-${index}`,
-						player: entry.player,
-						x: entry.ball.x,
-						y: entry.ball.y,
-						moving: isBallMoving(entry.ball),
-					})),
-				],
-				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
-			);
+			this.ballTrails.recordSet({
+				balls: this.localBallsForPhysics().map(([side, ball]) => ({
+					id: side,
+					player: side,
+					ball,
+				})),
+				powerBalls: this.powerBalls,
+				isMoving: isBallMoving,
+				trailOptions: {
+					...BALL_TRAIL_OPTIONS,
+					scale: this.arena.scale,
+				},
+			});
 			return;
 		}
 		if (this.onlineBalls.size > 0) {
-			recordPlayerTrails(
-				this.ballTrails,
-				[
-					...[...this.onlineBalls.entries()].map(([side, ball]) => ({
-						id: side,
-						player: side,
-						x: ball.x,
-						y: ball.y,
-						moving: isBallMoving(ball),
-					})),
-					...this.powerBalls.map((entry, index) => ({
-						id: `power-${index}`,
-						player: entry.player,
-						x: entry.ball.x,
-						y: entry.ball.y,
-						moving: isBallMoving(entry.ball),
-					})),
-				],
-				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
-			);
+			this.ballTrails.recordSet({
+				balls: [...this.onlineBalls.entries()].map(([side, ball]) => ({
+					id: side,
+					player: side,
+					ball,
+				})),
+				powerBalls: this.powerBalls,
+				isMoving: isBallMoving,
+				trailOptions: {
+					...BALL_TRAIL_OPTIONS,
+					scale: this.arena.scale,
+				},
+			});
 			return;
 		}
 
-		recordPlayerTrails(
-			this.ballTrails,
-			[
+		this.ballTrails.recordSet({
+			balls: [
 				{
 					id: "local",
 					player: this.currentPlayerIndex(),
-					x: this.ball.x,
-					y: this.ball.y,
-					moving: isBallMoving(this.ball),
+					ball: this.ball,
 				},
-				...this.powerBalls.map((entry, index) => ({
-					id: `power-${index}`,
-					player: entry.player,
-					x: entry.ball.x,
-					y: entry.ball.y,
-					moving: isBallMoving(entry.ball),
-				})),
 			],
-			{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
-		);
+			powerBalls: this.powerBalls,
+			isMoving: isBallMoving,
+			trailOptions: { ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
+		});
 	}
 
 	private drawBallTrails(): void {
@@ -1702,7 +1634,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.powerBalls.forEach((entry, index) =>
 			playersById.set(`power-${index}`, entry.player),
 		);
-		drawPlayerTrails(this.trailGfx, this.ballTrails, playersById, {
+		this.ballTrails.draw(this.trailGfx, playersById, {
 			...BALL_TRAIL_OPTIONS,
 			scale: this.arena.scale,
 		});

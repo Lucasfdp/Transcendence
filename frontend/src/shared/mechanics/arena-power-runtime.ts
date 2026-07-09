@@ -19,6 +19,25 @@ export interface ArenaPowerBallEntry {
 	player: number;
 }
 
+export function stepArenaBall(
+	ball: BallState,
+	delta: number,
+	arena: ArenaPixels,
+): boolean {
+	const moving = stepBall(ball, delta, arena);
+	const ext = ball as BallExtState;
+	if (moving && ext.frictionOverride !== undefined) {
+		const factor = Math.pow(
+			ext.frictionOverride / BALL_FRICTION_BASE,
+			delta / 16.67,
+		);
+		ball.vx *= factor;
+		ball.vy *= factor;
+	}
+	if (moving) applyBallCurl(ball, delta);
+	return moving;
+}
+
 export function applyArenaBallPowerCycle(
 	power: PowerType,
 	ball: BallState,
@@ -50,17 +69,8 @@ export function updateArenaPowerBalls(
 ): ArenaPowerBallEntry[] {
 	const movingEntries: ArenaPowerBallEntry[] = [];
 	for (const entry of entries) {
-		const moving = stepBall(entry.ball, delta, arena);
+		const moving = stepArenaBall(entry.ball, delta, arena);
 		const ext = entry.ball as BallExtState;
-		if (moving && ext.frictionOverride !== undefined) {
-			const factor = Math.pow(
-				ext.frictionOverride / BALL_FRICTION_BASE,
-				delta / 16.67,
-			);
-			entry.ball.vx *= factor;
-			entry.ball.vy *= factor;
-		}
-		if (moving) applyBallCurl(entry.ball, delta);
 		if (moving || isBallMoving(entry.ball)) {
 			handlers.onMoving?.(entry);
 			movingEntries.push(entry);
@@ -99,6 +109,17 @@ export class ArenaPowerRuntime implements Iterable<ArenaPowerBallEntry> {
 
 	push(...entries: ArenaPowerBallEntry[]): number {
 		return this.entries.push(...entries);
+	}
+
+	applyPower(
+		power: PowerType,
+		ball: BallState,
+		arena: ArenaPixels,
+		player: number,
+	): number {
+		const entries = applyArenaBallPowerCycle(power, ball, arena, player);
+		this.push(...entries);
+		return entries.length;
 	}
 
 	clear(): void {
@@ -147,7 +168,12 @@ export class ArenaPowerRuntime implements Iterable<ArenaPowerBallEntry> {
 			onSettled?: (entry: ArenaPowerBallEntry, ext: BallExtState) => void;
 		},
 	): readonly ArenaPowerBallEntry[] {
-		this.entries = updateArenaPowerBalls(this.entries, delta, arena, handlers);
+		this.entries = updateArenaPowerBalls(
+			this.entries,
+			delta,
+			arena,
+			handlers,
+		);
 		return this.entries;
 	}
 

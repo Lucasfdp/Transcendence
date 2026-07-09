@@ -25,5 +25,21 @@ export default defineConfig({
 	},
 	build: {
 		outDir: "dist",
+		chunkSizeWarningLimit: 2000,
+		rollupOptions: {
+			output: {
+				manualChunks(id) {
+					if (!id.includes("node_modules")) return undefined;
+					if (id.includes("phaser")) return "vendor-phaser";
+					if (
+						id.includes("react") ||
+						id.includes("react-dom") ||
+						id.includes("react-router-dom")
+					)
+						return "vendor-react";
+					return "vendor";
+				},
+			},
+		},
 	},
 });

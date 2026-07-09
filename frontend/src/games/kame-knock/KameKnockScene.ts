@@ -24,7 +24,6 @@ import {
 	BallState,
 	BALL_SRC_R,
 	drawShellBall,
-	stepBall,
 } from "../../shared/mechanics/ball";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
@@ -59,14 +58,10 @@ import {
 	createEllipsePowerPickupArea,
 	type PowerPickupBlocker,
 } from "../../shared/mechanics/power-pickups";
+import { BallExtState } from "../../shared/mechanics/ball-powers";
 import {
-	applyBallCurl,
-	BallExtState,
-	BALL_FRICTION_BASE,
-} from "../../shared/mechanics/ball-powers";
-import {
-	applyArenaBallPowerCycle,
 	ArenaPowerRuntime,
+	stepArenaBall,
 } from "../../shared/mechanics/arena-power-runtime";
 import {
 	clearArenaPowerBallTextures,
@@ -80,13 +75,7 @@ import {
 	DEFAULT_PLAYER_SHELL_SKINS,
 	resolvePlayerShellSkins,
 } from "../../shared/mechanics/player-config";
-import {
-	drawPlayerTrails,
-	type PlayerTrailOptions,
-	recordPlayerTrails,
-	resetPlayerTrail,
-	type PlayerTrailStore,
-} from "../../shared/mechanics/player-trails";
+import { type PlayerTrailOptions } from "../../shared/mechanics/player-trails";
 import {
 	buildTurnStateFromGameRuleHooks,
 	computeGameRuleWinner,
@@ -117,6 +106,7 @@ import {
 import { hudPlayerLabel } from "../../shared/player-labels";
 import { resolveReplayWinnerSide } from "../shared/localReplay";
 import {
+	ArenaBallTrailRuntime,
 	buildCommonLocalReplayParticipantContext,
 	buildKameKnockLocalReplaySnapshot,
 	CommonGameSceneHost,
@@ -315,7 +305,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private onlineSettledSubmitted = false;
 	private onlineReleasePending = false;
 	private visibleBallSide = 0;
-	private ballTrails: PlayerTrailStore = new Map();
+	private ballTrails = new ArenaBallTrailRuntime();
 	private completedTrailPlayers = new Map<number | string, number>();
 	private localMode: "solo" | "versus" = "solo";
 	private readonly localReplay = new LocalReplayRuntime<
@@ -354,14 +344,7 @@ export class KameKnockScene extends ResponsiveScene {
 		if (ball) {
 			const power = event.power as PowerType;
 			if (power !== PowerType.NONE) {
-				this.powerBalls.push(
-					...applyArenaBallPowerCycle(
-						power,
-						ball,
-						this.arena,
-						event.side,
-					),
-				);
+				this.powerBalls.applyPower(power, ball, this.arena, event.side);
 			}
 		}
 	};
@@ -523,7 +506,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.recreatePowerPickups();
 		this.trailGfx = this.add.graphics().setDepth(DEPTH_BALL - 0.25);
 		this.ballGfx = this.add.graphics().setDepth(DEPTH_BALL);
-		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
+		this.ballTrails.reset("local", this.ball.x, this.ball.y);
 
 		this.launchInput.recreate();
 
@@ -607,19 +590,8 @@ export class KameKnockScene extends ResponsiveScene {
 		}
 
 		const ball = this.activeBall();
-		const moving = stepBall(ball, delta, this.arena);
+		const moving = stepArenaBall(ball, delta, this.arena);
 		const ext = ball as BallExtState;
-
-		// Apply frictionOverride correction (SLICK / BOUNCER / SPINNING)
-		if (moving && ext.frictionOverride !== undefined) {
-			const factor = Math.pow(
-				ext.frictionOverride / BALL_FRICTION_BASE,
-				delta / 16.67,
-			);
-			ball.vx *= factor;
-			ball.vy *= factor;
-		}
-		if (moving) applyBallCurl(ball, delta);
 
 		const movingPowerBalls = this.updatePowerBalls(delta);
 		this.resolvePowerBallCollisions();
@@ -705,13 +677,11 @@ export class KameKnockScene extends ResponsiveScene {
 
 		// Apply power to ball (velocity already set by Slingshot, radius reset in setupBallRound)
 		this.replayPower = this.activePower;
-		this.powerBalls.push(
-			...applyArenaBallPowerCycle(
-				this.activePower,
-				this.ball,
-				this.arena,
-				this.currentPlayerIndex(),
-			),
+		this.powerBalls.applyPower(
+			this.activePower,
+			this.ball,
+			this.arena,
+			this.currentPlayerIndex(),
 		);
 
 		// Track used powers for the current player
@@ -1187,9 +1157,7 @@ export class KameKnockScene extends ResponsiveScene {
 		)
 			? (event.power as PowerType)
 			: PowerType.NONE;
-		this.powerBalls.push(
-			...applyArenaBallPowerCycle(power, ball, this.arena, event.side),
-		);
+		this.powerBalls.applyPower(power, ball, this.arena, event.side);
 		this.powerSidePanel?.hide();
 		this.updateScoreHud();
 		this.updateOnlineStatus(
@@ -1354,12 +1322,7 @@ export class KameKnockScene extends ResponsiveScene {
 	private readArenaTrail(
 		key: string | number,
 	): Array<{ x: number; y: number }> {
-		const trail = this.ballTrails.get(key);
-		if (!trail?.length) return [];
-		return trail.map((point) => ({
-			x: (point.x - this.arena.cx) / this.arena.rx,
-			y: (point.y - this.arena.cy) / this.arena.ry,
-		}));
+		return this.ballTrails.readNormalisedTrail(key, this.arena);
 	}
 
 	private resolveLocalWinnerSide(): number | null {
@@ -1469,13 +1432,11 @@ export class KameKnockScene extends ResponsiveScene {
 		if (!this.powerPickups) return;
 		const pickup = this.powerPickups.collect(ball.x, ball.y, ball.r);
 		if (!pickup) return;
-		this.powerBalls.push(
-			...applyArenaBallPowerCycle(
-				pickup.type,
-				ball,
-				this.arena,
-				this.currentPlayerIndex(),
-			),
+		this.powerBalls.applyPower(
+			pickup.type,
+			ball,
+			this.arena,
+			this.currentPlayerIndex(),
 		);
 		this.powerPickups.draw();
 		this.showPowerPickupNotice(pickup.type, pickup.x, pickup.y);
@@ -1838,7 +1799,7 @@ export class KameKnockScene extends ResponsiveScene {
 		this.ball.vx = 0;
 		this.ball.vy = 0;
 		this.ball.r = BALL_SRC_R * this.arena.scale;
-		resetPlayerTrail(this.ballTrails, "local", this.ball.x, this.ball.y);
+		this.ballTrails.reset("local", this.ball.x, this.ball.y);
 	}
 
 	private activeBall(): BallState {
@@ -1930,7 +1891,7 @@ export class KameKnockScene extends ResponsiveScene {
 			players.length || 1,
 		);
 		const ball = this.ballForOnlineSide(playerSide);
-		resetPlayerTrail(this.ballTrails, playerSide, ball.x, ball.y);
+		this.ballTrails.reset(playerSide, ball.x, ball.y);
 	}
 
 	private resetOnlineBall(
@@ -2037,40 +1998,33 @@ export class KameKnockScene extends ResponsiveScene {
 			!this.onlineMatch?.snapshot ||
 			this.onlineMatch.snapshot.gameId !== "kame-knock"
 		) {
-			recordPlayerTrails(
-				this.ballTrails,
-				[
+			this.ballTrails.recordSet({
+				balls: [
 					{
 						id: "local",
 						player: this.currentPlayerIndex(),
-						x: this.ball.x,
-						y: this.ball.y,
-						moving: this.isBallMoving(this.ball),
+						ball: this.ball,
 					},
-					...this.powerBalls.map((entry, index) => ({
-						id: `power-${index}`,
-						player: entry.player,
-						x: entry.ball.x,
-						y: entry.ball.y,
-						moving: this.isBallMoving(entry.ball),
-					})),
 				],
-				{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
-			);
+				powerBalls: this.powerBalls,
+				isMoving: (ball) => this.isBallMoving(ball),
+				trailOptions: {
+					...BALL_TRAIL_OPTIONS,
+					scale: this.arena.scale,
+				},
+			});
 			return;
 		}
 
-		recordPlayerTrails(
-			this.ballTrails,
-			[...this.onlineBalls.entries()].map(([side, ball]) => ({
+		this.ballTrails.recordSet({
+			balls: [...this.onlineBalls.entries()].map(([side, ball]) => ({
 				id: side,
 				player: side,
-				x: ball.x,
-				y: ball.y,
-				moving: this.isBallMoving(ball),
+				ball,
 			})),
-			{ ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
-		);
+			isMoving: (ball) => this.isBallMoving(ball),
+			trailOptions: { ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
+		});
 	}
 
 	private drawBallTrails(): void {
@@ -2085,7 +2039,7 @@ export class KameKnockScene extends ResponsiveScene {
 				this.powerBalls.at(index)?.player ?? 0,
 			);
 		for (const side of this.onlineBalls.keys()) playersById.set(side, side);
-		drawPlayerTrails(this.trailGfx, this.ballTrails, playersById, {
+		this.ballTrails.draw(this.trailGfx, playersById, {
 			...BALL_TRAIL_OPTIONS,
 			scale: this.arena.scale,
 		});
