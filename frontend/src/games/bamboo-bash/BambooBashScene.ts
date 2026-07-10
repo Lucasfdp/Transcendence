@@ -94,10 +94,6 @@ import {
 import {
 	getGameSocket,
 	type BambooBashSnapshot,
-	type BambooBashThrowEvent,
-	type GameSnapshot,
-	type OnlineMatchContext,
-	type ReplayFrameSnapshotEntity,
 } from "../../services/network/gameSocket";
 import {
 	PLAYER_COLOUR_VALUES,
@@ -126,21 +122,11 @@ import {
 	popBambooBashScore,
 	showBambooBashPowerPickupNotice,
 } from "./BambooBashView";
-
-// Online ball state with powerup visual properties
-interface OnlineBallState extends BallState {
-	scale?: number;
-	alpha?: number;
-	power?: string;
-	trail?: Array<{ x: number; y: number }>;
-	stateFlags?: string[];
-}
-
-function isBambooBashSnapshot(
-	snapshot: GameSnapshot | null | undefined,
-): snapshot is BambooBashSnapshot {
-	return snapshot?.gameId === "bamboo-bash" && "bamboos" in snapshot;
-}
+import {
+	BambooBashOnlineController,
+	type BambooBashOnlineScene,
+	type OnlineBallState,
+} from "./BambooBashOnline";
 
 // Slingshot tuning in arena source px (scaled by the letterbox factor so the
 // game feels identical at 1080p, 4K, or a tiny window)
@@ -200,10 +186,11 @@ interface LocalParticipant {
 	ballWasMoving: boolean;
 }
 
-export class BambooBashScene extends ResponsiveScene {
+export class BambooBashScene extends ResponsiveScene implements BambooBashOnlineScene {
 	private readonly sceneHost: CommonGameSceneHost;
 	private readonly socketChannel = new SceneSocketChannel(getGameSocket);
 	private readonly bambooWorld = new WorldRuntime<Bamboo>();
+	private readonly online: BambooBashOnlineController;
 	private readonly launchInput: SlingshotLaunchRuntime<BallState>;
 
 	private bgGfx!: Phaser.GameObjects.Graphics;
@@ -216,12 +203,12 @@ export class BambooBashScene extends ResponsiveScene {
 		Phaser.GameObjects.Image
 	>();
 
-	private arena!: ArenaPixels;
-	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
-	private powerBalls = new ArenaPowerRuntime();
+	arena!: ArenaPixels;
+	ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
+	powerBalls = new ArenaPowerRuntime();
 	private powerBallTexCount = 0;
 	private localParticipants: LocalParticipant[] = [];
-	private playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
+	playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
 	private localTimeLeftMs: number[] = [];
 	private activeLocalParticipantIndex = 0;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
@@ -229,10 +216,10 @@ export class BambooBashScene extends ResponsiveScene {
 	private spawnAccMs = 0;
 	private spawnFreezeMs = 0; // FREEZE power: pauses spawn accumulation when > 0
 
-	private score = 0;
-	private totalScore = 0;
+	score = 0;
+	totalScore = 0;
 	private timeLeftMs = ROUND_MS;
-	private running = true;
+	running = true;
 	private countdownText?: Phaser.GameObjects.Text;
 
 	private scoreText!: Phaser.GameObjects.Text;
@@ -247,13 +234,13 @@ export class BambooBashScene extends ResponsiveScene {
 	private scoreEvents: string[] = [];
 
 	// ── Power panel ──────────────────────────────────────────────────────────────
-	private powerSidePanel: GameInfoSidePanel | null = null;
+	powerSidePanel: GameInfoSidePanel | null = null;
 	private powerPickups: PowerPickupManager | null = null;
 
 	/** Shell power pool for this player (read from registry in create()). */
 	private playerPowers: PowerType[] = [PowerType.NONE];
 	/** Currently selected power (updated by panel onSelect callback). */
-	private activePower: PowerType = PowerType.NONE;
+	activePower: PowerType = PowerType.NONE;
 	private replayPower: PowerType = PowerType.NONE;
 	/** Powers already fired this game — one-shot each (NONE is always reusable). */
 	private powerUsed: Set<PowerType> = new Set();
@@ -261,53 +248,21 @@ export class BambooBashScene extends ResponsiveScene {
 	/** True while ball was moving last frame — used to detect the stop transition. */
 	private ballWasMoving = false;
 
-	private onlineMatch: OnlineMatchContext | null = null;
-	private lastOnlineSeq = -1;
-	private onlineRoundSubmitted = false;
-	private onlineStatusText?: Phaser.GameObjects.Text;
-	private onlineRoundNumber = 1;
-	private onlineTotalRounds = 3;
-	private onlineScores: number[] = [];
-	private onlineBalls = new Map<number, OnlineBallState>();
-	private onlineBallStopped = new Map<number, boolean>();
-	private ballTrails = new ArenaBallTrailRuntime();
-	private pendingOnlineBambooHits = new Set<number>();
-	private onlineBambooSyncAccMs = 0;
+	ballTrails = new ArenaBallTrailRuntime();
 	private readonly localReplay = new LocalReplayRuntime<
 		BambooBashSnapshot,
 		BambooBashSnapshot["phase"]
 	>({
 		gameId: "bamboo-bash",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
-		shouldSkip: () => !!this.onlineMatch,
+		shouldSkip: () => this.online.isActive,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
 
-	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
-		if (isBambooBashSnapshot(snapshot)) this.applyOnlineSnapshot(snapshot);
-	};
-
-	private readonly handleOnlineThrow = (
-		event: BambooBashThrowEvent,
-	): void => {
-		this.playOnlineThrow(event);
-	};
-	private readonly handleOnlinePowerPickup = (event: {
-		matchId: string;
-		roundNumber: number;
-		side: number;
-		x: number;
-		y: number;
-		vx: number;
-		vy: number;
-		power: string;
-	}): void => {
-		this.playOnlinePowerPickup(event);
-	};
-
 	constructor() {
 		super({ key: "BambooBashScene" });
+		this.online = new BambooBashOnlineController(this);
 		this.sceneHost = new CommonGameSceneHost(this, {
 			descriptor: BAMBOO_BASH_DESCRIPTOR,
 			update: (_time, delta) => this.updateBambooBash(delta),
@@ -325,11 +280,11 @@ export class BambooBashScene extends ResponsiveScene {
 		});
 	}
 
-	private get bamboos(): Bamboo[] {
+	get bamboos(): Bamboo[] {
 		return this.bambooWorld.all();
 	}
 
-	private set bamboos(bamboos: readonly Bamboo[]) {
+	set bamboos(bamboos: readonly Bamboo[]) {
 		this.bambooWorld.replace(bamboos);
 	}
 
@@ -343,33 +298,12 @@ export class BambooBashScene extends ResponsiveScene {
 
 	create(): void {
 		this.sceneHost.activate();
-		const registryOnlineMatch =
-			(this.registry.get("onlineMatch") as
-				| OnlineMatchContext
-				| undefined) ?? null;
-		this.onlineMatch = isBambooBashSnapshot(registryOnlineMatch?.snapshot)
-			? registryOnlineMatch
-			: null;
-		this.lastOnlineSeq = -1;
-		this.onlineRoundSubmitted = false;
-		this.onlineRoundNumber = 1;
-		this.onlineTotalRounds = 3;
-		this.onlineScores = [];
-		this.onlineBalls.clear();
-		this.onlineBallStopped.clear();
 		this.powerBallTexCount = clearBambooBashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
 		this.ballTrails.clear();
-		this.pendingOnlineBambooHits.clear();
-		this.onlineBambooSyncAccMs = 0;
 		this.activeLocalParticipantIndex = 0;
 		this.localReplay.reset();
 
-		const initialOnlineSnapshotCandidate = this.onlineMatch?.snapshot;
-		const initialOnlineSnapshot = isBambooBashSnapshot(
-			initialOnlineSnapshotCandidate,
-		)
-			? initialOnlineSnapshotCandidate
-			: null;
+		const isOnline = this.online.bindFromRegistry();
 
 		// Reset per-round state (scenes are reused across restarts)
 		this.localParticipants.forEach((participant) =>
@@ -383,7 +317,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.spawnFreezeMs = 0;
 		this.score = 0;
 		this.totalScore =
-			initialOnlineSnapshot?.score[this.onlineMatch?.side ?? 0] ?? 0;
+			this.online.snapshot?.score[this.online.side] ?? 0;
 		this.timeLeftMs = ROUND_MS;
 		this.running = false; // held until the "3, 2, 1, GO!" countdown finishes
 		this.countdownText = undefined;
@@ -422,8 +356,8 @@ export class BambooBashScene extends ResponsiveScene {
 				Math.floor(Number(this.registry.get("localPlayerCount") ?? 1)),
 			),
 		);
-		const localPowerupsEnabled = this.onlineMatch
-			? this.onlineMatch.snapshot?.powerupsEnabled === true
+		const localPowerupsEnabled = this.online.isActive
+			? this.online.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 		const buildPool = (picks: string[] | undefined): PowerType[] => {
 			if (!localPowerupsEnabled) return [PowerType.NONE];
@@ -456,7 +390,7 @@ export class BambooBashScene extends ResponsiveScene {
 		// Slingshot stays detached until the countdown ends so the player can't
 		// launch early (attached in beginPlay()).
 
-		if (!this.onlineMatch) {
+		if (!this.online.isActive) {
 			const localPlayerCount =
 				localMode === "versus"
 					? Math.max(2, requestedLocalPlayerCount)
@@ -504,7 +438,7 @@ export class BambooBashScene extends ResponsiveScene {
 			this.localTimeLeftMs = [];
 		}
 
-		if (!this.onlineMatch) {
+		if (!this.online.isActive) {
 			for (let i = 0; i < START_BAMBOO; i++) this.spawnBamboo();
 		}
 		this.spawnPowerPickup();
@@ -516,24 +450,21 @@ export class BambooBashScene extends ResponsiveScene {
 		this.drawBalls();
 		this.buildHud();
 		this.updateHudText();
-		if (this.onlineMatch) this.createOnlineStatusText();
 		this.updateSidePanels();
 		this.showPowerPanel();
 
 		this.enableResponsive(); // relayout on resize/zoom (see ResponsiveScene)
 
-		if (initialOnlineSnapshot)
-			this.applyOnlineSnapshot(initialOnlineSnapshot, true);
-		if (this.onlineMatch) this.initOnlineMatch();
-		else this.localReplay.startCapture();
-
-		const shouldStartRound =
-			!initialOnlineSnapshot ||
-			(initialOnlineSnapshot.phase === "active" &&
-				initialOnlineSnapshot.roundScores[
-					this.onlineMatch?.side ?? 0
-				] === null);
-		if (!this.onlineMatch || shouldStartRound) this.startCountdown();
+		if (this.online.snapshot) this.online.applyInitialSnapshot();
+		if (this.online.isActive) {
+			this.online.init();
+			this.online.createStatusText();
+			if (this.online.snapshot?.phase === "active")
+				this.online.startOnlineCountdown();
+		} else {
+			this.localReplay.startCapture();
+			this.startCountdown();
+		}
 	}
 
 	// ── Pre-round countdown ─────────────────────────────────────────────────────
@@ -631,6 +562,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.countdownText?.destroy();
 		this.turnAnnouncementText?.destroy();
 		this.destroySidePanels();
+		this.online.shutdown();
 		this.socketChannel.shutdown();
 	}
 
@@ -639,7 +571,7 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private updateBambooBash(delta: number): void {
-		if (!this.onlineMatch) this.localReplay.addElapsed(delta);
+		if (!this.online.isActive) this.localReplay.addElapsed(delta);
 		if (!this.running) return;
 
 		// Countdown. Online rounds use the server-provided deadline so simultaneous
@@ -667,7 +599,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 		// Spawn new bamboo on cadence while there's room (pause during freeze).
 		// Online spawns are owned by the backend and arrive through snapshots.
-		if (!this.onlineMatch && this.spawnFreezeMs <= 0) {
+		if (!this.online.isActive && this.spawnFreezeMs <= 0) {
 			this.spawnAccMs += delta;
 			if (this.spawnAccMs >= SPAWN_EVERY_MS) {
 				this.spawnAccMs = 0;
@@ -691,7 +623,7 @@ export class BambooBashScene extends ResponsiveScene {
 		let moving = stepArenaBall(this.ball, delta, this.arena);
 		const ext = this.ball as BallExtState;
 
-		if (this.onlineMatch) {
+		if (this.online.isActive) {
 			this.updateOnlineRemoteBalls(delta);
 			this.resolveOnlineBallCollisions();
 			moving = isBallMoving(this.ball);
@@ -721,12 +653,12 @@ export class BambooBashScene extends ResponsiveScene {
 
 		// Show power panel once ball has stopped (transition detection)
 		if (!moving && this.ballWasMoving && this.running) {
-			if (this.onlineMatch) this.launchInput.attach();
+			if (this.online.isActive) this.launchInput.attach();
 			this.showPowerPanel();
 		}
 		this.ballWasMoving = moving;
 
-		if (this.onlineMatch) this.syncOnlineBamboos(delta);
+		if (this.online.isActive) this.online.syncBamboos(delta);
 
 		this.recordBallTrails();
 		this.drawBamboos();
@@ -743,7 +675,7 @@ export class BambooBashScene extends ResponsiveScene {
 	 * AFTER the slingshot has set velocity and AFTER resetBall reset the radius.
 	 */
 	private onLaunch(): void {
-		if (this.onlineMatch) {
+		if (this.online.isActive) {
 			const sourceVx = this.ball.vx / this.arena.scale;
 			const sourceVy = this.ball.vy / this.arena.scale;
 			const power = this.activePower;
@@ -753,18 +685,13 @@ export class BambooBashScene extends ResponsiveScene {
 			this.activePower = PowerType.NONE;
 			this.powerSidePanel?.hide();
 			this.launchInput.recreate();
-			this.updateOnlineStatus("Launching...");
-			getGameSocket().emit("game:input", {
-				matchId: this.onlineMatch.matchId,
-				action: "release",
-				payload: {
-					roundNumber: this.onlineRoundNumber,
-					x: (this.ball.x - this.arena.cx) / this.arena.rx,
-					y: (this.ball.y - this.arena.cy) / this.arena.ry,
-					vx: sourceVx,
-					vy: sourceVy,
-					power,
-				},
+			this.online.emitRelease({
+				roundNumber: this.online.currentRoundNumber,
+				x: (this.ball.x - this.arena.cx) / this.arena.rx,
+				y: (this.ball.y - this.arena.cy) / this.arena.ry,
+				vx: sourceVx,
+				vy: sourceVy,
+				power,
 			});
 			return;
 		}
@@ -813,11 +740,11 @@ export class BambooBashScene extends ResponsiveScene {
 		const blastR = BOMB_RADIUS_SRC * this.arena.scale;
 		const bx = this.ball.x;
 		const by = this.ball.y;
-		if (this.onlineMatch) {
+		if (this.online.isActive) {
 			for (const b of this.bamboos) {
 				const pos = bambooPos(b, this.arena);
 				if (Math.hypot(pos.x - bx, pos.y - by) < blastR)
-					this.reportOnlineBambooHit(b, this.ball);
+					this.online.reportBambooHit(b as Bamboo & { id: number }, this.ball);
 			}
 			return;
 		}
@@ -832,11 +759,11 @@ export class BambooBashScene extends ResponsiveScene {
 		const repelR = REPEL_RADIUS_SRC * this.arena.scale;
 		const bx = this.ball.x;
 		const by = this.ball.y;
-		if (this.onlineMatch) {
+		if (this.online.isActive) {
 			for (const b of this.bamboos) {
 				const pos = bambooPos(b, this.arena);
 				if (Math.hypot(pos.x - bx, pos.y - by) < repelR)
-					this.reportOnlineBambooHit(b, this.ball);
+					this.online.reportBambooHit(b as Bamboo & { id: number }, this.ball);
 			}
 			return;
 		}
@@ -868,8 +795,8 @@ export class BambooBashScene extends ResponsiveScene {
 				continue;
 			}
 
-			if (this.onlineMatch) {
-				this.reportOnlineBambooHit(b, ball);
+			if (this.online.isActive) {
+				this.online.reportBambooHit(b as Bamboo & { id: number }, ball);
 				continue;
 			}
 
@@ -895,29 +822,6 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 	}
 
-	private reportOnlineBambooHit(bamboo: Bamboo, ball: BallState): void {
-		if (
-			!this.onlineMatch ||
-			!("id" in bamboo) ||
-			typeof bamboo.id !== "number"
-		)
-			return;
-		if (this.pendingOnlineBambooHits.has(bamboo.id)) return;
-		this.pendingOnlineBambooHits.add(bamboo.id);
-		getGameSocket().emit("game:input", {
-			matchId: this.onlineMatch.matchId,
-			action: "bamboo:hit",
-			payload: {
-				roundNumber: this.onlineRoundNumber,
-				bambooId: bamboo.id,
-				x: (ball.x - this.arena.cx) / this.arena.rx,
-				y: (ball.y - this.arena.cy) / this.arena.ry,
-				vx: ball.vx / this.arena.scale,
-				vy: ball.vy / this.arena.scale,
-			},
-		});
-	}
-
 	private endRound(): void {
 		this.running = false;
 		this.timerText.setText(this.formatTime());
@@ -935,9 +839,9 @@ export class BambooBashScene extends ResponsiveScene {
 		this.ball.vy = 0;
 		this.powerSidePanel?.hide();
 		this.updateSidePanels();
-		if (this.onlineMatch) {
+		if (this.online.isActive) {
 			this.launchInput.destroy();
-			this.submitOnlineRoundScore();
+			this.online.submitRoundScore();
 			return;
 		}
 		this.localReplay.captureFrame(true, "finished");
@@ -965,231 +869,13 @@ export class BambooBashScene extends ResponsiveScene {
 		this.showEndScreen();
 	}
 
-	private initOnlineMatch(): void {
-		this.socketChannel.removeAll();
-		this.socketChannel.on("game:state", this.handleOnlineState);
-		this.socketChannel.on("game:end", this.handleOnlineState);
-		this.socketChannel.on("game:bamboo-throw", this.handleOnlineThrow);
-		this.socketChannel.on(
-			"game:bamboo-power-pickup",
-			this.handleOnlinePowerPickup,
-		);
-		this.updateOnlineStatus("Connected to Bamboo Bash match.");
-	}
 
-	private submitOnlineRoundScore(): void {
-		if (
-			!this.onlineMatch ||
-			this.onlineMatch.spectator ||
-			this.onlineRoundSubmitted
-		)
-			return;
-		this.onlineRoundSubmitted = true;
-		this.updateOnlineStatus("Waiting for opponents...");
-		getGameSocket().emit("game:input", {
-			matchId: this.onlineMatch.matchId,
-			action: "round:score",
-			payload: { roundNumber: this.onlineRoundNumber, score: this.score },
-		});
-	}
-
-	private applyOnlineSnapshot(
-		snapshot: BambooBashSnapshot,
-		initial = false,
-	): void {
-		if (
-			!this.onlineMatch ||
-			snapshot.matchId !== this.onlineMatch.matchId ||
-			snapshot.seq <= this.lastOnlineSeq
-		)
-			return;
-		this.lastOnlineSeq = snapshot.seq;
-		this.onlineMatch.snapshot = snapshot;
-		this.onlineRoundNumber = snapshot.roundNumber;
-		this.onlineTotalRounds = snapshot.totalRounds;
-		this.onlineScores = snapshot.score;
-		if (!this.onlineMatch.spectator)
-			this.score =
-				snapshot.liveRoundScores[this.onlineMatch.side] ?? this.score;
-		this.bamboos = snapshot.bamboos.map((bamboo) => ({ ...bamboo }));
-		this.spawnPowerPickup();
-		const liveBambooIds = new Set(
-			snapshot.bamboos.map((bamboo) => bamboo.id),
-		);
-		for (const pendingId of [...this.pendingOnlineBambooHits]) {
-			if (!liveBambooIds.has(pendingId))
-				this.pendingOnlineBambooHits.delete(pendingId);
-		}
-		this.drawBamboos();
-		this.syncOnlineBalls(snapshot);
-		this.drawBalls();
-		if (!this.onlineMatch.spectator)
-			this.totalScore =
-				snapshot.score[this.onlineMatch.side] ?? this.totalScore;
-		this.syncOnlineTimeLeft(snapshot);
-		this.updateHudText();
-		this.updateSidePanels();
-
-		if (snapshot.phase === "finished" || snapshot.phase === "abandoned") {
-			this.showOnlineEndScreen(snapshot);
-			return;
-		}
-
-		if (snapshot.phase !== "active") {
-			this.updateOnlineStatus("Waiting for opponents...");
-			return;
-		}
-
-		const localSubmitted = this.onlineMatch.spectator
-			? true
-			: snapshot.roundScores[this.onlineMatch.side] !== null;
-		if (localSubmitted) {
-			this.updateOnlineStatus("Waiting for opponents...");
-			return;
-		}
-
-		if (!initial && (this.onlineRoundSubmitted || !this.running))
-			this.startOnlineRound(snapshot);
-		else
-			this.updateOnlineStatus(
-				`Round ${snapshot.roundNumber}/${snapshot.totalRounds}`,
-			);
-	}
-
-	private startOnlineRound(snapshot: BambooBashSnapshot): void {
-		this.overlay?.destroy(true);
-		this.overlay = undefined;
-		this.powerBallTexCount = clearBambooBashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
-		this.bamboos = [];
-		this.spawnAccMs = 0;
-		this.spawnFreezeMs = 0;
-		this.score = 0;
-		this.timeLeftMs = this.onlineRemainingMs(snapshot);
-		this.running = false;
-		this.onlineRoundSubmitted = false;
-		this.ballWasMoving = false;
-		this.powerUsed = new Set(); // Online Bamboo Bash gives each 30s round a fresh power pool.
-		this.activePower = PowerType.NONE;
-		this.onlineBambooSyncAccMs = 0;
-		this.resetBall();
-		this.resetOnlineBalls(snapshot);
-		this.launchInput.recreate();
-		this.bamboos = snapshot.bamboos.map((bamboo) => ({ ...bamboo }));
-		this.pendingOnlineBambooHits.clear();
-		this.spawnPowerPickup();
-		this.drawBamboos();
-		this.drawBalls();
-		this.updateHudText();
-		this.updateSidePanels();
-		this.showPowerPanel();
-		this.updateOnlineStatus(
-			`Round ${snapshot.roundNumber}/${snapshot.totalRounds}`,
-		);
-		this.startCountdown();
-		this.overlay = showRoundTransitionOverlay(this, this.overlay, {
-			message: `ROUND ${snapshot.roundNumber}/${snapshot.totalRounds}`,
-			depth: DEPTH_OVERLAY,
-			autoDismissMs: 900,
-			onAutoDismiss: () => {
-				this.overlay = undefined;
-			},
-		});
-	}
-
-	private createOnlineStatusText(): void {
-		this.onlineStatusText = this.add
-			.text(this.scale.width / 2, 48, "", {
-				fontSize: "13px",
-				color: THEME.textGold,
-				fontFamily: THEME.font,
-				fontStyle: "bold",
-			})
-			.setOrigin(0.5, 0)
-			.setDepth(DEPTH_HUD + 2);
-	}
-
-	private updateOnlineStatus(message: string): void {
-		this.onlineStatusText?.setText(message);
-	}
-
-	private markOnlineAway(): void {
-		const phase = this.onlineMatch?.snapshot?.phase;
-		if (this.onlineMatch && phase !== "finished" && phase !== "abandoned") {
-			getGameSocket().emit("match:status", { away: true });
-		}
-	}
-
-	private playOnlineThrow(event: BambooBashThrowEvent): void {
-		if (
-			!this.onlineMatch ||
-			event.matchId !== this.onlineMatch.matchId ||
-			event.roundNumber !== this.onlineRoundNumber
-		)
-			return;
-		const ball = this.onlineBalls.get(event.side);
-		if (!ball) return;
-
-		ball.r = BALL_SRC_R * this.arena.scale;
-		ball.vx = event.vx * this.arena.scale;
-		ball.vy = event.vy * this.arena.scale;
-		const power = (Object.values(PowerType) as string[]).includes(
-			event.power,
-		)
-			? (event.power as PowerType)
-			: PowerType.NONE;
-		this.powerBalls.applyPower(power, ball, this.arena, event.side);
-
-		if (event.side === this.onlineMatch.side) {
-			this.ballWasMoving = true;
-			this.updateOnlineStatus("Your throw...");
-		} else {
-			this.updateOnlineStatus(`P${event.side + 1} throw...`);
-		}
-		this.drawBalls();
-	}
-
-	private playOnlinePowerPickup(event: {
-		matchId: string;
-		roundNumber: number;
-		side: number;
-		x: number;
-		y: number;
-		vx: number;
-		vy: number;
-		power: string;
-	}): void {
-		if (
-			!this.onlineMatch ||
-			event.matchId !== this.onlineMatch.matchId ||
-			event.roundNumber !== this.onlineRoundNumber ||
-			event.side === this.onlineMatch.side
-		)
-			return;
-		const ball = this.onlineBalls.get(event.side);
-		if (!ball) return;
-		ball.x = this.arena.cx + event.x * this.arena.rx;
-		ball.y = this.arena.cy + event.y * this.arena.ry;
-		ball.vx = event.vx * this.arena.scale;
-		ball.vy = event.vy * this.arena.scale;
-		ball.r = BALL_SRC_R * this.arena.scale;
-		const power = this.toPowerType(event.power);
-		this.powerBalls.applyPower(power, ball, this.arena, event.side);
-		this.drawBalls();
-	}
 
 	private syncOnlineTimeLeft(snapshot?: BambooBashSnapshot): boolean {
-		const onlineSnapshot =
-			snapshot ??
-			(isBambooBashSnapshot(this.onlineMatch?.snapshot)
-				? this.onlineMatch.snapshot
-				: null);
+		const onlineSnapshot = snapshot ?? this.online.snapshot;
 		if (!onlineSnapshot?.roundEndsAt) return false;
-		this.timeLeftMs = this.onlineRemainingMs(onlineSnapshot);
+		this.timeLeftMs = this.online.onlineRemainingMs(onlineSnapshot);
 		return true;
-	}
-
-	private onlineRemainingMs(snapshot: BambooBashSnapshot): number {
-		return Math.max(0, (snapshot.roundEndsAt ?? Date.now()) - Date.now());
 	}
 
 	private submitResult(): void {
@@ -1263,7 +949,7 @@ export class BambooBashScene extends ResponsiveScene {
 		});
 	}
 
-	private showOnlineEndScreen(snapshot: BambooBashSnapshot): void {
+	showOnlineEndScreen(snapshot: BambooBashSnapshot): void {
 		this.running = false;
 		this.launchInput.cancel();
 		this.powerSidePanel?.hide();
@@ -1272,21 +958,21 @@ export class BambooBashScene extends ResponsiveScene {
 		const title =
 			snapshot.winnerSide === null
 				? "DRAW"
-				: snapshot.winnerSide === this.onlineMatch?.side
+				: snapshot.winnerSide === this.online.side
 					? "YOU WIN!"
 					: "YOU LOSE";
 		this.overlay = showOnlineRematchEndModal(this, this.overlay, {
 			title: "BAMBOO BASH",
 			result: title,
 			matchId: snapshot.matchId,
-			side: this.onlineMatch?.side ?? 0,
+			side: this.online.side,
 			sceneKey: "BambooBashScene",
 			players: [...snapshot.players]
 				.sort((a, b) => a.side - b.side)
 				.map((player) => ({
 					label: `P${player.side + 1}`,
 					detail:
-						player.side === this.onlineMatch?.side
+						player.side === this.online.side
 							? `${player.username} (You)`
 							: player.username,
 					score: snapshot.score[player.side] ?? 0,
@@ -1305,7 +991,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private buildHud(): void {
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
-			this.markOnlineAway(),
+			this.online.markAway(),
 		);
 		this.scoreHud = new ScoreHud(this, DEPTH_HUD, {
 			minPlayerCount: 1,
@@ -1360,9 +1046,9 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private updateHudText(): void {
 		this.updateScoreHud();
-		if (this.onlineMatch) {
+		if (this.online.isActive) {
 			this.scoreText?.setText(
-				`ROUND ${this.onlineRoundNumber}/${this.onlineTotalRounds}  SCORE ${this.score}  TOTAL ${this.totalScore}`,
+				`ROUND ${this.online.currentRoundNumber}/${this.online.currentTotalRounds}  SCORE ${this.score}  TOTAL ${this.totalScore}`,
 			);
 		} else if (this.localParticipants.length > 0) {
 			this.scoreText?.setVisible(false);
@@ -1373,7 +1059,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.timerText?.setText(this.formatTime());
 	}
 
-	private updateScoreHud(): void {
+	updateScoreHud(): void {
 		this.scoreHud?.update(
 			buildTurnStateFromGameRuleHooks(this.buildGameRuleHooks()),
 		);
@@ -1390,7 +1076,7 @@ export class BambooBashScene extends ResponsiveScene {
 					? this.activeLocalParticipantIndex
 					: 0,
 			getCurrentRound: () =>
-				this.onlineMatch ? this.onlineRoundNumber - 1 : 0,
+				this.online.isActive ? this.online.currentRoundNumber - 1 : 0,
 			getRemainingTurns: () =>
 				score.map((_value, player) =>
 					this.isLocalVersus()
@@ -1409,8 +1095,8 @@ export class BambooBashScene extends ResponsiveScene {
 	private currentScoresForRules(): readonly number[] {
 		return this.localParticipants.length
 			? this.localParticipants.map((participant) => participant.score)
-			: this.onlineScores.length
-				? this.onlineScores
+			: this.online.snapshotScore.length
+				? this.online.snapshotScore
 				: [this.score, 0];
 	}
 
@@ -1421,15 +1107,15 @@ export class BambooBashScene extends ResponsiveScene {
 				| { username?: string; turtleName?: string | null }
 				| undefined,
 			onlinePlayers:
-				this.onlineMatch?.snapshot?.gameId === "bamboo-bash"
-					? this.onlineMatch.snapshot.players
+				this.online.snapshot?.gameId === "bamboo-bash"
+					? this.online.snapshot.players
 					: undefined,
 		});
 	}
 
 	// ── Rendering helpers ───────────────────────────────────────────────────────
 
-	private drawBamboos(): void {
+	drawBamboos(): void {
 		const liveBamboos = new Set(
 			this.bamboos.map((bamboo) => this.bambooSpriteKey(bamboo)),
 		);
@@ -1463,6 +1149,24 @@ export class BambooBashScene extends ResponsiveScene {
 				)
 				.setDepth(1 + pos.y / 100_000);
 		}
+	}
+
+	clearPowerBalls(): number {
+		return clearBambooBashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
+	}
+
+	isBallMoving(ball: BallState): boolean {
+		return isBallMoving(ball);
+	}
+
+	syncSlingshotForTurn(): void {
+		if (this.online.isActive) {
+			this.launchInput.attach();
+		}
+	}
+
+	markLocalBallMoving(): void {
+		this.ballWasMoving = true;
 	}
 
 	private clearBambooSprites(): void {
@@ -1502,15 +1206,15 @@ export class BambooBashScene extends ResponsiveScene {
 			: bamboo;
 	}
 
-	private drawBalls(): void {
+	drawBalls(): void {
 		this.ballGfx.clear();
-		if (this.onlineBalls.size > 0) {
+		if (this.online.ballMap.size > 0) {
 			this.clearInactivePlayerTextures(
-				[...this.onlineBalls.keys()].map(
+				[...this.online.ballMap.keys()].map(
 					(side) => `bamboo-bash-player-${side}`,
 				),
 			);
-			for (const [side, ball] of [...this.onlineBalls.entries()].sort(
+			for (const [side, ball] of [...this.online.ballMap.entries()].sort(
 				([a], [b]) => a - b,
 			)) {
 				const colour =
@@ -1602,113 +1306,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.ballTrails.reset("local", this.ball.x, this.ball.y);
 	}
 
-	private syncOnlineBalls(snapshot: BambooBashSnapshot): void {
-		if (!this.onlineMatch) return;
-		const next = new Map<number, OnlineBallState>();
-		const players = [...snapshot.players].sort((a, b) => a.side - b.side);
-		players.forEach((player, index) => {
-			const isLocal = player.side === this.onlineMatch?.side;
-			const serverBall = snapshot.entities.find(
-				(ball) => (ball.side ?? ball.ownerSide) === player.side,
-			);
-			const existing = isLocal
-				? this.ball
-				: (this.onlineBalls.get(player.side) ?? {
-						x: 0,
-						y: 0,
-						vx: 0,
-						vy: 0,
-						r: BALL_SRC_R * this.arena.scale,
-					});
-			const wasStopped = this.onlineBallStopped.get(player.side) ?? false;
-			if (serverBall?.stopped && !wasStopped) {
-				existing.x = this.arena.cx + serverBall.x * this.arena.rx;
-				existing.y = this.arena.cy + serverBall.y * this.arena.ry;
-				existing.vx = 0;
-				existing.vy = 0;
-				existing.r = BALL_SRC_R * this.arena.scale;
-				this.ballTrails.reset(player.side, existing.x, existing.y);
-			} else if (!isLocal && serverBall && !serverBall.stopped) {
-				existing.x = this.arena.cx + serverBall.x * this.arena.rx;
-				existing.y = this.arena.cy + serverBall.y * this.arena.ry;
-				existing.vx = serverBall.vx * this.arena.scale;
-				existing.vy = serverBall.vy * this.arena.scale;
-			}
-			// Sync powerup visual properties from server entity
-			if (serverBall) {
-				(existing as OnlineBallState).scale = serverBall.stopped
-					? 1
-					: (serverBall.scale ?? 1);
-				(existing as OnlineBallState).alpha = serverBall.alpha ?? 1;
-				(existing as OnlineBallState).power =
-					serverBall.power ?? "none";
-				(existing as OnlineBallState).trail = serverBall.trail
-					? serverBall.trail.map((p) => ({ ...p }))
-					: undefined;
-				(existing as OnlineBallState).stateFlags = serverBall.stateFlags
-					? [...serverBall.stateFlags]
-					: [];
-			}
-			this.onlineBallStopped.set(
-				player.side,
-				Boolean(serverBall?.stopped),
-			);
-			next.set(player.side, existing);
-		});
-		for (const [side] of this.onlineBalls) {
-			if (!next.has(side))
-				destroyIngamePlayerTexture(this, `bamboo-bash-player-${side}`);
-		}
-		for (const side of [...this.onlineBallStopped.keys()]) {
-			if (!next.has(side)) this.onlineBallStopped.delete(side);
-		}
-		this.onlineBalls = next;
-	}
 
-	private resetOnlineBalls(snapshot: BambooBashSnapshot): void {
-		const players = [...snapshot.players].sort((a, b) => a.side - b.side);
-		players.forEach((player, index) => {
-			const ball =
-				player.side === this.onlineMatch?.side
-					? this.ball
-					: (this.onlineBalls.get(player.side) ?? {
-							x: 0,
-							y: 0,
-							vx: 0,
-							vy: 0,
-							r: BALL_SRC_R * this.arena.scale,
-						});
-			this.resetOnlineBall(ball, index, players.length);
-			this.ballTrails.reset(player.side, ball.x, ball.y);
-			this.onlineBallStopped.set(player.side, true);
-			this.onlineBalls.set(player.side, ball);
-		});
-	}
-
-	private resetOnlineBall(
-		ball: BallState,
-		index: number,
-		total: number,
-	): void {
-		if (total === 2) {
-			ball.x =
-				this.arena.cx + (index === 0 ? -0.22 : 0.22) * this.arena.rx;
-			ball.y = this.arena.cy;
-		} else {
-			const angle =
-				-Math.PI / 2 + (index / Math.max(1, total)) * Math.PI * 2;
-			ball.x = this.arena.cx + Math.cos(angle) * this.arena.rx * 0.24;
-			ball.y = this.arena.cy + Math.sin(angle) * this.arena.ry * 0.24;
-		}
-		ball.vx = 0;
-		ball.vy = 0;
-		ball.r = BALL_SRC_R * this.arena.scale;
-		(ball as OnlineBallState).scale = 1;
-		(ball as OnlineBallState).alpha = 1;
-		(ball as OnlineBallState).power = "none";
-		(ball as OnlineBallState).trail = undefined;
-		(ball as OnlineBallState).stateFlags = [];
-	}
 
 	private resetLocalBall(ball: BallState, index: number): void {
 		const total = Math.max(
@@ -1734,9 +1332,9 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private recordBallTrails(): void {
-		if (this.onlineBalls.size > 0) {
+		if (this.online.ballMap.size > 0) {
 			this.ballTrails.recordSet({
-				balls: [...this.onlineBalls.entries()].map(([side, ball]) => ({
+				balls: [...this.online.ballMap.entries()].map(([side, ball]) => ({
 					id: side,
 					player: side,
 					ball,
@@ -1778,7 +1376,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private drawBallTrails(): void {
 		const playersById = new Map<number | string, number>([["local", 0]]);
-		for (const [side] of this.onlineBalls) playersById.set(side, side);
+		for (const [side] of this.online.ballMap) playersById.set(side, side);
 		this.localParticipants.forEach((_participant, index) =>
 			playersById.set(`local-${index}`, index),
 		);
@@ -1794,7 +1392,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 
 	private isLocalVersus(): boolean {
-		return !this.onlineMatch && this.localParticipants.length > 1;
+		return !this.online.isActive && this.localParticipants.length > 1;
 	}
 
 	private updateLocalVersusClock(delta: number): void {
@@ -1994,9 +1592,9 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private updateOnlineRemoteBalls(delta: number): void {
-		if (!this.onlineMatch) return;
-		for (const [side, ball] of this.onlineBalls.entries()) {
-			if (side === this.onlineMatch.side) continue;
+		if (!this.online.isActive) return;
+		for (const [side, ball] of this.online.ballMap.entries()) {
+			if (side === this.online.side) continue;
 			const moving = stepArenaBall(ball, delta, this.arena);
 			const ext = ball as BallExtState;
 			if (!moving) {
@@ -2009,7 +1607,7 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private resolveOnlineBallCollisions(): void {
-		const balls = [...new Set(this.onlineBalls.values())];
+		const balls = [...new Set(this.online.ballMap.values())];
 		for (let i = 0; i < balls.length; i++) {
 			for (let j = i + 1; j < balls.length; j++) {
 				if (
@@ -2022,34 +1620,7 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 	}
 
-	private syncOnlineBamboos(delta: number): void {
-		if (
-			!this.onlineMatch ||
-			this.onlineMatch.spectator ||
-			this.onlineRoundSubmitted
-		)
-			return;
-		this.onlineBambooSyncAccMs += delta;
-		if (this.onlineBambooSyncAccMs < 1000) return;
-		this.onlineBambooSyncAccMs = 0;
-		// Report this client's own ball position/velocity/stopped state so the
-		// opponent's client can trust server-relayed ground truth instead of
-		// purely re-simulating our ball with independent local physics (which
-		// drifts and can leave a "ghost" ball stuck mid-air on their screen —
-		// see updateOnlineRemoteBalls / syncOnlineBalls).
-		getGameSocket().emit("game:input", {
-			matchId: this.onlineMatch.matchId,
-			action: "bamboo:sync",
-			payload: {
-				roundNumber: this.onlineRoundNumber,
-				x: (this.ball.x - this.arena.cx) / this.arena.rx,
-				y: (this.ball.y - this.arena.cy) / this.arena.ry,
-				vx: this.ball.vx / this.arena.scale,
-				vy: this.ball.vy / this.arena.scale,
-				stopped: !isBallMoving(this.ball),
-			},
-		});
-	}
+
 
 	private syncLocalSlingshots(): void {
 		this.localParticipants.forEach((participant, index) => {
@@ -2128,7 +1699,7 @@ export class BambooBashScene extends ResponsiveScene {
 			isMoving: isBallMoving,
 		});
 
-		for (const [side, ball] of this.onlineBalls.entries()) {
+		for (const [side, ball] of this.online.ballMap.entries()) {
 			if (ball === this.ball) continue;
 			remapLaunchableToArena({
 				oldArena,
@@ -2137,16 +1708,20 @@ export class BambooBashScene extends ResponsiveScene {
 				radius: BALL_SRC_R * this.arena.scale,
 				isMoving: isBallMoving,
 				resetWhenStopped: (target) => {
-					if (this.onlineMatch?.snapshot?.gameId !== "bamboo-bash")
-						return;
-					const players = [...this.onlineMatch.snapshot.players].sort(
+					const snapshot = this.online.snapshot;
+					if (!snapshot) return;
+					const players = [...snapshot.players].sort(
 						(a, b) => a.side - b.side,
 					);
 					const index = players.findIndex(
 						(player) => player.side === side,
 					);
 					if (index >= 0)
-						this.resetOnlineBall(target, index, players.length);
+						this.online.resetOnlineBallForRelayout(
+							target,
+							index,
+							players.length,
+						);
 				},
 			});
 		}
@@ -2181,11 +1756,11 @@ export class BambooBashScene extends ResponsiveScene {
 
 		this.hudObjects.forEach((o) => o.destroy());
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
-			this.markOnlineAway(),
+			this.online.markAway(),
 		);
 		this.scoreText.setPosition(16, 16);
 		this.timerText.setPosition(this.scale.width / 2, 16);
-		this.onlineStatusText?.setPosition(this.scale.width / 2, 48);
+		this.online.repositionStatus(this.scale.width / 2, 48);
 		this.overlay?.setPosition(this.scale.width / 2, this.scale.height / 2);
 		this.turnAnnouncementText?.setPosition(
 			this.scale.width / 2,
@@ -2249,19 +1824,17 @@ export class BambooBashScene extends ResponsiveScene {
 		});
 	}
 
-	private spawnPowerPickup(): void {
-		const powerupsEnabled = this.onlineMatch
-			? this.onlineMatch.snapshot?.powerupsEnabled === true
+	spawnPowerPickup(): void {
+		const powerupsEnabled = this.online.isActive
+			? this.online.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 		if (!powerupsEnabled || !this.powerPickups) {
 			this.powerPickups?.clear();
 			return;
 		}
 
-		if (this.onlineMatch) {
-			const snapshot = isBambooBashSnapshot(this.onlineMatch.snapshot)
-				? this.onlineMatch.snapshot
-				: null;
+		if (this.online.isActive) {
+			const snapshot = this.online.snapshot;
 			this.powerPickups.setPickups(
 				snapshot
 					? snapshot.powerPickups.map((pickup) =>
@@ -2294,8 +1867,8 @@ export class BambooBashScene extends ResponsiveScene {
 				? this.activeLocalParticipantIndex
 				: 0;
 		this.powerBalls.applyPower(pickup.type, ball, this.arena, player);
-		if (this.onlineMatch)
-			this.reportOnlinePowerPickup(pickup.id, pickup.type, ball);
+		if (this.online.isActive)
+			this.online.reportPowerPickup(pickup.id, pickup.type, ball);
 		this.powerPickups.draw();
 		showBambooBashPowerPickupNotice(this, pickup.type, pickup.x, pickup.y, this.arena);
 	}
@@ -2304,28 +1877,6 @@ export class BambooBashScene extends ResponsiveScene {
 		return (Object.values(PowerType) as string[]).includes(type)
 			? (type as PowerType)
 			: PowerType.HEAVY;
-	}
-
-	private reportOnlinePowerPickup(
-		pickupId: number,
-		pickupType: PowerType,
-		ball: BallState,
-	): void {
-		if (!this.onlineMatch || this.onlineMatch.spectator) return;
-		getGameSocket().emit("game:input", {
-			matchId: this.onlineMatch.matchId,
-			action: "bamboo:power-pickup",
-			payload: {
-				roundNumber: this.onlineRoundNumber,
-				pickupId,
-				pickupType,
-				x: (ball.x - this.arena.cx) / this.arena.rx,
-				y: (ball.y - this.arena.cy) / this.arena.ry,
-				vx: ball.vx / this.arena.scale,
-				vy: ball.vy / this.arena.scale,
-				stopped: !isBallMoving(ball),
-			},
-		});
 	}
 
 	private updatePowerBalls(delta: number): void {
@@ -2363,8 +1914,8 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	private basePhysicsBalls(): BallState[] {
-		if (this.onlineBalls.size > 0)
-			return [...new Set(this.onlineBalls.values())];
+		if (this.online.ballMap.size > 0)
+			return [...new Set(this.online.ballMap.values())];
 		if (this.localParticipants.length > 0)
 			return this.localParticipants.map(
 				(participant) => participant.ball,
@@ -2384,7 +1935,7 @@ export class BambooBashScene extends ResponsiveScene {
 	}
 
 	/** Show or refresh the power panel in the left column before each shot. */
-	private showPowerPanel(): void {
+	showPowerPanel(): void {
 		const layout = this.resolveLayout();
 		const localParticipant =
 			this.localParticipants[this.activeLocalParticipantIndex];
@@ -2437,11 +1988,11 @@ export class BambooBashScene extends ResponsiveScene {
 			labelColor?: string;
 			valueColor?: string;
 		}[] = [];
-		if (this.onlineMatch) {
+		if (this.online.isActive) {
 			rows.push({ label: "TIME", value: this.formatTime() });
 			rows.push({
 				label: "ROUND",
-				value: `${this.onlineRoundNumber}/${this.onlineTotalRounds}`,
+				value: `${this.online.currentRoundNumber}/${this.online.currentTotalRounds}`,
 			});
 			rows.push({ label: "SCORE", value: String(this.score) });
 			return rows;
@@ -2491,7 +2042,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 	// ── Side panels ─────────────────────────────────────────────────────────────
 
-	private updateSidePanels(): void {
+	updateSidePanels(): void {
 		const layout = this.resolveLayout();
 		this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
 
