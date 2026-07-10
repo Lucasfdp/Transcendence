@@ -4670,6 +4670,7 @@ img.power-card__orb {
 	display: flex;
 	flex-direction: column;
 	gap: 0.75rem;
+	flex: 1;
 	min-height: 0;
 }
 
@@ -4694,6 +4695,7 @@ img.power-card__orb {
 }
 
 .hub-modal__replay-items-scroll {
+	flex: 1;
 	min-height: 0;
 	overflow-y: auto;
 	padding-right: 0.35rem;
@@ -4840,10 +4842,15 @@ img.power-card__orb {
 	word-break: break-word;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
+	.hub-modal__panel--wide .hub-modal__body:has(.hub-modal__replays) {
+		overflow: auto;
+	}
+
 	.hub-modal__replays {
 		grid-template-columns: 1fr;
-		overflow-y: auto;
+		height: auto;
+		overflow: visible;
 	}
 
 	.hub-modal__replay-list {
@@ -4856,6 +4863,7 @@ img.power-card__orb {
 		padding-top: 1rem;
 		border-left: 0;
 		border-top: 1px solid rgba(245, 214, 119, 0.2);
+		overflow: visible;
 	}
 
 	.hub-modal__replay-items-scroll {
@@ -4869,6 +4877,14 @@ img.power-card__orb {
 
 	.hub-modal__replay-actions {
 		flex-direction: row;
+	}
+
+	.hub-modal__replay-empty {
+		min-height: clamp(14rem, 48vw, 20rem);
+	}
+
+	.hub-modal__replay-phaser {
+		min-height: clamp(220px, 70vw, 320px);
 	}
 }
 
