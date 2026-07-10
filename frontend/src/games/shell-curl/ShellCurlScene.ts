@@ -71,7 +71,6 @@ import {
 } from "../../shared/ui/panels/side-panel";
 import {
 	destroyIngamePlayerTexture,
-	drawIngameShellTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
 import {
@@ -105,6 +104,16 @@ import {
 	WorldRuntime,
 	type GameDescriptor,
 } from "../common";
+import {
+	drawShellCurlBackground,
+	drawShellCurlStone,
+	drawShellCurlBumpers,
+	drawShellCurlPowerPickups,
+	showShellCurlPowerPickupNotice,
+	showShellCurlSplitterNotice,
+	drawShellCurlStoneTrails,
+	animateShellCurlScoringStones,
+} from "./ShellCurlView";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -305,7 +314,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			descriptor: SHELL_CURL_DESCRIPTOR,
 			update: (_time, delta) => this.updateShellCurl(delta),
 			relayout: () => this.relayoutShellCurl(),
-			shutdown: () => this.shutdownShellCurl(),
+			shutdown: () => this.cleanupSceneResources(),
 		});
 		this.launchInput = new SlingshotLaunchRuntime({
 			scene: this,
@@ -438,10 +447,10 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.trailGfx = this.add.graphics().setDepth(DEPTH_STONES - 0.25);
 
 		// Draw background & sheet
-		this.drawBackground();
+		drawShellCurlBackground(this.bgGfx, this.arena, this.scale.width, this.scale.height);
 		drawIceSheet(this.sheetGfx, this.arena);
 		this.buildBumpers();
-		this.drawBumpers();
+		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 
 		// HUD
 		this.scoreHud = new ScoreHud(this, DEPTH_HUD, {
@@ -493,7 +502,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.sceneHost.shutdown();
 	}
 
-	private shutdownShellCurl(): void {
+	private cleanupSceneResources(): void {
 		this.launchInput.destroy();
 		this.sweepCtrl.destroy();
 		this.scoreHud.destroy();
@@ -574,11 +583,11 @@ export class ShellCurlScene extends ResponsiveScene {
 					needBumperRedraw = true;
 				}
 			}
-			if (needBumperRedraw) this.drawBumpers();
+			if (needBumperRedraw) drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 
 			// Redraw all stones
 			this.recordMovingStoneTrails();
-			this.drawStoneTrails();
+			drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
 			this.redrawAllStones();
 
 			// Transition to settling once the active stone stops, leaves bounds, or was split
@@ -626,9 +635,9 @@ export class ShellCurlScene extends ResponsiveScene {
 				if (b.flashTimer > 0)
 					b.flashTimer = Math.max(0, b.flashTimer - delta);
 			}
-			this.drawBumpers();
+			drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 			this.recordMovingStoneTrails();
-			this.drawStoneTrails();
+			drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
 			this.redrawAllStones();
 
 			if (!anyMoving) {
@@ -821,7 +830,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		).length;
 
 		// Highlight scoring stones
-		this.animateScoringStones(scoringTeam);
+		animateShellCurlScoringStones(this, this.allStones, this.stoneGfx, scoringTeam, this.arena, isStoneInHouse);
 
 		const endScores = Array.from(
 			{ length: this.turnManager.state.score.length },
@@ -880,7 +889,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		if (moved <= 0) return;
 		this.showSpawnBlockedNotice(moved);
-		this.drawStoneTrails();
+		drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
 		this.redrawAllStones();
 		this.updateSidePanels();
 	}
@@ -938,14 +947,14 @@ export class ShellCurlScene extends ResponsiveScene {
 		if (!result.children.length && !result.removeSource) return;
 
 		for (const child of result.children) this.addRuntimeStone(child);
-		if (result.split) this.showSplitterNotice(source.x, source.y);
+		if (result.split) showShellCurlSplitterNotice(this, source.x, source.y, this.arena);
 		if (result.mirror)
-			this.showPowerPickupNotice(PowerType.MIRROR, source.x, source.y);
+			showShellCurlPowerPickupNotice(this, PowerType.MIRROR, source.x, source.y, this.arena);
 		if (result.removeSource) {
 			this.removeStone(source);
 			this.activeStone = null;
 		}
-		this.drawStoneTrails();
+		drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
 		this.redrawAllStones();
 	}
 
@@ -956,29 +965,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.stoneTrails.set(stone.id, [{ x: stone.x, y: stone.y }]);
 	}
 
-	private showSplitterNotice(x: number, y: number): void {
-		const text = this.add
-			.text(x, y - 42 * this.arena.scale, "SPLIT!", {
-				fontSize: `${Math.max(18, 30 * this.arena.scale)}px`,
-				color: "#fff7d6",
-				fontFamily: THEME.font,
-				fontStyle: "bold",
-				stroke: "#171008",
-				strokeThickness: 4,
-			})
-			.setOrigin(0.5)
-			.setDepth(DEPTH_HUD + 5)
-			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
 
-		this.tweens.add({
-			targets: text,
-			y: text.y - 42 * this.arena.scale,
-			alpha: 0,
-			duration: 850,
-			ease: "Cubic.easeOut",
-			onComplete: () => text.destroy(),
-		});
-	}
 
 	private removeStone(stone: StoneState): void {
 		const gfx = this.stoneGfx.get(stone.id);
@@ -987,7 +974,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.stoneGfx.delete(stone.id);
 		this.stoneTrails.delete(stone.id);
 		this.allStones = this.allStones.filter((s) => s.id !== stone.id);
-		this.drawStoneTrails();
+		drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
 	}
 
 	private clearAllStoneGfx(): void {
@@ -1027,182 +1014,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	// ── Rendering ─────────────────────────────────────────────────────────────
 
-	private drawBackground(): void {
-		const { width, height } = this.scale;
-		const a = this.arena;
-		this.bgGfx.clear();
 
-		// ── Base fill: dark dojo night ───────────────────────────────────────────
-		this.bgGfx.fillStyle(0x0c0a07, 0.58);
-		this.bgGfx.fillRect(0, 0, width, height);
-
-		// ── Paper lanterns — flanking the scoring house ───────────────────────────
-		// For horizontal layout: hang lanterns near the far (right) end of the sheet.
-		// For vertical layout: hang them in the top strip above the sheet.
-		if (a.orientation === "horizontal") {
-			// Lanterns at top-left and top-right of the scoring house zone
-			const lanternY = a.sheetY - Math.max(8, a.sheetY * 0.35);
-			const fanCX = a.houseFarCX;
-			if (a.sheetY > 20) {
-				this.drawPaperLantern(
-					fanCX - 50 * a.scale,
-					lanternY,
-					0,
-					a.scale,
-				);
-				this.drawPaperLantern(
-					fanCX + 50 * a.scale,
-					lanternY,
-					1,
-					a.scale,
-				);
-			}
-		} else {
-			const lanternY = a.sheetY * 0.48;
-			if (a.sheetY > 28 * a.scale) {
-				this.drawPaperLantern(
-					a.sheetX + a.sheetW * 0.27,
-					lanternY,
-					0,
-					a.scale,
-				);
-				this.drawPaperLantern(
-					a.sheetX + a.sheetW * 0.73,
-					lanternY,
-					1,
-					a.scale,
-				);
-			}
-		}
-
-		// ── Wooden border frame around the ice sheet ──────────────────────────────
-		const bw = Math.max(3, 5 * a.scale);
-		this.bgGfx.fillStyle(0x1c1208, 1);
-		// Top bar
-		this.bgGfx.fillRect(
-			a.sheetX - bw,
-			a.sheetY - bw,
-			a.sheetW + bw * 2,
-			bw,
-		);
-		// Bottom bar
-		this.bgGfx.fillRect(
-			a.sheetX - bw,
-			a.sheetY + a.sheetH,
-			a.sheetW + bw * 2,
-			bw,
-		);
-		// Left bar
-		this.bgGfx.fillRect(a.sheetX - bw, a.sheetY, bw, a.sheetH);
-		// Right bar
-		this.bgGfx.fillRect(a.sheetX + a.sheetW, a.sheetY, bw, a.sheetH);
-
-		// ── Top/bottom vignette ───────────────────────────────────────────────────
-		const vigH = Math.max(16, 24 * a.scale);
-		for (let i = 0; i < 5; i++) {
-			const band = vigH * (1 - i / 5);
-			this.bgGfx.fillStyle(0x000000, 0.07 * (5 - i));
-			this.bgGfx.fillRect(0, 0, width, band);
-			this.bgGfx.fillRect(0, height - band, width, band);
-		}
-	}
-
-	/** Draw a single bamboo stalk rising from the bottom of the canvas. */
-	private drawBambooStalk(x: number, height: number, scale: number): void {
-		const stalkW = Math.max(5, 8 * scale);
-		const segH = Math.max(55, 80 * scale);
-		const numSegs = Math.ceil(height / segH) + 2;
-
-		// Stalk segments — alternating shades
-		for (let i = 0; i < numSegs; i++) {
-			const topY = height - (i + 1) * segH;
-			const shade = i % 2 === 0 ? 0x2e5a1c : 0x254d16;
-			this.bgGfx.fillStyle(shade, 0.88);
-			this.bgGfx.fillRect(x - stalkW / 2, topY, stalkW, segH);
-		}
-
-		// Joint rings
-		this.bgGfx.lineStyle(Math.max(1, 1.5 * scale), 0x1b3910, 0.95);
-		for (let i = 0; i <= numSegs; i++) {
-			const jy = height - i * segH;
-			this.bgGfx.lineBetween(
-				x - stalkW * 0.75,
-				jy,
-				x + stalkW * 0.75,
-				jy,
-			);
-		}
-
-		// Leaves — one cluster per joint, alternating sides
-		for (let i = 1; i < numSegs; i++) {
-			const jy = height - i * segH;
-			const ll = Math.max(16, 26 * scale); // leaf length
-			const lth = Math.max(4, 6.5 * scale); // leaf thickness
-			const side = i % 2 === 0 ? 1 : -1;
-
-			// Primary leaf
-			this.bgGfx.fillStyle(0x3d7a22, 0.68);
-			this.bgGfx.fillEllipse(
-				x + side * (stalkW / 2 + ll * 0.5),
-				jy - lth * 0.6,
-				ll,
-				lth,
-			);
-			// Smaller upper leaf
-			this.bgGfx.fillStyle(0x4a8f28, 0.5);
-			this.bgGfx.fillEllipse(
-				x + side * (stalkW / 2 + ll * 0.36),
-				jy - lth * 2.0,
-				ll * 0.62,
-				lth * 0.65,
-			);
-		}
-	}
-
-	/** Draw a Japanese paper lantern hanging from y=0. */
-	private drawPaperLantern(
-		x: number,
-		y: number,
-		variant: number,
-		scale: number,
-	): void {
-		const lw = Math.max(15, 22 * scale);
-		const lh = Math.max(21, 30 * scale);
-
-		// Hanging cord
-		this.bgGfx.lineStyle(Math.max(1, 1 * scale), 0x5a4530, 0.55);
-		this.bgGfx.lineBetween(x, 0, x, y - lh * 0.52);
-
-		// Soft ambient glow
-		const glowColor = variant === 0 ? 0xff5500 : 0xffaa00;
-		this.bgGfx.fillStyle(glowColor, 0.07);
-		this.bgGfx.fillCircle(x, y, lh * 1.3);
-
-		// Lantern body
-		const bodyColor = variant === 0 ? 0xb01818 : 0xcc8800;
-		this.bgGfx.fillStyle(bodyColor, 0.82);
-		this.bgGfx.fillEllipse(x, y, lw, lh);
-
-		// Horizontal ribs
-		this.bgGfx.lineStyle(Math.max(1, 1 * scale), 0x000000, 0.16);
-		for (let i = -2; i <= 2; i++) {
-			const ry = y + i * lh * 0.14;
-			const hw =
-				Math.sqrt(Math.max(0, 1 - Math.pow(i / 2.8, 2))) * lw * 0.5;
-			this.bgGfx.lineBetween(x - hw, ry, x + hw, ry);
-		}
-
-		// Inner light
-		this.bgGfx.fillStyle(0xffdd88, 0.24);
-		this.bgGfx.fillEllipse(x, y, lw * 0.52, lh * 0.52);
-
-		// Caps (top and bottom)
-		const capH = Math.max(3, 4.5 * scale);
-		const capW = lw * 0.54;
-		this.bgGfx.fillStyle(0x1c1208, 0.92);
-		this.bgGfx.fillRect(x - capW / 2, y - lh * 0.5 - capH, capW, capH);
-		this.bgGfx.fillRect(x - capW / 2, y + lh * 0.5, capW, capH);
-	}
 
 	private redrawAllStones(): void {
 		for (const s of this.allStones) {
@@ -1233,34 +1045,13 @@ export class ShellCurlScene extends ResponsiveScene {
 		});
 	}
 
-	private drawStoneTrails(): void {
-		this.stoneTrails.draw(this.trailGfx, this.stonePlayersById(), {
-			scale: this.arena.scale,
-		});
-	}
+
 
 	private stonePlayersById(): Map<number | string, number> {
 		return new Map(this.allStones.map((stone) => [stone.id, stone.teamId]));
 	}
 
-	private animateScoringStones(teamId: number): void {
-		for (const s of this.allStones) {
-			if (s.teamId !== teamId || !isStoneInHouse(s, this.arena)) continue;
-			const gfx = this.stoneGfx.get(s.id);
-			if (!gfx) continue;
-			this.tweens.add({
-				targets: gfx,
-				alpha: 0.3,
-				duration: 200,
-				ease: "Sine.easeInOut",
-				yoyo: true,
-				repeat: 4,
-				onComplete: () => {
-					gfx.setAlpha(1);
-				},
-			});
-		}
-	}
+
 
 	// ── Overlays ──────────────────────────────────────────────────────────────
 
@@ -1284,7 +1075,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			this.clearAllStoneGfx();
 			this.powerPickups?.clear();
 			this.buildBumpers(true); // fresh random layout for new end
-			this.drawBumpers();
+			drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 			this.powerPickups?.draw();
 			this.beginTurn();
 		});
@@ -1618,9 +1409,9 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		if (!this.onlineReplaying) return;
 
-		this.drawBumpers();
+		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 		this.recordMovingStoneTrails();
-		this.drawStoneTrails();
+		drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
 		this.redrawAllStones();
 	}
 
@@ -1656,9 +1447,9 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	private createOnlineStatusText(): void {
 		this.onlineStatusText = this.add
-			.text(this.scale.width / 2, 18, "", {
+			.text(this.scale.width / 2, 48, "", {
 				fontSize: "13px",
-				color: "#d4a843",
+				color: THEME.textGold,
 				fontFamily: THEME.font,
 				fontStyle: "bold",
 			})
@@ -1691,7 +1482,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.lastOnlineSeq = snapshot.seq;
 		this.onlineMatch.snapshot = snapshot;
 		this.buildBumpers();
-		this.drawBumpers();
+		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 
 		(this.turnManager as unknown as { _state: unknown })._state = {
 			currentTeam: snapshot.currentTurn,
@@ -1835,7 +1626,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			if (trail?.length) this.stoneTrails.set(stone.id, trail);
 			this.drawPlayerStone(gfx, stone, false);
 		}
-		this.drawStoneTrails();
+		drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
 	}
 
 	private serializeOnlineObjects(): CurlingSnapshot["objects"] {
@@ -1913,67 +1704,10 @@ export class ShellCurlScene extends ResponsiveScene {
 		stone: StoneState,
 		isActive: boolean,
 	): void {
-		if (
-			!drawIngameShellTexture(
-				this,
-				`shell-curl-player-${stone.id}`,
-				stone,
-				DEPTH_STONES,
-				this.playerShellSkins[stone.teamId],
-			)
-		) {
-			this.drawShellFallback(gfx, stone, isActive);
-			return;
-		}
-
-		gfx.clear();
-		if (isActive) {
-			gfx.lineStyle(3, 0xd4a843, 0.6);
-			gfx.strokeCircle(stone.x, stone.y, stone.r * 1.45);
-		}
-		if (stone.frozen) {
-			gfx.fillStyle(0x88ccff, 0.3);
-			gfx.fillCircle(stone.x, stone.y, stone.r * 1.15);
-		}
-		if (stone.power !== PowerType.NONE) {
-			gfx.lineStyle(2, THEME.gold, 0.85);
-			gfx.strokeCircle(
-				stone.x + stone.r * 0.62,
-				stone.y - stone.r * 0.62,
-				Math.max(4, stone.r * 0.18),
-			);
-		}
+		drawShellCurlStone(gfx, stone, isActive, this.playerShellSkins, this);
 	}
 
-	private drawShellFallback(
-		gfx: Phaser.GameObjects.Graphics,
-		stone: StoneState,
-		isActive: boolean,
-	): void {
-		const { x, y, r } = stone;
-		gfx.clear();
-		if (isActive) {
-			gfx.lineStyle(3, 0xd4a843, 0.6);
-			gfx.strokeCircle(x, y, r * 1.45);
-		}
 
-		gfx.fillStyle(0x000000, 0.22);
-		gfx.fillEllipse(x + r * 0.22, y + r * 0.34, r * 2.25, r * 0.72);
-		gfx.fillStyle(0x6f8f3d, 1);
-		gfx.fillEllipse(x, y, r * 2.05, r * 1.72);
-		gfx.lineStyle(Math.max(2, r * 0.1), 0x26320f, 0.85);
-		gfx.strokeEllipse(x, y, r * 2.05, r * 1.72);
-		gfx.lineStyle(Math.max(1, r * 0.055), 0xd4a843, 0.78);
-		gfx.beginPath();
-		gfx.arc(x, y, r * 0.68, Math.PI * 0.12, Math.PI * 0.88);
-		gfx.strokePath();
-		gfx.lineBetween(x, y - r * 0.82, x, y + r * 0.8);
-
-		if (stone.frozen) {
-			gfx.fillStyle(0x88ccff, 0.3);
-			gfx.fillCircle(x, y, r * 1.15);
-		}
-	}
 
 	private makeEmptyStone(): StoneState {
 		return {
@@ -2028,43 +1762,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	/** Draw all bumpers onto bumperGfx. */
-	private drawBumpers(): void {
-		this.bumperGfx.clear();
-		for (const b of this.bumpers) {
-			const descriptor = this.bumperObstacleDescriptor(b);
-			const position = resolveObstaclePosition(descriptor);
-			const radius = resolveObstacleRadius(descriptor) ?? b.r;
-			const flashing = b.flashTimer > 0;
 
-			// Glow halo when flashing
-			if (flashing) {
-				const glowAlpha = (b.flashTimer / BUMPER_FLASH_MS) * 0.55;
-				this.bumperGfx.fillStyle(0xffd700, glowAlpha);
-				this.bumperGfx.fillCircle(
-					position.x,
-					position.y,
-					radius * 1.75,
-				);
-			}
-
-			// Dark wood body
-			this.bumperGfx.fillStyle(0x2a1a08, 1);
-			this.bumperGfx.fillCircle(position.x, position.y, radius);
-
-			// Gold ring
-			const ringAlpha = flashing ? 1.0 : 0.85;
-			this.bumperGfx.lineStyle(
-				Math.max(1.5, 2.5 * this.arena.scale),
-				0xd4a843,
-				ringAlpha,
-			);
-			this.bumperGfx.strokeCircle(position.x, position.y, radius);
-
-			// Centre dot
-			this.bumperGfx.fillStyle(0xd4a843, flashing ? 1.0 : 0.6);
-			this.bumperGfx.fillCircle(position.x, position.y, radius * 0.22);
-		}
-	}
 
 	/**
 	 * Elastic reflection off each bumper.
@@ -2137,43 +1835,11 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		this.curlingPower.applyPower(pickup.type, stone, this.arena);
 		this.powerPickups.draw();
-		this.showPowerPickupNotice(pickup.type, pickup.x, pickup.y);
+		showShellCurlPowerPickupNotice(this, pickup.type, pickup.x, pickup.y, this.arena);
 		this.updateSidePanels();
 	}
 
-	private showPowerPickupNotice(type: PowerType, x: number, y: number): void {
-		const def = ALL_POWERS[type];
-		const label = this.add
-			.text(x, y - 34 * this.arena.scale, `POWER UP\n${def.label}`, {
-				fontSize: `${Math.max(18, 28 * this.arena.scale)}px`,
-				color: "#fff7d6",
-				fontFamily: THEME.font,
-				fontStyle: "bold",
-				align: "center",
-				stroke: "#171008",
-				strokeThickness: 4,
-			})
-			.setOrigin(0.5)
-			.setDepth(DEPTH_HUD + 4)
-			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
 
-		this.tweens.add({
-			targets: label,
-			y: label.y - 46 * this.arena.scale,
-			alpha: 0,
-			duration: 950,
-			ease: "Cubic.easeOut",
-			onComplete: () => label.destroy(),
-		});
-	}
-
-	private drawPowerPickups(): void {
-		if (!this.powerupsEnabled) {
-			this.powerPickups?.clear();
-			return;
-		}
-		this.powerPickups?.draw();
-	}
 
 	private powerPickupBlockers(): PowerPickupBlocker[] {
 		return [
@@ -2235,12 +1901,12 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.launchInput.cancel();
 		this.launchInput.syncScale();
 
-		this.drawBackground();
+		drawShellCurlBackground(this.bgGfx, this.arena, this.scale.width, this.scale.height);
 		drawIceSheet(this.sheetGfx, this.arena);
 		this.buildBumpers();
-		this.drawBumpers();
+		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 		this.recreatePowerPickups();
-		this.drawPowerPickups();
+		drawShellCurlPowerPickups(this.powerupsEnabled, this.powerPickups);
 		this.redrawAllStones();
 
 		this.scoreHud.update(this.buildScoreHudState());

@@ -68,10 +68,6 @@ import {
 	stepArenaBall,
 } from "../../shared/mechanics/arena-power-runtime";
 import {
-	clearArenaPowerBallTextures,
-	drawArenaPowerBalls,
-} from "../../shared/mechanics/arena-power-runtime.render";
-import {
 	destroyIngamePlayerTexture,
 	drawIngamePlayerTexture,
 	hideIngamePlayerTexture,
@@ -122,6 +118,14 @@ import {
 	remapLaunchableToArena,
 	type GameDescriptor,
 } from "../common";
+import {
+	drawBambooBashBackground,
+	clearBambooBashPowerBalls,
+	drawBambooBashPowerBalls,
+	drawBambooBashBallTrail,
+	popBambooBashScore,
+	showBambooBashPowerPickupNotice,
+} from "./BambooBashView";
 
 // Online ball state with powerup visual properties
 interface OnlineBallState extends BallState {
@@ -353,7 +357,7 @@ export class BambooBashScene extends ResponsiveScene {
 		this.onlineScores = [];
 		this.onlineBalls.clear();
 		this.onlineBallStopped.clear();
-		this.clearPowerBalls();
+		this.powerBallTexCount = clearBambooBashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
 		this.ballTrails.clear();
 		this.pendingOnlineBambooHits.clear();
 		this.onlineBambooSyncAccMs = 0;
@@ -505,7 +509,7 @@ export class BambooBashScene extends ResponsiveScene {
 		}
 		this.spawnPowerPickup();
 
-		this.drawBackground();
+		drawBambooBashBackground(this.bgGfx, this.arenaSkin, this.arena, this.scale.width, this.scale.height);
 		this.drawBamboos();
 		this.recreatePowerPickups();
 		this.spawnPowerPickup();
@@ -880,7 +884,7 @@ export class BambooBashScene extends ResponsiveScene {
 			this.updateHudText();
 
 			const p = bambooPos(b, this.arena);
-			this.popScore(p.x, p.y, points);
+			popBambooBashScore(this, p.x, p.y, points);
 			this.addScoreEvent(
 				this.localParticipants.length > 0
 					? `P${playerIndex + 1} stage ${b.stage} bamboo`
@@ -1055,7 +1059,7 @@ export class BambooBashScene extends ResponsiveScene {
 	private startOnlineRound(snapshot: BambooBashSnapshot): void {
 		this.overlay?.destroy(true);
 		this.overlay = undefined;
-		this.clearPowerBalls();
+		this.powerBallTexCount = clearBambooBashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
 		this.bamboos = [];
 		this.spawnAccMs = 0;
 		this.spawnFreezeMs = 0;
@@ -1205,31 +1209,7 @@ export class BambooBashScene extends ResponsiveScene {
 			});
 	}
 
-	// ── Floating "+points" popup ────────────────────────────────────────────────
 
-	private popScore(x: number, y: number, points: number): void {
-		const t = this.add
-			.text(x, y, `+${points}`, {
-				fontSize: "27px",
-				color: THEME.textGold,
-				fontFamily: THEME.fontBlowbrush,
-				fontStyle: "bold",
-				stroke: "#10150f",
-				strokeThickness: 4,
-			})
-			.setOrigin(0.5)
-			.setDepth(4)
-			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
-
-		this.tweens.add({
-			targets: t,
-			y: y - 46,
-			alpha: 0,
-			duration: 700,
-			ease: "Cubic.easeOut",
-			onComplete: () => t.destroy(),
-		});
-	}
 
 	// ── End screen ──────────────────────────────────────────────────────────────
 
@@ -1552,7 +1532,7 @@ export class BambooBashScene extends ResponsiveScene {
 				}
 				// Draw trail for spinning/other powers
 				if (onlineBall.trail?.length) {
-					this.drawBallTrail(onlineBall.trail, colour);
+					drawBambooBashBallTrail(this.ballGfx, onlineBall.trail, colour);
 				}
 				this.ballGfx.lineStyle(
 					Math.max(2, ball.r * 0.14),
@@ -1561,7 +1541,7 @@ export class BambooBashScene extends ResponsiveScene {
 				);
 				this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.08);
 			}
-			this.drawPowerBalls();
+			this.powerBallTexCount = drawBambooBashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 			return;
 		}
 
@@ -1577,7 +1557,7 @@ export class BambooBashScene extends ResponsiveScene {
 				)
 			)
 				drawShellBall(this.ballGfx, this.ball, false);
-			this.drawPowerBalls();
+			this.powerBallTexCount = drawBambooBashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 			return;
 		}
 
@@ -1610,33 +1590,7 @@ export class BambooBashScene extends ResponsiveScene {
 				participant.ball.r * 1.08,
 			);
 		});
-		this.drawPowerBalls();
-	}
-
-	private clearPowerBalls(): void {
-		clearArenaPowerBallTextures(
-			this,
-			"bamboo-bash-pb",
-			this.powerBallTexCount,
-		);
-		this.powerBallTexCount = 0;
-		this.powerBalls.clear();
-	}
-
-	private drawPowerBalls(): void {
-		this.powerBallTexCount = drawArenaPowerBalls(
-			this,
-			this.ballGfx,
-			this.powerBalls.all(),
-			this.powerBallTexCount,
-			{
-				prefix: "bamboo-bash-pb",
-				depth: DEPTH_HUD - 17,
-				playerShellSkins: this.playerShellSkins,
-				colourForPlayer: (player) =>
-					LOCAL_PLAYER_COLOURS[player % LOCAL_PLAYER_COLOURS.length],
-			},
-		);
+		this.powerBallTexCount = drawBambooBashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 	}
 
 	private resetBall(): void {
@@ -1837,19 +1791,7 @@ export class BambooBashScene extends ResponsiveScene {
 		});
 	}
 
-	private drawBallTrail(
-		trail: Array<{ x: number; y: number }>,
-		colour: number,
-	): void {
-		const count = trail.length;
-		for (let i = 1; i < count; i++) {
-			const p0 = trail[i - 1];
-			const p1 = trail[i];
-			const alpha = (i / count) * 0.5;
-			this.ballGfx.lineStyle(4, colour, alpha);
-			this.ballGfx.lineBetween(p0.x, p0.y, p1.x, p1.y);
-		}
-	}
+
 
 	private isLocalVersus(): boolean {
 		return !this.onlineMatch && this.localParticipants.length > 1;
@@ -2165,23 +2107,6 @@ export class BambooBashScene extends ResponsiveScene {
 		});
 	}
 
-	private drawBackground(): void {
-		const { width, height } = this.scale;
-		this.bgGfx.clear();
-
-		this.bgGfx.fillStyle(0x0a1208, 0.58);
-		this.bgGfx.fillRect(0, 0, width, height);
-
-		const step = Math.round(Math.min(width, height) * 0.065);
-		this.bgGfx.lineStyle(1, 0x152410, 0.55);
-		for (let x = 0; x < width; x += step)
-			this.bgGfx.lineBetween(x, 0, x, height);
-		for (let y = 0; y < height; y += step)
-			this.bgGfx.lineBetween(0, y, width, y);
-
-		layoutOvalArenaSkin(this.arenaSkin, this.arena);
-	}
-
 	// ── Resize ──────────────────────────────────────────────────────────────────
 
 	protected relayout(): void {
@@ -2250,7 +2175,7 @@ export class BambooBashScene extends ResponsiveScene {
 			});
 		}
 
-		this.drawBackground();
+		drawBambooBashBackground(this.bgGfx, this.arenaSkin, this.arena, this.scale.width, this.scale.height);
 		this.drawBamboos();
 		this.drawBalls();
 
@@ -2372,7 +2297,7 @@ export class BambooBashScene extends ResponsiveScene {
 		if (this.onlineMatch)
 			this.reportOnlinePowerPickup(pickup.id, pickup.type, ball);
 		this.powerPickups.draw();
-		this.showPowerPickupNotice(pickup.type, pickup.x, pickup.y);
+		showBambooBashPowerPickupNotice(this, pickup.type, pickup.x, pickup.y, this.arena);
 	}
 
 	private toPowerType(type: string): PowerType {
@@ -2455,36 +2380,6 @@ export class BambooBashScene extends ResponsiveScene {
 				y: pos.y,
 				r: (BAMBOO_DISPLAY_SRC_SIZE * this.arena.scale) / 2,
 			};
-		});
-	}
-
-	private showPowerPickupNotice(type: PowerType, x: number, y: number): void {
-		const label = this.add
-			.text(
-				x,
-				y - 34 * this.arena.scale,
-				`POWER UP\n${type.toUpperCase()}`,
-				{
-					fontSize: `${Math.max(18, 28 * this.arena.scale)}px`,
-					color: "#fff7d6",
-					fontFamily: THEME.font,
-					fontStyle: "bold",
-					align: "center",
-					stroke: "#171008",
-					strokeThickness: 4,
-				},
-			)
-			.setOrigin(0.5)
-			.setDepth(DEPTH_HUD + 4)
-			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
-
-		this.tweens.add({
-			targets: label,
-			y: label.y - 46 * this.arena.scale,
-			alpha: 0,
-			duration: 950,
-			ease: "Cubic.easeOut",
-			onComplete: () => label.destroy(),
 		});
 	}
 

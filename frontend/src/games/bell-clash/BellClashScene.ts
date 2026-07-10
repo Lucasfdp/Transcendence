@@ -113,6 +113,24 @@ import {
 	remapLaunchableToArena,
 	type GameDescriptor,
 } from "../common";
+import {
+	drawBellClashBackground,
+	drawBellClashZones,
+	drawBellClashBell,
+	drawBellClashBallTrail,
+	drawBellClashPowerBalls,
+	clearBellClashPowerBalls,
+	popBellClashScore,
+	bellClashRadius,
+	ZONE_DEFS,
+	DEPTH_BG,
+	DEPTH_ZONES,
+	DEPTH_BELL,
+	DEPTH_BALL,
+	DEPTH_FX,
+	type ScoreZone,
+	type ZoneKind,
+} from "./BellClashView";
 
 // Online ball state with powerup visual properties
 interface OnlineBallState extends BallState {
@@ -127,14 +145,6 @@ type BellObstacleDescriptor = ObstacleDescriptor<
 	"bell",
 	{ readonly pulseMs: number }
 >;
-
-type ZoneKind = "red" | "yellow" | "green";
-
-interface ScoreZone {
-	kind: ZoneKind;
-	start: number;
-	end: number;
-}
 
 function isBellClashSnapshot(
 	snapshot: GameSnapshot | null | undefined,
@@ -163,23 +173,9 @@ const PICKUP_RADIUS_SRC = 20;
 const PICKUP_SPAWN_ATTEMPTS = 80;
 const PICKUP_CLEARANCE_SRC = 14;
 
-const DEPTH_BG = 0;
-const DEPTH_ZONES = 1;
-const DEPTH_BELL = 2;
 const DEPTH_AIM = 3;
-const DEPTH_BALL = 4;
-const DEPTH_FX = 5;
 const DEPTH_HUD = 20;
 const DEPTH_OVERLAY = 30;
-
-const ZONE_DEFS: Record<
-	ZoneKind,
-	{ color: number; label: string; multiplier: number }
-> = {
-	red: { color: THEME.red, label: "RED", multiplier: 0.5 },
-	yellow: { color: THEME.gold, label: "YELLOW", multiplier: 1.5 },
-	green: { color: 0x4aa564, label: "GREEN", multiplier: 2 },
-};
 
 const TWO_PI = Math.PI * 2;
 const PLAYER_COLOURS = PLAYER_COLOUR_VALUES;
@@ -381,7 +377,7 @@ export class BellClashScene extends ResponsiveScene {
 			: null;
 		this.lastOnlineSeq = -1;
 		this.onlineBalls.clear();
-		this.clearPowerBalls();
+		this.powerBallTexCount = clearBellClashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
 		this.ballTrails.clear();
 		this.onlineRoundNumber = 1;
 		this.onlineTotalRounds = 3;
@@ -505,9 +501,9 @@ export class BellClashScene extends ResponsiveScene {
 		this.launchInput.recreate();
 		this.launchInput.attach();
 
-		this.drawBackground();
-		this.drawZones();
-		this.drawBell();
+		drawBellClashBackground(this.bgGfx, this.arenaSkin, this.arena, this.scale.width, this.scale.height);
+		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
+		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
 		this.spawnPowerPickup();
 		if (this.onlineMatch && initialOnlineSnapshot)
 			this.resetOnlineBalls(initialOnlineSnapshot);
@@ -597,7 +593,7 @@ export class BellClashScene extends ResponsiveScene {
 			);
 
 		this.recordBallTrails();
-		this.drawBell();
+		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
 		this.drawBallTrails();
 		this.drawBalls();
 		this.localReplay.captureTick(delta);
@@ -699,7 +695,7 @@ export class BellClashScene extends ResponsiveScene {
 
 	private setupShot(): void {
 		this.launchedThisShot = false;
-		this.clearPowerBalls();
+		this.powerBallTexCount = clearBellClashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
 		this.replayPowerBySide[this.currentPlayerIndex()] = PowerType.NONE;
 		this.hitCooldownMs = 0;
 		this.bellPulseMs = 0;
@@ -733,8 +729,8 @@ export class BellClashScene extends ResponsiveScene {
 		if (nextShot !== this.currentShot) this.currentShot = nextShot;
 
 		this.setupShot();
-		this.drawZones();
-		this.drawBell();
+		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
+		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
 		this.drawBalls();
 		this.showPowerPanel();
 		this.localReplay.captureFrame(true);
@@ -811,7 +807,7 @@ export class BellClashScene extends ResponsiveScene {
 
 		const bellPosition = resolveObstaclePosition(bell, this.arena);
 		const bellRadius =
-			resolveObstacleRadius(bell, this.arena) ?? this.bellRadius();
+			resolveObstacleRadius(bell, this.arena) ?? bellClashRadius(this.arena);
 		const dx = ball.x - bellPosition.x;
 		const dy = ball.y - bellPosition.y;
 		const dist = Math.max(0.001, Math.hypot(dx, dy));
@@ -865,7 +861,7 @@ export class BellClashScene extends ResponsiveScene {
 		}
 		this.scoreText?.setText(this.formatScoreText());
 		this.lastHitText?.setText(`LAST HIT  ${label} x${multiplier}`);
-		this.popScore(this.ball.x, this.ball.y, `+${gained}  ${label}`, color);
+		popBellClashScore(this, this.ball.x, this.ball.y, `+${gained}  ${label}`, color);
 		this.addScoreEvent(
 			`${this.localPlayerCount > 1 ? `P${playerIndex + 1} ` : ""}${label}  +${gained}`,
 			`x${multiplier}`,
@@ -1056,7 +1052,7 @@ export class BellClashScene extends ResponsiveScene {
 			snapshot.liveRoundScores[this.onlineMatch.side] ?? this.score;
 		this.scoreText?.setText(this.formatScoreText());
 		this.shotText?.setText(this.formatShotText());
-		this.drawZones();
+		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
 		this.updateSidePanels();
 		this.syncOnlineBalls(
 			snapshot,
@@ -1092,7 +1088,7 @@ export class BellClashScene extends ResponsiveScene {
 			kind: "round-transition",
 			rebuild: () => this.startOnlineRound(snapshot),
 		};
-		this.clearPowerBalls();
+		this.powerBallTexCount = clearBellClashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
 		this.onlineAppliedRound = snapshot.roundNumber;
 		this.onlineRoundSubmitted = false;
 		this.onlineBallWasMoving = false;
@@ -1105,8 +1101,8 @@ export class BellClashScene extends ResponsiveScene {
 		this.resetOnlineBalls(snapshot);
 		this.recreateSlingshot();
 		this.syncOnlineSlingshot();
-		this.drawZones();
-		this.drawBell();
+		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
+		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
 		this.drawBalls();
 		this.scoreText?.setText(this.formatScoreText());
 		this.shotText?.setText(this.formatShotText());
@@ -1130,7 +1126,7 @@ export class BellClashScene extends ResponsiveScene {
 			event.roundNumber !== this.onlineRoundNumber
 		)
 			return;
-		this.clearPowerBalls();
+		this.powerBallTexCount = clearBellClashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
 		const ball = this.onlineBalls.get(event.side);
 		if (!ball) return;
 		ball.r = BALL_SRC_R * this.arena.scale;
@@ -1187,7 +1183,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.onlineBallWasMoving = localMoving;
 
 		this.recordBallTrails();
-		this.drawBell();
+		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
 		this.drawBallTrails();
 		this.drawBalls();
 	}
@@ -1303,7 +1299,7 @@ export class BellClashScene extends ResponsiveScene {
 		total: number,
 	): void {
 		const radius =
-			this.bellRadius() +
+			bellClashRadius(this.arena) +
 			BALL_SRC_R * this.arena.scale +
 			SPAWN_GAP_SRC * this.arena.scale;
 		const angle = -Math.PI / 2 + (index / Math.max(1, total)) * TWO_PI;
@@ -1531,7 +1527,7 @@ export class BellClashScene extends ResponsiveScene {
 
 	private resetBall(): void {
 		const radius =
-			this.bellRadius() +
+			bellClashRadius(this.arena) +
 			BALL_SRC_R * this.arena.scale +
 			SPAWN_GAP_SRC * this.arena.scale;
 		this.ball.x = this.arena.cx + Math.cos(this.spawnAngle) * radius;
@@ -1652,10 +1648,6 @@ export class BellClashScene extends ResponsiveScene {
 			this.ballGfx.lineStyle(4, colour, alpha);
 			this.ballGfx.lineBetween(p0.x, p0.y, p1.x, p1.y);
 		}
-	}
-
-	private bellRadius(): number {
-		return BELL_RADIUS_SRC * this.arena.scale;
 	}
 
 	private bellObstacleDescriptor(): BellObstacleDescriptor {
@@ -1903,164 +1895,6 @@ export class BellClashScene extends ResponsiveScene {
 
 	// ── Rendering ────────────────────────────────────────────────────────────────
 
-	private drawBackground(): void {
-		const { width, height } = this.scale;
-		this.bgGfx.clear();
-		this.bgGfx.fillStyle(0x120c08, 0.58);
-		this.bgGfx.fillRect(0, 0, width, height);
-
-		const ringStep = Math.max(38, Math.round(90 * this.arena.scale));
-		this.bgGfx.lineStyle(1, 0x3b2c18, 0.42);
-		for (let x = 0; x < width; x += ringStep)
-			this.bgGfx.lineBetween(x, 0, x, height);
-		for (let y = 0; y < height; y += ringStep)
-			this.bgGfx.lineBetween(0, y, width, y);
-
-		layoutOvalArenaSkin(this.arenaSkin, this.arena);
-	}
-
-	private drawZones(): void {
-		this.zoneGfx.clear();
-		for (const zone of this.zones) this.drawZone(zone);
-	}
-
-	private drawZone(zone: ScoreZone): void {
-		const points = this.zonePolygonPoints(zone.start, zone.end);
-		const def = ZONE_DEFS[zone.kind];
-		if (points.length < 3) return;
-
-		this.zoneGfx.fillStyle(def.color, 0.28);
-		this.zoneGfx.beginPath();
-		this.zoneGfx.moveTo(points[0].x, points[0].y);
-		for (const point of points.slice(1))
-			this.zoneGfx.lineTo(point.x, point.y);
-		this.zoneGfx.closePath();
-		this.zoneGfx.fillPath();
-
-		this.zoneGfx.lineStyle(
-			Math.max(1, 2 * this.arena.scale),
-			def.color,
-			0.55,
-		);
-		this.zoneGfx.beginPath();
-		this.zoneGfx.moveTo(points[0].x, points[0].y);
-		for (const point of points.slice(1))
-			this.zoneGfx.lineTo(point.x, point.y);
-		this.zoneGfx.closePath();
-		this.zoneGfx.strokePath();
-	}
-
-	private zonePolygonPoints(
-		start: number,
-		end: number,
-	): Array<{ x: number; y: number }> {
-		const points: Array<{ x: number; y: number }> = [];
-		const inner = this.bellRadius() * 0.74;
-		const segments = 18;
-
-		for (let i = 0; i <= segments; i++) {
-			const angle = start + (end - start) * (i / segments);
-			points.push(this.pointOnEllipse(angle, -this.ball.r * 0.3));
-		}
-		for (let i = segments; i >= 0; i--) {
-			const angle = start + (end - start) * (i / segments);
-			points.push({
-				x: this.arena.cx + Math.cos(angle) * inner,
-				y: this.arena.cy + Math.sin(angle) * inner,
-			});
-		}
-		return points;
-	}
-
-	private pointOnEllipse(
-		angle: number,
-		inset: number,
-	): { x: number; y: number } {
-		const rx = Math.max(1, this.arena.rx + inset);
-		const ry = Math.max(1, this.arena.ry + inset);
-		const cos = Math.cos(angle);
-		const sin = Math.sin(angle);
-		const scale =
-			1 / Math.sqrt((cos * cos) / (rx * rx) + (sin * sin) / (ry * ry));
-		return {
-			x: this.arena.cx + cos * scale,
-			y: this.arena.cy + sin * scale,
-		};
-	}
-
-	private drawBell(): void {
-		const r = this.bellRadius();
-		const pulse =
-			this.bellPulseMs > 0 ? 1 + (this.bellPulseMs / 180) * 0.08 : 1;
-		const x = this.arena.cx;
-		const y = this.arena.cy;
-		const bodyR = r * pulse;
-		const lineW = Math.max(3, bodyR * 0.055);
-
-		this.bellGfx.clear();
-		this.bellGfx.fillStyle(0x000000, 0.28);
-		this.bellGfx.fillEllipse(x + r * 0.18, y + r * 0.48, r * 2.28, r * 0.7);
-
-		this.bellGfx.fillStyle(0x5a3410, 1);
-		this.bellGfx.fillCircle(x, y, bodyR * 1.03);
-		this.bellGfx.lineStyle(Math.max(4, bodyR * 0.045), 0xf2d47a, 0.4);
-		this.bellGfx.strokeCircle(x, y, bodyR * 1.02);
-
-		this.bellGfx.fillStyle(0x8a5516, 1);
-		this.traceBellBody(x, y, bodyR, 0.96, 0.76, 0.9, 0.78);
-		this.bellGfx.fillPath();
-
-		this.bellGfx.fillStyle(0xd4a843, 1);
-		this.traceBellBody(x, y, bodyR, 0.78, 0.61, 0.72, 0.6);
-		this.bellGfx.fillPath();
-
-		this.bellGfx.fillStyle(0xf2d47a, 0.68);
-		this.bellGfx.fillEllipse(
-			x - bodyR * 0.28,
-			y - bodyR * 0.25,
-			bodyR * 0.42,
-			bodyR * 0.34,
-		);
-		this.bellGfx.fillStyle(0xb87922, 0.55);
-		this.bellGfx.fillEllipse(
-			x + bodyR * 0.36,
-			y + bodyR * 0.08,
-			bodyR * 0.34,
-			bodyR * 0.88,
-		);
-
-		this.bellGfx.lineStyle(lineW, 0x6e3f10, 0.96);
-		this.traceBellBody(x, y, bodyR, 0.96, 0.76, 0.9, 0.78);
-		this.bellGfx.strokePath();
-
-		this.bellGfx.lineStyle(Math.max(3, bodyR * 0.045), 0x5a3410, 0.86);
-		this.bellGfx.lineBetween(
-			x - bodyR * 0.78,
-			y + bodyR * 0.44,
-			x + bodyR * 0.78,
-			y + bodyR * 0.44,
-		);
-		this.bellGfx.lineBetween(
-			x - bodyR * 0.63,
-			y + bodyR * 0.14,
-			x + bodyR * 0.63,
-			y + bodyR * 0.14,
-		);
-
-		this.bellGfx.fillStyle(0x5a3410, 1);
-		this.bellGfx.fillRoundedRect(
-			x - bodyR * 0.22,
-			y - bodyR * 0.98,
-			bodyR * 0.44,
-			bodyR * 0.23,
-			bodyR * 0.08,
-		);
-		this.bellGfx.fillStyle(0x3c230c, 1);
-		this.bellGfx.fillCircle(x, y + bodyR * 0.18, bodyR * 0.11);
-		this.bellGfx.lineStyle(Math.max(2, bodyR * 0.03), 0xf2d47a, 0.7);
-		this.bellGfx.strokeCircle(x, y + bodyR * 0.18, bodyR * 0.2);
-	}
-
 	private drawBalls(): void {
 		this.ballGfx.clear();
 		if (!this.onlineMatch && this.localPlayerCount > 1) {
@@ -2090,7 +1924,7 @@ export class BellClashScene extends ResponsiveScene {
 					Math.max(5, ball.r * 0.22),
 				);
 			}
-			this.drawPowerBalls();
+			this.powerBallTexCount = drawBellClashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 			return;
 		}
 		if (!this.onlineMatch || this.onlineBalls.size <= 0) {
@@ -2104,7 +1938,7 @@ export class BellClashScene extends ResponsiveScene {
 				)
 			)
 				drawShellBall(this.ballGfx, this.ball, false);
-			this.drawPowerBalls();
+			this.powerBallTexCount = drawBellClashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 			return;
 		}
 
@@ -2130,7 +1964,7 @@ export class BellClashScene extends ResponsiveScene {
 			}
 			// Draw trail for spinning/other powers
 			if (onlineBall.trail?.length) {
-				this.drawBallTrail(onlineBall.trail, colour);
+				drawBellClashBallTrail(this.ballGfx, onlineBall.trail, colour);
 			}
 			this.ballGfx.lineStyle(Math.max(2, ball.r * 0.14), colour, 0.95);
 			this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.1);
@@ -2141,95 +1975,7 @@ export class BellClashScene extends ResponsiveScene {
 				Math.max(5, ball.r * 0.22),
 			);
 		}
-		this.drawPowerBalls();
-	}
-
-	private clearPowerBalls(): void {
-		clearArenaPowerBallTextures(
-			this,
-			"bell-clash-pb",
-			this.powerBallTexCount,
-		);
-		this.powerBallTexCount = 0;
-		this.powerBalls.clear();
-	}
-
-	private drawPowerBalls(): void {
-		this.powerBallTexCount = drawArenaPowerBalls(
-			this,
-			this.ballGfx,
-			this.powerBalls.all(),
-			this.powerBallTexCount,
-			{
-				prefix: "bell-clash-pb",
-				depth: DEPTH_BALL,
-				playerShellSkins: this.playerShellSkins,
-				colourForPlayer: (player) =>
-					PLAYER_COLOURS[player % PLAYER_COLOURS.length] ??
-					THEME.gold,
-				ringScale: 1.08,
-			},
-		);
-	}
-
-	private traceBellBody(
-		x: number,
-		y: number,
-		r: number,
-		bottomHalfW: number,
-		topHalfW: number,
-		bottomArcH: number,
-		topArcH: number,
-	): void {
-		const topY = y - r * 0.38;
-		const bottomY = y + r * 0.58;
-		const arcSegments = 14;
-
-		this.bellGfx.beginPath();
-		this.bellGfx.moveTo(x - r * topHalfW, topY);
-		this.bellGfx.lineTo(x - r * bottomHalfW, bottomY);
-
-		for (let i = 1; i <= arcSegments; i++) {
-			const t = i / arcSegments;
-			const px = x - r * bottomHalfW + r * bottomHalfW * 2 * t;
-			const py =
-				bottomY + Math.sin(t * Math.PI) * r * (bottomArcH - 0.58);
-			this.bellGfx.lineTo(px, py);
-		}
-
-		this.bellGfx.lineTo(x + r * topHalfW, topY);
-
-		for (let i = 1; i <= arcSegments; i++) {
-			const t = i / arcSegments;
-			const px = x + r * topHalfW - r * topHalfW * 2 * t;
-			const py = topY - Math.sin(t * Math.PI) * r * (topArcH - 0.38);
-			this.bellGfx.lineTo(px, py);
-		}
-
-		this.bellGfx.closePath();
-	}
-
-	private popScore(x: number, y: number, label: string, color: string): void {
-		const text = this.add
-			.text(x, y, label, {
-				fontSize: "27px",
-				color,
-				fontFamily: THEME.fontBlowbrush,
-				fontStyle: "bold",
-				stroke: "#10150f",
-				strokeThickness: 4,
-			})
-			.setOrigin(0.5)
-			.setDepth(DEPTH_FX)
-			.setShadow(0, 3, "rgba(8, 18, 11, 0.85)", 3);
-		this.tweens.add({
-			targets: text,
-			y: y - 52,
-			alpha: 0,
-			duration: 720,
-			ease: "Cubic.easeOut",
-			onComplete: () => text.destroy(),
-		});
+		this.powerBallTexCount = drawBellClashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 	}
 
 	private showEndScreen(): void {
@@ -2371,9 +2117,9 @@ export class BellClashScene extends ResponsiveScene {
 		}
 		for (const entry of this.powerBalls) resizeBall(entry.ball);
 
-		this.drawBackground();
-		this.drawZones();
-		this.drawBell();
+		drawBellClashBackground(this.bgGfx, this.arenaSkin, this.arena, this.scale.width, this.scale.height);
+		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
+		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
 		this.recreatePowerPickups();
 		if (previousPickups.length > 0)
 			this.powerPickups?.setPickups(
@@ -2405,40 +2151,5 @@ export class BellClashScene extends ResponsiveScene {
 		// collapsed drop-down as the viewport crosses the fit threshold on zoom.
 		if (this.powerSidePanel?.isVisible()) this.showPowerPanel();
 		this.onlineStatusText?.setPosition(this.scale.width / 2, 48);
-	}
-
-	// ── Icon helper (for zone icon in side panel rows) ────────────────────────────
-	private drawZoneIcon(
-		g: Phaser.GameObjects.Graphics,
-		x: number,
-		y: number,
-		size: number,
-		color: number,
-	): void {
-		const r = size * 0.46;
-		const startA = -Math.PI * 0.75;
-		const endA = -Math.PI * 0.25;
-		const steps = 10;
-
-		g.fillStyle(color, 0.35);
-		g.beginPath();
-		g.moveTo(x, y);
-		for (let i = 0; i <= steps; i++) {
-			const a = startA + (endA - startA) * (i / steps);
-			g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
-		}
-		g.closePath();
-		g.fillPath();
-
-		g.lineStyle(Math.max(1.5, size * 0.07), color, 0.9);
-		g.beginPath();
-		for (let i = 0; i <= steps; i++) {
-			const a = startA + (endA - startA) * (i / steps);
-			const px = x + Math.cos(a) * r;
-			const py = y + Math.sin(a) * r;
-			if (i === 0) g.moveTo(px, py);
-			else g.lineTo(px, py);
-		}
-		g.strokePath();
 	}
 }
