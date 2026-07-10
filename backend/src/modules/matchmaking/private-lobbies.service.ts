@@ -46,6 +46,13 @@ const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 5;
 const PIN_LENGTH = 6;
 const PIN_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const PIN_GAME_PREFIXES: Record<string, string> = {
+	"kame-knock": "0",
+	"bamboo-bash": "1",
+	"temple-curling": "2",
+	"bell-clash": "3",
+};
+export const PRIVATE_LOBBY_NOT_FOUND_MESSAGE = "No match found for this room code";
 
 @Injectable()
 export class PrivateLobbiesService {
@@ -92,7 +99,7 @@ export class PrivateLobbiesService {
 			host,
 			gameId,
 			playerCount: 2,
-			powerupsEnabled: true,
+			powerupsEnabled: false,
 			shellSelection,
 			participants: [{ socketId: hostSocketId, user: host, shellSelection }],
 			createdAt: Date.now(),
@@ -121,7 +128,7 @@ export class PrivateLobbiesService {
 		}
 
 		const lobbyId = uuidv4();
-		const pin = this.generateUniquePin();
+		const pin = this.generateUniquePin(gameId);
 		const normalizedPlayerCount = this.normalizePlayerCount(playerCount);
 		const expiryTimer = setTimeout(() => {
 			this.lobbies.delete(lobbyId);
@@ -220,6 +227,7 @@ export class PrivateLobbiesService {
 
 	async joinPinLobby(
 		pin: string,
+		gameId: string,
 		joinerSocketId: string,
 		joiner: SocketUser,
 		joinerShellSelection: string[],
@@ -228,8 +236,12 @@ export class PrivateLobbiesService {
 		| { matched: true; matchId: string; room: MatchRoom; pin: string }
 		| null
 	> {
+		this.validatePinGame(pin, gameId);
 		const lobby = this.getLobbyByPin(pin);
 		if (!lobby || lobby.kind !== "pin" || !lobby.pin) return null;
+		if (lobby.gameId !== gameId) {
+			throw new BadRequestException(PRIVATE_LOBBY_NOT_FOUND_MESSAGE);
+		}
 
 		if (this.roomService.hasActiveRoom(joiner.id)) {
 			throw new BadRequestException("You are already in an active match");
@@ -331,13 +343,32 @@ export class PrivateLobbiesService {
 			.toUpperCase();
 	}
 
-	private generateUniquePin(): string {
+	private generateUniquePin(gameId: string): string {
+		const prefix = this.getGamePinPrefix(gameId);
 		let pin = "";
 		do {
-			pin = Array.from({ length: PIN_LENGTH }, () =>
+			pin = prefix + Array.from({ length: PIN_LENGTH - 1 }, () =>
 				PIN_ALPHABET[Math.floor(Math.random() * PIN_ALPHABET.length)],
 			).join("");
 		} while (this.getLobbyByPin(pin));
 		return pin;
+	}
+
+	private validatePinGame(pin: string, gameId: string): void {
+		const expectedPrefix = PIN_GAME_PREFIXES[gameId];
+		if (
+			expectedPrefix === undefined ||
+			!this.normalizePin(pin).startsWith(expectedPrefix)
+		) {
+			throw new BadRequestException(PRIVATE_LOBBY_NOT_FOUND_MESSAGE);
+		}
+	}
+
+	private getGamePinPrefix(gameId: string): string {
+		const prefix = PIN_GAME_PREFIXES[gameId];
+		if (prefix === undefined) {
+			throw new BadRequestException("Unknown game for private room");
+		}
+		return prefix;
 	}
 }

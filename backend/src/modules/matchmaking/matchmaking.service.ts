@@ -47,7 +47,7 @@ export class MatchmakingService {
 			Math.min(MAX_PLAYERS, Math.floor(Number(payload.playerCount ?? 2))),
 		);
 		const shellSelection = payload.shellSelection ?? [];
-		const powerupsEnabled = payload.powerupsEnabled ?? true;
+		const powerupsEnabled = payload.powerupsEnabled ?? false;
 		if (!gameId) throw new BadRequestException("gameId is required");
 		if (!["casual", "ranked"].includes(mode))
 			throw new BadRequestException("Invalid mode");

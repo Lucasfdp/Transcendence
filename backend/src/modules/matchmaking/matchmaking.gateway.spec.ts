@@ -10,7 +10,10 @@ import { MatchmakingGateway } from "./matchmaking.gateway";
 import { MatchmakingService } from "./matchmaking.service";
 import type { MatchRoom, RoomPlayer, SocketUser } from "./matchmaking.types";
 import { PresenceService } from "./presence.service";
-import { PrivateLobbiesService } from "./private-lobbies.service";
+import {
+	PRIVATE_LOBBY_NOT_FOUND_MESSAGE,
+	PrivateLobbiesService,
+} from "./private-lobbies.service";
 import { ReplayService } from "./replay.service";
 import { RoomService } from "./room.service";
 
@@ -84,7 +87,13 @@ describe("MatchmakingGateway", () => {
 		getRoom: jest.Mock;
 	};
 	let matchmaking: { removeSocket: jest.Mock };
-	let privateLobbies: { removeLobbyForUser: jest.Mock; joinLobby: jest.Mock };
+	let privateLobbies: {
+		removeLobbyForUser: jest.Mock;
+		joinLobby: jest.Mock;
+		joinPinLobby: jest.Mock;
+		getLobbyByPin: jest.Mock;
+		getStartedMatchByPin: jest.Mock;
+	};
 	let sessions: { startIfReady: jest.Mock };
 	let replays: { captureFrame: jest.Mock };
 	let chatService: {
@@ -109,6 +118,9 @@ describe("MatchmakingGateway", () => {
 		privateLobbies = {
 			removeLobbyForUser: jest.fn().mockReturnValue(null),
 			joinLobby: jest.fn(),
+			joinPinLobby: jest.fn(),
+			getLobbyByPin: jest.fn().mockReturnValue(null),
+			getStartedMatchByPin: jest.fn().mockReturnValue(null),
 		};
 		sessions = { startIfReady: jest.fn() };
 		replays = { captureFrame: jest.fn() };
@@ -361,6 +373,59 @@ describe("MatchmakingGateway", () => {
 			});
 			expect(rooms.setReady).not.toHaveBeenCalled();
 			expect(sessions.startIfReady).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("onLobbyJoinPin", () => {
+		const makeConnSocket = (id: string, userId: number, username: string): Socket =>
+			({
+				id,
+				data: { user: { id: userId, username, isGuest: false } },
+				emit: jest.fn(),
+			}) as unknown as Socket;
+
+		it("should pass the current game id when joining by PIN", async () => {
+			const socket = makeConnSocket("socket-joiner", 20, "joiner");
+			privateLobbies.joinPinLobby.mockResolvedValue({
+				matched: false,
+				lobby: {
+					lobbyId: "lobby-pin-1",
+					pin: "2ABCDE",
+					gameId: "temple-curling",
+					playerCount: 3,
+					participants: [],
+					createdAt: Date.now(),
+				},
+			});
+
+			await gateway.onLobbyJoinPin(socket, {
+				pin: "2ABCDE",
+				gameId: "temple-curling",
+				shellSelection: [],
+			});
+
+			expect(privateLobbies.joinPinLobby).toHaveBeenCalledWith(
+				"2ABCDE",
+				"temple-curling",
+				"socket-joiner",
+				expect.objectContaining({ id: 20 }),
+				[],
+			);
+		});
+
+		it("should emit a clear not-found error when no PIN lobby matches this game", async () => {
+			const socket = makeConnSocket("socket-joiner", 20, "joiner");
+			privateLobbies.joinPinLobby.mockResolvedValue(null);
+
+			await gateway.onLobbyJoinPin(socket, {
+				pin: "1ABCDE",
+				gameId: "temple-curling",
+				shellSelection: [],
+			});
+
+			expect(socket.emit).toHaveBeenCalledWith("lobby:error", {
+				message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE,
+			});
 		});
 	});
 

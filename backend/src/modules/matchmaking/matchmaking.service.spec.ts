@@ -89,7 +89,7 @@ describe("MatchmakingService.joinQueue — powerupsEnabled resolution (Bug Audit
 		);
 	});
 
-	it("defaults powerupsEnabled to true when the payload omits it", async () => {
+	it("defaults powerupsEnabled to false when the payload omits it", async () => {
 		await service.joinQueue("socket-1", makeUser(1), {
 			gameId: "temple-curling",
 			mode: "casual",
@@ -106,7 +106,7 @@ describe("MatchmakingService.joinQueue — powerupsEnabled resolution (Bug Audit
 			"temple-curling",
 			"casual",
 			expect.any(Array),
-			{ powerupsEnabled: true },
+			{ powerupsEnabled: false },
 		);
 	});
 });

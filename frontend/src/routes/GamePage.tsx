@@ -192,14 +192,15 @@ function PowerupMatchmakingPanel({
 		(location.state as { autoJoinMatch?: boolean } | null)?.autoJoinMatch,
 	);
 	const hasAutoJoinedRef = useRef(false);
-	const [message, setMessage] = useState("Random power-ups will appear during the match.");
+	const [message, setMessage] = useState("Power-ups are off by default. Enable them for extra chaos.");
 	const [messageTone, setMessageTone] = useState<"muted" | "gold" | "error">("muted");
-	const [soloPowerupsEnabled, setSoloPowerupsEnabled] = useState(true);
+	const [soloPowerupsEnabled, setSoloPowerupsEnabled] = useState(false);
 	const [localVsPlayerCount, setLocalVsPlayerCount] = useState(2);
-	const [localVsPowerupsEnabled, setLocalVsPowerupsEnabled] = useState(true);
+	const [localVsPowerupsEnabled, setLocalVsPowerupsEnabled] = useState(false);
 	const [onlinePlayerCount, setOnlinePlayerCount] = useState(2);
+	const [onlinePowerupsEnabled, setOnlinePowerupsEnabled] = useState(false);
 	const [privateOnlinePlayerCount, setPrivateOnlinePlayerCount] = useState(2);
-	const [privateOnlinePowerupsEnabled, setPrivateOnlinePowerupsEnabled] = useState(true);
+	const [privateOnlinePowerupsEnabled, setPrivateOnlinePowerupsEnabled] = useState(false);
 	const [privateRoomPin, setPrivateRoomPin] = useState("");
 	const [privateLobby, setPrivateLobby] = useState<{
 		lobbyId: string;
@@ -426,7 +427,7 @@ function PowerupMatchmakingPanel({
 			setMessageTone("error");
 			return;
 		}
-		getGameSocket().emit("lobby:join-pin", { pin, shellSelection: [] });
+		getGameSocket().emit("lobby:join-pin", { pin, gameId, shellSelection: [] });
 		setMessage(`Joining private room ${pin}...`);
 		setMessageTone("gold");
 	};
@@ -438,7 +439,7 @@ function PowerupMatchmakingPanel({
 			setMessageTone("error");
 			return;
 		}
-		getGameSocket().emit("lobby:spectate-pin", { pin });
+		getGameSocket().emit("lobby:spectate-pin", { pin, gameId });
 		setMessage(`Looking for private match ${pin}...`);
 		setMessageTone("gold");
 	};
@@ -553,7 +554,7 @@ function PowerupMatchmakingPanel({
 			gameId,
 			mode: "casual",
 			playerCount: onlinePlayerCount,
-			powerupsEnabled: true,
+			powerupsEnabled: onlinePowerupsEnabled,
 			shellSelection: [],
 		});
 	};
@@ -643,8 +644,17 @@ function PowerupMatchmakingPanel({
 					{isOnlineGame ? (
 						<section className="power-picker-page__mode-card power-picker-page__mode-card--online">
 							<h2>Multiplayer Online</h2>
-							<p>Jump into matchmaking against online opponents. Power-ups are always active.</p>
+							<p>Jump into matchmaking against online opponents.</p>
 							{renderPlayerPicker(onlinePlayerCount, setOnlinePlayerCount, "Online player count", Boolean(activeMatchStatus))}
+							<button
+								type="button"
+								className={`power-picker-page__toggle ${onlinePowerupsEnabled ? "is-selected" : ""}`}
+								aria-pressed={onlinePowerupsEnabled}
+								disabled={isSearchingOnline || Boolean(activeMatchStatus)}
+								onClick={() => setOnlinePowerupsEnabled((enabled) => !enabled)}
+							>
+								Power-ups {onlinePowerupsEnabled ? "On" : "Off"}
+							</button>
 							<button type="button" className="power-picker-page__online-button" onClick={() => void findOnlineMatch()}>
 								{activeMatchStatus ? "Rejoin Match" : isSearchingOnline ? "Cancel Search" : "Find Online Match"}
 							</button>
@@ -677,7 +687,7 @@ function PowerupMatchmakingPanel({
 								value={privateRoomPin}
 								onChange={(event) => setPrivateRoomPin(event.target.value.replace(/[^a-z0-9]/gi, "").toUpperCase())}
 								placeholder="PIN"
-								maxLength={8}
+								maxLength={6}
 								aria-label="Private room PIN"
 							/>
 							<button type="button" className="power-picker-page__primary" onClick={joinPrivateRoom}>

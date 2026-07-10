@@ -428,7 +428,7 @@ export class BellClashScene extends ResponsiveScene {
 			this.playerShellSkins,
 		);
 		const localPowerupsEnabled = this.onlineMatch
-			? this.onlineMatch.snapshot?.powerupsEnabled !== false
+			? this.onlineMatch.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 		const registryLocalMode = this.registry.get("localMode") as
 			| "solo"
@@ -1332,7 +1332,7 @@ export class BellClashScene extends ResponsiveScene {
 
 	private spawnPowerPickup(): void {
 		const powerupsEnabled = this.onlineMatch
-			? this.onlineMatch.snapshot?.powerupsEnabled !== false
+			? this.onlineMatch.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 		if (!powerupsEnabled || !this.powerPickups) {
 			this.powerPickups?.clear();

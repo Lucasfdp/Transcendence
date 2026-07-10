@@ -13,6 +13,8 @@ export const REPLAY_BACKGROUND_TEXTURES: Record<string, string> = {
 	sunset_cycle_bg: "replay-background-sunset_cycle_bg",
 	sunrise_bg: "replay-background-sunrise_bg",
 	sunrise_cycle_bg: "replay-background-sunrise_cycle_bg",
+	login_bg: "replay-background-login_bg",
+	login_cycle_bg: "replay-background-login_cycle_bg",
 };
 
 export function resolveActiveReplaySide(

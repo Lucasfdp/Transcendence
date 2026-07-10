@@ -265,6 +265,21 @@ describe("CustomizationService", () => {
 		).toBe(true);
 	});
 
+	it("can buy login background for 200 coins", async () => {
+		const user = makeUser({ coins: 200 });
+		usersRepo.findOne = jest.fn().mockResolvedValue(user);
+
+		const cosmetics = await service.buy(user, "login_bg");
+
+		expect(user.coins).toBe(0);
+		expect(cosmeticsRepo.save).toHaveBeenCalledWith(
+			expect.objectContaining({ cosmeticId: "login_bg" }),
+		);
+		expect(
+			cosmetics.find((cosmetic) => cosmetic.id === "login_bg")?.owned,
+		).toBe(true);
+	});
+
 	it("buying already owned cosmetic does not charge twice", async () => {
 		const user = makeUser({ coins: 200 });
 		usersRepo.findOne = jest.fn().mockResolvedValue(user);

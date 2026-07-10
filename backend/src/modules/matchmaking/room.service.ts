@@ -47,7 +47,7 @@ export class RoomService {
 					gameId,
 					mode,
 					players,
-					powerupsEnabled: options.powerupsEnabled ?? true,
+					powerupsEnabled: options.powerupsEnabled ?? false,
 				},
 				roomPlayers,
 			),

@@ -20,6 +20,7 @@ import { UsersService } from "../users/users.service";
 import { GameSessionService } from "./game-session.service";
 import { MatchmakingService } from "./matchmaking.service";
 import {
+	PRIVATE_LOBBY_NOT_FOUND_MESSAGE,
 	PrivateLobbiesService,
 	type LobbyJoinResult,
 	type PrivateLobby,
@@ -691,7 +692,7 @@ export class MatchmakingGateway
 				user,
 				payload.gameId,
 				payload.playerCount ?? 2,
-				payload.powerupsEnabled ?? true,
+				payload.powerupsEnabled ?? false,
 				payload.shellSelection ?? [],
 				(expired) => this.emitLobbyExpired(expired),
 			);
@@ -792,18 +793,19 @@ export class MatchmakingGateway
 	@SubscribeMessage("lobby:join-pin")
 	async onLobbyJoinPin(
 		@ConnectedSocket() socket: Socket,
-		@MessageBody() payload: { pin: string; shellSelection?: string[] },
+		@MessageBody() payload: { pin: string; gameId: string; shellSelection?: string[] },
 	): Promise<void> {
 		const user = socket.data.user as SocketUser;
 		try {
 			const result = await this.privateLobbies.joinPinLobby(
 				payload.pin,
+				payload.gameId,
 				socket.id,
 				user,
 				payload.shellSelection ?? [],
 			);
 			if (!result) {
-				socket.emit("lobby:error", { message: "Private room not found" });
+				socket.emit("lobby:error", { message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE });
 				return;
 			}
 			if (result.matched === false) {
@@ -821,21 +823,29 @@ export class MatchmakingGateway
 	@SubscribeMessage("lobby:spectate-pin")
 	onLobbySpectatePin(
 		@ConnectedSocket() socket: Socket,
-		@MessageBody() payload: { pin: string },
+		@MessageBody() payload: { pin: string; gameId: string },
 	): void {
 		const lobby = this.privateLobbies.getLobbyByPin(payload.pin);
 		if (lobby) {
+			if (lobby.gameId !== payload.gameId) {
+				socket.emit("lobby:error", { message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE });
+				return;
+			}
 			socket.emit("lobby:error", { message: "Private match has not started yet" });
 			return;
 		}
 
 		const started = this.privateLobbies.getStartedMatchByPin(payload.pin);
+		if (started && started.gameId !== payload.gameId) {
+			socket.emit("lobby:error", { message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE });
+			return;
+		}
 		const user = socket.data.user as SocketUser;
 		const room = started
 			? this.rooms.addSpectator(started.matchId, socket.id, user)
 			: null;
 		if (!started || !room) {
-			socket.emit("lobby:error", { message: "Private match not found" });
+			socket.emit("lobby:error", { message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE });
 			return;
 		}
 

@@ -400,7 +400,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			| Record<string, string[] | undefined>
 			| undefined;
 		const localPowerupsEnabled = this.onlineMatch
-			? this.onlineMatch.snapshot?.powerupsEnabled !== false
+			? this.onlineMatch.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 		this.powerupsEnabled = localPowerupsEnabled;
 

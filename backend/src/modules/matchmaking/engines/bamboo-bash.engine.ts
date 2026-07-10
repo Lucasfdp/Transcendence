@@ -46,7 +46,7 @@ export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 			seq: 0,
 			gameId: "bamboo-bash",
 			mode: context.mode,
-			powerupsEnabled: context.powerupsEnabled ?? true,
+			powerupsEnabled: context.powerupsEnabled ?? false,
 			phase: "pending",
 			roundNumber: 1,
 			totalRounds: TOTAL_ROUNDS,

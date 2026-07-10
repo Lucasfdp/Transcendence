@@ -423,7 +423,7 @@ export class BambooBashScene extends ResponsiveScene {
 			),
 		);
 		const localPowerupsEnabled = this.onlineMatch
-			? this.onlineMatch.snapshot?.powerupsEnabled !== false
+			? this.onlineMatch.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 		const buildPool = (picks: string[] | undefined): PowerType[] => {
 			if (!localPowerupsEnabled) return [PowerType.NONE];
@@ -2251,7 +2251,7 @@ export class BambooBashScene extends ResponsiveScene {
 
 	private spawnPowerPickup(): void {
 		const powerupsEnabled = this.onlineMatch
-			? this.onlineMatch.snapshot?.powerupsEnabled !== false
+			? this.onlineMatch.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 		if (!powerupsEnabled || !this.powerPickups) {
 			this.powerPickups?.clear();

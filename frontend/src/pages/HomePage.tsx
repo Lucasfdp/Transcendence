@@ -132,9 +132,11 @@ const COSMETIC_PREVIEWS: Partial<Record<Cosmetic["id"], string>> = {
 	night_bg: "/assets/backgrounds/night_bg.png",
 	sunset_bg: "/assets/backgrounds/sunset_bg.png",
 	sunrise_bg: "/assets/backgrounds/sunrise_bg.png",
+	login_bg: "/assets/backgrounds/login_bg.png",
 	night_cycle_bg: "/assets/backgrounds/night_cycle_part2.png",
 	sunset_cycle_bg: "/assets/backgrounds/sunset_bg.png",
 	sunrise_cycle_bg: "/assets/backgrounds/sunrise_bg.png",
+	login_cycle_bg: "/assets/backgrounds/login_bg.png",
 };
 
 const SHELL_PLACEHOLDERS = [
@@ -1067,6 +1069,28 @@ function HomeMenu(): JSX.Element {
 		}
 		return groups;
 	}, [cosmetics]);
+
+	const cosmeticCollectionProgress = useMemo(() => {
+		let owned = 0;
+		let total = 0;
+		for (const group of cosmeticGroups.values()) {
+			owned += group.filter((cosmetic) => cosmetic.owned).length;
+			total += group.length;
+		}
+		return { owned, total };
+	}, [cosmeticGroups]);
+
+	const cosmeticCategoryProgress = useMemo(() => {
+		const progress = new Map<CosmeticCategoryType, { owned: number; total: number }>();
+		for (const category of ["shell_skin", "hub_background", "dojo_tag"] as const) {
+			const group = cosmeticGroups.get(category) ?? [];
+			progress.set(category, {
+				owned: group.filter((cosmetic) => cosmetic.owned).length,
+				total: group.length,
+			});
+		}
+		return progress;
+	}, [cosmeticGroups]);
 
 	const backgroundAlters = useMemo(() => {
 		const alters = new Map<string, Cosmetic[]>();
@@ -2338,7 +2362,7 @@ function HomeMenu(): JSX.Element {
 										alt=""
 										aria-hidden="true"
 									/>
-									<span className="menu-page__mode-title">Normal</span>
+									<span className="menu-page__mode-title">Normal Mode</span>
 									<span className="menu-page__mode-divider" aria-hidden="true" />
 									<span className="menu-page__mode-description">Play a standard match.</span>
 								</button>
@@ -3741,17 +3765,22 @@ function HomeMenu(): JSX.Element {
 					title="Customisation"
 					onClose={() => setActiveModal(null)}
 					variant="wide"
-					headerAddon={
-						<div className="hub-modal__cosmetic-balance" aria-label="Player coin balance">
-							<span>Balance</span>
-							<strong>{player?.coins ?? 0}</strong>
-							<small>coins</small>
-						</div>
-					}
 				>
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					{cosmetics ? (
 						<div className="hub-modal__cosmetics">
+							<div className="hub-cards__store">
+								<div className="hub-cards__store-info">
+									<strong>Collection</strong>
+									<span>
+										{cosmeticCollectionProgress.owned} / {cosmeticCollectionProgress.total} items
+									</span>
+								</div>
+								<div className="hub-cards__store-coins">
+									<span aria-hidden="true">⬡</span> {player?.coins ?? 0} coins
+								</div>
+							</div>
+
 							<div className="hub-modal__cosmetic-topbar">
 								<nav className="hub-modal__cosmetic-tabs" aria-label="Customisation categories">
 									{COSMETIC_TABS.map((tab) => (
@@ -3774,7 +3803,13 @@ function HomeMenu(): JSX.Element {
 
 							{activeCosmeticTab === "all" || activeCosmeticTab === "shell_skin" ? (
 								<section className="hub-modal__cosmetic-category hub-modal__cosmetic-category--shells">
-									<h3>Shells</h3>
+									<header className="hub-modal__cosmetic-category-header">
+										<h3>Shells</h3>
+										<span className="hub-modal__cosmetic-category-progress">
+											{cosmeticCategoryProgress.get("shell_skin")?.owned ?? 0} /{" "}
+											{cosmeticCategoryProgress.get("shell_skin")?.total ?? 0}
+										</span>
+									</header>
 									<div className="hub-modal__shell-grid">
 										{(cosmeticGroups.get("shell_skin") ?? []).map((cosmetic) => {
 											const hasImage = COSMETIC_PREVIEWS[cosmetic.id] !== undefined;
@@ -3820,7 +3855,13 @@ function HomeMenu(): JSX.Element {
 
 							{activeCosmeticTab === "all" || activeCosmeticTab === "hub_background" ? (
 								<section className="hub-modal__cosmetic-category">
-									<h3>Backgrounds</h3>
+									<header className="hub-modal__cosmetic-category-header">
+										<h3>Backgrounds</h3>
+										<span className="hub-modal__cosmetic-category-progress">
+											{cosmeticCategoryProgress.get("hub_background")?.owned ?? 0} /{" "}
+											{cosmeticCategoryProgress.get("hub_background")?.total ?? 0}
+										</span>
+									</header>
 									<div className="hub-modal__list hub-modal__cosmetic-grid hub-modal__cosmetic-grid--backgrounds">
 										{(cosmeticGroups.get("hub_background") ?? []).map((cosmetic) => {
 											const alters = backgroundAlters.get(cosmetic.id) ?? [];
@@ -3890,23 +3931,19 @@ function HomeMenu(): JSX.Element {
 												</article>
 											);
 										})}
-										<article className="hub-modal__background-card--mystery">
-											<div className="hub-modal__cosmetic-preview hub-modal__cosmetic-preview--hub_background hub-modal__cosmetic-preview--mystery" aria-hidden="true">
-												<span>?</span>
-											</div>
-											<strong>?</strong>
-											<p>?</p>
-											<button type="button" disabled>
-												Soon
-											</button>
-										</article>
 									</div>
 								</section>
 							) : null}
 
 							{activeCosmeticTab === "all" || activeCosmeticTab === "dojo_tag" ? (
 								<section className="hub-modal__cosmetic-category">
-									<h3>Dojo Tags</h3>
+									<header className="hub-modal__cosmetic-category-header">
+										<h3>Dojo Tags</h3>
+										<span className="hub-modal__cosmetic-category-progress">
+											{cosmeticCategoryProgress.get("dojo_tag")?.owned ?? 0} /{" "}
+											{cosmeticCategoryProgress.get("dojo_tag")?.total ?? 0}
+										</span>
+									</header>
 									<div className="hub-modal__dojo-tags">
 										{(cosmeticGroups.get("dojo_tag") ?? []).map((cosmetic) => (
 											<article

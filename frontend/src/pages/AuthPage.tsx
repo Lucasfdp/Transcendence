@@ -195,7 +195,7 @@ export function AuthPage(): JSX.Element {
 					<h1 className="auth-page__logo-title">
 						<img
 							className="auth-page__logo"
-							src="/assets/logo.png"
+							src="/assets/logoShellSmash.png"
 							alt="Shell Smash"
 						/>
 					</h1>

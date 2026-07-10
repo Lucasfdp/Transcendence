@@ -382,7 +382,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			this.playerShellSkins,
 		);
 		const localPowerupsEnabled = this.online.isActive
-			? this.online.snapshot?.powerupsEnabled !== false
+			? this.online.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 
 		const buildPool = (picks: string[] | undefined): PowerType[] => {
@@ -868,12 +868,16 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	}
 
 	syncSlingshotForTurn(): void {
-		if (
+		const canLaunchOnline =
 			this.online.isActive &&
-			this.running &&
 			this.online.isLocalTurn() &&
+			!this.online.releasePendingFlag;
+		const canLaunchLocal = !this.online.isActive;
+
+		if (
+			this.running &&
 			!this.launchedThisBall &&
-			!this.online.releasePendingFlag
+			(canLaunchOnline || canLaunchLocal)
 		)
 			this.launchInput.attach();
 		else this.launchInput.destroy();
@@ -1049,7 +1053,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 
 	private spawnPowerPickup(): void {
 		const powerupsEnabled = this.online.isActive
-			? this.online.snapshot?.powerupsEnabled !== false
+			? this.online.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 		if (!powerupsEnabled || !this.powerPickups) {
 			this.powerPickups?.clear();
@@ -1748,4 +1752,3 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	// ── Icon helpers (used in info rows - kept for reference, info panel removed) ─
 
 }
-

@@ -113,6 +113,15 @@ export const COSMETICS: CosmeticDefinition[] = [
 		previewColor: 0xffe3a6,
 	},
 	{
+		id: "login_bg",
+		type: "hub_background",
+		name: "Shell Smash Gate",
+		description: "The Shell Smash login gate brought into the dojo hub.",
+		price: 200,
+		accentColor: 0x2f5f7f,
+		previewColor: 0xd7f1ff,
+	},
+	{
 		id: "night_cycle_bg",
 		type: "hub_background_alter",
 		parentCosmeticId: "night_bg",
@@ -142,6 +151,16 @@ export const COSMETICS: CosmeticDefinition[] = [
 		price: 999,
 		accentColor: 0xf0a24b,
 		previewColor: 0xffdfa4,
+	},
+	{
+		id: "login_cycle_bg",
+		type: "hub_background_alter",
+		parentCosmeticId: "login_bg",
+		name: "Shell Smash Gate Alter",
+		description: "Alter slot for the Shell Smash login gate background.",
+		price: 999,
+		accentColor: 0x2f5f7f,
+		previewColor: 0xd7f1ff,
 	},
 	{
 		id: "shell-first",

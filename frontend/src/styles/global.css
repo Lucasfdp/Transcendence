@@ -1068,7 +1068,7 @@ input {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	justify-items: center;
-	gap: clamp(4rem, 7vw, 6.4rem);
+	gap: clamp(2.8rem, 5vw, 4.8rem);
 }
 
 .menu-page__heading {
@@ -1105,11 +1105,7 @@ input {
 
 .menu-page__mode-card {
 	position: relative;
-	display: grid;
-	grid-template-rows: auto auto auto auto;
-	align-content: center;
-	align-items: center;
-	justify-content: center;
+	display: block;
 	width: 100%;
 	max-width: 28rem;
 	min-height: auto;
@@ -1185,8 +1181,11 @@ input {
 }
 
 .menu-page__mode-title {
-	position: relative;
-	z-index: 1;
+	position: absolute;
+	z-index: 2;
+	left: 0;
+	right: 0;
+	top: 75%;
 	display: block;
 	font-family: var(--blowbrush-font);
 	max-width: 100%;
@@ -1197,7 +1196,8 @@ input {
 	text-transform: uppercase;
 	white-space: nowrap;
 	overflow-wrap: normal;
-	margin-top: -1.35rem;
+	margin: 0;
+	pointer-events: none;
 	text-shadow:
 		0 2px 0 rgba(231, 217, 141, 0.24),
 		0 10px 24px rgba(0, 0, 0, 0.46);
@@ -1207,15 +1207,13 @@ input {
 	position: relative;
 	z-index: 1;
 	display: block;
-	align-self: center;
-	justify-self: center;
 	width: clamp(10.5rem, 18vw, 14.4rem);
 	height: auto;
-	margin-bottom: 0;
+	margin: 0 auto;
 	object-fit: contain;
-	filter: hue-rotate(38deg) saturate(0.72) brightness(0.9) contrast(0.96)
+	/*filter: hue-rotate(38deg) saturate(0.72) brightness(0.9) contrast(0.96)
 		drop-shadow(0 12px 20px rgba(0, 0, 0, 0.4))
-		drop-shadow(0 0 14px rgba(98, 127, 87, 0.16));
+		drop-shadow(0 0 14px rgba(98, 127, 87, 0.16));*/
 }
 
 .menu-page__mode-divider {
@@ -1227,14 +1225,19 @@ input {
 }
 
 .menu-page__mode-description {
-	position: relative;
-	z-index: 1;
+	position: absolute;
+	z-index: 2;
+	left: 0;
+	right: 0;
+	top: calc(75% + clamp(2.05rem, 3vw, 2.65rem));
 	color: rgba(75, 49, 25, 0.92);
 	font-family: var(--rowdy-font);
 	font-size: clamp(0.9rem, 1.25vw, 1.08rem);
 	font-weight: 400;
 	letter-spacing: 0.04em;
 	line-height: 1.45;
+	margin: 0;
+	pointer-events: none;
 }
 
 .menu-page__mode-card--normal .menu-page__mode-title {
@@ -1306,6 +1309,10 @@ input {
 
 .hub-page--sunrise {
 	--hub-bg-image: url("/assets/backgrounds/sunrise_bg.png");
+}
+
+.hub-page--login {
+	--hub-bg-image: url("/assets/backgrounds/login_bg.png");
 }
 
 .hub-page--cycle {
@@ -1697,7 +1704,7 @@ input {
 	align-self: center;
 	align-content: center;
 	justify-items: center;
-	gap: clamp(1.5rem, 3vw, 2.4rem);
+	gap: clamp(0.35rem, 1vw, 0.8rem);
 	min-height: 0;
 	/* Contain card hover transforms so they don't bleed over adjacent columns */
 	isolation: isolate;
@@ -1706,7 +1713,7 @@ input {
 .hub-page__mode-grid {
 	width: min(82rem, 100%);
 	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: clamp(1.2rem, 2.6vw, 2.2rem);
+	gap: clamp(0.75rem, 1.8vw, 1.5rem);
 }
 
 .hub-page__normal-view {
@@ -2261,38 +2268,21 @@ input {
 	text-shadow: none;
 }
 
-.hub-modal__cosmetic-balance {
-	display: flex;
-	align-items: center;
-	gap: 0.45rem;
-	padding: 0.52rem 0.85rem;
-	border: 1px solid rgba(123, 183, 111, 0.34);
-	border-radius: 0.75rem;
-	background: rgba(9, 22, 12, 0.82);
-	color: rgba(234, 255, 200, 0.78);
-	white-space: nowrap;
-}
-
-.hub-modal__cosmetic-balance span,
-.hub-modal__cosmetic-balance small {
-	font-size: 0.72rem;
-	letter-spacing: 0.11em;
-	text-transform: uppercase;
-}
-
-.hub-modal__cosmetic-balance strong {
-	color: #d8ff9f;
-	font-family: var(--rowdy-font);
-	font-size: 1.1rem;
-	letter-spacing: 0.04em;
-}
-
 .hub-modal__cosmetic-category {
 	display: grid;
 	gap: 0.65rem;
 }
 
-.hub-modal__cosmetic-category h3 {
+.hub-modal__cosmetic-category-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 1rem;
+	padding-bottom: 0.42rem;
+	border-bottom: 1px solid rgba(123, 183, 111, 0.24);
+}
+
+.hub-modal__cosmetic-category-header h3 {
 	margin: 0;
 	color: #b8db86;
 	font-family: var(--blowbrush-font);
@@ -2305,6 +2295,14 @@ input {
 	text-shadow:
 		0 2px 0 rgba(5, 28, 18, 0.78),
 		0 0 9px rgba(120, 255, 130, 0.16);
+}
+
+.hub-modal__cosmetic-category-progress {
+	font-family: var(--rowdy-font);
+	font-size: 0.82rem;
+	letter-spacing: 0.04em;
+	opacity: 0.72;
+	white-space: nowrap;
 }
 
 .hub-modal__body {
@@ -2664,10 +2662,6 @@ input {
 
 	.hub-modal__cosmetic-tabs {
 		grid-template-columns: repeat(3, minmax(0, 1fr));
-	}
-
-	.hub-modal__cosmetic-balance {
-		justify-content: center;
 	}
 
 	.hub-modal__dojo-tags {
@@ -3201,6 +3195,10 @@ input {
 
 .game-host--sunrise {
 	--game-bg-image: url("/assets/backgrounds/sunrise_bg.png");
+}
+
+.game-host--login {
+	--game-bg-image: url("/assets/backgrounds/login_bg.png");
 }
 
 .game-host--cycle {

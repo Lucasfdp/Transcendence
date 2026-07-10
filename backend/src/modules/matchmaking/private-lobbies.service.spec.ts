@@ -4,7 +4,10 @@ import { getRepositoryToken } from "@nestjs/typeorm";
 import { MatchPlayer } from "./entities/match-player.entity";
 import { Match } from "./entities/match.entity";
 import { GameEngineRegistry } from "./engines/game-engine.registry";
-import { PrivateLobbiesService } from "./private-lobbies.service";
+import {
+	PRIVATE_LOBBY_NOT_FOUND_MESSAGE,
+	PrivateLobbiesService,
+} from "./private-lobbies.service";
 import { RoomService } from "./room.service";
 import { SocketUser } from "./matchmaking.types";
 
@@ -145,7 +148,7 @@ describe("PrivateLobbiesService", () => {
 					expect.objectContaining({ user: HOST }),
 					expect.objectContaining({ user: JOINER }),
 				]),
-				expect.objectContaining({ powerupsEnabled: true }),
+				expect.objectContaining({ powerupsEnabled: false }),
 			);
 		});
 
@@ -171,6 +174,51 @@ describe("PrivateLobbiesService", () => {
 			await expect(
 				service.joinLobby(lobby.lobbyId, "s2", JOINER, []),
 			).rejects.toThrow(BadRequestException);
+		});
+	});
+
+	describe("PIN lobbies", () => {
+		it("should prefix private room PINs with the Normal game identifier", () => {
+			jest.useFakeTimers();
+			const expectedPrefixes = [
+				["kame-knock", "0"],
+				["bamboo-bash", "1"],
+				["temple-curling", "2"],
+				["bell-clash", "3"],
+			] as const;
+
+			for (const [gameId, prefix] of expectedPrefixes) {
+				const host = { ...HOST, id: HOST.id + Number(prefix) };
+				const lobby = service.createPinLobby(
+					`s${prefix}`,
+					host,
+					gameId,
+					2,
+					true,
+					[],
+					jest.fn(),
+				);
+
+				expect(lobby.pin).toMatch(new RegExp(`^${prefix}`));
+				expect(lobby.pin).toHaveLength(6);
+			}
+		});
+
+		it("should reject a PIN entered from a different game lobby", async () => {
+			jest.useFakeTimers();
+			const lobby = service.createPinLobby(
+				"s1",
+				HOST,
+				"temple-curling",
+				2,
+				true,
+				[],
+				jest.fn(),
+			);
+
+			await expect(
+				service.joinPinLobby(lobby.pin!, "bamboo-bash", "s2", JOINER, []),
+			).rejects.toThrow(PRIVATE_LOBBY_NOT_FOUND_MESSAGE);
 		});
 	});
 

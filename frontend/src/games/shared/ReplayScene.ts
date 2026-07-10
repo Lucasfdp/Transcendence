@@ -92,6 +92,8 @@ const REPLAY_BACKGROUND_ASSETS: Record<string, string> = {
 	sunset_cycle_bg: "/assets/backgrounds/sunset_bg.png",
 	sunrise_bg: "/assets/backgrounds/sunrise_bg.png",
 	sunrise_cycle_bg: "/assets/backgrounds/sunrise_bg.png",
+	login_bg: "/assets/backgrounds/login_bg.png",
+	login_cycle_bg: "/assets/backgrounds/login_bg.png",
 };
 
 const PLAYER_COLOURS = [
