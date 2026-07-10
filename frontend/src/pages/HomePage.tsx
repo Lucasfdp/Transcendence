@@ -129,6 +129,10 @@ const COSMETIC_PREVIEWS: Partial<Record<Cosmetic["id"], string>> = {
 	purple: "/assets/character/shells/purpleShell.png",
 	pink: "/assets/character/shells/pinkShell.png",
 	stone: "/assets/character/shells/stoneShell.png",
+	flame: "/assets/character/shells/flameShell.png",
+	nebula: "/assets/character/shells/nebulaShell.png",
+	tribal: "/assets/character/shells/tribalShell.png",
+	rune: "/assets/character/shells/runeShell.png",
 	night_bg: "/assets/backgrounds/night_bg.png",
 	sunset_bg: "/assets/backgrounds/sunset_bg.png",
 	sunrise_bg: "/assets/backgrounds/sunrise_bg.png",
@@ -3129,9 +3133,16 @@ function HomeMenu(): JSX.Element {
 									onExpand={() => setIsReplayExpanded(true)}
 								/>
 							) : (
-								<p className="hub-panel__muted">
-									Select a replay to inspect its timeline.
-								</p>
+								<div className="hub-modal__replay-empty">
+									<img
+										className="hub-modal__replay-empty-logo"
+										src="/assets/logoShellSmash.png"
+										alt="Shell Smash"
+									/>
+									<p className="hub-panel__muted">
+										Select a replay to inspect its timeline.
+									</p>
+								</div>
 							)}
 						</div>
 					</div>
@@ -4212,35 +4223,37 @@ function ReplayListSection({
 		<section className="hub-modal__replay-section">
 			<h3>{title}</h3>
 			{replays.length > 0 ? (
-				<ul className="hub-modal__replay-items">
-					{replays.map((replay) => (
-						<li key={replay.matchId} className="hub-modal__replay-item">
-							<div className="hub-modal__replay-copy">
-								<strong>{getReplayGameLabel(replay.gameId)}</strong>
-								<small>{replay.playerNames.join(" vs ")}</small>
-								<small>{formatReplayDate(replay.finishedAt)}</small>
-							</div>
-							<div className="hub-modal__replay-actions">
-								<button
-									type="button"
-									disabled={replayActionLoading === replay.matchId}
-									onClick={() => onLoadReplay(replay.matchId)}
-								>
-									{selectedReplay?.matchId === replay.matchId ? "Viewing" : "View"}
-								</button>
-								<button
-									type="button"
-									disabled={replayActionLoading === replay.matchId}
-									onClick={() =>
-										onToggleSaved(replay.matchId, !replay.isSavedByCurrentUser)
-									}
-								>
-									{replay.isSavedByCurrentUser ? "Remove saved" : "Save"}
-								</button>
-							</div>
-						</li>
-					))}
-				</ul>
+				<div className="hub-modal__replay-items-scroll">
+					<ul className="hub-modal__replay-items">
+						{replays.map((replay) => (
+							<li key={replay.matchId} className="hub-modal__replay-item">
+								<div className="hub-modal__replay-copy">
+									<strong>{getReplayGameLabel(replay.gameId)}</strong>
+									<small>{replay.playerNames.join(" vs ")}</small>
+									<small>{formatReplayDate(replay.finishedAt)}</small>
+								</div>
+								<div className="hub-modal__replay-actions">
+									<button
+										type="button"
+										disabled={replayActionLoading === replay.matchId}
+										onClick={() => onLoadReplay(replay.matchId)}
+									>
+										{selectedReplay?.matchId === replay.matchId ? "Viewing" : "View"}
+									</button>
+									<button
+										type="button"
+										disabled={replayActionLoading === replay.matchId}
+										onClick={() =>
+											onToggleSaved(replay.matchId, !replay.isSavedByCurrentUser)
+										}
+									>
+										{replay.isSavedByCurrentUser ? "Remove saved" : "Save"}
+									</button>
+								</div>
+							</li>
+						))}
+					</ul>
+				</div>
 			) : (
 				<p className="hub-panel__muted">{emptyMessage}</p>
 			)}

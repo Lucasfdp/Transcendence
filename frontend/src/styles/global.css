@@ -2310,6 +2310,10 @@ input {
 	padding: 1rem 1.1rem 1.2rem;
 }
 
+.hub-modal__panel--wide .hub-modal__body:has(.hub-modal__replays) {
+	overflow: hidden;
+}
+
 .hub-modal__body p {
 	white-space: pre-line;
 }
@@ -4530,8 +4534,10 @@ img.power-card__orb {
 
 .hub-modal__replays {
 	display: grid;
-	grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-	gap: 1rem;
+	grid-template-columns: minmax(18rem, 0.92fr) minmax(24rem, 1.08fr);
+	gap: 0;
+	height: 100%;
+	min-height: 0;
 }
 
 .hub-modal__replay-list,
@@ -4539,10 +4545,19 @@ img.power-card__orb {
 	display: flex;
 	flex-direction: column;
 	gap: 0.75rem;
+	min-height: 0;
 }
 
 .hub-modal__replay-list {
 	gap: 1rem;
+	padding-right: 1rem;
+	overflow: hidden;
+}
+
+.hub-modal__replay-viewer {
+	padding-left: 1rem;
+	border-left: 1px solid rgba(245, 214, 119, 0.2);
+	overflow: hidden;
 }
 
 .hub-modal__replay-tabs {
@@ -4574,6 +4589,7 @@ img.power-card__orb {
 	display: flex;
 	flex-direction: column;
 	gap: 0.75rem;
+	min-height: 0;
 }
 
 .hub-modal__replay-section h3,
@@ -4594,6 +4610,34 @@ img.power-card__orb {
 	display: flex;
 	flex-direction: column;
 	gap: 0.75rem;
+}
+
+.hub-modal__replay-items-scroll {
+	min-height: 0;
+	overflow-y: auto;
+	padding-right: 0.35rem;
+}
+
+.hub-modal__replay-empty {
+	flex: 1;
+	min-height: 20rem;
+	display: grid;
+	place-items: center;
+	align-content: center;
+	gap: 1rem;
+	border: 1px solid rgba(245, 214, 119, 0.16);
+	border-radius: 14px;
+	background:
+		radial-gradient(circle at 50% 36%, rgba(184, 219, 134, 0.12), transparent 34%),
+		linear-gradient(180deg, rgba(13, 17, 11, 0.72), rgba(5, 7, 8, 0.82));
+	text-align: center;
+}
+
+.hub-modal__replay-empty-logo {
+	width: min(18rem, 70%);
+	max-height: 12rem;
+	object-fit: contain;
+	filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.44));
 }
 
 .hub-modal__replay-item {
@@ -4718,6 +4762,24 @@ img.power-card__orb {
 @media (max-width: 900px) {
 	.hub-modal__replays {
 		grid-template-columns: 1fr;
+		overflow-y: auto;
+	}
+
+	.hub-modal__replay-list {
+		padding-right: 0;
+		overflow: visible;
+	}
+
+	.hub-modal__replay-viewer {
+		padding-left: 0;
+		padding-top: 1rem;
+		border-left: 0;
+		border-top: 1px solid rgba(245, 214, 119, 0.2);
+	}
+
+	.hub-modal__replay-items-scroll {
+		overflow: visible;
+		padding-right: 0;
 	}
 
 	.hub-modal__replay-item {
@@ -4769,6 +4831,7 @@ img.power-card__orb {
 	border: 1px solid rgba(241, 211, 145, 0.22);
 	border-radius: 0.7rem;
 	background: rgba(5, 9, 12, 0.72);
+	box-shadow: 0 0.25rem 0 rgba(13, 20, 13, 0.94);
 }
 
 .hub-ranking-tab {

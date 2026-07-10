@@ -280,6 +280,24 @@ describe("CustomizationService", () => {
 		).toBe(true);
 	});
 
+	it.each(["flame", "nebula", "tribal", "rune"])(
+		"can buy %s shell for 200 coins",
+		async (cosmeticId) => {
+			const user = makeUser({ coins: 200 });
+			usersRepo.findOne = jest.fn().mockResolvedValue(user);
+
+			const cosmetics = await service.buy(user, cosmeticId);
+
+			expect(user.coins).toBe(0);
+			expect(cosmeticsRepo.save).toHaveBeenCalledWith(
+				expect.objectContaining({ cosmeticId }),
+			);
+			expect(
+				cosmetics.find((cosmetic) => cosmetic.id === cosmeticId)?.owned,
+			).toBe(true);
+		},
+	);
+
 	it("buying already owned cosmetic does not charge twice", async () => {
 		const user = makeUser({ coins: 200 });
 		usersRepo.findOne = jest.fn().mockResolvedValue(user);

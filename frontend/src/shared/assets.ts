@@ -36,6 +36,22 @@ export const SHELL_SKIN_ASSETS = {
 		key: "ingame-shell-stone",
 		source: "/assets/character/shells/stoneShell.png",
 	},
+	flame: {
+		key: "ingame-shell-flame",
+		source: "/assets/character/shells/flameShell.png",
+	},
+	nebula: {
+		key: "ingame-shell-nebula",
+		source: "/assets/character/shells/nebulaShell.png",
+	},
+	tribal: {
+		key: "ingame-shell-tribal",
+		source: "/assets/character/shells/tribalShell.png",
+	},
+	rune: {
+		key: "ingame-shell-rune",
+		source: "/assets/character/shells/runeShell.png",
+	},
 } as const;
 
 export type ShellSkinId = keyof typeof SHELL_SKIN_ASSETS;
