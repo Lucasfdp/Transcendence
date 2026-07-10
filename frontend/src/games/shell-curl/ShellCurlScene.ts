@@ -251,6 +251,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
 	private nextStoneId = 0;
 	private settlingTimer = 0;
+	private settlingStone: StoneState | null = null;
 
 	// ── Mechanics ─────────────────────────────────────────────────────────────
 	private sweepCtrl!: SweepController;
@@ -594,6 +595,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			const as = this.activeStone;
 			if (!as || as.stopped || isStoneOutOfBounds(as, this.arena)) {
 				if (as) {
+					this.settlingStone = as;
 					if (isStoneOutOfBounds(as, this.arena)) {
 						this.removeStone(as);
 					} else {
@@ -643,11 +645,14 @@ export class ShellCurlScene extends ResponsiveScene {
 			if (!anyMoving) {
 				this.settlingTimer += delta;
 				if (this.settlingTimer >= SETTLING_DELAY_MS) {
-					if (this.activeStone)
+					const settledStone = this.settlingStone;
+					this.settlingStone = null;
+					if (settledStone)
 						notifyGameRuleProjectileSettled(
 							this.buildGameRuleHooks(),
-							this.activeStone,
+							settledStone,
 						);
+					else this.finishThrow();
 				}
 			} else {
 				this.settlingTimer = 0;
@@ -672,6 +677,8 @@ export class ShellCurlScene extends ResponsiveScene {
 		}
 
 		this.clearActiveRing();
+		this.settlingStone = null;
+		this.settlingTimer = 0;
 
 		this.resolveDeliverySpawnBlockers();
 
@@ -738,6 +745,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		}
 
 		const power = this.activePower;
+		this.settlingStone = this.activeStone;
 		this.activeStone.vx = vx;
 		this.activeStone.vy = vy;
 		this.activeStone.r = STONE_SRC_R * this.arena.scale;

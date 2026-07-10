@@ -82,6 +82,14 @@ import {
 } from "../features/social/presence";
 import { useToast } from "../features/social/toast/ToastContext";
 
+type AchievementFilter = "all" | "unlocked" | "locked";
+
+const ACHIEVEMENT_FILTER_OPTIONS: { value: AchievementFilter; label: string }[] = [
+	{ value: "all", label: "All" },
+	{ value: "unlocked", label: "Unlocked" },
+	{ value: "locked", label: "Locked" },
+];
+
 /** How long a removed friend can be restored via the Undo toast before the
  *  deletion is committed to the server. */
 const FRIEND_REMOVAL_UNDO_MS = 5000;
@@ -600,6 +608,8 @@ function HomeMenu(): JSX.Element {
 	const [wipGameId, setWipGameId] = useState<"river-rush" | "oni-dodge" | null>(null);
 	const [infoModal, setInfoModal] = useState<InfoModal>(null);
 	const [achievements, setAchievements] = useState<Achievement[] | null>(null);
+	const [achievementFilter, setAchievementFilter] =
+		useState<AchievementFilter>("all");
 	const [cosmetics, setCosmetics] = useState<Cosmetic[] | null>(null);
 	const [activeCosmeticTab, setActiveCosmeticTab] = useState<CosmeticTabType>("all");
 	const [selectedShellCosmetic, setSelectedShellCosmetic] =
@@ -2181,6 +2191,16 @@ function HomeMenu(): JSX.Element {
 	const showcasedAchievements = showcasedIds
 		.map((id) => achievements?.find((a) => a.id === id) ?? null)
 		.filter((a): a is Achievement => a !== null);
+	const unlockedAchievementCount =
+		achievements?.filter((achievement) => achievement.unlocked).length ?? 0;
+	const totalAchievementCount = achievements?.length ?? 0;
+	const filteredAchievements = achievements
+		? achievements.filter((achievement) => {
+				if (achievementFilter === "unlocked") return achievement.unlocked;
+				if (achievementFilter === "locked") return !achievement.unlocked;
+				return true;
+			})
+		: [];
 
 	const displayedNow =
 		manualMinutes === null ? now : createManualTime(now, manualMinutes);
@@ -2875,34 +2895,61 @@ function HomeMenu(): JSX.Element {
 				<HubModal title="Achievements" onClose={() => setActiveModal(null)} variant="wide">
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					{achievements ? (
-						<div className="hub-modal__list hub-modal__list--achievements">
-							{achievements.map((achievement) => {
-								const progress = getAchievementProgress(achievement);
-
-								return (
-									<article
-										key={achievement.id}
-										className={achievement.unlocked ? "is-unlocked" : ""}
-									>
-										<strong>{achievement.title}</strong>
-										<p>{achievement.description}</p>
-										<div className="hub-modal__achievement-status">
-											<small>{achievement.unlocked ? "Unlocked" : "Locked"}</small>
-											<small>{progress.label}</small>
-										</div>
-										<div
-											className="hub-modal__achievement-progress"
-											role="progressbar"
-											aria-label={`${achievement.title} progress`}
-											aria-valuemin={0}
-											aria-valuemax={progress.target}
-											aria-valuenow={progress.current}
+						<div className="hub-modal__achievements">
+							<div className="hub-modal__achievements-toolbar">
+								<p className="hub-modal__achievement-count">
+									{unlockedAchievementCount}/{totalAchievementCount} unlocked
+								</p>
+								<div className="hub-modal__achievement-filters" aria-label="Achievement filter">
+									{ACHIEVEMENT_FILTER_OPTIONS.map((option) => (
+										<button
+											key={option.value}
+											type="button"
+											className={
+												achievementFilter === option.value
+													? "hub-modal__achievement-filter hub-modal__achievement-filter--active"
+													: "hub-modal__achievement-filter"
+											}
+											onClick={() => setAchievementFilter(option.value)}
 										>
-											<span style={{ width: `${progress.ratio * 100}%` }} />
-										</div>
-									</article>
-								);
-							})}
+											{option.label}
+										</button>
+									))}
+								</div>
+							</div>
+							{filteredAchievements.length > 0 ? (
+								<div className="hub-modal__list hub-modal__list--achievements">
+									{filteredAchievements.map((achievement) => {
+										const progress = getAchievementProgress(achievement);
+
+										return (
+											<article
+												key={achievement.id}
+												className={achievement.unlocked ? "is-unlocked" : ""}
+											>
+												<strong>{achievement.title}</strong>
+												<p>{achievement.description}</p>
+												<div className="hub-modal__achievement-status">
+													<small>{achievement.unlocked ? "Unlocked" : "Locked"}</small>
+													<small>{progress.label}</small>
+												</div>
+												<div
+													className="hub-modal__achievement-progress"
+													role="progressbar"
+													aria-label={`${achievement.title} progress`}
+													aria-valuemin={0}
+													aria-valuemax={progress.target}
+													aria-valuenow={progress.current}
+												>
+													<span style={{ width: `${progress.ratio * 100}%` }} />
+												</div>
+											</article>
+										);
+									})}
+								</div>
+							) : (
+								<p className="hub-modal__empty">No achievements match this filter.</p>
+							)}
 						</div>
 					) : (
 						<p>Loading achievements...</p>
@@ -3073,6 +3120,9 @@ function HomeMenu(): JSX.Element {
 						setIsReplayExpanded(false);
 					}}
 				>
+					<p className="hub-modal__replay-notice">
+						For now, replays are only available for modes without power-ups.
+					</p>
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					<div className="hub-modal__replays">
 						<div className="hub-modal__replay-list">

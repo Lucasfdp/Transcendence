@@ -1017,7 +1017,10 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		);
 		if (nextBallIndex !== this.currentBallIndex) {
 			this.currentBallIndex = nextBallIndex;
-			this.showNextRoundOverlay(() => this.setupBallRound());
+			this.showNextRoundOverlay(() => {
+				this.setupBallRound();
+				this.prepareSlingshotForTurn();
+			});
 		} else {
 			const config = BALL_ROUNDS[this.currentBallIndex];
 			this.resetBall();
@@ -1032,8 +1035,13 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		this.drawBall();
 		this.updateScoreHud();
 		this.showPowerPanel();
-		this.syncSlingshotForTurn();
+		if (this.running) this.prepareSlingshotForTurn();
 		this.localReplay.captureFrame(true);
+	}
+
+	private prepareSlingshotForTurn(): void {
+		this.launchInput.recreate();
+		this.syncSlingshotForTurn();
 	}
 
 	// ── Power pickups ─────────────────────────────────────────────────────────────

@@ -15,16 +15,18 @@ const slingshotInstances: Array<{
 	destroy: ReturnType<typeof vi.fn>;
 	maxDrag: number;
 	launchSpeed: number;
+	launchable: unknown;
 }> = [];
 
 vi.mock("../../../shared/mechanics/slingshot", () => ({
-	Slingshot: vi.fn((_scene, _ball, config) => {
+	Slingshot: vi.fn((_scene, ball, config) => {
 		const instance = {
 			attach: vi.fn(),
 			cancel: vi.fn(),
 			destroy: vi.fn(),
 			maxDrag: config.maxDrag,
 			launchSpeed: config.launchSpeed,
+			launchable: ball,
 		};
 		slingshotInstances.push(instance);
 		return instance;
@@ -138,6 +140,29 @@ describe("SlingshotLaunchRuntime", () => {
 		expect(slingshotInstances[0].attach).toHaveBeenCalledTimes(1);
 		expect(slingshotInstances[0].cancel).toHaveBeenCalledTimes(1);
 		expect(slingshotInstances[0].destroy).toHaveBeenCalledTimes(1);
+	});
+
+	it("recreates against the current launchable", () => {
+		const firstBall = { x: 0, y: 0, vx: 0, vy: 0, r: 10 };
+		const secondBall = { x: 20, y: 0, vx: 0, vy: 0, r: 10 };
+		let activeBall = firstBall;
+		const runtime = new SlingshotLaunchRuntime({
+			scene: {} as Phaser.Scene,
+			getLaunchable: () => activeBall,
+			getScale: () => 1,
+			maxDragSrc: 100,
+			launchSpeedSrc: 400,
+			onLaunch: vi.fn(),
+		});
+
+		runtime.recreate();
+		activeBall = secondBall;
+		runtime.recreate();
+
+		expect(slingshotInstances).toHaveLength(2);
+		expect(slingshotInstances[0].launchable).toBe(firstBall);
+		expect(slingshotInstances[0].destroy).toHaveBeenCalledTimes(1);
+		expect(slingshotInstances[1].launchable).toBe(secondBall);
 	});
 });
 

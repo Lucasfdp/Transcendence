@@ -41,6 +41,10 @@ export const ZONE_DEFS: Record<
 	green: { color: 0x4aa564, label: "GREEN", multiplier: 2 },
 };
 
+const BELL_TEXTURE_KEY = "bell-clash-bell";
+const BELL_TEXTURE_PATH = "/assets/bell-clash/bell.png";
+export const BELL_CLASH_BELL_RADIUS_SRC = 150;
+
 // ── Background ───────────────────────────────────────────────────────────────
 
 export function drawBellClashBackground(
@@ -146,124 +150,37 @@ function bellClashPointOnEllipse(
 }
 
 export function bellClashRadius(arena: ArenaPixels): number {
-	return Math.min(arena.rx, arena.ry) * 1.05;
+	return BELL_CLASH_BELL_RADIUS_SRC * arena.scale;
 }
 
 // ── Bell drawing ─────────────────────────────────────────────────────────────
 
-export function drawBellClashBell(
-	bellGfx: Phaser.GameObjects.Graphics,
+export function preloadBellClashBell(scene: Phaser.Scene): void {
+	if (!scene.textures.exists(BELL_TEXTURE_KEY))
+		scene.load.image(BELL_TEXTURE_KEY, BELL_TEXTURE_PATH);
+}
+
+export function createBellClashBell(
+	scene: Phaser.Scene,
+	arena: ArenaPixels,
+): Phaser.GameObjects.Image {
+	return scene.add
+		.image(arena.cx, arena.cy, BELL_TEXTURE_KEY)
+		.setOrigin(0.5)
+		.setDepth(DEPTH_BELL);
+}
+
+export function layoutBellClashBell(
+	bell: Phaser.GameObjects.Image,
 	arena: ArenaPixels,
 	bellPulseMs: number,
 ): void {
 	const r = bellClashRadius(arena);
 	const pulse =
 		bellPulseMs > 0 ? 1 + (bellPulseMs / 180) * 0.08 : 1;
-	const x = arena.cx;
-	const y = arena.cy;
-	const bodyR = r * pulse;
-	const lineW = Math.max(3, bodyR * 0.055);
-
-	bellGfx.clear();
-	bellGfx.fillStyle(0x000000, 0.28);
-	bellGfx.fillEllipse(x + r * 0.18, y + r * 0.48, r * 2.28, r * 0.7);
-
-	bellGfx.fillStyle(0x5a3410, 1);
-	bellGfx.fillCircle(x, y, bodyR * 1.03);
-	bellGfx.lineStyle(Math.max(4, bodyR * 0.045), 0xf2d47a, 0.4);
-	bellGfx.strokeCircle(x, y, bodyR * 1.02);
-
-	bellGfx.fillStyle(0x8a5516, 1);
-	bellClashTraceBellBody(bellGfx, x, y, bodyR, 0.96, 0.76, 0.9, 0.78);
-	bellGfx.fillPath();
-
-	bellGfx.fillStyle(0xd4a843, 1);
-	bellClashTraceBellBody(bellGfx, x, y, bodyR, 0.78, 0.61, 0.72, 0.6);
-	bellGfx.fillPath();
-
-	bellGfx.fillStyle(0xf2d47a, 0.68);
-	bellGfx.fillEllipse(
-		x - bodyR * 0.28,
-		y - bodyR * 0.25,
-		bodyR * 0.42,
-		bodyR * 0.34,
-	);
-	bellGfx.fillStyle(0xb87922, 0.55);
-	bellGfx.fillEllipse(
-		x + bodyR * 0.36,
-		y + bodyR * 0.08,
-		bodyR * 0.34,
-		bodyR * 0.88,
-	);
-
-	bellGfx.lineStyle(lineW, 0x6e3f10, 0.96);
-	bellClashTraceBellBody(bellGfx, x, y, bodyR, 0.96, 0.76, 0.9, 0.78);
-	bellGfx.strokePath();
-
-	bellGfx.lineStyle(Math.max(3, bodyR * 0.045), 0x5a3410, 0.86);
-	bellGfx.lineBetween(
-		x - bodyR * 0.78,
-		y + bodyR * 0.44,
-		x + bodyR * 0.78,
-		y + bodyR * 0.44,
-	);
-	bellGfx.lineBetween(
-		x - bodyR * 0.63,
-		y + bodyR * 0.14,
-		x + bodyR * 0.63,
-		y + bodyR * 0.14,
-	);
-
-	bellGfx.fillStyle(0x5a3410, 1);
-	bellGfx.fillRoundedRect(
-		x - bodyR * 0.22,
-		y - bodyR * 0.98,
-		bodyR * 0.44,
-		bodyR * 0.23,
-		bodyR * 0.08,
-	);
-	bellGfx.fillStyle(0x3c230c, 1);
-	bellGfx.fillCircle(x, y + bodyR * 0.18, bodyR * 0.11);
-	bellGfx.lineStyle(Math.max(2, bodyR * 0.03), 0xf2d47a, 0.7);
-	bellGfx.strokeCircle(x, y + bodyR * 0.18, bodyR * 0.2);
-}
-
-function bellClashTraceBellBody(
-	bellGfx: Phaser.GameObjects.Graphics,
-	x: number,
-	y: number,
-	r: number,
-	bottomHalfW: number,
-	topHalfW: number,
-	bottomArcH: number,
-	topArcH: number,
-): void {
-	const topY = y - r * 0.38;
-	const bottomY = y + r * 0.58;
-	const arcSegments = 14;
-
-	bellGfx.beginPath();
-	bellGfx.moveTo(x - r * topHalfW, topY);
-	bellGfx.lineTo(x - r * bottomHalfW, bottomY);
-
-	for (let i = 1; i <= arcSegments; i++) {
-		const t = i / arcSegments;
-		const px = x - r * bottomHalfW + r * bottomHalfW * 2 * t;
-		const py =
-			bottomY + Math.sin(t * Math.PI) * r * (bottomArcH - 0.58);
-		bellGfx.lineTo(px, py);
-	}
-
-	bellGfx.lineTo(x + r * topHalfW, topY);
-
-	for (let i = 1; i <= arcSegments; i++) {
-		const t = i / arcSegments;
-		const px = x + r * topHalfW - r * topHalfW * 2 * t;
-		const py = topY - Math.sin(t * Math.PI) * r * (topArcH - 0.38);
-		bellGfx.lineTo(px, py);
-	}
-
-	bellGfx.closePath();
+	bell
+		.setPosition(arena.cx, arena.cy)
+		.setDisplaySize(r * 2 * pulse, r * 2 * pulse);
 }
 
 // ── Trail drawing ────────────────────────────────────────────────────────────

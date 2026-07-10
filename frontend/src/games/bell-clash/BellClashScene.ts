@@ -116,12 +116,15 @@ import {
 import {
 	drawBellClashBackground,
 	drawBellClashZones,
-	drawBellClashBell,
+	preloadBellClashBell,
+	createBellClashBell,
+	layoutBellClashBell,
 	drawBellClashBallTrail,
 	drawBellClashPowerBalls,
 	clearBellClashPowerBalls,
 	popBellClashScore,
 	bellClashRadius,
+	BELL_CLASH_BELL_RADIUS_SRC,
 	ZONE_DEFS,
 	DEPTH_BG,
 	DEPTH_ZONES,
@@ -162,7 +165,6 @@ const MAX_DRAG_SRC = 380;
 
 const SCORE_LOG_LIMIT = 8;
 const LAUNCH_SPEED_SRC = 4_720;
-const BELL_RADIUS_SRC = 150;
 const SPAWN_GAP_SRC = 118;
 const BASE_HIT_SCORE = 100;
 const ZONE_SPAN = Math.PI * 2 * 0.15;
@@ -215,7 +217,7 @@ export class BellClashScene extends ResponsiveScene {
 	private bgGfx!: Phaser.GameObjects.Graphics;
 	private arenaSkin!: Phaser.GameObjects.Image;
 	private zoneGfx!: Phaser.GameObjects.Graphics;
-	private bellGfx!: Phaser.GameObjects.Graphics;
+	private bellImage!: Phaser.GameObjects.Image;
 	private pickupGfx!: Phaser.GameObjects.Graphics;
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private ballGfx!: Phaser.GameObjects.Graphics;
@@ -358,6 +360,7 @@ export class BellClashScene extends ResponsiveScene {
 
 	preload(): void {
 		preloadOvalArenaSkin(this);
+		preloadBellClashBell(this);
 		preloadIngamePlayerTexture(this);
 		preloadPowerUpAssets(this);
 	}
@@ -491,7 +494,7 @@ export class BellClashScene extends ResponsiveScene {
 			.setDepth(DEPTH_BG + 0.1);
 		layoutOvalArenaSkin(this.arenaSkin, this.arena);
 		this.zoneGfx = this.add.graphics().setDepth(DEPTH_ZONES);
-		this.bellGfx = this.add.graphics().setDepth(DEPTH_BELL);
+		this.bellImage = createBellClashBell(this, this.arena);
 		this.pickupGfx = this.add.graphics().setDepth(DEPTH_BALL - 0.5);
 		this.recreatePowerPickups();
 		this.trailGfx = this.add.graphics().setDepth(DEPTH_BALL - 0.25);
@@ -503,7 +506,7 @@ export class BellClashScene extends ResponsiveScene {
 
 		drawBellClashBackground(this.bgGfx, this.arenaSkin, this.arena, this.scale.width, this.scale.height);
 		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
-		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
+		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
 		this.spawnPowerPickup();
 		if (this.onlineMatch && initialOnlineSnapshot)
 			this.resetOnlineBalls(initialOnlineSnapshot);
@@ -593,7 +596,7 @@ export class BellClashScene extends ResponsiveScene {
 			);
 
 		this.recordBallTrails();
-		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
+		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
 		this.drawBallTrails();
 		this.drawBalls();
 		this.localReplay.captureTick(delta);
@@ -730,7 +733,7 @@ export class BellClashScene extends ResponsiveScene {
 
 		this.setupShot();
 		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
-		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
+		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
 		this.drawBalls();
 		this.showPowerPanel();
 		this.localReplay.captureFrame(true);
@@ -1102,7 +1105,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.recreateSlingshot();
 		this.syncOnlineSlingshot();
 		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
-		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
+		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
 		this.drawBalls();
 		this.scoreText?.setText(this.formatScoreText());
 		this.shotText?.setText(this.formatShotText());
@@ -1183,7 +1186,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.onlineBallWasMoving = localMoving;
 
 		this.recordBallTrails();
-		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
+		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
 		this.drawBallTrails();
 		this.drawBalls();
 	}
@@ -1655,7 +1658,7 @@ export class BellClashScene extends ResponsiveScene {
 			id: "bell",
 			type: "bell",
 			position: { mode: "normalised", x: 0, y: 0 },
-			radius: BELL_RADIUS_SRC,
+			radius: BELL_CLASH_BELL_RADIUS_SRC,
 			radiusUnit: "source",
 			collision: { blocks: true, bounces: true, awardsPoints: true },
 			rendering: { pulseMs: this.bellPulseMs },
@@ -2119,7 +2122,7 @@ export class BellClashScene extends ResponsiveScene {
 
 		drawBellClashBackground(this.bgGfx, this.arenaSkin, this.arena, this.scale.width, this.scale.height);
 		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
-		drawBellClashBell(this.bellGfx, this.arena, this.bellPulseMs);
+		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
 		this.recreatePowerPickups();
 		if (previousPickups.length > 0)
 			this.powerPickups?.setPickups(
