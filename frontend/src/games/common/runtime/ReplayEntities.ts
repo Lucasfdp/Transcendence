@@ -5,7 +5,7 @@ import type {
 import {
 	replayBallToEntity,
 	replayStoneToEntity,
-} from "../../shared/localReplay";
+} from "../localReplay";
 
 export type ReplayStoneSnapshot = Parameters<typeof replayStoneToEntity>[0];
 

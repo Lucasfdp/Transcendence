@@ -13,7 +13,7 @@ import type {
 import {
 	resolveReplayWinnerSide,
 	withPowerStateFlags,
-} from "../../shared/localReplay";
+} from "../localReplay";
 import {
 	buildReplayProjectileEntities,
 	buildReplayStoneEntities,

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { ReplayFrameSnapshot } from "../../features/hub/api";
+import type { ReplayFrameSnapshot } from "../../../features/hub/api";
 import {
 	resolveActiveReplayBackground,
 	resolveActiveReplaySide,
-} from "./replayVisuals";
+} from "../replayVisuals";
 
 const players: ReplayFrameSnapshot["players"] = [
 	{

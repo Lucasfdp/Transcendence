@@ -87,7 +87,7 @@ import {
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
 import { hudPlayerLabel } from "../../shared/player-labels";
-import { resolveReplayWinnerSide } from "../shared/localReplay";
+import { resolveReplayWinnerSide } from "../common/localReplay";
 import {
 	ArenaBallTrailRuntime,
 	buildCommonLocalReplayParticipantContext,

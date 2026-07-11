@@ -1,7 +1,7 @@
 import {
 	buildLocalReplayPlayers,
 	type LocalReplayUser,
-} from "../../shared/localReplay";
+} from "../localReplay";
 import type { SnapshotPlayer } from "../../../services/network/gameSocket";
 
 export interface LocalReplayRegistry {

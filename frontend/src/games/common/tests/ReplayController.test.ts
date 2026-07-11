@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ReplayDetail, ReplayFrame } from "../../features/hub/api";
-import { ReplayController } from "./ReplayController";
+import type { ReplayDetail, ReplayFrame } from "../../../features/hub/api";
+import { ReplayController } from "../ReplayController";
 
 function makeFrame(index: number, deltaMs = 100): ReplayFrame {
 	const recordedAtMs = Date.UTC(2026, 6, 4, 10, 0, 0, index * deltaMs);

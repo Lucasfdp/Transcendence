@@ -6,7 +6,7 @@ import {
 	replayBallToEntity,
 	resolveReplayWinnerSide,
 	SceneReplayRecorder,
-} from "./localReplay";
+} from "../localReplay";
 
 describe("localReplay", () => {
 	it("normalises imported frames to contract v1 timing", () => {

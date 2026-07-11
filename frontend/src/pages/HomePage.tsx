@@ -21,8 +21,8 @@ import { ShellFlipModal } from "../components/casino/ShellFlipModal";
 import { ThreeShellMonteModal } from "../components/casino/ThreeShellMonteModal";
 import { ShrineSlotsModal } from "../components/casino/ShrineSlotsModal";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
-import { ReplayController } from "../games/shared/ReplayController";
-import { ReplayScene } from "../games/shared/ReplayScene";
+import { ReplayController } from "../games/common/ReplayController";
+import { ReplayScene } from "../games/common/ReplayScene";
 import {
 	hubBackgroundClass,
 	resolveHubBackgroundId,

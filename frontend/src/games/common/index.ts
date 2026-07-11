@@ -1,4 +1,27 @@
 export type { GameDescriptor } from "./descriptors/GameDescriptor";
+export { ReplayController, type ReplayControllerState } from "./ReplayController";
+export { ReplayScene } from "./ReplayScene";
+export {
+	buildLocalReplayImportRequest,
+	buildLocalReplayPlayers,
+	buildLocalReplayPlayerUserIds,
+	createLocalReplayId,
+	normalizeReplayImportFrames,
+	replayBallToEntity,
+	replayStoneToEntity,
+	resolveReplayWinnerSide,
+	SceneReplayRecorder,
+	withPowerStateFlags,
+	type LocalReplayFrameDraft,
+	type LocalReplayImportOptions,
+	type LocalReplayPlayerVisuals,
+	type LocalReplayUser,
+} from "./localReplay";
+export {
+	REPLAY_BACKGROUND_TEXTURES,
+	resolveActiveReplayBackground,
+	resolveActiveReplaySide,
+} from "./replayVisuals";
 export {
 	CommonGameSceneHost,
 	SceneSocketChannel,

@@ -1,4 +1,4 @@
-import type { SceneReplayRecorder } from "../../shared/localReplay";
+import type { SceneReplayRecorder } from "../localReplay";
 
 export interface LocalReplayCaptureRuntimeOptions<
 	TSnapshot extends object,

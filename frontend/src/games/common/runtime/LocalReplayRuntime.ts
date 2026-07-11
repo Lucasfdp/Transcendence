@@ -1,5 +1,5 @@
 import type { ReplayImportRequest } from "../../../features/hub/api";
-import { SceneReplayRecorder } from "../../shared/localReplay";
+import { SceneReplayRecorder } from "../localReplay";
 import {
 	LocalReplayCaptureRuntime,
 	type LocalReplayCaptureRuntimeOptions,

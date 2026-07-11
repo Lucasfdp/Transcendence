@@ -4,7 +4,7 @@ import {
 	buildLocalReplayPlayerUserIds,
 	type LocalReplayUser,
 	type SceneReplayRecorder,
-} from "../../shared/localReplay";
+} from "../localReplay";
 
 export interface LocalReplayPersistenceOptions<TSnapshot extends object> {
 	recorder: SceneReplayRecorder<TSnapshot>;

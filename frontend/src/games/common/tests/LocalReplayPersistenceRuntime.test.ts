@@ -4,7 +4,7 @@ import {
 	LocalReplayPersistenceRuntime,
 	persistLocalReplayImport,
 } from "../runtime/LocalReplayPersistenceRuntime";
-import { SceneReplayRecorder } from "../../shared/localReplay";
+import { SceneReplayRecorder } from "../localReplay";
 
 describe("LocalReplayPersistenceRuntime", () => {
 	it("persists local replay imports through the common persistence runtime", async () => {

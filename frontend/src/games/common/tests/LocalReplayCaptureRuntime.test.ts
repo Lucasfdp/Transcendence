@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { LocalReplayCaptureRuntime } from "../runtime/LocalReplayCaptureRuntime";
-import { SceneReplayRecorder } from "../../shared/localReplay";
+import { SceneReplayRecorder } from "../localReplay";
 
 describe("LocalReplayCaptureRuntime", () => {
 	it("starts and captures replay snapshots through the common capture runtime", () => {
