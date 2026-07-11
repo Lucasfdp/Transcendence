@@ -61,6 +61,7 @@ ensure_writable_dir "secrets/vault/approle/monitoring"
 if [ ! -f "${SEED_FILE}" ]; then
     cat > "${SEED_FILE}" <<EOF
 POSTGRES_PASSWORD=$(generate_secret)
+MONITORING_DB_PASSWORD=$(generate_secret)
 REDIS_PASSWORD=$(generate_secret)
 JWT_SECRET=$(generate_secret)
 SECRET_KEY=$(generate_secret)
@@ -100,9 +101,19 @@ set -a
 . "${SEED_FILE}"
 set +a
 
+# Self-heal seed files created before a key existed (e.g. upgrading from a
+# pre-monitoring-exporters checkout). Appends only what's missing so existing
+# secrets and any filled-in OAuth credentials are preserved.
+if [ -z "${MONITORING_DB_PASSWORD:-}" ]; then
+    MONITORING_DB_PASSWORD="$(generate_secret)"
+    printf 'MONITORING_DB_PASSWORD=%s\n' "${MONITORING_DB_PASSWORD}" >> "${SEED_FILE}"
+    echo "[vault-seed] Added missing MONITORING_DB_PASSWORD to ${SEED_FILE}."
+fi
+
 ${COMPOSE} exec -T \
     -e VAULT_TOKEN="${ROOT_TOKEN}" \
     -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+    -e MONITORING_DB_PASSWORD="${MONITORING_DB_PASSWORD}" \
     -e REDIS_PASSWORD="${REDIS_PASSWORD}" \
     -e JWT_SECRET="${JWT_SECRET}" \
     -e SECRET_KEY="${SECRET_KEY}" \
@@ -170,7 +181,8 @@ ${COMPOSE} exec -T \
             REDIS_PASSWORD="$REDIS_PASSWORD"
 
         vault kv put kv/transcendence/dev/database \
-            POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
+            POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            MONITORING_DB_PASSWORD="$MONITORING_DB_PASSWORD"
 
         vault kv put kv/transcendence/dev/redis \
             REDIS_PASSWORD="$REDIS_PASSWORD"

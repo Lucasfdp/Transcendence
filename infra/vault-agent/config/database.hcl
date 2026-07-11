@@ -31,3 +31,12 @@ template {
   destination = "/vault/rendered/postgres_password"
   perms       = "0644"
 }
+
+# Password for the read-only "monitoring" role used by postgres_exporter
+# (Monitoring module, Phase 4 / Option A). Created by
+# infra/database/tools/init/01-monitoring-role.sh on first DB init.
+template {
+  source      = "/vault/templates/monitoring_db_password.ctmpl"
+  destination = "/vault/rendered/monitoring_db_password"
+  perms       = "0644"
+}

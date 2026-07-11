@@ -1,0 +1,464 @@
+# ==============================================================================
+# Shell Smash -- Grafana-managed alert rules (file-provisioned)
+# Monitoring module, Phase 3. Folder "Shell Smash Alerts", datasource uid
+# "prometheus" (stable, see datasources/prometheus.yml).
+#
+# Each rule: refId A queries Prometheus (instant), refId B is a __expr__
+# threshold node that evaluates A against a fixed value -- this avoids baking
+# comparison operators into PromQL, which would make "condition false" and
+# "no data at all" indistinguishable to Grafana's NoData handling.
+# ==============================================================================
+
+apiVersion: 1
+groups:
+- orgId: 1
+  name: Shell Smash Alerts
+  folder: Shell Smash Alerts
+  interval: 1m
+  rules:
+  - uid: shellsmash-backend-down
+    title: BackendDown
+    condition: B
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        editorMode: code
+        expr: up{job="backend"}
+        instant: true
+        range: false
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: A
+        refId: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        conditions:
+        - evaluator:
+            type: lt
+            params:
+            - 1
+          operator:
+            type: and
+          query:
+            params: []
+          reducer:
+            type: last
+            params: []
+          type: query
+    noDataState: Alerting
+    execErrState: Alerting
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Backend target is not reporting as up in Prometheus.
+      description: 'BackendDown: `up{job="backend"}` breached threshold for 1m.'
+  - uid: shellsmash-high-5xx-rate
+    title: High5xxRate
+    condition: B
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        editorMode: code
+        expr: sum(rate(http_requests_total{status_code=~"5.."}[5m]))
+        instant: true
+        range: false
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: A
+        refId: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.5
+          operator:
+            type: and
+          query:
+            params: []
+          reducer:
+            type: last
+            params: []
+          type: query
+    noDataState: OK
+    execErrState: Alerting
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: Backend 5xx error rate is above 0.5 req/s. Requires defect D2 (status-from-exception fix)
+        to be accurate.
+      description: 'High5xxRate: `sum(rate(http_requests_total{status_code=~"5.."}[5m]))` breached threshold
+        for 5m.'
+  - uid: shellsmash-high-p95-latency
+    title: HighP95Latency
+    condition: B
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        editorMode: code
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+        instant: true
+        range: false
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: A
+        refId: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 1
+          operator:
+            type: and
+          query:
+            params: []
+          reducer:
+            type: last
+            params: []
+          type: query
+    noDataState: OK
+    execErrState: Alerting
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: P95 HTTP request latency is above 1s.
+      description: 'HighP95Latency: `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m]))
+        by (le))` breached threshold for 10m.'
+  - uid: shellsmash-eventloop-lag-p99
+    title: EventLoopLagP99
+    condition: B
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        editorMode: code
+        expr: nodejs_eventloop_lag_p99_seconds
+        instant: true
+        range: false
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: A
+        refId: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.2
+          operator:
+            type: and
+          query:
+            params: []
+          reducer:
+            type: last
+            params: []
+          type: query
+    noDataState: NoData
+    execErrState: Alerting
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Node.js event loop p99 lag is above 200ms — the backend may be blocked/overloaded.
+      description: 'EventLoopLagP99: `nodejs_eventloop_lag_p99_seconds` breached threshold for 5m.'
+  - uid: shellsmash-heap-near-limit
+    title: HeapNearLimit
+    condition: B
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        editorMode: code
+        expr: nodejs_heap_size_used_bytes / nodejs_heap_size_total_bytes
+        instant: true
+        range: false
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: A
+        refId: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.9
+          operator:
+            type: and
+          query:
+            params: []
+          reducer:
+            type: last
+            params: []
+          type: query
+    noDataState: NoData
+    execErrState: Alerting
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: Node.js heap usage is above 90% of the allocated heap.
+      description: 'HeapNearLimit: `nodejs_heap_size_used_bytes / nodejs_heap_size_total_bytes` breached
+        threshold for 10m.'
+  - uid: shellsmash-prometheus-target-missing
+    title: PrometheusTargetMissing
+    condition: B
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        editorMode: code
+        expr: up
+        instant: true
+        range: false
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: A
+        refId: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        conditions:
+        - evaluator:
+            type: lt
+            params:
+            - 1
+          operator:
+            type: and
+          query:
+            params: []
+          reducer:
+            type: last
+            params: []
+          type: query
+    noDataState: Alerting
+    execErrState: Alerting
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: At least one scrape target is down (any job).
+      description: 'PrometheusTargetMissing: `up` breached threshold for 2m.'
+  - uid: shellsmash-postgres-down
+    title: PostgresDown
+    condition: B
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        editorMode: code
+        expr: pg_up
+        instant: true
+        range: false
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: A
+        refId: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        conditions:
+        - evaluator:
+            type: lt
+            params:
+            - 1
+          operator:
+            type: and
+          query:
+            params: []
+          reducer:
+            type: last
+            params: []
+          type: query
+    noDataState: Alerting
+    execErrState: Alerting
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: postgres_exporter reports PostgreSQL as unreachable.
+      description: 'PostgresDown: `pg_up` breached threshold for 1m.'
+  - uid: shellsmash-redis-down
+    title: RedisDown
+    condition: B
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        editorMode: code
+        expr: redis_up
+        instant: true
+        range: false
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: A
+        refId: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        conditions:
+        - evaluator:
+            type: lt
+            params:
+            - 1
+          operator:
+            type: and
+          query:
+            params: []
+          reducer:
+            type: last
+            params: []
+          type: query
+    noDataState: Alerting
+    execErrState: Alerting
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: redis_exporter reports Redis as unreachable.
+      description: 'RedisDown: `redis_up` breached threshold for 1m.'
+  - uid: shellsmash-pg-connections-high
+    title: PGConnectionsHigh
+    condition: B
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        editorMode: code
+        expr: pg_stat_activity_count / pg_settings_max_connections
+        instant: true
+        range: false
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: A
+        refId: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.8
+          operator:
+            type: and
+          query:
+            params: []
+          reducer:
+            type: last
+            params: []
+          type: query
+    noDataState: NoData
+    execErrState: Alerting
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: PostgreSQL is using more than 80% of max_connections.
+      description: 'PGConnectionsHigh: `pg_stat_activity_count / pg_settings_max_connections` breached
+        threshold for 10m.'

@@ -272,7 +272,7 @@
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"targets": [
 				{
-					"expr": "process_uptime_seconds",
+					"expr": "time() - process_start_time_seconds",
 					"legendFormat": "uptime",
 					"refId": "A"
 				}
@@ -299,6 +299,6 @@
 	"timezone": "browser",
 	"title": "Shell Smash — Infrastructure",
 	"uid": "shellsmash-infra",
-	"version": 1,
+	"version": 2,
 	"weekStart": ""
 }

@@ -49,8 +49,12 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
 			registers: [this.registry],
 		});
 
+		// Named without a "_total" suffix: this is a Gauge (current count that
+		// can go up or down), not a Counter. The "_total" suffix is a
+		// Prometheus naming convention reserved for monotonically increasing
+		// counters and trips promtool lint otherwise (D9).
 		this.guestSessionsGauge = new Gauge({
-			name: "shellsmash_guest_sessions_total",
+			name: "shellsmash_guest_sessions",
 			help: "Current number of active guest user accounts in the database",
 			registers: [this.registry],
 		});

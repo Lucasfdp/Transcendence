@@ -136,6 +136,78 @@ The Nginx configuration sets the following security headers on all responses:
 
 ---
 
+## Monitoring (Prometheus + Grafana)
+
+### Grafana auth model
+
+Grafana is served exclusively behind Nginx at `/monitoring/`
+(`GF_SERVER_SERVE_FROM_SUB_PATH=true`) — it has no published host port, so it
+is unreachable except through the reverse proxy over HTTPS. Sign-up
+(`GF_USERS_ALLOW_SIGN_UP=false`) and anonymous access
+(`GF_AUTH_ANONYMOUS_ENABLED=false`) are both disabled, so the Vault-seeded
+admin account (`GF_ADMIN_USER` / `GF_ADMIN_PASSWORD`, from
+`kv/transcendence/dev/monitoring`) is the only way in. `infra/monitoring/tools/entrypoint.sh`
+refuses to start Grafana at all if `GF_ADMIN_PASSWORD` is empty — it never
+falls back to a default credential like `changeme` (previously a real gap,
+tracked as defect D5, now fixed: booting with a known password behind a
+now-public route would have been a real hole).
+
+### Metrics token flow
+
+`GET /api/metrics` (the Prometheus text-format endpoint on the backend)
+requires `Authorization: Bearer <METRICS_TOKEN>` when `METRICS_TOKEN` is
+configured. The token itself never touches `prometheus.yml` or process
+arguments: Vault renders it to `/vault/secrets/monitoring.env`, the monitoring
+container's entrypoint writes it to a mode-`400` file
+(`/etc/prometheus/metrics_token`), and Prometheus reads it via
+`authorization.credentials_file`. The controller compares the presented
+token with `crypto.timingSafeEqual` on length-matched buffers (defect D7) —
+a plain `!==` comparison leaks timing information proportional to the number
+of matching leading bytes, which is enough for an attacker to recover the
+token character by character over many requests.
+
+If `METRICS_TOKEN` is unset, `/api/metrics` is unauthenticated. That is only
+acceptable in a throwaway local environment; `vault-seed-dev.sh` always
+generates one, so a normal `make dev` run is protected by default.
+
+### Why `/api/health` is public
+
+`/api/health` (through the Nginx `/api/` location) performs a live DB + Redis
+probe on every hit and returns 503 naming which dependency is down. It's
+intentionally public because it doubles as the Docker `HEALTHCHECK` target
+and needs to work from outside the container network for external uptime
+checks. It's covered by the same `limit_req zone=api_limit` as the rest of
+`/api/`, which bounds how often it can be hit. Revealing *which* dependency
+failed is a deliberate trade-off for this project (faster debugging during
+evaluation) rather than a hardened production stance — a public-facing
+deployment would want to collapse the 503 body to a generic message.
+
+### `modsecurity off` on `/monitoring/`
+
+The `/monitoring/` Nginx location disables ModSecurity
+(`modsecurity off;`), matching the existing `/` and `/api/auth/*/callback`
+locations. Grafana's own API traffic (JSON bodies, its internal query
+language in request params) trips generic OWASP CRS rules with false
+positives, and Grafana already enforces its own authentication and
+authorization on every request — ModSecurity would be redundant defense
+against a threat model (SQLi/XSS payloads reaching an app server) that
+doesn't apply to a pre-authenticated dashboard UI. `/api/` and `/admin/`
+(the two locations that accept arbitrary user-controlled input into
+business logic) keep ModSecurity enabled.
+
+### Exporter credentials
+
+`postgres_exporter` and `redis_exporter` never receive credentials as compose
+environment literals. Each mounts the existing Vault-rendered secret volume
+for its target service read-only (`database_vault_rendered` /
+`redis_vault_rendered`) and assembles its connection string at container
+start via a small wrapper entrypoint. `postgres_exporter` authenticates as a
+dedicated `monitoring` Postgres role granted `pg_monitor` (read-only
+observability views), created by `infra/database/tools/init/01-monitoring-role.sh`
+on first database init — never the Postgres superuser.
+
+---
+
 ## Environment Variable Security Checklist
 
 - [ ] `.env` is in `.gitignore` — never committed

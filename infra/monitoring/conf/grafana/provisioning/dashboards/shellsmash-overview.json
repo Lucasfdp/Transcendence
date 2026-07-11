@@ -281,7 +281,7 @@
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"targets": [
 				{
-					"expr": "shellsmash_guest_sessions_total",
+					"expr": "shellsmash_guest_sessions",
 					"legendFormat": "guests",
 					"refId": "A"
 				}
@@ -313,6 +313,6 @@
 	"timezone": "browser",
 	"title": "Shell Smash — Overview",
 	"uid": "shellsmash-overview",
-	"version": 1,
+	"version": 2,
 	"weekStart": ""
 }

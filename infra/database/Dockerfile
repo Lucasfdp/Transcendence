@@ -39,6 +39,11 @@ RUN apk update && apk add --no-cache \
 # --------------------------------------------------------------------------
 # COPY tools/init.sql /docker-entrypoint-initdb.d/01_init.sql
 # COPY tools/seed.sql /docker-entrypoint-initdb.d/02_seed.sql
+#
+# 01-monitoring-role.sh creates the read-only "monitoring" role used by
+# postgres_exporter (Monitoring module, Phase 4 / Option A).
+COPY tools/init/01-monitoring-role.sh /docker-entrypoint-initdb.d/01-monitoring-role.sh
+RUN chmod +x /docker-entrypoint-initdb.d/01-monitoring-role.sh
 
 COPY tools/entrypoint.sh /usr/local/bin/custom-entrypoint.sh
 RUN chmod +x /usr/local/bin/custom-entrypoint.sh

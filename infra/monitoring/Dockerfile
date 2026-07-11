@@ -53,11 +53,26 @@ COPY conf/grafana/provisioning/dashboards/shellsmash-overview.json \
      /var/lib/grafana/dashboards/shellsmash-overview.json
 COPY conf/grafana/provisioning/dashboards/shellsmash-infra.json \
      /var/lib/grafana/dashboards/shellsmash-infra.json
+COPY conf/grafana/provisioning/dashboards/shellsmash-datastores.json \
+     /var/lib/grafana/dashboards/shellsmash-datastores.json
 RUN chown -R ${GRAFANA_UID}:${GRAFANA_GID} /var/lib/grafana/dashboards
 
 # Prometheus config template (rendered at runtime by entrypoint.sh)
 COPY conf/prometheus.yml.tpl /etc/prometheus/prometheus.yml.tpl
 RUN chown 9090:9090 /etc/prometheus/prometheus.yml.tpl
+
+# Build-time config validation (Phase 6): render the template with the same
+# defaults entrypoint.sh falls back to, then run it through `promtool check
+# config`. Catches YAML/scrape-config typos at build time instead of at
+# container boot. `metrics_token` doesn't need real content here — Prometheus
+# only checks that the credentials_file path resolves; entrypoint.sh
+# overwrites it with the real token at runtime.
+RUN touch /etc/prometheus/metrics_token \
+    && sed -e "s/\${PROMETHEUS_SCRAPE_INTERVAL}/15s/g" \
+           -e "s/\${BACKEND_SCRAPE_TARGET}/backend:8000/g" \
+           /etc/prometheus/prometheus.yml.tpl \
+    | promtool check config /dev/stdin \
+    && rm -f /etc/prometheus/metrics_token
 
 # Supervisord config — explicit path used in entrypoint.sh with -c flag
 RUN mkdir -p /etc/supervisor/conf.d
@@ -70,9 +85,17 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # Grafana listens on MONITORING_PORT (default 3001)
 EXPOSE 3001
 
-# Healthcheck hits Grafana's built-in /api/health endpoint
+# Healthcheck probes BOTH Grafana and Prometheus (D6). supervisord's
+# startretries=3 means Prometheus can go FATAL and stay down while Grafana
+# keeps serving /api/health — checking only Grafana left the container
+# reporting "healthy" while every panel was flatlined.
+# NOTE: GF_SERVER_SERVE_FROM_SUB_PATH=true (Phase 2) mounts Grafana's entire
+# router — including /api/health — under /monitoring/. A bare /api/health
+# 404s once that's enabled, so the probe must include the subpath.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
-    CMD wget --quiet --tries=1 --spider "http://localhost:${MONITORING_PORT:-3001}/api/health" || exit 1
+    CMD wget --quiet --tries=1 --spider "http://localhost:${MONITORING_PORT:-3001}/monitoring/api/health" \
+        && wget --quiet --tries=1 --spider "http://127.0.0.1:9090/-/healthy" \
+        || exit 1
 
 # Run as root so supervisord can fork child processes under different users
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

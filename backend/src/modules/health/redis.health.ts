@@ -13,8 +13,16 @@ const REDIS_TIMEOUT_MS = 3_000;
  * Custom Redis health indicator.
  *
  * Uses a raw TCP connection so we don't need the ioredis package just for
- * health checks.  Sends AUTH (if a password is configured) followed by PING
- * and verifies the expected responses using the Redis Inline/RESP protocol.
+ * health checks. When a password is configured, sends AUTH and, only after
+ * receiving `+OK`, sends PING — AUTH success proves the credential is
+ * valid, PING proves the server is actually serving commands (a
+ * connection can auth successfully against a server that is otherwise
+ * wedged). When no password is configured, PING is sent directly.
+ *
+ * Note: if REDIS_PASSWORD is set in this service's env but Redis itself has
+ * no password configured, AUTH will reply `-ERR Client sent AUTH, but no
+ * password is set` and the check will (correctly) fail — that mismatch is
+ * a configuration error, not a transient outage.
  */
 @Injectable()
 export class RedisHealthIndicator extends HealthIndicator {
@@ -67,15 +75,37 @@ export class RedisHealthIndicator extends HealthIndicator {
 					const authCmd = `*2\r\n$4\r\nAUTH\r\n$${Buffer.byteLength(password)}\r\n${password}\r\n`;
 					socket.write(authCmd);
 
-					socket.once("data", (data) => {
-						const reply = data.toString();
-						if (reply.startsWith("+OK")) {
-							done();
-						} else {
+					// Assumes the whole RESP reply arrives in a single TCP
+					// chunk. True in practice for the short +OK/+PONG/-ERR
+					// replies used here; if this ever needs to be
+					// bullet-proof, buffer and split on "\r\n" instead of
+					// relying on a single "data" event.
+					socket.once("data", (authData) => {
+						const authReply = authData.toString();
+						if (!authReply.startsWith("+OK")) {
 							done(
-								new Error(`Redis AUTH failed: ${reply.trim()}`),
+								new Error(
+									`Redis AUTH failed: ${authReply.trim()}`,
+								),
 							);
+							return;
 						}
+
+						// AUTH succeeded — now confirm the server is
+						// actually serving commands with PING.
+						socket.write("PING\r\n");
+						socket.once("data", (pingData) => {
+							const pingReply = pingData.toString();
+							if (pingReply.includes("PONG")) {
+								done();
+							} else {
+								done(
+									new Error(
+										`Redis PING failed: ${pingReply.trim()}`,
+									),
+								);
+							}
+						});
 					});
 				} else {
 					// No password — just PING

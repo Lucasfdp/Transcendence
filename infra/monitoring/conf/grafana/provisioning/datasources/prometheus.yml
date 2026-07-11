@@ -9,5 +9,8 @@ datasources:
       access: proxy
       editable: false
       jsonData:
+          # Mirrors the default PROMETHEUS_SCRAPE_INTERVAL (see .env.example
+          # and prometheus.yml.tpl). If that env var is changed, update this
+          # too — Grafana's min-interval isn't derived from it automatically.
           timeInterval: "15s"
           httpMethod: POST

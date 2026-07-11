@@ -84,6 +84,21 @@ server {
         proxy_send_timeout 3600s;
     }
 
+    location /monitoring/ {
+        modsecurity off;                 # Grafana's API traffic trips generic CRS rules; auth is Grafana's own
+        proxy_pass         http://monitoring:3001;
+        proxy_set_header   Host                $http_host;
+        proxy_set_header   X-Real-IP           $remote_addr;
+        proxy_set_header   X-Forwarded-For     $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto   $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade             $http_upgrade;   # /monitoring/api/live/ websocket
+        proxy_set_header   Connection          $connection_upgrade;
+        proxy_read_timeout 120s;
+        limit_req zone=api_limit burst=30 nodelay;              # brute-force mitigation on /login
+        limit_req_status 429;
+    }
+
     location /admin/ {
         modsecurity on;
         modsecurity_rules_file /etc/nginx/modsec/main.conf;

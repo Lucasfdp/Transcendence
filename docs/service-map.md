@@ -48,9 +48,20 @@
          ┌────────────────────────────────────────────────────────────────┐
          │  monitoring  (frontend + backend network)                      │
          │  ─────────────────────────────────────                        │
-         │  • Scrapes /metrics from all services                          │
-         │  • Grafana dashboards (latency, errors, throughput)            │
-         │  • Log aggregation via Loki                                    │
+         │  • Prometheus scrapes backend /api/metrics + postgres_exporter │
+         │    + redis_exporter (job: backend / postgres / redis)          │
+         │  • Grafana dashboards (overview, infra, data stores) and       │
+         │    9 file-provisioned alert rules ("Shell Smash Alerts")       │
+         │  • Reachable ONLY via Nginx at https://<host>/monitoring/ —    │
+         │    never a published host port                                 │
+         └────────────────────────────────────────────────────────────────┘
+
+         ┌────────────────────────────────────────────────────────────────┐
+         │  postgres_exporter / redis_exporter  (backend_network only)    │
+         │  ─────────────────────────────────────                        │
+         │  • expose-only, scraped by Prometheus, no host port            │
+         │  • credentials read from the existing Vault-rendered secret    │
+         │    volumes (database_vault_rendered / redis_vault_rendered)    │
          └────────────────────────────────────────────────────────────────┘
 
          ┌────────────────────────────────────────────────────────────────┐
@@ -66,15 +77,17 @@
 
 ## Network Membership Summary
 
-| Service       | frontend_network | backend_network | Host port |
-| ------------- | :--------------: | :-------------: | :-------: |
-| reverse_proxy |        ✅        |        —        |  80, 443  |
-| frontend      |        ✅        |        —        |     —     |
-| backend       |        ✅        |       ✅        |     —     |
-| database      |        —         |       ✅        |     —     |
-| redis         |        —         |       ✅        |     —     |
-| monitoring    |        ✅        |       ✅        |     —     |
-| portainer     |        ✅        |        —        |   9443    |
+| Service           | frontend_network | backend_network | Host port |
+| ----------------- | :--------------: | :-------------: | :-------: |
+| reverse_proxy     |        ✅        |        —        |  80, 443  |
+| frontend          |        ✅        |        —        |     —     |
+| backend           |        ✅        |       ✅        |     —     |
+| database          |        —         |       ✅        |     —     |
+| redis             |        —         |       ✅        |     —     |
+| monitoring        |        ✅        |       ✅        |     —     |
+| postgres_exporter |        —         |       ✅        |     —     |
+| redis_exporter    |        —         |       ✅        |     —     |
+| portainer         |        ✅        |        —        |   9443    |
 
 ---
 
@@ -93,6 +106,13 @@ frontend      → no service dependencies
 database      → no service dependencies
 redis         → no service dependencies
 monitoring    → no service dependencies
+
+postgres_exporter
+    └── DEPENDS ON: database (healthy)
+
+redis_exporter
+    └── DEPENDS ON: redis (healthy)
+
 portainer     → no service dependencies
 ```
 
@@ -100,12 +120,16 @@ portainer     → no service dependencies
 
 ## Port Reference
 
-| Service       | Internal port | External port           | Protocol     |
-| ------------- | ------------- | ----------------------- | ------------ |
-| reverse_proxy | 80 / 443      | 80 / 443                | HTTP / HTTPS |
-| frontend      | 3000          | — (via Nginx)           | HTTP         |
-| backend       | 8000          | — (via Nginx)           | HTTP / WS    |
-| database      | 5432          | — (internal only)       | TCP          |
-| redis         | 6379          | — (internal only)       | TCP          |
-| monitoring    | 3000          | — (via Nginx or direct) | HTTP         |
-| portainer     | 9443          | 9443                    | HTTPS        |
+| Service           | Internal port | External port                        | Protocol     |
+| ----------------- | -------------- | ------------------------------------- | ------------ |
+| reverse_proxy     | 80 / 443       | 80 / 443                              | HTTP / HTTPS |
+| frontend          | 3000           | — (via Nginx)                          | HTTP         |
+| backend           | 8000           | — (via Nginx)                          | HTTP / WS    |
+| database          | 5432           | — (internal only)                      | TCP          |
+| redis             | 6379           | — (internal only)                      | TCP          |
+| monitoring        | 3001           | — (via Nginx `/monitoring/` only)      | HTTP         |
+| postgres_exporter | 9187           | — (internal only, scraped by Prometheus) | HTTP       |
+| redis_exporter    | 9121           | — (internal only, scraped by Prometheus) | HTTP       |
+| portainer         | 9443           | 9443                                   | HTTPS        |
+
+Grafana access: `https://<DOMAIN_NAME>:<HTTPS_PORT>/monitoring/` (e.g. `https://localhost:42424/monitoring/`). Never exposed on a published host port — see `docs/deployment.md` and `docs/security.md`.

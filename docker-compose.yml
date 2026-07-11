@@ -173,6 +173,9 @@ services:
             - POSTGRES_USER=${POSTGRES_USER:-shellsmash}
             - POSTGRES_INITDB_ARGS=${POSTGRES_INITDB_ARGS:---encoding=UTF8}
             - POSTGRES_PASSWORD_FILE=/vault/secrets/postgres_password
+            # Consumed by tools/init/01-monitoring-role.sh on first init only
+            # (creates the read-only role used by postgres_exporter — Phase 4 / Option A)
+            - MONITORING_DB_PASSWORD_FILE=/vault/secrets/monitoring_db_password
             - SECRETS_WAIT_TIMEOUT=${SECRETS_WAIT_TIMEOUT:-120}
         healthcheck:
             test:
@@ -252,7 +255,59 @@ services:
             - GF_ADMIN_USER=${GF_ADMIN_USER:-admin}
             - PROMETHEUS_SCRAPE_INTERVAL=${PROMETHEUS_SCRAPE_INTERVAL:-15s}
             - MONITORING_PORT=3001
+            # Mirrors the backend service's own (currently hardcoded) BACKEND_PORT=8000
+            # so the Prometheus scrape target doesn't silently drift from it.
+            - BACKEND_PORT=8000
+            # Used to build GF_SERVER_ROOT_URL matching the externally-visible
+            # https://<domain>:<port>/monitoring/ address (see entrypoint.sh) —
+            # Grafana itself only ever sees plain HTTP from Nginx.
+            - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+            - HTTPS_PORT=${HTTPS_PORT:-42424}
             - VAULT_ENV_FILE=/vault/secrets/monitoring.env
+            - SECRETS_WAIT_TIMEOUT=${SECRETS_WAIT_TIMEOUT:-120}
+        healthcheck:
+            # Probes both Grafana and Prometheus (D6) — see Dockerfile comment.
+            # /monitoring/ prefix required: GF_SERVER_SERVE_FROM_SUB_PATH=true
+            # mounts Grafana's router (incl. /api/health) only under that path.
+            test:
+                [
+                    "CMD-SHELL",
+                    "wget --quiet --tries=1 --spider http://localhost:3001/monitoring/api/health && wget --quiet --tries=1 --spider http://127.0.0.1:9090/-/healthy",
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 60s
+        logging:
+            driver: "${LOG_DRIVER:-json-file}"
+            options:
+                max-size: "${LOG_MAX_SIZE:-10m}"
+                max-file: "${LOG_MAX_FILE:-3}"
+
+    # ── Exporters (Monitoring module, Phase 4 / Option A) ──────────────────────
+    # Internal-only, scraped by Prometheus. Credentials are read from the
+    # existing Vault-rendered secret volumes — never a compose env literal.
+    postgres_exporter:
+        build:
+            context: ./infra/monitoring/exporters/postgres-exporter
+            dockerfile: Dockerfile
+        container_name: ${COMPOSE_PROJECT_NAME}_postgres_exporter
+        image: ${COMPOSE_PROJECT_NAME}/postgres_exporter:local
+        restart: unless-stopped
+        expose:
+            - "9187"
+        volumes:
+            - database_vault_rendered:/vault/secrets:ro
+        networks:
+            - backend_network
+        depends_on:
+            database:
+                condition: service_healthy
+        environment:
+            - POSTGRES_HOST=database
+            - POSTGRES_PORT=5432
+            - POSTGRES_DB=${POSTGRES_DB:-shellsmash}
+            - MONITORING_DB_PASSWORD_FILE=/vault/secrets/monitoring_db_password
             - SECRETS_WAIT_TIMEOUT=${SECRETS_WAIT_TIMEOUT:-120}
         healthcheck:
             test:
@@ -262,12 +317,52 @@ services:
                     "--quiet",
                     "--tries=1",
                     "--spider",
-                    "http://localhost:3001/api/health",
+                    "http://localhost:9187/metrics",
                 ]
             interval: 30s
             timeout: 10s
             retries: 5
-            start_period: 60s
+            start_period: 30s
+        logging:
+            driver: "${LOG_DRIVER:-json-file}"
+            options:
+                max-size: "${LOG_MAX_SIZE:-10m}"
+                max-file: "${LOG_MAX_FILE:-3}"
+
+    redis_exporter:
+        build:
+            context: ./infra/monitoring/exporters/redis-exporter
+            dockerfile: Dockerfile
+        container_name: ${COMPOSE_PROJECT_NAME}_redis_exporter
+        image: ${COMPOSE_PROJECT_NAME}/redis_exporter:local
+        restart: unless-stopped
+        expose:
+            - "9121"
+        volumes:
+            - redis_vault_rendered:/vault/secrets:ro
+        networks:
+            - backend_network
+        depends_on:
+            redis:
+                condition: service_healthy
+        environment:
+            - REDIS_ADDR=redis://redis:6379
+            - REDIS_PASSWORD_FILE=/vault/secrets/redis_password
+            - SECRETS_WAIT_TIMEOUT=${SECRETS_WAIT_TIMEOUT:-120}
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "wget",
+                    "--quiet",
+                    "--tries=1",
+                    "--spider",
+                    "http://localhost:9121/metrics",
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 30s
         logging:
             driver: "${LOG_DRIVER:-json-file}"
             options:
