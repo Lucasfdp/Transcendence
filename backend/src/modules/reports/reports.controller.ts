@@ -8,6 +8,7 @@ import {
 	UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { GuestGuard } from "../auth/guards/guest.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RateLimiterService } from "../auth/rate-limiter.service";
 import { CreateReportDto } from "./dto/create-report.dto";
@@ -34,9 +35,15 @@ export class ReportsController {
 		private readonly rateLimiter: RateLimiterService,
 	) {}
 
-	/** POST /api/reports — report a user (auto-blocks them). */
+	/**
+	 * POST /api/reports — report a user (auto-blocks them). Guest-guarded:
+	 * reporting auto-blocks, and guests can't durably block (Decision 4,
+	 * 2026-07-11). Accepted consequence: a guest can't report players they meet
+	 * in a match.
+	 */
 	@Post()
 	@HttpCode(200)
+	@UseGuards(GuestGuard)
 	async create(
 		@Request() req: { user: { id: number } },
 		@Body() body: CreateReportDto,

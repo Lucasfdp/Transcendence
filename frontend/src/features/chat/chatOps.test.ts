@@ -3,6 +3,7 @@ import type { ConversationSummaryView } from "../hub/api";
 import {
 	addUnread,
 	conversationTitle,
+	isNearBottom,
 	parseGifMetadata,
 	removeUnread,
 	sortConversationsByRecency,
@@ -18,6 +19,7 @@ const makeConversation = (
 	name: "kame",
 	otherUserId: 2,
 	avatar: null,
+	ownerId: null,
 	lastMessageAt: null,
 	lastMessagePreview: null,
 	...overrides,
@@ -184,5 +186,30 @@ describe("parseGifMetadata", () => {
 
 	it("should return null for an empty metadata object", () => {
 		expect(parseGifMetadata({})).toBeNull();
+	});
+});
+
+describe("isNearBottom", () => {
+	it("is true when scrolled exactly to the bottom", () => {
+		expect(isNearBottom(1000, 800, 200, 80)).toBe(true);
+	});
+
+	it("is true when within the threshold of the bottom", () => {
+		// gap = 1000 - 750 - 200 = 50, within an 80px threshold.
+		expect(isNearBottom(1000, 750, 200, 80)).toBe(true);
+	});
+
+	it("is false when scrolled up beyond the threshold", () => {
+		// gap = 1000 - 500 - 200 = 300, outside the threshold.
+		expect(isNearBottom(1000, 500, 200, 80)).toBe(false);
+	});
+
+	it("is true at the exact threshold boundary", () => {
+		// gap = 280, threshold = 280.
+		expect(isNearBottom(1000, 520, 200, 280)).toBe(true);
+	});
+
+	it("is true when content is shorter than the viewport (nothing to scroll)", () => {
+		expect(isNearBottom(150, 0, 200, 80)).toBe(true);
 	});
 });

@@ -83,43 +83,47 @@ export class FriendsService {
 				);
 			}
 
-			// Check both directions for any existing row
-			const existing = await this.friendshipRepo.findOne({
+			// Check both directions for any existing rows. Uses find() (not
+			// findOne) so a mutual-block pair — both A→B and B→A blocked — is
+			// resolved by the explicit priority below rather than by whichever row
+			// the DB happens to return first (Bug B7).
+			const existing = await this.friendshipRepo.find({
 				where: [
 					{ requesterId, addresseeId: addressee.id },
 					{ requesterId: addressee.id, addresseeId: requesterId },
 				],
 			});
-			if (existing) {
+			if (existing.length > 0) {
+				// I previously blocked them → actionable 409 (they must be unblocked
+				// first; see unblock()). Checked FIRST so that, in a mutual block,
+				// the caller still gets the unblock guidance instead of a silent
+				// success (Bug B7).
+				const ownBlock = existing.find(
+					(r) => r.status === "blocked" && r.requesterId === requesterId,
+				);
+				if (ownBlock) {
+					throw new ConflictException(
+						"You have blocked this user. Unblock them before sending a request.",
+					);
+				}
+				// The other user has blocked me → behave like a silent success so the
+				// block is not leaked to the sender (Bug Audit M8). Nothing created.
+				const theirBlock = existing.find(
+					(r) => r.status === "blocked" && r.requesterId === addressee.id,
+				);
+				if (theirBlock) {
+					return;
+				}
 				// They already sent *me* a pending request → accept it instead of
 				// erroring. This is the friendly resolution and it also guarantees a
 				// second, opposite-direction pending row can never exist for the
 				// pair (Bug Audit M2).
-				if (
-					existing.status === "pending" &&
-					existing.requesterId === addressee.id
-				) {
+				const theirPending = existing.find(
+					(r) => r.status === "pending" && r.requesterId === addressee.id,
+				);
+				if (theirPending) {
 					await this.acceptRequest(requesterId, addressee.id);
 					return;
-				}
-				// The other user has blocked me → behave like a silent success so
-				// the block is not leaked to the sender (Bug Audit M8). Nothing is
-				// created.
-				if (
-					existing.status === "blocked" &&
-					existing.requesterId === addressee.id
-				) {
-					return;
-				}
-				// I previously blocked them → actionable 409 (they must be
-				// unblocked first; see unblock()).
-				if (
-					existing.status === "blocked" &&
-					existing.requesterId === requesterId
-				) {
-					throw new ConflictException(
-						"You have blocked this user. Unblock them before sending a request.",
-					);
 				}
 				// My own outstanding request, or we are already friends.
 				throw new ConflictException(
@@ -318,22 +322,32 @@ export class FriendsService {
 			const target = await this.userRepo.findOne({ where: { id: blockedId } });
 			if (!target) throw new NotFoundException("User not found");
 
-			const doBlock = async (em: EntityManager): Promise<void> => {
+			// Returns whether a *live* relationship (pending/accepted) was removed,
+			// so the caller can decide whether the blocked side needs a resync.
+			const doBlock = async (em: EntityManager): Promise<boolean> => {
 				const repo = em.getRepository(Friendship);
-				// Remove any pending/accepted relationship in either direction plus
-				// the caller's OWN prior block row (so re-blocking is idempotent).
-				// Deliberately does NOT delete a `blocked` row where blockedId is the
-				// requester — that is the *other* user's block of the caller, which
-				// must survive so mutual blocks can coexist (Bug Audit M1). The
-				// per-direction unique index lets blockerId→blockedId and
-				// blockedId→blockerId both exist.
-				await repo.delete([
+				// Remove any pending/accepted relationship in either direction. Its
+				// affected count tells us whether the blocked side had a relationship
+				// that just silently vanished and so needs a live resync (Bug B3).
+				const removed = await repo.delete([
 					{ requesterId: blockerId, addresseeId: blockedId, status: "pending" },
 					{ requesterId: blockedId, addresseeId: blockerId, status: "pending" },
 					{ requesterId: blockerId, addresseeId: blockedId, status: "accepted" },
 					{ requesterId: blockedId, addresseeId: blockerId, status: "accepted" },
-					{ requesterId: blockerId, addresseeId: blockedId, status: "blocked" },
 				]);
+				// Separately clear the caller's OWN prior block row so re-blocking is
+				// idempotent. Kept as its own delete (not folded into the one above)
+				// so an idempotent re-block — where this is the only pre-existing row
+				// — does NOT count as removing a live relationship and stays silent
+				// (Bug B3). Deliberately does NOT delete a `blocked` row where
+				// blockedId is the requester — that is the *other* user's block of
+				// the caller, which must survive so mutual blocks coexist (Bug Audit
+				// M1). The per-direction unique index lets both directions exist.
+				await repo.delete({
+					requesterId: blockerId,
+					addresseeId: blockedId,
+					status: "blocked",
+				});
 				await repo.save(
 					repo.create({
 						requesterId: blockerId,
@@ -341,13 +355,12 @@ export class FriendsService {
 						status: "blocked",
 					}),
 				);
+				return (removed.affected ?? 0) > 0;
 			};
 
-			if (manager) {
-				await doBlock(manager);
-			} else {
-				await this.friendshipRepo.manager.transaction(doBlock);
-			}
+			const removedRelationship = manager
+				? await doBlock(manager)
+				: await this.friendshipRepo.manager.transaction(doBlock);
 
 			// Resolve any outstanding friend_request notification between the pair
 			// in either direction, so the recipient's bell doesn't dead-end on an
@@ -358,6 +371,19 @@ export class FriendsService {
 			await this.notifications
 				.removeWhere("friend_request", blockedId, blockerId)
 				.catch(() => undefined);
+
+			// The blocked user's open client still shows the blocker as a friend
+			// (online dot, working-looking Message button) until its next Social
+			// open; the block silently removed the friendship, so give the blocked
+			// side the same live-only resync removeFriend uses. Reuse
+			// `friend:removed` rather than a block-specific event so the block is
+			// never leaked to the blocked side (same silent-block principle as Bug
+			// Audit M8 / Bug B3). No-op if only an idempotent re-block occurred.
+			if (removedRelationship) {
+				this.notifications.pushLiveEvent("friend:removed", blockedId, {
+					userId: blockerId,
+				});
+			}
 		} catch (err) {
 			if (
 				err instanceof BadRequestException ||

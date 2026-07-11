@@ -71,6 +71,13 @@ sandbox paths. Never expose `/sessions/...` paths to the user.
 - **No muting** (the game has no chat).
 - **Scope:** all 5 batches are in scope.
 
+> **Superseded 2026-07-11 (Decision 1, `docs/social-module-completion-plan-2026-07-11.md`):**
+> the earlier "no remove-member / no kick by design" stance for group chat is
+> **no longer in effect**. Groups now have full owner powers — kick, rename,
+> delete, and ownership transfer on owner-leave. The report = report + auto-block
+> decision above still stands; only the group-membership "no kick" position
+> changed.
+
 ---
 
 ## 5. Coding standards to enforce (the user is strict about these)

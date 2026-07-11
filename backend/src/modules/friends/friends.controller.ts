@@ -155,9 +155,14 @@ export class FriendsController {
 		return { ok: true };
 	}
 
-	/** POST /api/friends/block — block a user by userId. */
+	/**
+	 * POST /api/friends/block — block a user by userId. Guests cannot block:
+	 * they have no durable presence in the friend graph, so a guest block would
+	 * be a meaningless ephemeral row (Decision 4, 2026-07-11).
+	 */
 	@Post("block")
 	@HttpCode(200)
+	@UseGuards(GuestGuard)
 	async block(
 		@Request() req: { user: { id: number } },
 		@Body() body: FriendUserIdDto,
@@ -169,10 +174,12 @@ export class FriendsController {
 	/**
 	 * POST /api/friends/unblock — unblock a user by userId. Removes only the
 	 * caller's own block row; a block the other user placed on the caller is
-	 * left intact (Bug Audit H3/M1). Idempotent.
+	 * left intact (Bug Audit H3/M1). Idempotent. Guest-guarded to match block
+	 * (Decision 4, 2026-07-11).
 	 */
 	@Post("unblock")
 	@HttpCode(200)
+	@UseGuards(GuestGuard)
 	async unblock(
 		@Request() req: { user: { id: number } },
 		@Body() body: FriendUserIdDto,

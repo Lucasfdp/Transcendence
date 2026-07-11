@@ -38,15 +38,27 @@ const mockEntityManager = () => ({
 });
 
 const mockConversationRepo = () => {
+	// Chainable stub for the conditional denormalise UPDATE in sendMessage
+	// (Bug B9). Captures the `.set(...)` payload so tests can assert on it.
+	const updateBuilder = {
+		update: jest.fn().mockReturnThis(),
+		set: jest.fn().mockReturnThis(),
+		where: jest.fn().mockReturnThis(),
+		andWhere: jest.fn().mockReturnThis(),
+		execute: jest.fn().mockResolvedValue({ affected: 1 }),
+	};
 	const repo: Record<string, jest.Mock> & {
 		manager?: { transaction: jest.Mock };
+		__updateBuilder?: typeof updateBuilder;
 	} = {
 		findOne: jest.fn(),
 		find: jest.fn(),
 		save: jest.fn(async (v) => v),
 		create: jest.fn((v) => v),
 		delete: jest.fn().mockResolvedValue(undefined),
+		createQueryBuilder: jest.fn(() => updateBuilder),
 	};
+	repo.__updateBuilder = updateBuilder;
 	repo.manager = {
 		transaction: jest.fn(async (cb: (em: unknown) => Promise<unknown>) =>
 			cb(mockEntityManager()),
@@ -81,6 +93,7 @@ const mockUserRepo = () => ({
 
 const mockPresence = () => ({
 	getSocketIds: jest.fn().mockReturnValue([]),
+	isOnline: jest.fn().mockReturnValue(false),
 });
 
 /** Defaults to "yes, friends" so existing tests don't all need to opt in explicitly. */
@@ -96,7 +109,13 @@ const mockGifService = () => ({
 /** Minimal fake Socket.IO server exposing only what ChatService touches. */
 const mockServer = () => {
 	const socketMap = new Map<string, { join: jest.Mock; leave?: jest.Mock }>();
-	return { sockets: { sockets: socketMap } };
+	// Default no-op `to().emit()` so system-message broadcasts (leave / add /
+	// kick / rename) don't throw when a test sets a server but doesn't care
+	// about the emit. Tests that assert on the emit override `to` explicitly.
+	return {
+		sockets: { sockets: socketMap },
+		to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+	};
 };
 
 const makeUser = (overrides: Partial<User> = {}): User =>
@@ -514,6 +533,42 @@ describe("ChatService", () => {
 			expect(joinMock).toHaveBeenCalledWith(chatRoomName(10));
 		});
 
+		it("should post a system message, denormalise it, and broadcast to the room (Bug B4)", async () => {
+			const conversation = makeConversation({ type: "group" });
+			conversationRepo.findOne.mockResolvedValueOnce(conversation);
+			participantRepo.findOne
+				.mockResolvedValueOnce(makeParticipant({ userId: 1 })) // actor
+				.mockResolvedValueOnce(null); // new member not present
+			userRepo.findOne
+				.mockResolvedValueOnce(makeUser({ id: 3, username: "newbie" })) // new member
+				.mockResolvedValueOnce(makeUser({ id: 1, username: "actor" })); // actor lookup
+			const roomEmit = jest.fn();
+			const server = { ...mockServer(), to: jest.fn().mockReturnValue({ emit: roomEmit }) };
+			service.setServer(server as unknown as Server);
+
+			await service.addGroupMember(10, 1, 3);
+
+			expect(messageRepo.save).toHaveBeenCalledWith(
+				expect.objectContaining({
+					conversationId: 10,
+					senderId: 1,
+					type: "system",
+					body: "actor added newbie",
+				}),
+			);
+			// Denormalised onto the conversation for list sorting / unread derivation.
+			expect(conversation.lastMessageAt).toBeInstanceOf(Date);
+			expect(conversation.lastMessagePreview).toBe("actor added newbie");
+			expect(conversationRepo.save).toHaveBeenCalledWith(conversation);
+			// Broadcast to the room so existing members and the new member's
+			// just-joined sockets both receive it.
+			expect(server.to).toHaveBeenCalledWith(chatRoomName(10));
+			expect(roomEmit).toHaveBeenCalledWith(
+				"chat:message",
+				expect.objectContaining({ type: "system", body: "actor added newbie" }),
+			);
+		});
+
 		it("should throw InternalServerErrorException when the repository fails", async () => {
 			conversationRepo.findOne.mockRejectedValueOnce(new Error("DB down"));
 
@@ -657,6 +712,270 @@ describe("ChatService", () => {
 		});
 	});
 
+	// ── leaveGroup ownership transfer (Decision 1) ─────────────────────────────
+
+	describe("leaveGroup — ownership transfer", () => {
+		it("should transfer ownership to the most senior remaining member when the owner leaves", async () => {
+			const conversation = makeConversation({ type: "group", ownerId: 1 });
+			conversationRepo.findOne.mockResolvedValueOnce(conversation);
+			participantRepo.findOne
+				.mockResolvedValueOnce(makeParticipant({ userId: 1 })) // leaver's membership
+				.mockResolvedValueOnce(makeParticipant({ id: 2, userId: 2 })); // successor
+			userRepo.findOne
+				.mockResolvedValueOnce(makeUser({ id: 1, username: "owner" })) // leaver
+				.mockResolvedValueOnce(makeUser({ id: 2, username: "successor" })); // new owner
+
+			await service.leaveGroup(10, 1);
+
+			expect(conversation.ownerId).toBe(2);
+			// Successor is chosen by seniority (joinedAt ASC, id ASC).
+			expect(participantRepo.findOne).toHaveBeenLastCalledWith({
+				where: { conversationId: 10 },
+				order: { joinedAt: "ASC", id: "ASC" },
+			});
+			expect(messageRepo.save).toHaveBeenCalledWith(
+				expect.objectContaining({
+					type: "system",
+					body: "successor is now the group owner",
+				}),
+			);
+		});
+
+		it("should NOT transfer ownership when a non-owner leaves", async () => {
+			const conversation = makeConversation({ type: "group", ownerId: 99 });
+			conversationRepo.findOne.mockResolvedValueOnce(conversation);
+			participantRepo.findOne.mockResolvedValueOnce(makeParticipant({ userId: 1 }));
+			userRepo.findOne.mockResolvedValueOnce(makeUser({ id: 1, username: "member" }));
+
+			await service.leaveGroup(10, 1);
+
+			expect(conversation.ownerId).toBe(99);
+			// Only the leaver-membership lookup ran — no successor query.
+			expect(participantRepo.findOne).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	// ── kickMember (Decision 1) ────────────────────────────────────────────────
+
+	describe("kickMember", () => {
+		it("should remove the member, post a system message, and push chat:removed on the happy path", async () => {
+			const conversation = makeConversation({ type: "group", ownerId: 1 });
+			conversationRepo.findOne.mockResolvedValueOnce(conversation);
+			participantRepo.findOne.mockResolvedValueOnce(
+				makeParticipant({ userId: 2 }),
+			);
+			userRepo.findOne
+				.mockResolvedValueOnce(makeUser({ id: 1, username: "owner" }))
+				.mockResolvedValueOnce(makeUser({ id: 2, username: "kicked" }));
+			const roomEmit = jest.fn();
+			const server = { ...mockServer(), to: jest.fn().mockReturnValue({ emit: roomEmit }) };
+			presence.getSocketIds.mockReturnValue(["socket-2"]);
+			service.setServer(server as unknown as Server);
+
+			await service.kickMember(10, 1, 2);
+
+			expect(participantRepo.delete).toHaveBeenCalledWith({
+				conversationId: 10,
+				userId: 2,
+			});
+			expect(messageRepo.save).toHaveBeenCalledWith(
+				expect.objectContaining({
+					type: "system",
+					body: "owner removed kicked",
+				}),
+			);
+			expect(roomEmit).toHaveBeenCalledWith("chat:removed", { conversationId: 10 });
+		});
+
+		it("should throw ForbiddenException when the caller is not the owner", async () => {
+			conversationRepo.findOne.mockResolvedValueOnce(
+				makeConversation({ type: "group", ownerId: 99 }),
+			);
+
+			await expect(service.kickMember(10, 1, 2)).rejects.toThrow(
+				ForbiddenException,
+			);
+			expect(participantRepo.delete).not.toHaveBeenCalled();
+		});
+
+		it("should throw NotFoundException when the conversation is not a group", async () => {
+			conversationRepo.findOne.mockResolvedValueOnce(
+				makeConversation({ type: "dm" }),
+			);
+
+			await expect(service.kickMember(10, 1, 2)).rejects.toThrow(
+				NotFoundException,
+			);
+		});
+
+		it("should throw BadRequestException when the owner tries to kick themselves", async () => {
+			conversationRepo.findOne.mockResolvedValueOnce(
+				makeConversation({ type: "group", ownerId: 1 }),
+			);
+
+			await expect(service.kickMember(10, 1, 1)).rejects.toThrow(
+				BadRequestException,
+			);
+		});
+
+		it("should throw NotFoundException when the target is not a member", async () => {
+			conversationRepo.findOne.mockResolvedValueOnce(
+				makeConversation({ type: "group", ownerId: 1 }),
+			);
+			participantRepo.findOne.mockResolvedValueOnce(null);
+
+			await expect(service.kickMember(10, 1, 2)).rejects.toThrow(
+				NotFoundException,
+			);
+			expect(participantRepo.delete).not.toHaveBeenCalled();
+		});
+	});
+
+	// ── renameGroup (Decision 1) ───────────────────────────────────────────────
+
+	describe("renameGroup", () => {
+		it("should rename, post a system message, and broadcast conversation-updated", async () => {
+			const conversation = makeConversation({ type: "group", ownerId: 1 });
+			conversationRepo.findOne.mockResolvedValueOnce(conversation);
+			userRepo.findOne.mockResolvedValueOnce(makeUser({ id: 1, username: "owner" }));
+			const roomEmit = jest.fn();
+			const server = { ...mockServer(), to: jest.fn().mockReturnValue({ emit: roomEmit }) };
+			service.setServer(server as unknown as Server);
+
+			await service.renameGroup(10, 1, "  Shell Squad  ");
+
+			expect(conversation.name).toBe("Shell Squad");
+			expect(messageRepo.save).toHaveBeenCalledWith(
+				expect.objectContaining({
+					type: "system",
+					body: "owner renamed the group to Shell Squad",
+				}),
+			);
+			expect(roomEmit).toHaveBeenCalledWith("chat:conversation-updated", {
+				conversationId: 10,
+				name: "Shell Squad",
+			});
+		});
+
+		it("should throw BadRequestException for a blank name (before touching the repo)", async () => {
+			await expect(service.renameGroup(10, 1, "   ")).rejects.toThrow(
+				BadRequestException,
+			);
+			expect(conversationRepo.findOne).not.toHaveBeenCalled();
+		});
+
+		it("should throw ForbiddenException when the caller is not the owner", async () => {
+			conversationRepo.findOne.mockResolvedValueOnce(
+				makeConversation({ type: "group", ownerId: 99 }),
+			);
+
+			await expect(service.renameGroup(10, 1, "New")).rejects.toThrow(
+				ForbiddenException,
+			);
+		});
+	});
+
+	// ── deleteGroup (Decision 1) ───────────────────────────────────────────────
+
+	describe("deleteGroup", () => {
+		it("should delete messages + conversation and push chat:removed to every member", async () => {
+			conversationRepo.findOne.mockResolvedValueOnce(
+				makeConversation({ type: "group", ownerId: 1 }),
+			);
+			participantRepo.find.mockResolvedValueOnce([
+				makeParticipant({ userId: 1 }),
+				makeParticipant({ id: 2, userId: 2 }),
+			]);
+			const roomEmit = jest.fn();
+			const server = { ...mockServer(), to: jest.fn().mockReturnValue({ emit: roomEmit }) };
+			presence.getSocketIds.mockImplementation((uid: number) => [`socket-${uid}`]);
+			service.setServer(server as unknown as Server);
+
+			await service.deleteGroup(10, 1);
+
+			expect(messageRepo.delete).toHaveBeenCalledWith({ conversationId: 10 });
+			expect(conversationRepo.delete).toHaveBeenCalledWith({ id: 10 });
+			expect(roomEmit).toHaveBeenCalledWith("chat:removed", { conversationId: 10 });
+			// One chat:removed per member.
+			expect(
+				roomEmit.mock.calls.filter((c) => c[0] === "chat:removed"),
+			).toHaveLength(2);
+		});
+
+		it("should throw ForbiddenException when the caller is not the owner", async () => {
+			conversationRepo.findOne.mockResolvedValueOnce(
+				makeConversation({ type: "group", ownerId: 99 }),
+			);
+
+			await expect(service.deleteGroup(10, 1)).rejects.toThrow(
+				ForbiddenException,
+			);
+			expect(conversationRepo.delete).not.toHaveBeenCalled();
+		});
+	});
+
+	// ── listGroupMembers (Decision 2) ──────────────────────────────────────────
+
+	describe("listGroupMembers", () => {
+		it("should return members ordered by seniority with an isOwner flag", async () => {
+			conversationRepo.findOne.mockResolvedValueOnce(
+				makeConversation({ type: "group", ownerId: 1 }),
+			);
+			participantRepo.findOne.mockResolvedValueOnce(makeParticipant({ userId: 1 }));
+			participantRepo.find.mockResolvedValueOnce([
+				makeParticipant({
+					userId: 1,
+					joinedAt: new Date("2026-07-01T00:00:00Z"),
+					user: makeUser({ id: 1, username: "owner", level: 9 }),
+				}),
+				makeParticipant({
+					id: 2,
+					userId: 2,
+					joinedAt: new Date("2026-07-02T00:00:00Z"),
+					user: makeUser({ id: 2, username: "member" }),
+				}),
+			]);
+			presence.isOnline.mockImplementation((uid: number) => uid === 2);
+
+			const result = await service.listGroupMembers(10, 1);
+
+			expect(result).toHaveLength(2);
+			expect(result[0]).toMatchObject({
+				userId: 1,
+				username: "owner",
+				isOwner: true,
+				isOnline: false,
+				joinedAt: "2026-07-01T00:00:00.000Z",
+			});
+			expect(result[1]).toMatchObject({
+				userId: 2,
+				isOwner: false,
+				isOnline: true,
+			});
+		});
+
+		it("should throw ForbiddenException when the caller is not a participant", async () => {
+			conversationRepo.findOne.mockResolvedValueOnce(
+				makeConversation({ type: "group", ownerId: 1 }),
+			);
+			participantRepo.findOne.mockResolvedValueOnce(null);
+
+			await expect(service.listGroupMembers(10, 3)).rejects.toThrow(
+				ForbiddenException,
+			);
+		});
+
+		it("should throw NotFoundException when the conversation is not a group", async () => {
+			conversationRepo.findOne.mockResolvedValueOnce(
+				makeConversation({ type: "dm" }),
+			);
+
+			await expect(service.listGroupMembers(10, 1)).rejects.toThrow(
+				NotFoundException,
+			);
+		});
+	});
+
 	// ── sendMessage ──────────────────────────────────────────────────────────
 
 	describe("sendMessage", () => {
@@ -681,9 +1000,41 @@ describe("ChatService", () => {
 
 			expect(result.body).toBe("hey");
 			expect(result.senderUsername).toBe("kame");
-			expect(conversationRepo.save).toHaveBeenCalledWith(
+			// Denormalise now goes through a conditional UPDATE (Bug B9), not a
+			// full entity save, so an out-of-order concurrent write can't regress
+			// the preview/timestamp.
+			expect(conversationRepo.save).not.toHaveBeenCalled();
+			expect(conversationRepo.__updateBuilder?.set).toHaveBeenCalledWith(
 				expect.objectContaining({ lastMessagePreview: "hey" }),
 			);
+			expect(conversationRepo.__updateBuilder?.andWhere).toHaveBeenCalledWith(
+				expect.stringContaining("lastMessageAt"),
+				expect.objectContaining({ ts: expect.any(Date) }),
+			);
+		});
+
+		it("should guard the denormalise UPDATE on the message timestamp so an older write can't regress a newer one (Bug B9)", async () => {
+			const conversation = makeConversation();
+			conversationRepo.findOne.mockResolvedValueOnce(conversation);
+			participantRepo.findOne.mockResolvedValueOnce(makeParticipant());
+			messageRepo.findOne.mockResolvedValueOnce(null); // sender reload (falls back)
+			const savedAt = new Date("2026-07-04T00:00:00Z");
+			// messageRepo.save stamps createdAt = 2026-07-04 (see mock default).
+
+			await service.sendMessage(10, 1, "hey");
+
+			// The WHERE clause only lets the row advance (lastMessageAt <= :ts),
+			// keyed on THIS message's timestamp, so a concurrent send that already
+			// wrote a newer timestamp is not clobbered by this out-of-order write.
+			expect(conversationRepo.__updateBuilder?.where).toHaveBeenCalledWith(
+				"id = :id",
+				{ id: 10 },
+			);
+			expect(conversationRepo.__updateBuilder?.andWhere).toHaveBeenCalledWith(
+				expect.stringMatching(/lastMessageAt.*IS NULL.*lastMessageAt.*<=/s),
+				{ ts: savedAt },
+			);
+			expect(conversationRepo.__updateBuilder?.execute).toHaveBeenCalledTimes(1);
 		});
 
 		it("should fall back to the un-related message when the sender reload fails", async () => {
@@ -1250,24 +1601,26 @@ describe("ChatService", () => {
 			);
 		});
 
-		it("should filter by the 'before' cursor when paginating older messages", async () => {
+		it("should filter by the 'beforeId' cursor and order by id when paginating older messages (Bug B6)", async () => {
 			participantRepo.findOne.mockResolvedValueOnce(makeParticipant());
 			messageRepo.find.mockResolvedValueOnce([]);
-			const cursor = new Date("2026-07-04T00:00:00Z");
 
-			await service.listMessages(10, 1, { before: cursor, limit: 10 });
+			await service.listMessages(10, 1, { beforeId: 42, limit: 10 });
 
 			expect(messageRepo.find).toHaveBeenCalledWith(
 				expect.objectContaining({
 					where: expect.objectContaining({ conversationId: 10 }),
+					// Ordered by the monotonic serial id, not createdAt, so ties can't
+					// make paging nondeterministic.
+					order: { id: "DESC" },
 					take: 10,
 				}),
 			);
 			const callArg = messageRepo.find.mock.calls[0][0] as {
-				where: { createdAt: { value: Date } };
+				where: { id: { value: number } };
 			};
-			// LessThan() returns a FindOperator — assert it carries our cursor value.
-			expect(callArg.where.createdAt.value).toEqual(cursor);
+			// LessThan() returns a FindOperator — assert it carries the id cursor.
+			expect(callArg.where.id.value).toBe(42);
 		});
 
 		it("should throw InternalServerErrorException when the repository fails", async () => {

@@ -1,5 +1,12 @@
 import Phaser from "phaser";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+	useEffect,
+	useId,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
@@ -30,6 +37,7 @@ import {
 	FriendView,
 	GameLeaderboardEntry,
 	type GifSearchResult,
+	type GroupMemberView,
 	MiniGameDefinition,
 	NotificationView,
 	OverallLeaderboardEntry,
@@ -61,6 +69,7 @@ import { buildFriendCode, parseFriendCode } from "../features/social/friendCode"
 import {
 	addUnread,
 	conversationTitle,
+	isNearBottom,
 	parseGifMetadata,
 	removeUnread,
 	sortConversationsByRecency,
@@ -79,6 +88,8 @@ import {
 import {
 	formatRelativeTime,
 	groupFriendsByPresence,
+	patchFriendPresence,
+	type PresenceChange,
 } from "../features/social/presence";
 import { useToast } from "../features/social/toast/ToastContext";
 
@@ -106,6 +117,13 @@ const GIF_SEARCH_MIN_LENGTH = 2;
  * A full page back implies there may be older messages to load (Bug Audit L6).
  */
 const CHAT_MESSAGE_PAGE_SIZE = 50;
+
+/**
+ * How close (px) to the bottom of the thread counts as "pinned" — a live
+ * message auto-scrolls into view only when the reader is within this distance,
+ * so it never yanks someone who has scrolled up to read history (Bug B2).
+ */
+const CHAT_SCROLL_STICK_THRESHOLD_PX = 80;
 
 /** Above this many unread notifications, the bell badge shows "99+" instead
  *  of the exact count (Notification Audit L6). */
@@ -684,6 +702,15 @@ function HomeMenu(): JSX.Element {
 	const [gifSearchQuery, setGifSearchQuery] = useState("");
 	const [gifResults, setGifResults] = useState<GifSearchResult[]>([]);
 	const [gifSearchLoading, setGifSearchLoading] = useState(false);
+	// ── Group member management (Decision 1/2) ───────────────────────────────
+	// `groupMembers` is the open group's member list (null = panel closed / not
+	// loaded); the rest drive the member panel, add-member picker, and the
+	// owner-only rename control.
+	const [groupMembers, setGroupMembers] = useState<GroupMemberView[] | null>(null);
+	const [groupMembersLoading, setGroupMembersLoading] = useState(false);
+	const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+	const [groupRenameDraft, setGroupRenameDraft] = useState<string | null>(null);
+	const [groupActionLoading, setGroupActionLoading] = useState(false);
 	/** Pending friend-removal timers keyed by userId; cleared on Undo. */
 	const removalTimers = useRef(
 		new Map<number, ReturnType<typeof setTimeout>>(),
@@ -821,6 +848,25 @@ function HomeMenu(): JSX.Element {
 		};
 	}, []);
 
+	// Hydrate the chat unread set on every mount via REST (Bug B1) — same
+	// rationale as the notification hydration above: the `chat:unread-inbox`
+	// socket push only fires at connect time on the singleton game socket, so
+	// after hub → game → hub the remounted component's unread set is empty
+	// until a new message arrives. REST rebuilds it; WS remains the live
+	// accelerator.
+	useEffect(() => {
+		let cancelled = false;
+		api
+			.getUnreadConversations()
+			.then((entries) => {
+				if (!cancelled) setUnreadConversationIds(unreadIdsFromInbox(entries));
+			})
+			.catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	// Subscribe to notification + lobby events on the shared game socket
 	useEffect(() => {
 		const socket = getGameSocket();
@@ -837,6 +883,13 @@ function HomeMenu(): JSX.Element {
 		// entry): just resync the friends list so the removed side doesn't
 		// keep seeing someone who unfriended them until their next refresh.
 		const onFriendRemoved = () => void refreshSocial();
+
+		// Live presence transition for a friend (Decision 3): patch the friend
+		// row in place. Pure patch via a functional update so the mount-bound
+		// handler doesn't read a stale `friends`; a no-op when the modal has
+		// never been opened (friends === null) or the user isn't in the list.
+		const onPresenceChanged = (data: PresenceChange) =>
+			setFriends((prev) => (prev ? patchFriendPresence(prev, data) : prev));
 
 		const onLobbyCreated = (data: { lobbyId: string; gameId: string; expiresAt: number }) =>
 			setActiveLobby(data);
@@ -872,6 +925,7 @@ function HomeMenu(): JSX.Element {
 		socket.on("notification:inbox", onInbox);
 		socket.on("notification:new", onNew);
 		socket.on("friend:removed", onFriendRemoved);
+		socket.on("presence:changed", onPresenceChanged);
 		socket.on("lobby:created", onLobbyCreated);
 		socket.on("lobby:expired", onLobbyExpired);
 		socket.on("lobby:cancelled", onLobbyCancelled);
@@ -883,6 +937,7 @@ function HomeMenu(): JSX.Element {
 			socket.off("notification:inbox", onInbox);
 			socket.off("notification:new", onNew);
 			socket.off("friend:removed", onFriendRemoved);
+			socket.off("presence:changed", onPresenceChanged);
 			socket.off("lobby:created", onLobbyCreated);
 			socket.off("lobby:expired", onLobbyExpired);
 			socket.off("lobby:cancelled", onLobbyCancelled);
@@ -899,6 +954,56 @@ function HomeMenu(): JSX.Element {
 		activeConversationIdRef.current = activeConversationId;
 	}, [activeConversationId]);
 
+	// Mirror of `conversations` for the chat socket effect, which binds once on
+	// mount and so can't read the live state directly.
+	const conversationsRef = useRef<ConversationSummaryView[] | null>(null);
+	useEffect(() => {
+		conversationsRef.current = conversations;
+	}, [conversations]);
+	// Guards the unknown-conversation refetch (Bug B4): a burst of live messages
+	// for a not-yet-listed conversation triggers at most one in-flight refetch.
+	const conversationRefetchInFlightRef = useRef(false);
+
+	// Chat scroll anchoring (Bug B2). The thread renders oldest→newest in a
+	// scroll container; without help it opens at the top (oldest) and live
+	// messages append below the fold. `chatListRef` is the scroll container;
+	// `chatScrollActionRef` is a one-shot instruction consumed by the layout
+	// effect after each `chatMessages` change; `chatMessagesRef` mirrors the
+	// message list so the mount-bound socket handler can dedup without a stale
+	// closure; `pendingSendScrollRef` forces a scroll-to-bottom when the user's
+	// own just-sent message arrives, even if they'd scrolled up.
+	const chatListRef = useRef<HTMLUListElement | null>(null);
+	const chatScrollActionRef = useRef<
+		{ kind: "bottom" } | { kind: "preserve"; prevScrollHeight: number } | null
+	>(null);
+	const chatMessagesRef = useRef<ChatMessageView[]>([]);
+	const pendingSendScrollRef = useRef(false);
+	// Last text body sent over the socket, held so a server rejection (rate
+	// limit, frozen dm, group left elsewhere) can restore it into an empty
+	// draft instead of losing the user's typing (Bug B8). Disarmed as soon as a
+	// message lands in the active thread — a rejected send never echoes back, so
+	// a still-armed ref on `chat:error` means the send genuinely failed.
+	const lastSentChatBodyRef = useRef("");
+	useEffect(() => {
+		chatMessagesRef.current = chatMessages;
+	}, [chatMessages]);
+
+	// Apply the pending scroll instruction after the DOM has the new messages
+	// but before paint, so there's no visible jump.
+	useLayoutEffect(() => {
+		const el = chatListRef.current;
+		const action = chatScrollActionRef.current;
+		chatScrollActionRef.current = null;
+		if (!el || !action) return;
+		if (action.kind === "bottom") {
+			el.scrollTop = el.scrollHeight;
+		} else {
+			// Older history was prepended: keep the viewport on the same message
+			// by shifting scrollTop down by exactly the height that appeared above.
+			el.scrollTop += el.scrollHeight - action.prevScrollHeight;
+		}
+	}, [chatMessages]);
+
 	// Subscribe to chat events on the shared game socket — kept separate from
 	// the notification/lobby effect above for isolation.
 	useEffect(() => {
@@ -908,10 +1013,34 @@ function HomeMenu(): JSX.Element {
 			if (activeConversationIdRef.current === message.conversationId) {
 				// Skip if we already have this message id — the sender receives its
 				// own broadcast, and a message can race the initial history fetch
-				// (Bug Audit L1).
-				setChatMessages((prev) =>
-					prev.some((m) => m.id === message.id) ? prev : [...prev, message],
-				);
+				// (Bug Audit L1). Dedup off the ref (not the stale closure) so the
+				// scroll decision below only runs for a genuine append.
+				const isNew = !chatMessagesRef.current.some((m) => m.id === message.id);
+				if (isNew) {
+					// Decide the scroll action *before* the DOM grows (Bug B2): stick
+					// to the bottom if the reader was already near it, or if this is
+					// the user's own just-sent message; otherwise leave scroll be so
+					// we don't yank someone reading older history.
+					const el = chatListRef.current;
+					const forced = pendingSendScrollRef.current;
+					pendingSendScrollRef.current = false;
+					const pinned =
+						forced ||
+						!el ||
+						isNearBottom(
+							el.scrollHeight,
+							el.scrollTop,
+							el.clientHeight,
+							CHAT_SCROLL_STICK_THRESHOLD_PX,
+						);
+					chatScrollActionRef.current = pinned ? { kind: "bottom" } : null;
+					// A message landed in the open thread → our own send (if any) was
+					// accepted, so disarm the draft-restore ref (Bug B8).
+					lastSentChatBodyRef.current = "";
+					setChatMessages((prev) =>
+						prev.some((m) => m.id === message.id) ? prev : [...prev, message],
+					);
+				}
 			}
 			setConversations((prev) =>
 				prev
@@ -924,6 +1053,23 @@ function HomeMenu(): JSX.Element {
 						)
 					: prev,
 			);
+
+			// A message for a conversation not in our list — a brand-new DM, or a
+			// group we were just added to — can't be upserted (the id isn't there
+			// to update), so pull the fresh list. Guarded against a message burst
+			// stampeding the endpoint (Bug B4). No-op while the modal has never
+			// been opened (conversations === null).
+			const known = conversationsRef.current;
+			if (
+				known !== null &&
+				!known.some((c) => c.id === message.conversationId) &&
+				!conversationRefetchInFlightRef.current
+			) {
+				conversationRefetchInFlightRef.current = true;
+				void refreshConversations().finally(() => {
+					conversationRefetchInFlightRef.current = false;
+				});
+			}
 		};
 
 		const onChatUnreadInbox = (entries: UnreadConversationView[]) => {
@@ -940,6 +1086,51 @@ function HomeMenu(): JSX.Element {
 
 		const onChatError = (data: { message: string }) => {
 			showToast({ message: data.message, variant: "error" });
+			// The send that triggered this error cleared the draft optimistically;
+			// restore the text so the user doesn't have to retype it — most useful
+			// exactly when the error is a rate limit (Bug B8). Only restore into an
+			// empty draft (don't clobber something they've since typed), and only
+			// while the ref is still armed (a successful send would have disarmed
+			// it via the message echo above).
+			const pending = lastSentChatBodyRef.current;
+			if (pending) {
+				lastSentChatBodyRef.current = "";
+				setChatMessageDraft((prev) => (prev.length === 0 ? pending : prev));
+			}
+		};
+
+		// Kicked from a group, or the owner deleted it (Decision 1): drop the
+		// conversation, clear its unread flag, and close the thread + member
+		// panel if it was the open one.
+		const onChatRemoved = (data: { conversationId: number }) => {
+			setConversations((prev) =>
+				prev ? prev.filter((c) => c.id !== data.conversationId) : prev,
+			);
+			setUnreadConversationIds((prev) => removeUnread(prev, data.conversationId));
+			if (activeConversationIdRef.current === data.conversationId) {
+				setActiveConversationId(null);
+				setChatMessages([]);
+				setChatHasMoreOlder(false);
+				setChatMessageDraft("");
+				setGroupMembers(null);
+				setIsAddMemberOpen(false);
+				setGroupRenameDraft(null);
+			}
+		};
+
+		// Owner renamed a group (Decision 1): patch the name in the list — the
+		// thread header derives its title from the list, so it updates too.
+		const onChatConversationUpdated = (data: {
+			conversationId: number;
+			name: string;
+		}) => {
+			setConversations((prev) =>
+				prev
+					? prev.map((c) =>
+							c.id === data.conversationId ? { ...c, name: data.name } : c,
+						)
+					: prev,
+			);
 		};
 
 		socket.on("chat:message", onChatMessage);
@@ -947,6 +1138,8 @@ function HomeMenu(): JSX.Element {
 		socket.on("chat:unread", onChatUnread);
 		socket.on("chat:read-sync", onChatReadSync);
 		socket.on("chat:error", onChatError);
+		socket.on("chat:removed", onChatRemoved);
+		socket.on("chat:conversation-updated", onChatConversationUpdated);
 
 		return () => {
 			socket.off("chat:message", onChatMessage);
@@ -954,6 +1147,8 @@ function HomeMenu(): JSX.Element {
 			socket.off("chat:unread", onChatUnread);
 			socket.off("chat:read-sync", onChatReadSync);
 			socket.off("chat:error", onChatError);
+			socket.off("chat:removed", onChatRemoved);
+			socket.off("chat:conversation-updated", onChatConversationUpdated);
 		};
 	}, [showToast]);
 
@@ -1398,6 +1593,10 @@ function HomeMenu(): JSX.Element {
 		setChatThreadLoading(true);
 		try {
 			const messages = await api.getChatMessages(conversationId);
+			// A newer conversation was opened while this fetch was in flight — its
+			// slower resolution must not overwrite the newer thread (Bug B5). Same
+			// sequence guard as runGifSearch; the ref already tracks the open id.
+			if (activeConversationIdRef.current !== conversationId) return;
 			// Server returns newest-first for pagination; display oldest-first.
 			const ordered = [...messages].reverse();
 			// Preserve any live messages that arrived during this fetch and aren't
@@ -1410,18 +1609,25 @@ function HomeMenu(): JSX.Element {
 				);
 				return [...ordered, ...extras];
 			});
+			// Open on the newest message, not the oldest page (Bug B2).
+			chatScrollActionRef.current = { kind: "bottom" };
 			// A full page implies there may be older history to page in (L6).
 			setChatHasMoreOlder(messages.length >= CHAT_MESSAGE_PAGE_SIZE);
 			getGameSocket().emit("chat:read", { conversationId });
 			setUnreadConversationIds((prev) => removeUnread(prev, conversationId));
 		} catch (err: unknown) {
+			// Ignore a stale failure so it doesn't clobber the newer thread (Bug B5).
+			if (activeConversationIdRef.current !== conversationId) return;
 			showToast({
 				message: err instanceof Error ? err.message : "Could not load messages.",
 				variant: "error",
 			});
 			setActiveConversationId(null);
 		} finally {
-			setChatThreadLoading(false);
+			// Only the fetch for the currently-open thread owns the loading flag.
+			if (activeConversationIdRef.current === conversationId) {
+				setChatThreadLoading(false);
+			}
 		}
 	};
 
@@ -1433,12 +1639,17 @@ function HomeMenu(): JSX.Element {
 		const oldest = chatMessages[0];
 		setChatLoadingOlder(true);
 		try {
-			const older = await api.getChatMessages(
-				activeConversationId,
-				oldest.createdAt,
-			);
+			// Cursor by id, not createdAt, so a page boundary that lands between
+			// two messages sharing a millisecond can't skip one (Bug B6).
+			const older = await api.getChatMessages(activeConversationId, oldest.id);
 			// Server returns newest-first; reverse to oldest-first, dedup, prepend.
 			const ordered = [...older].reverse();
+			// Capture the pre-prepend height so the layout effect can hold the
+			// viewport on the same message instead of jumping (Bug B2).
+			chatScrollActionRef.current = {
+				kind: "preserve",
+				prevScrollHeight: chatListRef.current?.scrollHeight ?? 0,
+			};
 			setChatMessages((prev) => {
 				const seen = new Set(prev.map((m) => m.id));
 				const dedup = ordered.filter((m) => !seen.has(m.id));
@@ -1466,6 +1677,11 @@ function HomeMenu(): JSX.Element {
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
 		setGifResults([]);
+		// Reset the group member-management UI (Decision 1/2).
+		setGroupMembers(null);
+		setGroupMembersLoading(false);
+		setIsAddMemberOpen(false);
+		setGroupRenameDraft(null);
 	};
 
 	const handleStartDirectMessage = async (friend: { userId: number }): Promise<void> => {
@@ -1489,6 +1705,12 @@ function HomeMenu(): JSX.Element {
 	const handleSendChatMessage = (): void => {
 		const trimmed = chatMessageDraft.trim();
 		if (!trimmed || !activeConversationId) return;
+		// Force a scroll-to-bottom when our own message echoes back, even if we'd
+		// scrolled up to read history (Bug B2).
+		pendingSendScrollRef.current = true;
+		// Arm the draft-restore ref so a server rejection can hand the text back
+		// (Bug B8); the message echo disarms it on success.
+		lastSentChatBodyRef.current = trimmed;
 		getGameSocket().emit("chat:send", {
 			conversationId: activeConversationId,
 			body: trimmed,
@@ -1549,6 +1771,10 @@ function HomeMenu(): JSX.Element {
 
 	const handleSendGif = (gif: GifSearchResult): void => {
 		if (!activeConversationId) return;
+		// Force a scroll-to-bottom when our own gif echoes back (Bug B2).
+		pendingSendScrollRef.current = true;
+		// A gif send must not leave stale text armed for restore (Bug B8).
+		lastSentChatBodyRef.current = "";
 		getGameSocket().emit("chat:send-gif", {
 			conversationId: activeConversationId,
 			slug: gif.slug,
@@ -1610,6 +1836,128 @@ function HomeMenu(): JSX.Element {
 			setChatActionLoading(false);
 		}
 	};
+
+	/** Fetch and cache the open group's member list (Decision 2). */
+	const refreshGroupMembers = async (conversationId: number): Promise<void> => {
+		try {
+			const members = await api.getGroupMembers(conversationId);
+			// Guard against a stale response for a thread that's since closed/changed.
+			if (activeConversationIdRef.current !== conversationId) return;
+			setGroupMembers(members);
+		} catch {
+			// Leave whatever's shown; the toggle can be retried.
+		}
+	};
+
+	/** Toggle the member panel; loads members on first open. */
+	const handleToggleMembers = (): void => {
+		if (!activeConversationId) return;
+		if (groupMembers !== null) {
+			setGroupMembers(null);
+			setIsAddMemberOpen(false);
+			return;
+		}
+		setGroupMembersLoading(true);
+		void refreshGroupMembers(activeConversationId).finally(() =>
+			setGroupMembersLoading(false),
+		);
+	};
+
+	/** Owner-only: kick a member, then refresh the panel (Decision 1). */
+	const handleKickMember = async (userId: number): Promise<void> => {
+		if (!activeConversationId || groupActionLoading) return;
+		setGroupActionLoading(true);
+		try {
+			await api.getCsrfToken();
+			await api.kickGroupMember(activeConversationId, userId);
+			await refreshGroupMembers(activeConversationId);
+		} catch (err: unknown) {
+			showToast({
+				message: err instanceof Error ? err.message : "Could not remove member.",
+				variant: "error",
+			});
+		} finally {
+			setGroupActionLoading(false);
+		}
+	};
+
+	/** Add a friend to the open group, then refresh the panel (Decision 2). */
+	const handleAddMemberToGroup = async (userId: number): Promise<void> => {
+		if (!activeConversationId || groupActionLoading) return;
+		setGroupActionLoading(true);
+		try {
+			await api.getCsrfToken();
+			await api.addGroupMember(activeConversationId, userId);
+			await refreshGroupMembers(activeConversationId);
+			setIsAddMemberOpen(false);
+		} catch (err: unknown) {
+			showToast({
+				message: err instanceof Error ? err.message : "Could not add member.",
+				variant: "error",
+			});
+		} finally {
+			setGroupActionLoading(false);
+		}
+	};
+
+	/** Owner-only: commit a group rename (Decision 1). */
+	const handleRenameGroup = async (): Promise<void> => {
+		if (!activeConversationId || groupActionLoading || groupRenameDraft === null) {
+			return;
+		}
+		const trimmed = groupRenameDraft.trim();
+		if (trimmed.length === 0) return;
+		setGroupActionLoading(true);
+		try {
+			await api.getCsrfToken();
+			await api.renameGroupChat(activeConversationId, trimmed);
+			// The list + title update via the chat:conversation-updated broadcast.
+			setGroupRenameDraft(null);
+		} catch (err: unknown) {
+			showToast({
+				message: err instanceof Error ? err.message : "Could not rename group.",
+				variant: "error",
+			});
+		} finally {
+			setGroupActionLoading(false);
+		}
+	};
+
+	/** Owner-only: delete the open group (Decision 1). The owner also receives
+	 * chat:removed, which closes the thread — no manual close needed here. */
+	const handleDeleteGroup = async (): Promise<void> => {
+		if (!activeConversationId || groupActionLoading) return;
+		setGroupActionLoading(true);
+		try {
+			await api.getCsrfToken();
+			await api.deleteGroupChat(activeConversationId);
+			await refreshConversations();
+			showToast({ message: "Group deleted", variant: "info" });
+		} catch (err: unknown) {
+			showToast({
+				message: err instanceof Error ? err.message : "Could not delete group.",
+				variant: "error",
+			});
+		} finally {
+			setGroupActionLoading(false);
+		}
+	};
+
+	// Derived group/owner state for the member panel (Decision 1/2).
+	const activeConversation =
+		activeConversationId !== null
+			? (conversations?.find((c) => c.id === activeConversationId) ?? null)
+			: null;
+	const isActiveGroup = activeConversation?.type === "group";
+	const isOwnerOfActiveGroup =
+		isActiveGroup &&
+		activeConversation?.ownerId != null &&
+		activeConversation.ownerId === player?.id;
+	const activeMemberIds = new Set((groupMembers ?? []).map((m) => m.userId));
+	// Friends not already in the group — the add-member candidate list.
+	const addableFriends = (friends ?? []).filter(
+		(f) => !activeMemberIds.has(f.userId),
+	);
 
 	const openReplays = async () => {
 		setActiveModal("replays");
@@ -3341,23 +3689,172 @@ function HomeMenu(): JSX.Element {
 													},
 												)}
 											</span>
-											{conversations?.find((c) => c.id === activeConversationId)?.type ===
-											"group" ? (
-												<button
-													type="button"
-													className="hub-modal__social-block-btn"
-													disabled={chatActionLoading}
-													onClick={() => void handleLeaveGroup(activeConversationId)}
-												>
-													Leave group
-												</button>
+											{isActiveGroup ? (
+												<div className="hub-modal__chat-thread-actions">
+													<button
+														type="button"
+														className="hub-modal__chat-members-toggle"
+														onClick={handleToggleMembers}
+													>
+														{groupMembers !== null
+															? "Hide members"
+															: "Members"}
+													</button>
+													{isOwnerOfActiveGroup ? (
+														<>
+															<button
+																type="button"
+																className="hub-modal__chat-members-toggle"
+																disabled={groupActionLoading}
+																onClick={() =>
+																	setGroupRenameDraft(
+																		activeConversation?.name ?? "",
+																	)
+																}
+															>
+																Rename
+															</button>
+															<button
+																type="button"
+																className="hub-modal__social-block-btn"
+																disabled={groupActionLoading}
+																onClick={() => void handleDeleteGroup()}
+															>
+																Delete group
+															</button>
+														</>
+													) : (
+														<button
+															type="button"
+															className="hub-modal__social-block-btn"
+															disabled={chatActionLoading}
+															onClick={() =>
+																void handleLeaveGroup(activeConversationId)
+															}
+														>
+															Leave group
+														</button>
+													)}
+												</div>
 											) : null}
 										</div>
+
+										{isActiveGroup && groupRenameDraft !== null ? (
+											<form
+												className="hub-modal__chat-rename"
+												onSubmit={(e) => {
+													e.preventDefault();
+													void handleRenameGroup();
+												}}
+											>
+												<input
+													type="text"
+													value={groupRenameDraft}
+													maxLength={60}
+													autoFocus
+													onChange={(e) => setGroupRenameDraft(e.target.value)}
+													placeholder="Group name"
+												/>
+												<button
+													type="submit"
+													disabled={
+														groupActionLoading || !groupRenameDraft.trim()
+													}
+												>
+													Save
+												</button>
+												<button
+													type="button"
+													onClick={() => setGroupRenameDraft(null)}
+												>
+													Cancel
+												</button>
+											</form>
+										) : null}
+
+										{isActiveGroup && groupMembers !== null ? (
+											<div className="hub-modal__chat-members">
+												{groupMembersLoading ? (
+													<p>Loading members…</p>
+												) : (
+													<ul className="hub-modal__chat-members-list">
+														{groupMembers.map((member) => (
+															<li
+																key={member.userId}
+																className="hub-modal__chat-member"
+															>
+																<span
+																	className={
+																		member.isOnline
+																			? "hub-modal__presence-dot hub-modal__presence-dot--online"
+																			: "hub-modal__presence-dot"
+																	}
+																/>
+																<span className="hub-modal__chat-member-name">
+																	{member.turtleName ?? member.username}
+																	{member.isOwner ? " (owner)" : ""}
+																</span>
+																{isOwnerOfActiveGroup && !member.isOwner ? (
+																	<button
+																		type="button"
+																		className="hub-modal__social-block-btn"
+																		disabled={groupActionLoading}
+																		onClick={() =>
+																			void handleKickMember(member.userId)
+																		}
+																	>
+																		Remove
+																	</button>
+																) : null}
+															</li>
+														))}
+													</ul>
+												)}
+
+												<button
+													type="button"
+													className="hub-modal__chat-members-toggle"
+													disabled={groupActionLoading}
+													onClick={() => setIsAddMemberOpen((v) => !v)}
+												>
+													{isAddMemberOpen ? "Cancel" : "Add friend"}
+												</button>
+
+												{isAddMemberOpen ? (
+													addableFriends.length === 0 ? (
+														<p className="hub-modal__chat-members-empty">
+															All your friends are already in this group.
+														</p>
+													) : (
+														<ul className="hub-modal__chat-members-add-list">
+															{addableFriends.map((friend) => (
+																<li key={friend.userId}>
+																	<button
+																		type="button"
+																		disabled={groupActionLoading}
+																		onClick={() =>
+																			void handleAddMemberToGroup(
+																				friend.userId,
+																			)
+																		}
+																	>
+																		{friend.turtleName ?? friend.username}
+																	</button>
+																</li>
+															))}
+														</ul>
+													)
+												) : null}
+											</div>
+										) : null}
 
 										{chatThreadLoading ? (
 											<p>Loading…</p>
 										) : (
-											<ul className="hub-modal__chat-message-list">
+											<ul
+												className="hub-modal__chat-message-list"
+												ref={chatListRef}
+											>
 												{chatHasMoreOlder ? (
 													<li className="hub-modal__chat-load-older">
 														<button

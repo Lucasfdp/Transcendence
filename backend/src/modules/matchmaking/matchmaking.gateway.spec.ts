@@ -33,11 +33,16 @@ import { RoomService } from "./room.service";
  */
 
 const makePresenceMock = () => ({
+	connect: jest.fn(),
 	setInGame: jest.fn(),
 	clearInGame: jest.fn(),
 	disconnect: jest.fn(),
 	isOnline: jest.fn().mockReturnValue(false),
 	getSocketIds: jest.fn().mockReturnValue([]),
+	// Presence broadcast (Decision 3). Default "online"/null; tests that assert
+	// on a transition override getStatus per call.
+	getStatus: jest.fn().mockReturnValue("online"),
+	getGameId: jest.fn().mockReturnValue(null),
 });
 
 const makeUsersServiceMock = () => ({
@@ -103,7 +108,12 @@ describe("MatchmakingGateway", () => {
 		listConversations: jest.Mock;
 		pushUnreadInboxToSocket: jest.Mock;
 	};
-	let notificationsService: { markRead: jest.Mock; markAllRead: jest.Mock };
+	let notificationsService: {
+		markRead: jest.Mock;
+		markAllRead: jest.Mock;
+		pushLiveEvent: jest.Mock;
+	};
+	let friendsService: { getFriendIds: jest.Mock };
 
 	beforeEach(async () => {
 		presence = makePresenceMock();
@@ -134,6 +144,10 @@ describe("MatchmakingGateway", () => {
 		notificationsService = {
 			markRead: jest.fn().mockResolvedValue(undefined),
 			markAllRead: jest.fn().mockResolvedValue(undefined),
+			pushLiveEvent: jest.fn(),
+		};
+		friendsService = {
+			getFriendIds: jest.fn().mockResolvedValue([]),
 		};
 
 		const module: TestingModule = await Test.createTestingModule({
@@ -147,7 +161,7 @@ describe("MatchmakingGateway", () => {
 				{ provide: GameSessionService, useValue: sessions },
 				{ provide: NotificationsService, useValue: notificationsService },
 				{ provide: PrivateLobbiesService, useValue: privateLobbies },
-				{ provide: FriendsService, useValue: {} },
+				{ provide: FriendsService, useValue: friendsService },
 				{ provide: ReplayService, useValue: replays },
 				{ provide: ChatService, useValue: chatService },
 			],
@@ -203,6 +217,77 @@ describe("MatchmakingGateway", () => {
 
 			expect(presence.setInGame).not.toHaveBeenCalled();
 			expect(presence.clearInGame).not.toHaveBeenCalled();
+		});
+
+		it("should fan out presence:changed only for players whose coarse status actually changed (Decision 3)", async () => {
+			// Player 1 transitions online→in-game; player 2 was already in-game so
+			// must NOT re-broadcast. Keyed on userId + a first-call toggle so the
+			// result is independent of the loop's getStatus call order.
+			const seenPlayerOne = { value: false };
+			presence.getStatus.mockImplementation((uid: number) => {
+				if (uid === 2) return "in-game";
+				if (seenPlayerOne.value) return "in-game";
+				seenPlayerOne.value = true;
+				return "online";
+			});
+			presence.getGameId.mockReturnValue("bamboo-bash");
+			friendsService.getFriendIds.mockResolvedValue([99]);
+
+			callSyncRoomPresence(makeRoom({ status: "active", gameId: "bamboo-bash" }));
+			await Promise.resolve();
+
+			expect(friendsService.getFriendIds).toHaveBeenCalledTimes(1);
+			expect(friendsService.getFriendIds).toHaveBeenCalledWith(1);
+			expect(notificationsService.pushLiveEvent).toHaveBeenCalledWith(
+				"presence:changed",
+				99,
+				{ userId: 1, status: "in-game", gameId: "bamboo-bash" },
+			);
+		});
+	});
+
+	// ── broadcastPresence (Decision 3) ─────────────────────────────────────────
+
+	describe("broadcastPresence", () => {
+		const callBroadcast = (userId: number, isGuest = false): Promise<void> =>
+			(
+				gateway as unknown as {
+					broadcastPresence: (u: number, g?: boolean) => Promise<void>;
+				}
+			).broadcastPresence(userId, isGuest);
+
+		it("pushes presence:changed to each online friend with the coarse status + gameId", async () => {
+			presence.getStatus.mockReturnValue("in-game");
+			presence.getGameId.mockReturnValue("kame-knock");
+			friendsService.getFriendIds.mockResolvedValue([10, 20]);
+
+			await callBroadcast(1);
+
+			expect(friendsService.getFriendIds).toHaveBeenCalledWith(1);
+			expect(notificationsService.pushLiveEvent).toHaveBeenCalledWith(
+				"presence:changed",
+				10,
+				{ userId: 1, status: "in-game", gameId: "kame-knock" },
+			);
+			expect(notificationsService.pushLiveEvent).toHaveBeenCalledWith(
+				"presence:changed",
+				20,
+				{ userId: 1, status: "in-game", gameId: "kame-knock" },
+			);
+		});
+
+		it("short-circuits for a guest without querying friends", async () => {
+			await callBroadcast(1, true);
+
+			expect(friendsService.getFriendIds).not.toHaveBeenCalled();
+			expect(notificationsService.pushLiveEvent).not.toHaveBeenCalled();
+		});
+
+		it("does not throw when getFriendIds rejects (non-fatal)", async () => {
+			friendsService.getFriendIds.mockRejectedValue(new Error("db down"));
+
+			await expect(callBroadcast(1)).resolves.toBeUndefined();
+			expect(notificationsService.pushLiveEvent).not.toHaveBeenCalled();
 		});
 	});
 

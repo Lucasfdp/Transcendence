@@ -63,3 +63,11 @@ export class AddGroupMemberDto {
 	@IsPositive()
 	userId: number;
 }
+
+/** Owner-only group rename — same name rules as CreateGroupDto (Decision 1). */
+export class RenameGroupDto {
+	@IsString()
+	@MinLength(1)
+	@MaxLength(GROUP_NAME_MAX_LENGTH)
+	name: string;
+}

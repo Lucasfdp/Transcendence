@@ -2,11 +2,13 @@ import {
 	BadRequestException,
 	Body,
 	Controller,
+	Delete,
 	Get,
 	HttpCode,
 	HttpException,
 	Param,
 	ParseIntPipe,
+	Patch,
 	Post,
 	Query,
 	Req,
@@ -20,11 +22,14 @@ import { RateLimiterService } from "../auth/rate-limiter.service";
 import {
 	ChatService,
 	ConversationSummaryView,
+	GroupMemberView,
 	MessageView,
+	UnreadConversationView,
 } from "./chat.service";
 import {
 	AddGroupMemberDto,
 	CreateGroupDto,
+	RenameGroupDto,
 	SendGifMessageDto,
 	SendMessageDto,
 	StartDirectMessageDto,
@@ -70,6 +75,21 @@ export class ChatController {
 		return this.chatService.listConversations(req.user.id);
 	}
 
+	/**
+	 * GET /api/chat/unread — the caller's current unread-conversation digest.
+	 * REST hydration source mirroring GET /notifications: the live
+	 * `chat:unread-inbox` socket push only fires at connect time, but the game
+	 * socket is a module-level singleton that survives route changes, so a
+	 * freshly-mounted HomePage needs this to rebuild its unread set (Bug B1).
+	 * Membership scoping lives inside the service.
+	 */
+	@Get("unread")
+	listUnread(
+		@Request() req: { user: { id: number } },
+	): Promise<UnreadConversationView[]> {
+		return this.chatService.listUnreadConversations(req.user.id);
+	}
+
 	/** POST /api/chat/conversations/direct — get or create a dm with another user. */
 	@Post("conversations/direct")
 	@HttpCode(200)
@@ -99,19 +119,21 @@ export class ChatController {
 
 	/**
 	 * GET /api/chat/conversations/:id/messages — paginated history, newest
-	 * first. Pass `before` (an ISO timestamp) to fetch the previous page.
+	 * first. Pass `beforeId` (the oldest message id seen so far) to fetch the
+	 * previous page. An id cursor, not a timestamp, so pages can't skip
+	 * messages that share a millisecond (Bug B6).
 	 */
 	@Get("conversations/:id/messages")
 	listMessages(
 		@Request() req: { user: { id: number } },
 		@Param("id", ParseIntPipe) conversationId: number,
-		@Query("before") before?: string,
+		@Query("beforeId") beforeId?: string,
 		@Query("limit") limit?: string,
 	): Promise<MessageView[]> {
-		const beforeDate = this.parseOptionalDate(before);
+		const beforeIdNumber = this.parseOptionalId(beforeId);
 		const limitNumber = this.parseOptionalPositiveInt(limit);
 		return this.chatService.listMessages(conversationId, req.user.id, {
-			before: beforeDate,
+			beforeId: beforeIdNumber,
 			limit: limitNumber,
 		});
 	}
@@ -193,6 +215,18 @@ export class ChatController {
 	}
 
 	/**
+	 * GET /api/chat/conversations/:id/members — list a group's members
+	 * (participant-only). Backs the member-list UI (Decision 2).
+	 */
+	@Get("conversations/:id/members")
+	listGroupMembers(
+		@Request() req: { user: { id: number } },
+		@Param("id", ParseIntPipe) conversationId: number,
+	): Promise<GroupMemberView[]> {
+		return this.chatService.listGroupMembers(conversationId, req.user.id);
+	}
+
+	/**
 	 * POST /api/chat/conversations/:id/members — add a friend to an existing
 	 * group. The caller must be a current participant and a friend of the
 	 * user being added.
@@ -209,9 +243,53 @@ export class ChatController {
 	}
 
 	/**
-	 * POST /api/chat/conversations/:id/leave — leave a group. There is no
-	 * "remove member" action by design; this is the only way membership
-	 * changes downward.
+	 * DELETE /api/chat/conversations/:id/members/:userId — owner-only: remove a
+	 * member from a group (Decision 1, supersedes the 2026-07-07 "no kick"
+	 * decision). Authorisation (owner check) lives in the service.
+	 */
+	@Delete("conversations/:id/members/:userId")
+	@HttpCode(200)
+	async kickGroupMember(
+		@Request() req: { user: { id: number } },
+		@Param("id", ParseIntPipe) conversationId: number,
+		@Param("userId", ParseIntPipe) userId: number,
+	): Promise<{ ok: boolean }> {
+		await this.chatService.kickMember(conversationId, req.user.id, userId);
+		return { ok: true };
+	}
+
+	/**
+	 * PATCH /api/chat/conversations/:id — owner-only: rename a group
+	 * (Decision 1). Owner check lives in the service.
+	 */
+	@Patch("conversations/:id")
+	@HttpCode(200)
+	async renameGroup(
+		@Request() req: { user: { id: number } },
+		@Param("id", ParseIntPipe) conversationId: number,
+		@Body() body: RenameGroupDto,
+	): Promise<{ ok: boolean }> {
+		await this.chatService.renameGroup(conversationId, req.user.id, body.name);
+		return { ok: true };
+	}
+
+	/**
+	 * DELETE /api/chat/conversations/:id — owner-only: delete a group and all
+	 * its messages (Decision 1). Owner check lives in the service.
+	 */
+	@Delete("conversations/:id")
+	@HttpCode(200)
+	async deleteGroup(
+		@Request() req: { user: { id: number } },
+		@Param("id", ParseIntPipe) conversationId: number,
+	): Promise<{ ok: boolean }> {
+		await this.chatService.deleteGroup(conversationId, req.user.id);
+		return { ok: true };
+	}
+
+	/**
+	 * POST /api/chat/conversations/:id/leave — leave a group. Members leave
+	 * themselves; the owner-only kick action is DELETE .../members/:userId.
 	 */
 	@Post("conversations/:id/leave")
 	@HttpCode(200)
@@ -236,11 +314,11 @@ export class ChatController {
 
 	// ── Private helpers ───────────────────────────────────────────────────────
 
-	private parseOptionalDate(value?: string): Date | undefined {
-		if (!value) return undefined;
-		const parsed = new Date(value);
-		if (Number.isNaN(parsed.getTime())) {
-			throw new BadRequestException("Invalid 'before' timestamp");
+	private parseOptionalId(value?: string): number | undefined {
+		if (value === undefined) return undefined;
+		const parsed = Number(value);
+		if (!Number.isInteger(parsed) || parsed <= 0) {
+			throw new BadRequestException("Invalid 'beforeId' value");
 		}
 		return parsed;
 	}

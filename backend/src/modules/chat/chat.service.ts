@@ -37,6 +37,9 @@ const DEFAULT_MESSAGE_PAGE_SIZE = 50;
 /** Length of the preview text denormalised onto the conversation for list views. */
 const MESSAGE_PREVIEW_MAX_LENGTH = 120;
 
+/** Max group name length — mirrors CreateGroupDto/RenameGroupDto (Decision 1). */
+const GROUP_NAME_MAX_LENGTH = 60;
+
 /** Socket.IO room name for a conversation — shared with MatchmakingGateway. */
 export function chatRoomName(conversationId: number): string {
 	return `chat:${conversationId}`;
@@ -66,6 +69,21 @@ export const WS_EVENT_CHAT_UNREAD = "chat:unread" as const;
  */
 export const WS_EVENT_CHAT_READ_SYNC = "chat:read-sync" as const;
 
+/**
+ * Pushed to a user who no longer belongs to a conversation — because they were
+ * kicked by the owner or the owner deleted the group. The client drops the
+ * conversation from its list, closes the thread if it was open, and clears any
+ * unread flag (Decision 1).
+ */
+export const WS_EVENT_CHAT_REMOVED = "chat:removed" as const;
+
+/**
+ * Pushed to a group room when its metadata changes (currently: an owner
+ * rename) so open clients patch the conversation's name in the list and the
+ * open-thread title without a full refetch (Decision 1).
+ */
+export const WS_EVENT_CHAT_CONVERSATION_UPDATED = "chat:conversation-updated" as const;
+
 export interface ConversationSummaryView {
 	id: number;
 	type: ConversationType;
@@ -75,8 +93,25 @@ export interface ConversationSummaryView {
 	otherUserId: number | null;
 	/** The other participant's avatar, for a dm. Null for groups. */
 	avatar: string | null;
+	/** Group owner's user id (null for dms / owner-deleted groups) — lets the UI gate owner-only controls (Decision 1). */
+	ownerId: number | null;
 	lastMessageAt: string | null;
 	lastMessagePreview: string | null;
+}
+
+/** A single group member, for the member-list endpoint (Decision 2). */
+export interface GroupMemberView {
+	userId: number;
+	username: string;
+	turtleName: string | null;
+	shellSkin: string;
+	avatar: string | null;
+	level: number;
+	isOnline: boolean;
+	/** When they joined — the UI orders members by seniority. */
+	joinedAt: string;
+	/** True for the current group owner. */
+	isOwner: boolean;
 }
 
 export interface MessageView {
@@ -91,8 +126,13 @@ export interface MessageView {
 }
 
 export interface ListMessagesOptions {
-	/** Fetch messages strictly older than this timestamp (pagination cursor). */
-	before?: Date;
+	/**
+	 * Fetch messages strictly older than this message id (pagination cursor).
+	 * An id cursor — not a timestamp — because `Message.id` is a monotonic
+	 * serial PK, so it can't miss two messages that share a millisecond the
+	 * way a truncated `createdAt` cursor could (Bug B6).
+	 */
+	beforeId?: number;
 	limit?: number;
 }
 
@@ -349,9 +389,51 @@ export class ChatService {
 	}
 
 	/**
-	 * Leave a group you're a participant in. There is deliberately no
-	 * "remove member" / kick action — the only way to stop being in a group
-	 * is to leave it yourself.
+	 * Persist a `system` message, denormalise it onto the conversation
+	 * (`lastMessageAt` / `lastMessagePreview`), and broadcast it to the room.
+	 * Shared by every membership-change action (leave / add / kick / rename /
+	 * ownership transfer) so they all notify the room through one path, the
+	 * same way NotificationsService pushes its REST-triggered events straight
+	 * to the room rather than relying on a gateway wrapper.
+	 */
+	private async postSystemMessage(
+		conversation: Conversation,
+		actorId: number,
+		actorUsername: string,
+		body: string,
+	): Promise<MessageView> {
+		const systemMessage = await this.messageRepo.save(
+			this.messageRepo.create({
+				conversationId: conversation.id,
+				senderId: actorId,
+				type: "system",
+				body,
+			}),
+		);
+
+		conversation.lastMessageAt = systemMessage.createdAt;
+		conversation.lastMessagePreview = systemMessage.body.slice(
+			0,
+			MESSAGE_PREVIEW_MAX_LENGTH,
+		);
+		await this.conversationRepo.save(conversation);
+
+		const view: MessageView = {
+			id: systemMessage.id,
+			conversationId: conversation.id,
+			senderId: actorId,
+			senderUsername: actorUsername,
+			type: "system",
+			body: systemMessage.body,
+			metadata: null,
+			createdAt: systemMessage.createdAt.toISOString(),
+		};
+		this.server?.to(chatRoomName(conversation.id)).emit("chat:message", view);
+		return view;
+	}
+
+	/**
+	 * Leave a group you're a participant in.
 	 *
 	 * Posts a "system" message so remaining members see why someone
 	 * disappeared. Invoked over REST (there's no dedicated socket event for
@@ -397,33 +479,37 @@ export class ChatService {
 				return;
 			}
 
-			const systemMessage = await this.messageRepo.save(
-				this.messageRepo.create({
-					conversationId,
-					senderId: userId,
-					type: "system",
-					body: `${user?.username ?? "Someone"} left the group`,
-				}),
+			await this.postSystemMessage(
+				conversation,
+				userId,
+				user?.username ?? "",
+				`${user?.username ?? "Someone"} left the group`,
 			);
 
-			conversation.lastMessageAt = systemMessage.createdAt;
-			conversation.lastMessagePreview = systemMessage.body.slice(
-				0,
-				MESSAGE_PREVIEW_MAX_LENGTH,
-			);
-			await this.conversationRepo.save(conversation);
+			// If the owner is the one leaving and members remain, hand ownership to
+			// the longest-standing remaining participant so the group never gets
+			// stuck with an absent owner (Decision 1). joinedAt ASC, id ASC picks
+			// the most senior member deterministically. postSystemMessage persists
+			// the new ownerId along with the message denormalise.
+			if (conversation.ownerId === userId) {
+				const successor = await this.participantRepo.findOne({
+					where: { conversationId },
+					order: { joinedAt: "ASC", id: "ASC" },
+				});
+				if (successor) {
+					conversation.ownerId = successor.userId;
+					const newOwner = await this.userRepo.findOne({
+						where: { id: successor.userId },
+					});
+					await this.postSystemMessage(
+						conversation,
+						successor.userId,
+						newOwner?.username ?? "",
+						`${newOwner?.username ?? "Someone"} is now the group owner`,
+					);
+				}
+			}
 
-			const view: MessageView = {
-				id: systemMessage.id,
-				conversationId,
-				senderId: userId,
-				senderUsername: user?.username ?? "",
-				type: "system",
-				body: systemMessage.body,
-				metadata: null,
-				createdAt: systemMessage.createdAt.toISOString(),
-			};
-			this.server?.to(chatRoomName(conversationId)).emit("chat:message", view);
 			this.leaveLiveParticipant(conversationId, userId);
 		} catch (err) {
 			if (
@@ -434,6 +520,222 @@ export class ChatService {
 				throw err;
 			}
 			throw new InternalServerErrorException("Failed to leave group");
+		}
+	}
+
+	/**
+	 * Load a group and assert the caller owns it — the shared gate for every
+	 * owner-only action (kick / rename / delete). Throws NotFound for a missing
+	 * or non-group conversation and Forbidden for a non-owner (including the
+	 * null-owner case where the owner deleted their account, Decision 1).
+	 */
+	private async loadOwnedGroup(
+		conversationId: number,
+		actorId: number,
+	): Promise<Conversation> {
+		const conversation = await this.conversationRepo.findOne({
+			where: { id: conversationId },
+		});
+		if (!conversation || conversation.type !== "group") {
+			throw new NotFoundException("Group not found");
+		}
+		if (conversation.ownerId !== actorId) {
+			throw new ForbiddenException("Only the group owner can do that");
+		}
+		return conversation;
+	}
+
+	/**
+	 * Owner-only: remove a member from a group (Decision 1 — supersedes the
+	 * 2026-07-07 "no kick by design" decision). Posts a system message,
+	 * detaches the kicked user's sockets, and pushes them a `chat:removed` so
+	 * their client drops the conversation.
+	 */
+	async kickMember(
+		conversationId: number,
+		actorId: number,
+		targetId: number,
+	): Promise<void> {
+		try {
+			const conversation = await this.loadOwnedGroup(conversationId, actorId);
+
+			if (targetId === actorId) {
+				throw new BadRequestException(
+					"You cannot remove yourself; leave the group instead",
+				);
+			}
+
+			const membership = await this.participantRepo.findOne({
+				where: { conversationId, userId: targetId },
+			});
+			if (!membership) {
+				throw new NotFoundException("User is not a member of this group");
+			}
+
+			await this.participantRepo.delete({ conversationId, userId: targetId });
+
+			// Detach the kicked user's sockets BEFORE broadcasting the system
+			// message so they don't receive their own removal note.
+			this.leaveLiveParticipant(conversationId, targetId);
+
+			const [actor, target] = await Promise.all([
+				this.userRepo.findOne({ where: { id: actorId } }),
+				this.userRepo.findOne({ where: { id: targetId } }),
+			]);
+			await this.postSystemMessage(
+				conversation,
+				actorId,
+				actor?.username ?? "",
+				`${actor?.username ?? "The owner"} removed ${target?.username ?? "a member"}`,
+			);
+
+			this.pushConversationRemoved(conversationId, targetId);
+		} catch (err) {
+			if (
+				err instanceof NotFoundException ||
+				err instanceof BadRequestException ||
+				err instanceof ForbiddenException
+			) {
+				throw err;
+			}
+			throw new InternalServerErrorException("Failed to remove group member");
+		}
+	}
+
+	/**
+	 * Owner-only: rename a group. Posts a system message and pushes a
+	 * `chat:conversation-updated` to the room so open clients patch the name in
+	 * the list and thread title (Decision 1).
+	 */
+	async renameGroup(
+		conversationId: number,
+		actorId: number,
+		name: string,
+	): Promise<void> {
+		try {
+			const trimmed = name.trim();
+			if (trimmed.length === 0 || trimmed.length > GROUP_NAME_MAX_LENGTH) {
+				throw new BadRequestException(
+					`Group name must be 1–${GROUP_NAME_MAX_LENGTH} characters`,
+				);
+			}
+
+			const conversation = await this.loadOwnedGroup(conversationId, actorId);
+			conversation.name = trimmed;
+
+			const actor = await this.userRepo.findOne({ where: { id: actorId } });
+			// postSystemMessage persists the conversation (including the new name).
+			await this.postSystemMessage(
+				conversation,
+				actorId,
+				actor?.username ?? "",
+				`${actor?.username ?? "The owner"} renamed the group to ${trimmed}`,
+			);
+
+			this.server
+				?.to(chatRoomName(conversationId))
+				.emit(WS_EVENT_CHAT_CONVERSATION_UPDATED, {
+					conversationId,
+					name: trimmed,
+				});
+		} catch (err) {
+			if (
+				err instanceof NotFoundException ||
+				err instanceof BadRequestException ||
+				err instanceof ForbiddenException
+			) {
+				throw err;
+			}
+			throw new InternalServerErrorException("Failed to rename group");
+		}
+	}
+
+	/**
+	 * Owner-only: delete a group entirely — removes its messages and the
+	 * conversation, detaches every member's sockets, and pushes each member a
+	 * `chat:removed` (Decision 1). Mirrors the empty-group cleanup in
+	 * leaveGroup (Bug Audit M10).
+	 */
+	async deleteGroup(conversationId: number, actorId: number): Promise<void> {
+		try {
+			await this.loadOwnedGroup(conversationId, actorId);
+
+			const participants = await this.participantRepo.find({
+				where: { conversationId },
+			});
+			const memberIds = participants.map((p) => p.userId);
+
+			await this.messageRepo.delete({ conversationId });
+			// Participant rows cascade on conversation delete (FK onDelete:
+			// CASCADE), so deleting the conversation clears membership too.
+			await this.conversationRepo.delete({ id: conversationId });
+
+			for (const memberId of memberIds) {
+				this.leaveLiveParticipant(conversationId, memberId);
+				this.pushConversationRemoved(conversationId, memberId);
+			}
+		} catch (err) {
+			if (
+				err instanceof NotFoundException ||
+				err instanceof ForbiddenException
+			) {
+				throw err;
+			}
+			throw new InternalServerErrorException("Failed to delete group");
+		}
+	}
+
+	/**
+	 * List a group's members (Decision 2). Participant-only. Each row carries
+	 * presence + profile fields plus `joinedAt` and an `isOwner` flag so the UI
+	 * can order by seniority and gate owner-only controls.
+	 */
+	async listGroupMembers(
+		conversationId: number,
+		userId: number,
+	): Promise<GroupMemberView[]> {
+		try {
+			const conversation = await this.conversationRepo.findOne({
+				where: { id: conversationId },
+			});
+			if (!conversation || conversation.type !== "group") {
+				throw new NotFoundException("Group not found");
+			}
+
+			const callerMembership = await this.participantRepo.findOne({
+				where: { conversationId, userId },
+			});
+			if (!callerMembership) {
+				throw new ForbiddenException(
+					"You are not a participant in this conversation",
+				);
+			}
+
+			const participants = await this.participantRepo.find({
+				where: { conversationId },
+				relations: ["user"],
+				order: { joinedAt: "ASC", id: "ASC" },
+			});
+
+			return participants.map((p) => ({
+				userId: p.userId,
+				username: p.user?.username ?? SENDER_FALLBACK_NAME,
+				turtleName: p.user?.turtleName ?? null,
+				shellSkin: p.user?.shellSkin ?? "base",
+				avatar: p.user?.avatar ?? null,
+				level: p.user?.level ?? 1,
+				isOnline: this.presence.isOnline(p.userId),
+				joinedAt: p.joinedAt.toISOString(),
+				isOwner: conversation.ownerId === p.userId,
+			}));
+		} catch (err) {
+			if (
+				err instanceof NotFoundException ||
+				err instanceof ForbiddenException
+			) {
+				throw err;
+			}
+			throw new InternalServerErrorException("Failed to list group members");
 		}
 	}
 
@@ -492,7 +794,19 @@ export class ChatService {
 				this.participantRepo.create({ conversationId, userId: newMemberId }),
 			);
 
+			// Join the new member's sockets to the room *before* posting the
+			// system message so their client receives the `chat:message` (and,
+			// via the frontend's unknown-conversation refetch, the conversation
+			// appears in their list without a manual reopen — Bug B4).
 			this.joinLiveParticipants(conversationId, [newMemberId]);
+
+			const actor = await this.userRepo.findOne({ where: { id: actorId } });
+			await this.postSystemMessage(
+				conversation,
+				actorId,
+				actor?.username ?? "",
+				`${actor?.username ?? "Someone"} added ${newMember.username}`,
+			);
 		} catch (err) {
 			if (
 				err instanceof BadRequestException ||
@@ -591,7 +905,27 @@ export class ChatService {
 				0,
 				MESSAGE_PREVIEW_MAX_LENGTH,
 			);
-			await this.conversationRepo.save(conversation);
+			// Persist the denormalised fields with a conditional UPDATE rather than
+			// a full entity save (Bug B9): two concurrent sends both load the
+			// conversation and, with save(), the last writer wins — which can leave
+			// `lastMessageAt`/`lastMessagePreview` pointing at the OLDER of the two
+			// messages. Guarding on `lastMessageAt <= :ts` makes an out-of-order
+			// write a no-op. The in-memory `conversation` above is still used to
+			// build the pushed unread view for THIS message, which is correct
+			// regardless of who wins the persisted race.
+			await this.conversationRepo
+				.createQueryBuilder()
+				.update(Conversation)
+				.set({
+					lastMessageAt: saved.createdAt,
+					lastMessagePreview: conversation.lastMessagePreview,
+				})
+				.where("id = :id", { id: conversationId })
+				.andWhere(
+					'("lastMessageAt" IS NULL OR "lastMessageAt" <= :ts)',
+					{ ts: saved.createdAt },
+				)
+				.execute();
 
 			// save() doesn't populate the `sender` relation — reload it so the
 			// pushed/returned view has a real senderUsername. Non-fatal: fall
@@ -730,8 +1064,11 @@ export class ChatService {
 	}
 
 	/**
-	 * Paginated message history, newest first (pass the oldest `createdAt`
-	 * seen so far as `options.before` to load the previous page).
+	 * Paginated message history, newest first (pass the oldest message `id`
+	 * seen so far as `options.beforeId` to load the previous page). Ordering
+	 * and the cursor are both by `id` — a monotonic serial PK — so pages can't
+	 * overlap or silently drop a message when two share a `createdAt`
+	 * millisecond across a page boundary (Bug B6).
 	 */
 	async listMessages(
 		conversationId: number,
@@ -749,14 +1086,14 @@ export class ChatService {
 			}
 
 			const where: FindOptionsWhere<Message> = { conversationId };
-			if (options.before) {
-				where.createdAt = LessThan(options.before);
+			if (options.beforeId !== undefined) {
+				where.id = LessThan(options.beforeId);
 			}
 
 			const rows = await this.messageRepo.find({
 				where,
 				relations: ["sender"],
-				order: { createdAt: "DESC" },
+				order: { id: "DESC" },
 				take: options.limit ?? DEFAULT_MESSAGE_PAGE_SIZE,
 			});
 
@@ -824,6 +1161,20 @@ export class ChatService {
 		const room = chatRoomName(conversationId);
 		for (const socketId of this.presence.getSocketIds(userId)) {
 			this.server.sockets.sockets.get(socketId)?.leave(room);
+		}
+	}
+
+	/**
+	 * Tell every one of a user's sockets that they're no longer in a
+	 * conversation (kicked, or the group was deleted) so their client drops it
+	 * from the list and closes the thread if open (Decision 1). Emits per
+	 * socket like pushReadSync rather than to the room — the user has already
+	 * been removed from the room by the time this runs.
+	 */
+	private pushConversationRemoved(conversationId: number, userId: number): void {
+		if (!this.server) return;
+		for (const socketId of this.presence.getSocketIds(userId)) {
+			this.server.to(socketId).emit(WS_EVENT_CHAT_REMOVED, { conversationId });
 		}
 	}
 
@@ -936,6 +1287,7 @@ export class ChatService {
 			name,
 			otherUserId,
 			avatar,
+			ownerId: conversation.type === "group" ? conversation.ownerId : null,
 			lastMessageAt: conversation.lastMessageAt
 				? conversation.lastMessageAt.toISOString()
 				: null,

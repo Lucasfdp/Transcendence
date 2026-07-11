@@ -97,6 +97,36 @@ export class MatchmakingGateway
 		@Optional() private readonly rateLimiter?: RateLimiterService,
 	) {}
 
+	/**
+	 * Fan out a coarse presence transition (offline→online, →offline,
+	 * online↔in-game) to each of the user's online friends so their friends
+	 * list updates live (Decision 3). One `getFriendIds` query per transition,
+	 * not per socket. Guests have no friends, so the isGuest short-circuit just
+	 * avoids the query — an unguarded call would still no-op via an empty
+	 * friend list. Non-fatal: a missed ping only means a stale dot until the
+	 * friend's next Social open.
+	 */
+	private async broadcastPresence(
+		userId: number,
+		isGuest = false,
+	): Promise<void> {
+		if (isGuest) return;
+		try {
+			const status = this.presence.getStatus(userId);
+			const gameId = this.presence.getGameId(userId);
+			const friendIds = await this.friendsService.getFriendIds(userId);
+			for (const friendId of friendIds) {
+				this.notificationsService.pushLiveEvent("presence:changed", friendId, {
+					userId,
+					status,
+					gameId,
+				});
+			}
+		} catch {
+			// Non-fatal — see doc comment.
+		}
+	}
+
 	/** True if the user is within the socket send window (or no limiter wired). */
 	private allowChatSend(userId: number): boolean {
 		return (
@@ -146,8 +176,14 @@ export class MatchmakingGateway
 				hubBackgroundAlter: user.hubBackgroundAlter ?? null,
 				isGuest: user.isGuest,
 			};
+			// Capture before connect so we only fan out on the offline→online
+			// edge, not on a second tab/device connecting (Decision 3).
+			const wasOnline = this.presence.isOnline(socketUser.id);
 			this.presence.connect(socket.id, socketUser);
 			socket.data.user = socketUser;
+			if (!wasOnline) {
+				void this.broadcastPresence(socketUser.id, socketUser.isGuest);
+			}
 
 			if (socketUser.isGuest && payload.exp !== undefined) {
 				const remainingMs = payload.exp * 1000 - Date.now();
@@ -230,6 +266,8 @@ export class MatchmakingGateway
 			void this.usersService
 				.markSeen(disconnectedUser.id)
 				.catch(() => undefined);
+			// Last socket gone → tell online friends they went offline (Decision 3).
+			void this.broadcastPresence(disconnectedUser.id, disconnectedUser.isGuest);
 		}
 	}
 
@@ -1163,10 +1201,17 @@ export class MatchmakingGateway
 	private syncRoomPresence(room: MatchRoom): void {
 		const active = room.status === "active" || room.status === "pending";
 		for (const player of room.players) {
+			const before = this.presence.getStatus(player.user.id);
 			if (active) {
 				this.presence.setInGame(player.user.id, room.gameId);
 			} else {
 				this.presence.clearInGame(player.user.id);
+			}
+			// Only fan out on an actual coarse-status edge (online↔in-game) —
+			// syncRoomPresence can be called repeatedly for an unchanged room
+			// (Decision 3).
+			if (this.presence.getStatus(player.user.id) !== before) {
+				void this.broadcastPresence(player.user.id);
 			}
 		}
 	}

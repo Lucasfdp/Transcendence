@@ -657,8 +657,23 @@ export interface ConversationSummaryView {
 	otherUserId: number | null;
 	/** The other participant's avatar, for a dm. Null for groups. */
 	avatar: string | null;
+	/** Group owner's user id — null for dms / owner-deleted groups. Gates owner-only controls (Decision 1). */
+	ownerId: number | null;
 	lastMessageAt: string | null;
 	lastMessagePreview: string | null;
+}
+
+/** A single group member, from GET /chat/conversations/:id/members (Decision 2). */
+export interface GroupMemberView {
+	userId: number;
+	username: string;
+	turtleName: string | null;
+	shellSkin: string;
+	avatar: string | null;
+	level: number;
+	isOnline: boolean;
+	joinedAt: string;
+	isOwner: boolean;
 }
 
 export type ChatMessageType = "text" | "system" | "gif" | "game_invite";
@@ -684,7 +699,7 @@ export interface GifSearchResult {
 	height: number;
 }
 
-/** A conversation with unread messages — pushed live over the socket, never fetched via REST. */
+/** A conversation with unread messages — hydrated via GET /chat/unread and pushed live over the socket. */
 export interface UnreadConversationView {
 	conversationId: number;
 	type: ConversationType;
@@ -1177,6 +1192,16 @@ export const api = {
 	getConversations: (): Promise<ConversationSummaryView[]> =>
 		apiFetch<ConversationSummaryView[]>("/chat/conversations"),
 
+	/**
+	 * The current unread-conversation digest over REST. Mirrors
+	 * getNotifications: the `chat:unread-inbox` socket push only fires at
+	 * connect time, so a freshly-mounted HomePage hydrates its unread set from
+	 * here rather than waiting for the next live message (Bug B1). WS events
+	 * remain the live accelerator while the tab stays open.
+	 */
+	getUnreadConversations: (): Promise<UnreadConversationView[]> =>
+		apiFetch<UnreadConversationView[]>("/chat/unread"),
+
 	/** Get or create a dm with a friend. Rejects if the two are not friends. */
 	startDirectMessage: (userId: number): Promise<{ id: number }> =>
 		apiFetch<{ id: number }>("/chat/conversations/direct", {
@@ -1196,15 +1221,16 @@ export const api = {
 
 	/**
 	 * Paginated message history for a conversation, newest first. Pass
-	 * `before` (an ISO timestamp — the oldest message's createdAt seen so
-	 * far) to load the previous page.
+	 * `beforeId` (the oldest message id seen so far) to load the previous
+	 * page. An id cursor, not a timestamp, so pages can't skip messages that
+	 * share a millisecond (Bug B6).
 	 */
 	getChatMessages: (
 		conversationId: number,
-		before?: string,
+		beforeId?: number,
 	): Promise<ChatMessageView[]> =>
 		apiFetch<ChatMessageView[]>(
-			`/chat/conversations/${conversationId}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`,
+			`/chat/conversations/${conversationId}/messages${beforeId !== undefined ? `?beforeId=${beforeId}` : ""}`,
 		),
 
 	/**
@@ -1239,6 +1265,10 @@ export const api = {
 			body: JSON.stringify({ slug }),
 		}),
 
+	/** List a group's members (participant-only). Backs the member-list UI (Decision 2). */
+	getGroupMembers: (conversationId: number): Promise<GroupMemberView[]> =>
+		apiFetch<GroupMemberView[]>(`/chat/conversations/${conversationId}/members`),
+
 	/** Add a friend to an existing group. Caller must be a participant and a friend of userId. */
 	addGroupMember: (conversationId: number, userId: number): Promise<void> =>
 		apiFetch<void>(`/chat/conversations/${conversationId}/members`, {
@@ -1246,7 +1276,26 @@ export const api = {
 			body: JSON.stringify({ userId }),
 		}),
 
-	/** Leave a group. There is no "remove member" action — leaving is self-service only. */
+	/** Owner-only: remove a member from a group (Decision 1). */
+	kickGroupMember: (conversationId: number, userId: number): Promise<void> =>
+		apiFetch<void>(`/chat/conversations/${conversationId}/members/${userId}`, {
+			method: "DELETE",
+		}),
+
+	/** Owner-only: rename a group (Decision 1). */
+	renameGroupChat: (conversationId: number, name: string): Promise<void> =>
+		apiFetch<void>(`/chat/conversations/${conversationId}`, {
+			method: "PATCH",
+			body: JSON.stringify({ name }),
+		}),
+
+	/** Owner-only: delete a group and all its messages (Decision 1). */
+	deleteGroupChat: (conversationId: number): Promise<void> =>
+		apiFetch<void>(`/chat/conversations/${conversationId}`, {
+			method: "DELETE",
+		}),
+
+	/** Leave a group. Members leave themselves; the owner kicks via kickGroupMember. */
 	leaveGroupChat: (conversationId: number): Promise<void> =>
 		apiFetch<void>(`/chat/conversations/${conversationId}/leave`, {
 			method: "POST",

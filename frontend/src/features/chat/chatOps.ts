@@ -85,6 +85,21 @@ export function removeUnread(ids: Set<number>, conversationId: number): Set<numb
 	return next;
 }
 
+/**
+ * True when a scroll viewport is within `threshold` px of its bottom — i.e.
+ * the reader is "pinned" to the newest messages, so a freshly-arrived message
+ * should auto-scroll into view rather than sit silently below the fold (Bug
+ * B2). Pure: derives only from the passed geometry.
+ */
+export function isNearBottom(
+	scrollHeight: number,
+	scrollTop: number,
+	clientHeight: number,
+	threshold: number,
+): boolean {
+	return scrollHeight - scrollTop - clientHeight <= threshold;
+}
+
 /** Trusted, validated shape for a `type: "gif"` message's metadata. */
 export interface GifMetadata {
 	provider: "klipy";
