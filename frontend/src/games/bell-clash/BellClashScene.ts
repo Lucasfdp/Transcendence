@@ -86,11 +86,7 @@ import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay
 import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
 import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
 import {
-	getGameSocket,
 	type BellClashSnapshot,
-	type BellClashThrowEvent,
-	type GameSnapshot,
-	type OnlineMatchContext,
 	type ReplayFrameSnapshotEntity,
 } from "../../services/network/gameSocket";
 import {
@@ -135,26 +131,16 @@ import {
 	type ScoreZone,
 	type ZoneKind,
 } from "./BellClashView";
-
-// Online ball state with powerup visual properties
-interface OnlineBallState extends BallState {
-	scale?: number;
-	alpha?: number;
-	power?: string;
-	trail?: Array<{ x: number; y: number }>;
-	stateFlags?: string[];
-}
+import {
+	BellClashOnlineController,
+	type BellClashOnlineScene,
+	type OnlineBallState,
+} from "./BellClashOnline";
 
 type BellObstacleDescriptor = ObstacleDescriptor<
 	"bell",
 	{ readonly pulseMs: number }
 >;
-
-function isBellClashSnapshot(
-	snapshot: GameSnapshot | null | undefined,
-): snapshot is BellClashSnapshot {
-	return snapshot?.gameId === "bell-clash" && "zones" in snapshot;
-}
 
 interface OverlayState {
 	readonly kind: "round-transition" | "local-end" | "online-end";
@@ -203,40 +189,40 @@ const BELL_CLASH_DESCRIPTOR: GameDescriptor = {
 	localModes: ["solo", "versus"],
 };
 
-export class BellClashScene extends ResponsiveScene {
+export class BellClashScene
+	extends ResponsiveScene
+	implements BellClashOnlineScene
+{
 	private readonly sceneHost: CommonGameSceneHost;
 	private readonly zoneWorld = new WorldRuntime<ScoreZone>(
 		(zone) => `${zone.kind}:${zone.start}:${zone.end}`,
 	);
-	private readonly onlineBallWorld = new WorldMapRuntime<
-		number,
-		OnlineBallState
-	>();
 	private readonly localBallWorld = new WorldMapRuntime<number, BallState>();
-	private readonly launchInput: SlingshotLaunchRuntime<BallState>;
+	public readonly launchInput: SlingshotLaunchRuntime<BallState>;
+	private readonly online: BellClashOnlineController;
 
 	private bgGfx!: Phaser.GameObjects.Graphics;
 	private arenaSkin!: Phaser.GameObjects.Image;
-	private zoneGfx!: Phaser.GameObjects.Graphics;
+	public zoneGfx!: Phaser.GameObjects.Graphics;
 	private bellImage!: Phaser.GameObjects.Image;
 	private pickupGfx!: Phaser.GameObjects.Graphics;
 	private trailGfx!: Phaser.GameObjects.Graphics;
-	private ballGfx!: Phaser.GameObjects.Graphics;
+	public ballGfx!: Phaser.GameObjects.Graphics;
 
-	private arena!: ArenaPixels;
-	private ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
-	private powerBalls = new ArenaPowerRuntime();
-	private powerBallTexCount = 0;
+	public arena!: ArenaPixels;
+	public ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
+	public powerBalls = new ArenaPowerRuntime();
+	public powerBallTexCount = 0;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 	private overlay?: Phaser.GameObjects.Container;
 	private overlayState: OverlayState | null = null;
 
 	private currentShot = 0;
-	private launchedThisShot = false;
-	private score = 0;
-	private running = true;
-	private hitCooldownMs = 0;
-	private bellPulseMs = 0;
+	public launchedThisShot = false;
+	public score = 0;
+	public running = true;
+	public hitCooldownMs = 0;
+	public bellPulseMs = 0;
 	private spawnAngle = 0;
 
 	private scoreText: Phaser.GameObjects.Text | null = null;
@@ -247,21 +233,10 @@ export class BellClashScene extends ResponsiveScene {
 	private scoreLogPanel: SidePanel | null = null;
 	private scoreEvents: string[] = [];
 
-	private onlineMatch: OnlineMatchContext | null = null;
-	private lastOnlineSeq = -1;
-	private onlineStatusText: Phaser.GameObjects.Text | null = null;
-	private ballTrails = new ArenaBallTrailRuntime();
-	private onlineRoundNumber = 1;
-	private onlineTotalRounds = 3;
-	private onlineShotsPerRound = 3;
-	private onlineScores: number[] = [];
-	private onlineLocalShotNumber = 0;
-	private onlineRoundSubmitted = false;
-	private onlineBallWasMoving = false;
-	private onlineAppliedRound = 0;
+	public ballTrails = new ArenaBallTrailRuntime();
 	private localMode: "solo" | "versus" = "solo";
-	private localPlayerCount = 1;
-	private playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
+	public localPlayerCount = 1;
+	public playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
 	private playerTrailEffects: string[] = [];
 	private localTurnNumber = 0;
 	private localScores: number[] = [0];
@@ -271,54 +246,25 @@ export class BellClashScene extends ResponsiveScene {
 	>({
 		gameId: "bell-clash",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
-		shouldSkip: () => !!this.onlineMatch,
+		shouldSkip: () => this.online.isActive,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
 
-	private readonly handleOnlineState = (snapshot: GameSnapshot): void => {
-		if (isBellClashSnapshot(snapshot)) this.applyOnlineSnapshot(snapshot);
-	};
-
-	private readonly handleOnlineThrow = (event: BellClashThrowEvent): void => {
-		this.playOnlineThrow(event);
-	};
-
-	private readonly handleOnlinePowerPickup = (event: {
-		matchId: string;
-		roundNumber: number;
-		shotNumber: number;
-		side: number;
-		power: string;
-	}): void => {
-		if (
-			!this.onlineMatch ||
-			event.matchId !== this.onlineMatch.matchId ||
-			event.side === this.onlineMatch.side
-		)
-			return;
-		const ball = this.onlineBalls.get(event.side);
-		if (ball) {
-			const power = event.power as PowerType;
-			if (power !== PowerType.NONE) {
-				this.powerBalls.applyPower(power, ball, this.arena, event.side);
-			}
-		}
-	};
-
 	// ── Power state ──────────────────────────────────────────────────────────────
-	private powerSidePanel: GameInfoSidePanel | null = null;
+	public powerSidePanel: GameInfoSidePanel | null = null;
 	private powerPickups: PowerPickupManager | null = null;
 
 	/** Per-player power pools. Bell Clash local-versus rotates one shot per player. */
 	private playerPowers: PowerType[][] = [FALLBACK_POWERS, FALLBACK_POWERS];
-	private activePower: PowerType = PowerType.NONE;
+	public activePower: PowerType = PowerType.NONE;
 	private replayPowerBySide: PowerType[] = [];
 	/** Per-player used-power tracking (one-shot each per game, NONE always reusable). */
-	private powerUsed: Array<Set<PowerType>> = [new Set(), new Set()];
+	public powerUsed: Array<Set<PowerType>> = [new Set(), new Set()];
 
 	constructor() {
 		super({ key: "BellClashScene" });
+		this.online = new BellClashOnlineController(this);
 		this.sceneHost = new CommonGameSceneHost(this, {
 			descriptor: BELL_CLASH_DESCRIPTOR,
 			update: (_time, delta) => this.updateBellClash(delta),
@@ -336,20 +282,12 @@ export class BellClashScene extends ResponsiveScene {
 		});
 	}
 
-	private get zones(): ScoreZone[] {
+	public get zones(): ScoreZone[] {
 		return this.zoneWorld.all();
 	}
 
-	private set zones(zones: readonly ScoreZone[]) {
+	public set zones(zones: readonly ScoreZone[]) {
 		this.zoneWorld.replace(zones);
-	}
-
-	private get onlineBalls(): Map<number, OnlineBallState> {
-		return this.onlineBallWorld.map();
-	}
-
-	private set onlineBalls(onlineBalls: ReadonlyMap<number, OnlineBallState>) {
-		this.onlineBallWorld.replace(onlineBalls);
 	}
 
 	private get localBalls(): Map<number, BallState> {
@@ -373,25 +311,13 @@ export class BellClashScene extends ResponsiveScene {
 
 	create(): void {
 		this.sceneHost.activate();
-		const registryOnlineMatch =
-			(this.registry.get("onlineMatch") as
-				| OnlineMatchContext
-				| undefined) ?? null;
-		this.onlineMatch = isBellClashSnapshot(registryOnlineMatch?.snapshot)
-			? registryOnlineMatch
-			: null;
-		this.lastOnlineSeq = -1;
-		this.onlineBalls.clear();
-		this.powerBallTexCount = clearBellClashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
+		this.online.bindFromRegistry();
+		this.powerBallTexCount = clearBellClashPowerBalls(
+			this,
+			this.powerBalls,
+			this.powerBallTexCount,
+		);
 		this.ballTrails.clear();
-		this.onlineRoundNumber = 1;
-		this.onlineTotalRounds = 3;
-		this.onlineShotsPerRound = 3;
-		this.onlineScores = [];
-		this.onlineLocalShotNumber = 0;
-		this.onlineRoundSubmitted = false;
-		this.onlineBallWasMoving = false;
-		this.onlineAppliedRound = 0;
 		this.localMode = "solo";
 		this.localPlayerCount = 1;
 		this.localTurnNumber = 0;
@@ -439,8 +365,8 @@ export class BellClashScene extends ResponsiveScene {
 			trailEffects,
 			this.playerTrailEffects,
 		);
-		const localPowerupsEnabled = this.onlineMatch
-			? this.onlineMatch.snapshot?.powerupsEnabled === true
+		const localPowerupsEnabled = this.online.isActive
+			? this.online.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 		const registryLocalMode = this.registry.get("localMode") as
 			| "solo"
@@ -450,8 +376,8 @@ export class BellClashScene extends ResponsiveScene {
 		const requestedLocalPlayerCount = Number(
 			this.registry.get("localPlayerCount") ?? 1,
 		);
-		this.localPlayerCount = this.onlineMatch
-			? (this.onlineMatch.snapshot?.players.length ?? 2)
+		this.localPlayerCount = this.online.isActive
+			? (this.online.snapshot?.players.length ?? 2)
 			: this.localMode === "versus"
 				? Phaser.Math.Clamp(Math.floor(requestedLocalPlayerCount), 2, 5)
 				: 1;
@@ -476,23 +402,16 @@ export class BellClashScene extends ResponsiveScene {
 		this.playerPowers = Array.from({ length: 5 }, (_, index) =>
 			buildPool(sel?.[`player${index}`]),
 		);
-		if (this.onlineMatch && !this.onlineMatch.spectator)
-			this.playerPowers[this.onlineMatch.side] = buildPool(sel?.player0);
+		if (this.online.isActive && !this.online.spectator)
+			this.playerPowers[this.online.side] = buildPool(sel?.player0);
 
-		const initialOnlineSnapshotCandidate = this.onlineMatch?.snapshot;
-		const initialOnlineSnapshot = isBellClashSnapshot(
-			initialOnlineSnapshotCandidate,
-		)
-			? initialOnlineSnapshotCandidate
-			: null;
+		const initialOnlineSnapshot = this.online.snapshot;
 		if (initialOnlineSnapshot) {
 			this.zones = initialOnlineSnapshot.zones.map((zone) => ({
 				...zone,
 			}));
 			this.score =
-				initialOnlineSnapshot.liveRoundScores[
-					this.onlineMatch?.side ?? 0
-				] ?? 0;
+				initialOnlineSnapshot.liveRoundScores[this.online.side] ?? 0;
 		} else {
 			this.setupShot();
 		}
@@ -513,34 +432,33 @@ export class BellClashScene extends ResponsiveScene {
 		this.launchInput.recreate();
 		this.launchInput.attach();
 
-		drawBellClashBackground(this.bgGfx, this.arenaSkin, this.arena, this.scale.width, this.scale.height);
+		drawBellClashBackground(
+			this.bgGfx,
+			this.arenaSkin,
+			this.arena,
+			this.scale.width,
+			this.scale.height,
+		);
 		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
 		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
 		this.spawnPowerPickup();
-		if (this.onlineMatch && initialOnlineSnapshot)
-			this.resetOnlineBalls(initialOnlineSnapshot);
+		if (this.online.isActive && initialOnlineSnapshot)
+			this.online.resetBalls(initialOnlineSnapshot);
 		this.drawBalls();
 		this.buildHud();
-		if (this.onlineMatch) this.createOnlineStatusText();
+		if (this.online.isActive) this.online.createStatusText();
 		this.updateSidePanels();
 		this.showPowerPanel();
 
-		if (initialOnlineSnapshot)
-			this.applyOnlineSnapshot(initialOnlineSnapshot, true);
-		if (this.onlineMatch) this.initOnlineMatch();
+		if (initialOnlineSnapshot) this.online.applyInitialSnapshot();
+		if (this.online.isActive) this.online.init();
 		else this.localReplay.startCapture();
 
 		this.enableResponsive(); // relayout on resize/zoom (see ResponsiveScene)
 	}
 
 	private cleanupSceneResources(): void {
-		if (this.onlineMatch) {
-			const socket = getGameSocket();
-			socket.off("game:state", this.handleOnlineState);
-			socket.off("game:end", this.handleOnlineState);
-			socket.off("game:bell-throw", this.handleOnlineThrow);
-			socket.off("game:bell-power-pickup", this.handleOnlinePowerPickup);
-		}
+		this.online.shutdown();
 		this.launchInput.destroy();
 		this.overlay?.destroy(true);
 		this.overlay = undefined;
@@ -550,8 +468,6 @@ export class BellClashScene extends ResponsiveScene {
 		this.lastHitText = null;
 		this.scoreHud?.destroy();
 		this.scoreHud = null;
-		this.onlineStatusText?.destroy();
-		this.onlineStatusText = null;
 		this.powerSidePanel?.destroy();
 		this.powerSidePanel = null;
 		this.powerPickups?.destroy();
@@ -567,11 +483,11 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private updateBellClash(delta: number): void {
-		if (!this.onlineMatch) this.localReplay.addElapsed(delta);
+		if (!this.online.isActive) this.localReplay.addElapsed(delta);
 		if (!this.running) return;
 
-		if (this.onlineMatch) {
-			this.updateOnline(delta);
+		if (this.online.isActive) {
+			this.online.update(delta);
 			return;
 		}
 
@@ -622,7 +538,7 @@ export class BellClashScene extends ResponsiveScene {
 		);
 	}
 
-	private updatePowerBalls(delta: number): void {
+	public updatePowerBalls(delta: number): void {
 		this.powerBalls.update(delta, this.arena, {
 			onMoving: ({ ball }) => {
 				this.collectPowerPickup(ball);
@@ -644,33 +560,11 @@ export class BellClashScene extends ResponsiveScene {
 	// ── Launch handler ────────────────────────────────────────────────────────────
 
 	private onLaunch(): void {
-		if (this.onlineMatch) {
-			if (this.onlineMatch.spectator) return;
-			const sourceVx = this.ball.vx / this.arena.scale;
-			const sourceVy = this.ball.vy / this.arena.scale;
+		if (this.online.isActive) {
+			if (this.online.spectator) return;
 			const power = this.activePower;
-			this.ball.vx = 0;
-			this.ball.vy = 0;
-			this.launchedThisShot = true;
-			if (power !== PowerType.NONE)
-				this.powerUsed[this.onlineMatch.side]?.add(power);
-			this.activePower = PowerType.NONE;
-			this.powerSidePanel?.hide();
-			this.launchInput.recreate();
 			notifyGameRuleRelease(this.buildGameRuleHooks(), this.ball);
-			this.updateOnlineStatus("Launching...");
-			getGameSocket().emit("game:input", {
-				matchId: this.onlineMatch.matchId,
-				action: "release",
-				payload: {
-					roundNumber: this.onlineRoundNumber,
-					x: (this.ball.x - this.arena.cx) / this.arena.rx,
-					y: (this.ball.y - this.arena.cy) / this.arena.ry,
-					vx: sourceVx,
-					vy: sourceVy,
-					power,
-				},
-			});
+			this.online.emitRelease(power);
 			return;
 		}
 
@@ -700,14 +594,18 @@ export class BellClashScene extends ResponsiveScene {
 	// ── Shot helpers ──────────────────────────────────────────────────────────────
 
 	/** Index of the player whose turn it currently is. */
-	private currentPlayerIndex(): number {
-		if (this.onlineMatch) return Math.max(0, this.onlineMatch.side);
+	public currentPlayerIndex(): number {
+		if (this.online.isActive) return Math.max(0, this.online.side);
 		return this.localTurnNumber % this.localPlayerCount;
 	}
 
 	private setupShot(): void {
 		this.launchedThisShot = false;
-		this.powerBallTexCount = clearBellClashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
+		this.powerBallTexCount = clearBellClashPowerBalls(
+			this,
+			this.powerBalls,
+			this.powerBallTexCount,
+		);
 		this.replayPowerBySide[this.currentPlayerIndex()] = PowerType.NONE;
 		this.hitCooldownMs = 0;
 		this.bellPulseMs = 0;
@@ -812,14 +710,15 @@ export class BellClashScene extends ResponsiveScene {
 		this.checkBellHitForBall(this.ball, true);
 	}
 
-	private checkBellHitForBall(ball: BallState, canScore: boolean): void {
+	public checkBellHitForBall(ball: BallState, canScore: boolean): void {
 		const bell = this.bellObstacleDescriptor();
 		if (!hitsCircularObstacle(bell, this.arena, ball.x, ball.y, ball.r))
 			return;
 
 		const bellPosition = resolveObstaclePosition(bell, this.arena);
 		const bellRadius =
-			resolveObstacleRadius(bell, this.arena) ?? bellClashRadius(this.arena);
+			resolveObstacleRadius(bell, this.arena) ??
+			bellClashRadius(this.arena);
 		const dx = ball.x - bellPosition.x;
 		const dy = ball.y - bellPosition.y;
 		const dist = Math.max(0.001, Math.hypot(dx, dy));
@@ -865,7 +764,7 @@ export class BellClashScene extends ResponsiveScene {
 			: THEME.text;
 
 		const playerIndex = this.currentPlayerIndex();
-		if (this.onlineMatch) this.score += gained;
+		if (this.online.isActive) this.score += gained;
 		else {
 			this.localScores[playerIndex] =
 				(this.localScores[playerIndex] ?? 0) + gained;
@@ -873,22 +772,19 @@ export class BellClashScene extends ResponsiveScene {
 		}
 		this.scoreText?.setText(this.formatScoreText());
 		this.lastHitText?.setText(`LAST HIT  ${label} x${multiplier}`);
-		popBellClashScore(this, this.ball.x, this.ball.y, `+${gained}  ${label}`, color);
+		popBellClashScore(
+			this,
+			this.ball.x,
+			this.ball.y,
+			`+${gained}  ${label}`,
+			color,
+		);
 		this.addScoreEvent(
 			`${this.localPlayerCount > 1 ? `P${playerIndex + 1} ` : ""}${label}  +${gained}`,
 			`x${multiplier}`,
 		);
-		if (this.onlineMatch) {
-			getGameSocket().emit("game:input", {
-				matchId: this.onlineMatch.matchId,
-				action: "bell:hit",
-				payload: {
-					roundNumber: this.onlineRoundNumber,
-					points: gained,
-					zoneKind: zone?.kind ?? "neutral",
-				},
-			});
-		}
+		if (this.online.isActive)
+			this.online.reportBellHit(gained, zone?.kind ?? "neutral");
 	}
 
 	private zoneAt(angle: number): ScoreZone | null {
@@ -1004,308 +900,24 @@ export class BellClashScene extends ResponsiveScene {
 			});
 	}
 
-	private initOnlineMatch(): void {
-		const socket = getGameSocket();
-		socket.off("game:state", this.handleOnlineState);
-		socket.off("game:end", this.handleOnlineState);
-		socket.off("game:bell-throw", this.handleOnlineThrow);
-		socket.off("game:bell-power-pickup", this.handleOnlinePowerPickup);
-		socket.on("game:state", this.handleOnlineState);
-		socket.on("game:end", this.handleOnlineState);
-		socket.on("game:bell-throw", this.handleOnlineThrow);
-		socket.on("game:bell-power-pickup", this.handleOnlinePowerPickup);
-		this.updateOnlineStatus("Connected to Bell Clash match.");
-	}
-
-	private createOnlineStatusText(): void {
-		this.onlineStatusText = this.add
-			.text(this.scale.width / 2, 48, "", {
-				fontSize: "13px",
-				color: THEME.textGold,
-				fontFamily: THEME.font,
-				fontStyle: "bold",
-			})
-			.setOrigin(0.5, 0)
-			.setDepth(DEPTH_HUD + 2);
-	}
-
-	private updateOnlineStatus(message: string): void {
-		this.onlineStatusText?.setText(message);
-	}
-
-	private markOnlineAway(): void {
-		const phase = this.onlineMatch?.snapshot?.phase;
-		if (this.onlineMatch && phase !== "finished" && phase !== "abandoned") {
-			getGameSocket().emit("match:status", { away: true });
-		}
-	}
-
-	private applyOnlineSnapshot(
-		snapshot: BellClashSnapshot,
-		initial = false,
-	): void {
-		if (
-			!this.onlineMatch ||
-			snapshot.matchId !== this.onlineMatch.matchId ||
-			snapshot.seq < this.lastOnlineSeq
-		)
-			return;
-		this.lastOnlineSeq = snapshot.seq;
-		this.onlineMatch.snapshot = snapshot;
-		this.onlineRoundNumber = snapshot.roundNumber;
-		this.onlineTotalRounds = snapshot.totalRounds;
-		this.onlineShotsPerRound = snapshot.shotsPerRound;
-		this.onlineScores = snapshot.score;
-		this.onlineLocalShotNumber =
-			snapshot.shotCounts[this.onlineMatch.side] ??
-			this.onlineLocalShotNumber;
-		this.zones = snapshot.zones.map((zone) => ({ ...zone }));
-		this.score =
-			snapshot.liveRoundScores[this.onlineMatch.side] ?? this.score;
-		this.scoreText?.setText(this.formatScoreText());
-		this.shotText?.setText(this.formatShotText());
-		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
-		this.updateSidePanels();
-		this.syncOnlineBalls(
-			snapshot,
-			initial || snapshot.roundNumber !== this.onlineAppliedRound,
-		);
-		this.drawBalls();
-
-		if (snapshot.phase === "finished" || snapshot.phase === "abandoned") {
-			this.showOnlineEndScreen(snapshot);
-			return;
-		}
-		if (snapshot.phase !== "active") {
-			this.updateOnlineStatus("Waiting for opponents...");
-			return;
-		}
-
-		if (snapshot.roundNumber !== this.onlineAppliedRound)
-			this.startOnlineRound(snapshot);
-		const localSubmitted =
-			snapshot.roundScores[this.onlineMatch.side] !== null;
-		if (localSubmitted || this.onlineRoundSubmitted)
-			this.updateOnlineStatus("Waiting for opponents...");
-		else
-			this.updateOnlineStatus(
-				`Round ${snapshot.roundNumber}/${snapshot.totalRounds}  Shell ${this.onlineLocalShotNumber + 1}/${snapshot.shotsPerRound}`,
-			);
-	}
-
-	private startOnlineRound(snapshot: BellClashSnapshot): void {
-		this.overlay?.destroy(true);
-		this.overlay = undefined;
-		this.overlayState = {
-			kind: "round-transition",
-			rebuild: () => this.startOnlineRound(snapshot),
-		};
-		this.powerBallTexCount = clearBellClashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
-		this.onlineAppliedRound = snapshot.roundNumber;
-		this.onlineRoundSubmitted = false;
-		this.onlineBallWasMoving = false;
-		this.launchedThisShot = false;
-		this.hitCooldownMs = 0;
-		this.bellPulseMs = 0;
-		this.score = snapshot.liveRoundScores[this.onlineMatch?.side ?? 0] ?? 0;
-		this.activePower = PowerType.NONE;
-		this.powerUsed[this.onlineMatch?.side ?? 0] = new Set<PowerType>();
-		this.resetOnlineBalls(snapshot);
-		this.recreateSlingshot();
-		this.syncOnlineSlingshot();
-		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
-		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
-		this.drawBalls();
-		this.scoreText?.setText(this.formatScoreText());
-		this.shotText?.setText(this.formatShotText());
-		this.lastHitText?.setText("LAST HIT  -");
-		this.showPowerPanel();
-		this.overlay = showRoundTransitionOverlay(this, this.overlay, {
-			message: `ROUND ${snapshot.roundNumber}/${snapshot.totalRounds}`,
-			depth: DEPTH_OVERLAY,
-			autoDismissMs: 900,
-			onAutoDismiss: () => {
-				this.overlayState = null;
-				this.overlay = undefined;
-			},
-		});
-	}
-
-	private playOnlineThrow(event: BellClashThrowEvent): void {
-		if (
-			!this.onlineMatch ||
-			event.matchId !== this.onlineMatch.matchId ||
-			event.roundNumber !== this.onlineRoundNumber
-		)
-			return;
-		this.powerBallTexCount = clearBellClashPowerBalls(this, this.powerBalls, this.powerBallTexCount);
-		const ball = this.onlineBalls.get(event.side);
-		if (!ball) return;
-		ball.r = BALL_SRC_R * this.arena.scale;
-		ball.vx = event.vx * this.arena.scale;
-		ball.vy = event.vy * this.arena.scale;
-		const power = (Object.values(PowerType) as string[]).includes(
-			event.power,
-		)
-			? (event.power as PowerType)
-			: PowerType.NONE;
-		this.powerBalls.applyPower(power, ball, this.arena, event.side);
-		if (event.side === this.onlineMatch.side) {
-			this.onlineLocalShotNumber = event.shotNumber;
-			this.onlineBallWasMoving = true;
-			this.launchedThisShot = true;
-			this.updateOnlineStatus(
-				`Shell ${event.shotNumber}/${this.onlineShotsPerRound}`,
-			);
-		} else {
-			this.updateOnlineStatus(
-				`P${event.side + 1} shell ${event.shotNumber}/${this.onlineShotsPerRound}`,
-			);
-		}
-		this.drawBalls();
-	}
-
-	private updateOnline(delta: number): void {
-		if (!this.onlineMatch) return;
-		this.hitCooldownMs = Math.max(0, this.hitCooldownMs - delta);
-		this.bellPulseMs = Math.max(0, this.bellPulseMs - delta);
-
-		for (const [side, ball] of this.onlineBalls.entries()) {
-			const moving = stepArenaBall(ball, delta, this.arena);
-			const ext = ball as BallExtState;
-			if (moving) {
-				if (side === this.onlineMatch.side)
-					this.collectPowerPickup(ball);
-				this.checkBellHitForBall(ball, side === this.onlineMatch.side);
-			}
-			if (!moving)
-				this.clearStoppedPowerFlags(
-					ext,
-					side === this.onlineMatch.side,
-				);
-		}
-		this.updatePowerBalls(delta);
-
-		this.resolveOnlineBallCollisions();
-		const localMoving =
-			isBallMoving(this.ball) ||
-			this.powerBalls.some((entry) => isBallMoving(entry.ball));
-
-		if (!localMoving && this.onlineBallWasMoving) this.finishOnlineShot();
-		this.onlineBallWasMoving = localMoving;
-
-		this.recordBallTrails();
-		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
-		this.drawBallTrails();
-		this.drawBalls();
-	}
-
-	private finishOnlineShot(): void {
-		if (
-			!this.onlineMatch ||
-			this.onlineMatch.spectator ||
-			this.onlineRoundSubmitted
-		)
-			return;
-		this.launchedThisShot = false;
-		this.ballGfx.setAlpha(1);
-		if (this.onlineLocalShotNumber >= this.onlineShotsPerRound) {
-			this.onlineRoundSubmitted = true;
-			this.updateOnlineStatus("Waiting for opponents...");
-			this.powerSidePanel?.hide();
-			getGameSocket().emit("game:input", {
-				matchId: this.onlineMatch.matchId,
-				action: "round:score",
-				payload: { roundNumber: this.onlineRoundNumber },
-			});
-			return;
-		}
-		this.updateOnlineStatus(
-			`Round ${this.onlineRoundNumber}/${this.onlineTotalRounds}  Shell ${this.onlineLocalShotNumber + 1}/${this.onlineShotsPerRound}`,
-		);
-		this.syncOnlineSlingshot();
-		this.showPowerPanel();
-	}
-
-	private resolveOnlineBallCollisions(): void {
+	public resolveOnlineBallCollisions(): void {
 		this.powerBalls.resolveCollisions([
-			...new Set(this.onlineBalls.values()),
+			...new Set(this.online.ballMap.values()),
 		]);
 	}
 
-	private clearStoppedPowerFlags(ext: BallExtState, local: boolean): void {
+	public clearStoppedPowerFlags(ext: BallExtState, local: boolean): void {
 		ext.phantomHidden = false;
 		ext.freezePending = false;
 		ext.bombPending = false;
 		ext.repelPending = false;
 	}
 
-	private syncOnlineSlingshot(): void {
-		if (
-			!this.onlineMatch ||
-			this.onlineMatch.spectator ||
-			this.onlineRoundSubmitted ||
-			this.onlineLocalShotNumber >= this.onlineShotsPerRound ||
-			isBallMoving(this.ball)
-		) {
-			this.launchInput.destroy();
-			return;
-		}
-		this.launchInput.attach();
-	}
-
-	private recreateSlingshot(): void {
+	public recreateSlingshot(): void {
 		this.launchInput.recreate();
 	}
 
-	private syncOnlineBalls(
-		snapshot: BellClashSnapshot,
-		resetPositions: boolean,
-	): void {
-		const next = new Map<number, OnlineBallState>();
-		const players = [...snapshot.players].sort((a, b) => a.side - b.side);
-		players.forEach((player, index) => {
-			const isLocal = player.side === this.onlineMatch?.side;
-			const serverBall = snapshot.entities.find(
-				(ball) => (ball.side ?? ball.ownerSide) === player.side,
-			);
-			const ball = isLocal
-				? this.ball
-				: (this.onlineBalls.get(player.side) ?? {
-						x: 0,
-						y: 0,
-						vx: 0,
-						vy: 0,
-						r: BALL_SRC_R * this.arena.scale,
-					});
-			if (resetPositions) {
-				this.resetOnlineBall(ball, index, players.length);
-				this.ballTrails.reset(player.side, ball.x, ball.y);
-			}
-			// Sync powerup visual properties from server entity
-			if (serverBall) {
-				(ball as OnlineBallState).scale = serverBall.stopped
-					? 1
-					: (serverBall.scale ?? 1);
-				(ball as OnlineBallState).alpha = serverBall.alpha ?? 1;
-				(ball as OnlineBallState).power = serverBall.power ?? "none";
-				(ball as OnlineBallState).trail = serverBall.trail
-					? serverBall.trail.map((p) => ({ ...p }))
-					: undefined;
-				(ball as OnlineBallState).stateFlags = serverBall.stateFlags
-					? [...serverBall.stateFlags]
-					: [];
-			}
-			next.set(player.side, ball);
-		});
-		this.onlineBalls = next;
-	}
-
-	private resetOnlineBalls(snapshot: BellClashSnapshot): void {
-		this.syncOnlineBalls(snapshot, true);
-	}
-
-	private resetOnlineBall(
+	public resetBallPosition(
 		ball: BallState,
 		index: number,
 		total: number,
@@ -1343,8 +955,8 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private spawnPowerPickup(): void {
-		const powerupsEnabled = this.onlineMatch
-			? this.onlineMatch.snapshot?.powerupsEnabled === true
+		const powerupsEnabled = this.online.isActive
+			? this.online.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 		if (!powerupsEnabled || !this.powerPickups) {
 			this.powerPickups?.clear();
@@ -1359,7 +971,7 @@ export class BellClashScene extends ResponsiveScene {
 		this.powerPickups.draw();
 	}
 
-	private collectPowerPickup(ball: BallState): void {
+	public collectPowerPickup(ball: BallState): void {
 		if (!this.powerPickups) return;
 		const pickup = this.powerPickups.collect(ball.x, ball.y, ball.r);
 		if (!pickup) return;
@@ -1410,11 +1022,11 @@ export class BellClashScene extends ResponsiveScene {
 
 	// ── Power panel ──────────────────────────────────────────────────────────────
 
-	private showPowerPanel(): void {
+	public showPowerPanel(): void {
 		if (
-			this.onlineMatch &&
-			(this.onlineRoundSubmitted ||
-				this.onlineLocalShotNumber >= this.onlineShotsPerRound ||
+			this.online.isActive &&
+			(this.online.submitted ||
+				this.online.localShot >= this.online.shotsPerRoundCount ||
 				isBallMoving(this.ball))
 		) {
 			this.powerSidePanel?.hide();
@@ -1450,7 +1062,7 @@ export class BellClashScene extends ResponsiveScene {
 
 	private buildHud(): void {
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
-			this.markOnlineAway(),
+			this.online.markAway(),
 		);
 		this.scoreHud = new ScoreHud(this, DEPTH_HUD, {
 			minPlayerCount:
@@ -1495,9 +1107,9 @@ export class BellClashScene extends ResponsiveScene {
 			.setVisible(false);
 	}
 
-	private formatShotText(): string {
-		if (this.onlineMatch)
-			return `ROUND ${this.onlineRoundNumber}/${this.onlineTotalRounds}  SHELL ${Math.min(this.onlineLocalShotNumber + 1, this.onlineShotsPerRound)}/${this.onlineShotsPerRound}  P${this.onlineMatch.side + 1}`;
+	public formatShotText(): string {
+		if (this.online.isActive)
+			return `ROUND ${this.online.currentRound}/${this.online.totalRoundCount}  SHELL ${Math.min(this.online.localShot + 1, this.online.shotsPerRoundCount)}/${this.online.shotsPerRoundCount}  P${this.online.side + 1}`;
 		if (this.localPlayerCount > 1)
 			return `ROUND ${this.currentShot + 1}/${SHOTS_TOTAL}  P${this.currentPlayerIndex() + 1} TURN`;
 		return `SHELL ${this.currentShot + 1}/${SHOTS_TOTAL}`;
@@ -1510,16 +1122,14 @@ export class BellClashScene extends ResponsiveScene {
 				| { username?: string; turtleName?: string | null }
 				| undefined,
 			onlinePlayers:
-				this.onlineMatch?.snapshot?.gameId === "bell-clash"
-					? this.onlineMatch.snapshot.players
+				this.online.snapshot?.gameId === "bell-clash"
+					? this.online.snapshot.players
 					: undefined,
 		});
 	}
 
-	private formatScoreText(): string {
-		const snapshot = isBellClashSnapshot(this.onlineMatch?.snapshot)
-			? this.onlineMatch.snapshot
-			: null;
+	public formatScoreText(): string {
+		const snapshot = this.online.snapshot;
 		if (snapshot) {
 			const live = snapshot.liveRoundScores;
 			const total = snapshot.score;
@@ -1535,6 +1145,12 @@ export class BellClashScene extends ResponsiveScene {
 				.map((score, index) => `P${index + 1} ${score}`)
 				.join("  ");
 		return `SCORE  ${this.score}`;
+	}
+
+	public updateScoreTexts(): void {
+		this.scoreText?.setText(this.formatScoreText());
+		this.shotText?.setText(this.formatShotText());
+		this.lastHitText?.setText("LAST HIT  -");
 	}
 
 	private resetBall(): void {
@@ -1567,7 +1183,7 @@ export class BellClashScene extends ResponsiveScene {
 				vy: 0,
 				r: BALL_SRC_R * this.arena.scale,
 			};
-			this.resetOnlineBall(ball, side, this.localPlayerCount);
+			this.resetBallPosition(ball, side, this.localPlayerCount);
 			this.ballTrails.reset(side, ball.x, ball.y);
 			next.set(side, ball);
 		}
@@ -1586,7 +1202,7 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private recordBallTrails(): void {
-		if (!this.onlineMatch && this.localPlayerCount > 1) {
+		if (!this.online.isActive && this.localPlayerCount > 1) {
 			this.ballTrails.recordSet({
 				balls: this.localBallsForPhysics().map(([side, ball]) => ({
 					id: side,
@@ -1599,24 +1215,28 @@ export class BellClashScene extends ResponsiveScene {
 					...BALL_TRAIL_OPTIONS,
 					scale: this.arena.scale,
 				},
-				trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
+				trailEffectByPlayer: (player) =>
+					this.trailEffectForPlayer(player),
 			});
 			return;
 		}
-		if (this.onlineBalls.size > 0) {
+		if (this.online.ballMap.size > 0) {
 			this.ballTrails.recordSet({
-				balls: [...this.onlineBalls.entries()].map(([side, ball]) => ({
-					id: side,
-					player: side,
-					ball,
-				})),
+				balls: [...this.online.ballMap.entries()].map(
+					([side, ball]) => ({
+						id: side,
+						player: side,
+						ball,
+					}),
+				),
 				powerBalls: this.powerBalls,
 				isMoving: isBallMoving,
 				trailOptions: {
 					...BALL_TRAIL_OPTIONS,
 					scale: this.arena.scale,
 				},
-				trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
+				trailEffectByPlayer: (player) =>
+					this.trailEffectForPlayer(player),
 			});
 			return;
 		}
@@ -1638,19 +1258,20 @@ export class BellClashScene extends ResponsiveScene {
 
 	private trailEffectForPlayer(player: number): string {
 		return (
-			this.onlineMatch?.snapshot.players.find((entry) => entry.side === player)
+			this.online.snapshot?.players.find((entry) => entry.side === player)
 				?.trailEffect ??
 			this.playerTrailEffects[player] ??
 			"trail_classic"
 		);
 	}
 
-	private drawBallTrails(): void {
+	public drawBallTrails(): void {
 		const playersById = new Map<number | string, number>([
 			["local", this.currentPlayerIndex()],
 		]);
 		for (const side of this.localBalls.keys()) playersById.set(side, side);
-		for (const side of this.onlineBalls.keys()) playersById.set(side, side);
+		for (const side of this.online.ballMap.keys())
+			playersById.set(side, side);
 		this.powerBalls.forEach((entry, index) =>
 			playersById.set(`power-${index}`, entry.player),
 		);
@@ -1686,6 +1307,10 @@ export class BellClashScene extends ResponsiveScene {
 		});
 	}
 
+	public layoutBell(): void {
+		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
+	}
+
 	// ── Side panels ─────────────────────────────────────────────────────────────
 
 	private resolveLayout(): { leftPanel?: PanelRect; rightPanel?: PanelRect } {
@@ -1710,7 +1335,7 @@ export class BellClashScene extends ResponsiveScene {
 		);
 	}
 
-	private updateSidePanels(): void {
+	public updateSidePanels(): void {
 		const layout = this.resolveLayout();
 		this.scoreLogPanel ??= new SidePanel(this, DEPTH_HUD);
 		this.updateScoreHud();
@@ -1746,11 +1371,11 @@ export class BellClashScene extends ResponsiveScene {
 
 	private buildScoreFooterRows(): SidePanelRow[] {
 		const lastHit = this.lastHitValue();
-		if (this.onlineMatch?.snapshot?.gameId === "bell-clash") {
+		if (this.online.snapshot?.gameId === "bell-clash") {
 			return [
 				{
 					label: "ROUND",
-					value: `${this.onlineRoundNumber}/${this.onlineTotalRounds}`,
+					value: `${this.online.currentRound}/${this.online.totalRoundCount}`,
 					labelColor: THEME.text,
 					valueColor: THEME.text,
 					labelFontSize: "13px",
@@ -1758,7 +1383,7 @@ export class BellClashScene extends ResponsiveScene {
 				},
 				{
 					label: "SHELL",
-					value: `${Math.min(this.onlineLocalShotNumber + 1, this.onlineShotsPerRound)}/${this.onlineShotsPerRound}`,
+					value: `${Math.min(this.online.localShot + 1, this.online.shotsPerRoundCount)}/${this.online.shotsPerRoundCount}`,
 					labelColor: THEME.text,
 					valueColor: THEME.text,
 					labelFontSize: "13px",
@@ -1838,7 +1463,7 @@ export class BellClashScene extends ResponsiveScene {
 			.trim();
 	}
 
-	private addScoreEvent(label: string, value: string): void {
+	public addScoreEvent(label: string, value: string): void {
 		this.scoreEvents.unshift(`${label}\t${value}`);
 		this.scoreEvents = this.scoreEvents.slice(0, SCORE_LOG_LIMIT);
 		this.updateSidePanels();
@@ -1855,22 +1480,25 @@ export class BellClashScene extends ResponsiveScene {
 	private buildGameRuleHooks(): GameRuleHooks<BallState> {
 		const score = this.currentScoresForRules();
 		const playerCount = Math.max(1, score.length, this.localPlayerCount);
-		const shellIndex = this.onlineMatch
-			? Math.min(this.onlineLocalShotNumber, this.onlineShotsPerRound - 1)
+		const shellIndex = this.online.isActive
+			? Math.min(
+					this.online.localShot,
+					this.online.shotsPerRoundCount - 1,
+				)
 			: this.currentShot;
 		return {
 			getPlayerCount: () => playerCount,
 			getCurrentPlayer: () => this.currentPlayerIndex(),
 			getCurrentRound: () =>
-				this.onlineMatch
-					? this.onlineRoundNumber - 1
+				this.online.isActive
+					? this.online.currentRound - 1
 					: this.currentShot,
 			getRemainingTurns: () =>
 				this.buildTurnDots(playerCount, shellIndex),
 			getScore: () => score,
 			getPhase: () => this.currentTurnPhase(),
 			onRelease: () => {
-				if (!this.onlineMatch) this.localReplay.captureFrame(true);
+				if (!this.online.isActive) this.localReplay.captureFrame(true);
 			},
 			onProjectileSettled: () => this.finishShot(),
 			computeWinner: () => this.resolveLocalWinnerSide(),
@@ -1878,17 +1506,17 @@ export class BellClashScene extends ResponsiveScene {
 	}
 
 	private currentScoresForRules(): readonly number[] {
-		return this.onlineMatch?.snapshot?.gameId === "bell-clash"
-			? this.onlineMatch.snapshot.score
+		return this.online.snapshot?.gameId === "bell-clash"
+			? this.online.snapshot.score
 			: this.localPlayerCount > 1
 				? this.localScores
 				: [this.score];
 	}
 
 	private buildTurnDots(playerCount: number, shellIndex: number): number[] {
-		if (this.onlineMatch)
+		if (this.online.isActive)
 			return Array.from({ length: playerCount }, () =>
-				Math.max(0, this.onlineShotsPerRound - shellIndex),
+				Math.max(0, this.online.shotsPerRoundCount - shellIndex),
 			);
 		if (this.localPlayerCount <= 1)
 			return [Math.max(0, SHOTS_TOTAL - shellIndex)];
@@ -1919,9 +1547,9 @@ export class BellClashScene extends ResponsiveScene {
 
 	// ── Rendering ────────────────────────────────────────────────────────────────
 
-	private drawBalls(): void {
+	public drawBalls(): void {
 		this.ballGfx.clear();
-		if (!this.onlineMatch && this.localPlayerCount > 1) {
+		if (!this.online.isActive && this.localPlayerCount > 1) {
 			for (const [side, ball] of this.localBallsForPhysics()) {
 				const colour =
 					PLAYER_COLOURS[side % PLAYER_COLOURS.length] ?? THEME.gold;
@@ -1934,7 +1562,12 @@ export class BellClashScene extends ResponsiveScene {
 						this.playerShellSkins[side],
 					)
 				)
-					drawShellBallTexture(this, `bell-clash-player-local-${side}`, ball, DEPTH_BALL);
+					drawShellBallTexture(
+						this,
+						`bell-clash-player-local-${side}`,
+						ball,
+						DEPTH_BALL,
+					);
 				this.ballGfx.lineStyle(
 					Math.max(2, ball.r * 0.14),
 					colour,
@@ -1948,10 +1581,16 @@ export class BellClashScene extends ResponsiveScene {
 					Math.max(5, ball.r * 0.22),
 				);
 			}
-			this.powerBallTexCount = drawBellClashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
+			this.powerBallTexCount = drawBellClashPowerBalls(
+				this,
+				this.ballGfx,
+				this.powerBalls,
+				this.powerBallTexCount,
+				this.playerShellSkins,
+			);
 			return;
 		}
-		if (!this.onlineMatch || this.onlineBalls.size <= 0) {
+		if (!this.online.isActive || this.online.ballMap.size <= 0) {
 			if (
 				!drawIngamePlayerTexture(
 					this,
@@ -1961,12 +1600,23 @@ export class BellClashScene extends ResponsiveScene {
 					this.playerShellSkins[0],
 				)
 			)
-				drawShellBallTexture(this, "bell-clash-player-local", this.ball, DEPTH_BALL);
-			this.powerBallTexCount = drawBellClashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
+				drawShellBallTexture(
+					this,
+					"bell-clash-player-local",
+					this.ball,
+					DEPTH_BALL,
+				);
+			this.powerBallTexCount = drawBellClashPowerBalls(
+				this,
+				this.ballGfx,
+				this.powerBalls,
+				this.powerBallTexCount,
+				this.playerShellSkins,
+			);
 			return;
 		}
 
-		for (const [side, ball] of [...this.onlineBalls.entries()].sort(
+		for (const [side, ball] of [...this.online.ballMap.entries()].sort(
 			([a], [b]) => a - b,
 		)) {
 			const colour =
@@ -2005,7 +1655,13 @@ export class BellClashScene extends ResponsiveScene {
 				Math.max(5, ball.r * 0.22),
 			);
 		}
-		this.powerBallTexCount = drawBellClashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
+		this.powerBallTexCount = drawBellClashPowerBalls(
+			this,
+			this.ballGfx,
+			this.powerBalls,
+			this.powerBallTexCount,
+			this.playerShellSkins,
+		);
 	}
 
 	private showEndScreen(): void {
@@ -2066,7 +1722,7 @@ export class BellClashScene extends ResponsiveScene {
 		});
 	}
 
-	private showOnlineEndScreen(snapshot: BellClashSnapshot): void {
+	public showOnlineEndScreen(snapshot: BellClashSnapshot): void {
 		if (this.overlayState?.kind === "online-end" && this.overlay?.active)
 			return;
 		this.running = false;
@@ -2080,21 +1736,21 @@ export class BellClashScene extends ResponsiveScene {
 		const titleText =
 			snapshot.winnerSide === null
 				? "DRAW"
-				: snapshot.winnerSide === this.onlineMatch?.side
+				: snapshot.winnerSide === this.online.side
 					? "YOU WIN!"
 					: "YOU LOSE";
 		this.overlay = showOnlineRematchEndModal(this, this.overlay, {
 			title: "BELL CLASH",
 			result: titleText,
 			matchId: snapshot.matchId,
-			side: this.onlineMatch?.side ?? 0,
+			side: this.online.side,
 			sceneKey: "BellClashScene",
 			players: [...snapshot.players]
 				.sort((a, b) => a.side - b.side)
 				.map((player) => ({
 					label: `P${player.side + 1}`,
 					detail:
-						player.side === this.onlineMatch?.side
+						player.side === this.online.side
 							? `${player.username} (You)`
 							: player.username,
 					score: snapshot.score[player.side] ?? 0,
@@ -2136,18 +1792,24 @@ export class BellClashScene extends ResponsiveScene {
 			});
 		};
 		resizeBall(this.ball);
-		if (!this.onlineMatch && this.localPlayerCount > 1) {
+		if (!this.online.isActive && this.localPlayerCount > 1) {
 			for (const ball of new Set(this.localBalls.values())) {
 				if (ball !== this.ball) resizeBall(ball);
 			}
 		}
-		if (this.onlineMatch) {
-			for (const ball of new Set(this.onlineBalls.values()))
+		if (this.online.isActive) {
+			for (const ball of new Set(this.online.ballMap.values()))
 				resizeBall(ball);
 		}
 		for (const entry of this.powerBalls) resizeBall(entry.ball);
 
-		drawBellClashBackground(this.bgGfx, this.arenaSkin, this.arena, this.scale.width, this.scale.height);
+		drawBellClashBackground(
+			this.bgGfx,
+			this.arenaSkin,
+			this.arena,
+			this.scale.width,
+			this.scale.height,
+		);
 		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
 		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
 		this.recreatePowerPickups();
@@ -2169,7 +1831,7 @@ export class BellClashScene extends ResponsiveScene {
 
 		this.hudObjects.forEach((object) => object.destroy());
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
-			this.markOnlineAway(),
+			this.online.markAway(),
 		);
 		this.scoreText?.setPosition(16, 16);
 		this.lastHitText?.setPosition(16, 44);
@@ -2180,6 +1842,6 @@ export class BellClashScene extends ResponsiveScene {
 		// Re-run the full layout decision so the panel switches between docked and
 		// collapsed drop-down as the viewport crosses the fit threshold on zoom.
 		if (this.powerSidePanel?.isVisible()) this.showPowerPanel();
-		this.onlineStatusText?.setPosition(this.scale.width / 2, 48);
+		this.online.repositionStatus();
 	}
 }

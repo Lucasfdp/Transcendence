@@ -79,13 +79,7 @@ import {
 } from "../../shared/mechanics/player-config";
 import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
 import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
-import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
-import {
-	getGameSocket,
-	type CurlingSnapshot,
-	type CurlingThrowEvent,
-	type OnlineMatchContext,
-} from "../../services/network/gameSocket";
+import { type CurlingSnapshot } from "../../services/network/gameSocket";
 import { THEME } from "../../shared/theme";
 import {
 	PLAYER_COLOUR_VALUES,
@@ -115,6 +109,11 @@ import {
 	drawShellCurlStoneTrails,
 	animateShellCurlScoringStones,
 } from "./ShellCurlView";
+import {
+	ShellCurlOnlineController,
+	type ShellCurlBumper,
+	type ShellCurlOnlineScene,
+} from "./ShellCurlOnline";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -133,8 +132,6 @@ const GRAB_RADIUS_FACTOR = 6.0;
 /** Full-drag launch speed in source px/s. */
 const LAUNCH_SPEED_SRC = 3300;
 
-const ONLINE_REPLAY_STEP_MS = 1000 / 60;
-const ONLINE_REPLAY_MAX_FRAME_MS = 100;
 const REPLAY_CAPTURE_STEP_MS = 100;
 
 const SHELL_CURL_DESCRIPTOR: GameDescriptor = {
@@ -232,21 +229,25 @@ const DELIVERY_CLEARANCE_SRC = 10;
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
 
-export class ShellCurlScene extends ResponsiveScene {
+export class ShellCurlScene
+	extends ResponsiveScene
+	implements ShellCurlOnlineScene
+{
 	private readonly sceneHost: CommonGameSceneHost;
 	private readonly stoneWorld = new WorldRuntime<StoneState>(
 		(stone) => stone.id,
 	);
-	private readonly launchInput: SlingshotLaunchRuntime<StoneState>;
+	public readonly launchInput: SlingshotLaunchRuntime<StoneState>;
+	private readonly online: ShellCurlOnlineController;
 
-	private arena!: RectArenaPixels;
+	public arena!: RectArenaPixels;
 
 	// ── Game state ────────────────────────────────────────────────────────────
-	private turnManager!: TurnManager;
+	public turnManager!: TurnManager;
 	private powerRegistry!: PowerRegistry;
-	private curlingPower!: CurlingPowerRuntime;
-	private stoneGfx: Map<number, Phaser.GameObjects.Graphics> = new Map();
-	private activeStone: StoneState | null = null;
+	public curlingPower!: CurlingPowerRuntime;
+	public stoneGfx: Map<number, Phaser.GameObjects.Graphics> = new Map();
+	public activeStone: StoneState | null = null;
 	private activeRingGfx: Phaser.GameObjects.Graphics | null = null;
 	private activeRingTween: Phaser.Tweens.Tween | null = null;
 	private playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
@@ -257,49 +258,38 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	// ── Mechanics ─────────────────────────────────────────────────────────────
 	private sweepCtrl!: SweepController;
-	private scoreHud!: ScoreHud;
+	public scoreHud!: ScoreHud;
 
 	// ── Graphics layers ───────────────────────────────────────────────────────
 	private bgGfx!: Phaser.GameObjects.Graphics;
 	private sheetGfx!: Phaser.GameObjects.Graphics;
-	private bumperGfx!: Phaser.GameObjects.Graphics;
+	public bumperGfx!: Phaser.GameObjects.Graphics;
 	private pickupGfx!: Phaser.GameObjects.Graphics;
-	private trailGfx!: Phaser.GameObjects.Graphics;
+	public trailGfx!: Phaser.GameObjects.Graphics;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
-	private stoneTrails = new ArenaBallTrailRuntime();
+	public stoneTrails = new ArenaBallTrailRuntime();
 
 	// ── Bumpers ───────────────────────────────────────────────────────────────
-	private bumpers: Bumper[] = [];
+	public bumpers: ShellCurlBumper[] = [];
 	private powerPickups: PowerPickupManager | null = null;
 	private powerupsEnabled = true;
 
 	// ── Overlay ───────────────────────────────────────────────────────────────
-	private overlayContainer: Phaser.GameObjects.Container | null = null;
+	public overlayContainer: Phaser.GameObjects.Container | null = null;
 
 	// ── Power side panel (replaces the bottom PowerPicker bar) ────────────────
-	private powerSidePanel: GameInfoSidePanel | null = null;
+	public powerSidePanel: GameInfoSidePanel | null = null;
 	private scoreLogPanel: SidePanel | null = null;
 	private localEndScores: Array<Array<number | null>> = [];
 	private localMode: "solo" | "versus" = "versus";
 
-	private onlineMatch: OnlineMatchContext | null = null;
-	private onlineStatusText: Phaser.GameObjects.Text | null = null;
-	private lastOnlineSeq = -1;
-	private onlineReplaying = false;
-	private onlineReplaySettlingTimer = 0;
-	private onlineReplayAccumulatorMs = 0;
-	private onlineReplayStopApplied = false;
-	private onlineReplayThrower: number | null = null;
-	private onlineReplayThrowId: number | null = null;
-	private pendingOnlineSnapshot: CurlingSnapshot | null = null;
-	private onlineConfirmedStoneIds: Set<number> = new Set();
 	private readonly localReplay = new LocalReplayRuntime<
 		CurlingSnapshot,
 		CurlingSnapshot["phase"]
 	>({
 		gameId: "temple-curling",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
-		shouldSkip: () => !!this.onlineMatch,
+		shouldSkip: () => this.online.isActive,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
@@ -313,6 +303,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	constructor() {
 		super({ key: "ShellCurlScene" });
+		this.online = new ShellCurlOnlineController(this);
 		this.sceneHost = new CommonGameSceneHost(this, {
 			descriptor: SHELL_CURL_DESCRIPTOR,
 			update: (_time, delta) => this.updateShellCurl(delta),
@@ -331,11 +322,11 @@ export class ShellCurlScene extends ResponsiveScene {
 		});
 	}
 
-	private get allStones(): StoneState[] {
+	public get allStones(): StoneState[] {
 		return this.stoneWorld.all();
 	}
 
-	private set allStones(stones: readonly StoneState[]) {
+	public set allStones(stones: readonly StoneState[]) {
 		this.stoneWorld.replace(stones);
 	}
 
@@ -344,23 +335,11 @@ export class ShellCurlScene extends ResponsiveScene {
 		preloadPowerUpAssets(this);
 	}
 
-	private readonly handleOnlineState = (snapshot: CurlingSnapshot): void => {
-		this.applyOnlineSnapshot(snapshot);
-	};
-
-	private readonly handleOnlineThrow = (event: CurlingThrowEvent): void => {
-		this.playOnlineThrow(event);
-	};
-
 	// ── Lifecycle ─────────────────────────────────────────────────────────────
 
 	create(): void {
 		this.sceneHost.activate();
-		this.onlineMatch =
-			(this.registry.get("onlineMatch") as
-				| OnlineMatchContext
-				| undefined) ?? null;
-		this.lastOnlineSeq = -1;
+		this.online.bindFromRegistry();
 		this.localReplay.reset();
 		this.activePower = PowerType.NONE;
 		this.powerUsed = Array.from({ length: 5 }, () => new Set<PowerType>());
@@ -386,8 +365,8 @@ export class ShellCurlScene extends ResponsiveScene {
 			totalEnds: TOTAL_ENDS,
 			stonesPerTeam: STONES_PER_TEAM,
 			playerCount:
-				this.onlineMatch?.snapshot?.gameId === "temple-curling"
-					? this.onlineMatch.snapshot.score.length
+				this.online.snapshot?.gameId === "temple-curling"
+					? this.online.snapshot.score.length
 					: localPlayerCount,
 		});
 		this.localEndScores = Array.from({ length: TOTAL_ENDS }, () =>
@@ -402,8 +381,8 @@ export class ShellCurlScene extends ResponsiveScene {
 		const sel = this.registry.get("shellSelection") as
 			| Record<string, string[] | undefined>
 			| undefined;
-		const localPowerupsEnabled = this.onlineMatch
-			? this.onlineMatch.snapshot?.powerupsEnabled === true
+		const localPowerupsEnabled = this.online.isActive
+			? this.online.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
 		this.powerupsEnabled = localPowerupsEnabled;
 
@@ -457,7 +436,12 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.trailGfx = this.add.graphics().setDepth(DEPTH_STONES - 0.25);
 
 		// Draw background & sheet
-		drawShellCurlBackground(this.bgGfx, this.arena, this.scale.width, this.scale.height);
+		drawShellCurlBackground(
+			this.bgGfx,
+			this.arena,
+			this.scale.width,
+			this.scale.height,
+		);
 		drawIceSheet(this.sheetGfx, this.arena);
 		this.buildBumpers();
 		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
@@ -472,7 +456,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			minPlayerCount: this.turnManager.state.score.length,
 		});
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
-			this.markOnlineAway(),
+			this.online.markAway(),
 		);
 
 		// Slingshot (shared mechanic) — starts detached; attached when stone is placed
@@ -488,17 +472,17 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.scoreHud.update(this.buildScoreHudState());
 		// Build the side panels (TEMPLE CURLING info + SCORE LOG) unconditionally,
 		// mirroring Bell Clash / Kame Knock. Previously these were only created
-		// inside beginTurn()/updateSidePanels() calls reachable from the "active"
-		// branch of applyOnlineSnapshot, so a match launched (or reconnected) in a
+		// inside beginTurn()/updateSidePanels() calls reachable from the active
+		// online snapshot branch, so a match launched (or reconnected) in a
 		// non-active phase — e.g. an invite match briefly before the server marks
 		// it active — rendered with no HUD borders at all.
 		this.updateSidePanels();
-		if (this.onlineMatch) this.createOnlineStatusText();
+		if (this.online.isActive) this.online.createStatusText();
 		// Defer beginTurn() by one tick — this.scene.isActive() returns false
 		// during create() (scene is CREATING, not yet RUNNING), so the guard
 		// inside beginTurn() would bail immediately if called synchronously here.
 		this.time.delayedCall(0, () => {
-			if (this.onlineMatch) this.initOnlineMatch();
+			if (this.online.isActive) this.online.init();
 			else {
 				this.beginTurn();
 				this.localReplay.startCapture();
@@ -527,14 +511,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.pickupGfx.destroy();
 		this.trailGfx.destroy();
 		this.overlayContainer?.destroy(true);
-		if (this.onlineMatch) {
-			const socket = getGameSocket();
-			socket.off("game:state", this.handleOnlineState);
-			socket.off("game:end", this.handleOnlineState);
-			socket.off("game:throw", this.handleOnlineThrow);
-		}
-		this.onlineStatusText?.destroy();
-		this.onlineStatusText = null;
+		this.online.shutdown();
 	}
 
 	update(time: number, delta: number): void {
@@ -542,8 +519,8 @@ export class ShellCurlScene extends ResponsiveScene {
 	}
 
 	private updateShellCurl(delta: number): void {
-		if (this.onlineMatch) {
-			this.updateOnlineReplay(delta);
+		if (this.online.isActive) {
+			this.online.updateReplay(delta);
 			return;
 		}
 		this.localReplay.addElapsed(delta);
@@ -593,11 +570,17 @@ export class ShellCurlScene extends ResponsiveScene {
 					needBumperRedraw = true;
 				}
 			}
-			if (needBumperRedraw) drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
+			if (needBumperRedraw)
+				drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 
 			// Redraw all stones
 			this.recordMovingStoneTrails();
-			drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
+			drawShellCurlStoneTrails(
+				this.stoneTrails,
+				this.trailGfx,
+				this.stonePlayersById(),
+				this.arena,
+			);
 			this.redrawAllStones();
 
 			// Transition to settling once the active stone stops, leaves bounds, or was split
@@ -648,7 +631,12 @@ export class ShellCurlScene extends ResponsiveScene {
 			}
 			drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 			this.recordMovingStoneTrails();
-			drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
+			drawShellCurlStoneTrails(
+				this.stoneTrails,
+				this.trailGfx,
+				this.stonePlayersById(),
+				this.arena,
+			);
 			this.redrawAllStones();
 
 			if (!anyMoving) {
@@ -672,7 +660,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	// ── Turn flow ─────────────────────────────────────────────────────────────
 
-	private beginTurn(): void {
+	public beginTurn(): void {
 		// Guard: if the scene has been stopped (e.g. by a delayed-call timer that
 		// fired after scene.start('HubScene') was already called), do nothing.
 		if (!this.scene.isActive()) return;
@@ -712,44 +700,16 @@ export class ShellCurlScene extends ResponsiveScene {
 		if (!this.activeStone || this.turnManager.state.phase !== "aiming")
 			return;
 
-		if (this.onlineMatch) {
+		if (this.online.isActive) {
 			const power = this.activePower;
-			// game:throw transports source px/s; clients convert to their local canvas scale.
-			const sourceVx = vx / this.arena.scale;
-			const sourceVy = vy / this.arena.scale;
 			if (power !== PowerType.NONE) this.currentPowerUsed().add(power);
 			this.activePower = PowerType.NONE;
-			getGameSocket().emit("game:input", {
-				matchId: this.onlineMatch.matchId,
-				action: "release",
-				payload: {
-					x: Math.max(
-						0,
-						Math.min(
-							1,
-							(this.activeStone.x - this.arena.sheetX) /
-								this.arena.sheetW,
-						),
-					),
-					y: Math.max(
-						0,
-						Math.min(
-							1,
-							(this.activeStone.y - this.arena.sheetY) /
-								this.arena.sheetH,
-						),
-					),
-					vx: sourceVx,
-					vy: sourceVy,
-					power,
-				},
-			});
+			this.online.emitRelease(this.activeStone, vx, vy, power);
 			this.powerSidePanel?.hide();
 			this.launchInput.recreate();
 			this.clearActiveRing();
 			this.turnManager.setPhase("settling");
 			notifyGameRuleRelease(this.buildGameRuleHooks(), this.activeStone);
-			this.updateOnlineStatus("Launching...");
 			return;
 		}
 
@@ -847,7 +807,14 @@ export class ShellCurlScene extends ResponsiveScene {
 		).length;
 
 		// Highlight scoring stones
-		animateShellCurlScoringStones(this, this.allStones, this.stoneGfx, scoringTeam, this.arena, isStoneInHouse);
+		animateShellCurlScoringStones(
+			this,
+			this.allStones,
+			this.stoneGfx,
+			scoringTeam,
+			this.arena,
+			isStoneInHouse,
+		);
 
 		const endScores = Array.from(
 			{ length: this.turnManager.state.score.length },
@@ -863,7 +830,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	// ── Stone management ──────────────────────────────────────────────────────
 
-	private spawnActiveStone(teamId: number): StoneState {
+	public spawnActiveStone(teamId: number): StoneState {
 		const stone: StoneState = {
 			id: this.nextStoneId++,
 			teamId,
@@ -885,7 +852,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		return stone;
 	}
 
-	private resolveDeliverySpawnBlockers(): void {
+	public resolveDeliverySpawnBlockers(): void {
 		let moved = 0;
 		const deliveryR = STONE_SRC_R * this.arena.scale;
 
@@ -906,7 +873,12 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		if (moved <= 0) return;
 		this.showSpawnBlockedNotice(moved);
-		drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
+		drawShellCurlStoneTrails(
+			this.stoneTrails,
+			this.trailGfx,
+			this.stonePlayersById(),
+			this.arena,
+		);
 		this.redrawAllStones();
 		this.updateSidePanels();
 	}
@@ -964,14 +936,26 @@ export class ShellCurlScene extends ResponsiveScene {
 		if (!result.children.length && !result.removeSource) return;
 
 		for (const child of result.children) this.addRuntimeStone(child);
-		if (result.split) showShellCurlSplitterNotice(this, source.x, source.y, this.arena);
+		if (result.split)
+			showShellCurlSplitterNotice(this, source.x, source.y, this.arena);
 		if (result.mirror)
-			showShellCurlPowerPickupNotice(this, PowerType.MIRROR, source.x, source.y, this.arena);
+			showShellCurlPowerPickupNotice(
+				this,
+				PowerType.MIRROR,
+				source.x,
+				source.y,
+				this.arena,
+			);
 		if (result.removeSource) {
 			this.removeStone(source);
 			this.activeStone = null;
 		}
-		drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
+		drawShellCurlStoneTrails(
+			this.stoneTrails,
+			this.trailGfx,
+			this.stonePlayersById(),
+			this.arena,
+		);
 		this.redrawAllStones();
 	}
 
@@ -982,19 +966,22 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.stoneTrails.set(stone.id, [{ x: stone.x, y: stone.y }]);
 	}
 
-
-
-	private removeStone(stone: StoneState): void {
+	public removeStone(stone: StoneState): void {
 		const gfx = this.stoneGfx.get(stone.id);
 		gfx?.destroy();
 		destroyIngamePlayerTexture(this, `shell-curl-player-${stone.id}`);
 		this.stoneGfx.delete(stone.id);
 		this.stoneTrails.delete(stone.id);
 		this.allStones = this.allStones.filter((s) => s.id !== stone.id);
-		drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
+		drawShellCurlStoneTrails(
+			this.stoneTrails,
+			this.trailGfx,
+			this.stonePlayersById(),
+			this.arena,
+		);
 	}
 
-	private clearAllStoneGfx(): void {
+	public clearAllStoneGfx(): void {
 		for (const stone of this.allStones)
 			destroyIngamePlayerTexture(this, `shell-curl-player-${stone.id}`);
 		for (const gfx of this.stoneGfx.values()) gfx.destroy();
@@ -1022,7 +1009,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		});
 	}
 
-	private clearActiveRing(): void {
+	public clearActiveRing(): void {
 		this.activeRingTween?.stop();
 		this.activeRingGfx?.destroy();
 		this.activeRingGfx = null;
@@ -1031,9 +1018,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	// ── Rendering ─────────────────────────────────────────────────────────────
 
-
-
-	private redrawAllStones(): void {
+	public redrawAllStones(): void {
 		for (const s of this.allStones) {
 			const gfx = this.stoneGfx.get(s.id);
 			if (gfx) this.drawPlayerStone(gfx, s, false);
@@ -1050,7 +1035,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		}
 	}
 
-	private recordMovingStoneTrails(): void {
+	public recordMovingStoneTrails(): void {
 		this.stoneTrails.recordSet({
 			balls: this.allStones.map((stone) => ({
 				id: stone.id,
@@ -1065,20 +1050,16 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	private trailEffectForPlayer(player: number): string {
 		return (
-			this.onlineMatch?.snapshot.players.find((entry) => entry.side === player)
+			this.online.snapshot?.players.find((entry) => entry.side === player)
 				?.trailEffect ??
 			this.playerTrailEffects[player] ??
 			"trail_classic"
 		);
 	}
 
-
-
-	private stonePlayersById(): Map<number | string, number> {
+	public stonePlayersById(): Map<number | string, number> {
 		return new Map(this.allStones.map((stone) => [stone.id, stone.teamId]));
 	}
-
-
 
 	// ── Overlays ──────────────────────────────────────────────────────────────
 
@@ -1171,7 +1152,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	 * Non-fatal: errors are logged but never block the overlay from showing.
 	 */
 	private submitResult(): void {
-		if (this.onlineMatch) return;
+		if (this.online.isActive) return;
 		const user = this.registry.get("user") as
 			| { isGuest?: boolean }
 			| undefined;
@@ -1237,7 +1218,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		return Math.max(1, this.turnManager.state.score.length);
 	}
 
-	private buildScoreHudState(): TurnState {
+	public buildScoreHudState(): TurnState {
 		return buildTurnStateFromGameRuleHooks(this.buildGameRuleHooks());
 	}
 
@@ -1253,7 +1234,7 @@ export class ShellCurlScene extends ResponsiveScene {
 			hasHammer: () => state.hasHammer,
 			onRelease: () => {
 				this.scoreHud.update(this.buildScoreHudState());
-				if (!this.onlineMatch) this.localReplay.captureFrame(true);
+				if (!this.online.isActive) this.localReplay.captureFrame(true);
 			},
 			onProjectileSettled: () => this.finishThrow(),
 			computeWinner: () => resolveReplayWinnerSide([...state.score]),
@@ -1267,8 +1248,8 @@ export class ShellCurlScene extends ResponsiveScene {
 				| { username?: string; turtleName?: string | null }
 				| undefined,
 			onlinePlayers:
-				this.onlineMatch?.snapshot?.gameId === "temple-curling"
-					? this.onlineMatch.snapshot.players
+				this.online.snapshot?.gameId === "temple-curling"
+					? this.online.snapshot.players
 					: undefined,
 		});
 	}
@@ -1281,326 +1262,8 @@ export class ShellCurlScene extends ResponsiveScene {
 		return Math.max(0, this.nextStoneId - (this.activeStone ? 1 : 0));
 	}
 
-	private initOnlineMatch(): void {
-		if (!this.onlineMatch) return;
-		const socket = getGameSocket();
-		socket.off("game:state", this.handleOnlineState);
-		socket.off("game:end", this.handleOnlineState);
-		socket.off("game:throw", this.handleOnlineThrow);
-		socket.on("game:state", this.handleOnlineState);
-		socket.on("game:end", this.handleOnlineState);
-		socket.on("game:throw", this.handleOnlineThrow);
-		if (this.onlineMatch.snapshot?.gameId === "temple-curling")
-			this.applyOnlineSnapshot(this.onlineMatch.snapshot);
-		this.updateOnlineStatus("Connected to online match.");
-	}
-
-	private playOnlineThrow(event: CurlingThrowEvent): void {
-		if (!this.onlineMatch || event.matchId !== this.onlineMatch.matchId)
-			return;
-
-		this.powerSidePanel?.hide();
-		this.clearActiveRing();
-
-		if (
-			this.activeStone &&
-			this.activeStone.teamId !== event.side &&
-			!this.onlineConfirmedStoneIds.has(this.activeStone.id)
-		) {
-			this.removeStone(this.activeStone);
-			this.activeStone = null;
-		}
-
-		let stone =
-			this.activeStone?.teamId === event.side ? this.activeStone : null;
-		if (!stone) stone = this.spawnActiveStone(event.side);
-
-		for (const candidate of [...this.allStones]) {
-			if (
-				candidate !== stone &&
-				!this.onlineConfirmedStoneIds.has(candidate.id)
-			)
-				this.removeStone(candidate);
-		}
-
-		const previousId = stone.id;
-		const gfx = this.stoneGfx.get(previousId);
-		this.stoneGfx.delete(previousId);
-		this.stoneTrails.delete(previousId);
-		destroyIngamePlayerTexture(this, `shell-curl-player-${previousId}`);
-		stone.id = event.id;
-		if (gfx) this.stoneGfx.set(stone.id, gfx);
-
-		stone.x = this.arena.deliveryX;
-		stone.y = this.arena.deliveryY;
-		// game:throw transports source px/s; clients convert to their local canvas scale.
-		stone.vx = event.vx * this.arena.scale;
-		stone.vy = event.vy * this.arena.scale;
-		stone.power = event.power as PowerType;
-		stone.stopped = false;
-		stone.r = STONE_SRC_R * this.arena.scale;
-		stone.curlBias = DEFAULT_CURL_BIAS * (event.side === 0 ? 1 : -1);
-
-		this.curlingPower.applyPower(stone.power, stone, this.arena);
-
-		this.activeStone = stone;
-		this.stoneTrails.set(stone.id, [{ x: stone.x, y: stone.y }]);
-		this.onlineReplaying = true;
-		this.onlineReplaySettlingTimer = 0;
-		this.onlineReplayAccumulatorMs = 0;
-		this.onlineReplayStopApplied = false;
-		this.onlineReplayThrower = event.side;
-		this.onlineReplayThrowId = event.id;
-		this.turnManager.setPhase("settling");
-		this.updateOnlineStatus(
-			`${event.side === this.onlineMatch.side ? "Your" : "Opponent"} throw...`,
-		);
-	}
-
-	private updateOnlineReplay(delta: number): void {
-		if (!this.onlineReplaying) return;
-
-		this.onlineReplayAccumulatorMs += Math.min(
-			delta,
-			ONLINE_REPLAY_MAX_FRAME_MS,
-		);
-
-		while (
-			this.onlineReplayAccumulatorMs >= ONLINE_REPLAY_STEP_MS &&
-			this.onlineReplaying
-		) {
-			this.onlineReplayAccumulatorMs -= ONLINE_REPLAY_STEP_MS;
-
-			let anyMoving = false;
-			const active = this.activeStone;
-
-			for (const stone of [...this.allStones]) {
-				if (stone.stopped) continue;
-				this.curlingPower.stepStone(
-					stone,
-					ONLINE_REPLAY_STEP_MS,
-					this.arena,
-				);
-				if (stone === active)
-					this.curlingPower.updatePower(
-						stone,
-						ONLINE_REPLAY_STEP_MS,
-						this.arena,
-					);
-				if (isStoneOutOfBounds(stone, this.arena)) {
-					this.removeStone(stone);
-					if (stone === active) this.activeStone = null;
-				} else if (!stone.stopped) {
-					anyMoving = true;
-				}
-			}
-
-			this.curlingPower.resolveCollisions(this.allStones, this.arena, {
-				activeStone: active,
-				triggerActiveCollisionPower: true,
-			});
-
-			this.resolveStoneBumperCollisions(this.allStones);
-			for (const bumper of this.bumpers) {
-				if (bumper.flashTimer > 0)
-					bumper.flashTimer = Math.max(
-						0,
-						bumper.flashTimer - ONLINE_REPLAY_STEP_MS,
-					);
-			}
-			for (const stone of this.allStones) {
-				if (!stone.stopped) anyMoving = true;
-			}
-
-			if (
-				this.activeStone &&
-				this.activeStone.stopped &&
-				!this.onlineReplayStopApplied
-			) {
-				this.curlingPower.stopPower(
-					this.activeStone,
-					this.arena,
-					this.allStones,
-				);
-				this.onlineReplayStopApplied = true;
-			}
-
-			if (anyMoving) {
-				this.onlineReplaySettlingTimer = 0;
-			} else {
-				this.onlineReplaySettlingTimer += ONLINE_REPLAY_STEP_MS;
-				if (this.onlineReplaySettlingTimer >= SETTLING_DELAY_MS)
-					this.finishOnlineReplay();
-			}
-		}
-
-		if (!this.onlineReplaying) return;
-
-		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
-		this.recordMovingStoneTrails();
-		drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
-		this.redrawAllStones();
-	}
-
-	private finishOnlineReplay(): void {
-		const shouldSubmitSettled =
-			this.onlineMatch &&
-			!this.onlineMatch.spectator &&
-			this.onlineReplayThrower === this.onlineMatch.side;
-
-		if (shouldSubmitSettled) {
-			const onlineMatch = this.onlineMatch;
-			if (!onlineMatch) return;
-			getGameSocket().emit("game:input", {
-				matchId: onlineMatch.matchId,
-				action: "settled",
-				payload: { objects: this.serializeOnlineObjects() },
-			});
-		}
-
-		this.onlineReplaying = false;
-		this.onlineReplaySettlingTimer = 0;
-		this.onlineReplayAccumulatorMs = 0;
-		this.onlineReplayStopApplied = false;
-		this.onlineReplayThrower = null;
-		this.onlineReplayThrowId = null;
-		this.activeStone = null;
-		if (this.pendingOnlineSnapshot) {
-			const snapshot = this.pendingOnlineSnapshot;
-			this.pendingOnlineSnapshot = null;
-			this.applyOnlineSnapshot(snapshot);
-		}
-	}
-
-	private createOnlineStatusText(): void {
-		this.onlineStatusText = this.add
-			.text(this.scale.width / 2, 48, "", {
-				fontSize: "13px",
-				color: THEME.textGold,
-				fontFamily: THEME.font,
-				fontStyle: "bold",
-			})
-			.setOrigin(0.5, 0)
-			.setDepth(DEPTH_HUD + 2);
-	}
-
-	private updateOnlineStatus(message: string): void {
-		this.onlineStatusText?.setText(message);
-	}
-
-	private markOnlineAway(): void {
-		const phase = this.onlineMatch?.snapshot?.phase;
-		if (this.onlineMatch && phase !== "finished" && phase !== "abandoned") {
-			getGameSocket().emit("match:status", { away: true });
-		}
-	}
-
-	private applyOnlineSnapshot(snapshot: CurlingSnapshot): void {
-		if (
-			!this.onlineMatch ||
-			snapshot.matchId !== this.onlineMatch.matchId ||
-			snapshot.seq < this.lastOnlineSeq
-		)
-			return;
-		if (this.onlineReplaying) {
-			this.pendingOnlineSnapshot = snapshot;
-			return;
-		}
-		this.lastOnlineSeq = snapshot.seq;
-		this.onlineMatch.snapshot = snapshot;
-		this.buildBumpers();
-		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
-
-		(this.turnManager as unknown as { _state: unknown })._state = {
-			currentTeam: snapshot.currentTurn,
-			currentEnd: snapshot.currentEnd,
-			stonesLeft: snapshot.score.map((_, side) =>
-				Math.max(
-					0,
-					snapshot.stonesPerPlayer -
-						this.onlineThrowsUsedBySide(snapshot, side),
-				),
-			),
-			score: snapshot.score,
-			phase:
-				snapshot.phase === "finished" || snapshot.phase === "abandoned"
-					? "gameover"
-					: snapshot.phase === "active"
-						? "aiming"
-						: "settling",
-			hasHammer: false,
-		};
-		this.scoreHud.update(this.buildScoreHudState());
-		this.renderOnlineObjects(snapshot);
-
-		if (snapshot.phase === "finished" || snapshot.phase === "abandoned") {
-			const winner =
-				snapshot.winnerSide === null
-					? "DRAW"
-					: snapshot.winnerSide === this.onlineMatch.side
-						? "YOU WIN!"
-						: "YOU LOSE";
-			this.overlayContainer = showOnlineRematchEndModal(
-				this,
-				this.overlayContainer,
-				{
-					title: "TEMPLE CURLING",
-					result: winner,
-					matchId: snapshot.matchId,
-					side: this.onlineMatch.side,
-					sceneKey: "ShellCurlScene",
-					players: [...snapshot.players]
-						.sort((a, b) => a.side - b.side)
-						.map((player) => ({
-							label: `P${player.side + 1}`,
-							detail:
-								player.side === this.onlineMatch?.side
-									? `${player.username} (You)`
-									: player.username,
-							score: snapshot.score[player.side] ?? 0,
-							color: this.playerHexColour(player.side),
-						})),
-					onReturn: () => {
-						this.overlayContainer = null;
-					},
-					onOverlay: (overlay) => {
-						this.overlayContainer = overlay;
-					},
-					depth: DEPTH_OVERLAY,
-				},
-			);
-			return;
-		}
-
-		if (snapshot.phase !== "active") {
-			this.updateOnlineStatus("Waiting for opponent...");
-			return;
-		}
-
-		const isLocalTurn =
-			snapshot.currentTurn === this.onlineMatch.side &&
-			!this.onlineMatch.spectator;
-		if (isLocalTurn) {
-			this.updateOnlineStatus(
-				`Your turn (${this.playerLabel(this.onlineMatch.side, snapshot.score.length)})`,
-			);
-			if (!this.activeStone) this.beginTurn();
-		} else {
-			this.updateOnlineStatus(
-				`${this.playerLabel(snapshot.currentTurn, snapshot.score.length)} turn`,
-			);
-			this.showRemotePlacedStone(snapshot.currentTurn);
-			this.powerSidePanel?.hide();
-			this.launchInput.recreate();
-		}
-	}
-
-	private showRemotePlacedStone(side: number): void {
-		if (
-			this.activeStone &&
-			!this.onlineConfirmedStoneIds.has(this.activeStone.id)
-		)
-			this.removeStone(this.activeStone);
+	public showRemotePlacedStone(side: number): void {
+		if (this.activeStone) this.removeStone(this.activeStone);
 		this.activeStone = null;
 		this.clearActiveRing();
 		this.resolveDeliverySpawnBlockers();
@@ -1610,87 +1273,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.redrawAllStones();
 	}
 
-	private renderOnlineObjects(snapshot: CurlingSnapshot): void {
-		const existingTrails = new Map(this.stoneTrails.entries());
-		const existingStones = new Map(
-			this.allStones.map((stone) => [
-				stone.id,
-				{ x: stone.x, y: stone.y },
-			]),
-		);
-		this.onlineConfirmedStoneIds = new Set(
-			snapshot.objects.map((object) => object.id),
-		);
-		this.clearAllStoneGfx();
-		this.activeStone = null;
-		for (const object of snapshot.objects) {
-			const existingStone = existingStones.get(object.id);
-			const stone: StoneState = {
-				id: object.id,
-				teamId: object.side,
-				x:
-					existingStone?.x ??
-					this.arena.sheetX + object.x * this.arena.sheetW,
-				y:
-					existingStone?.y ??
-					this.arena.sheetY + object.y * this.arena.sheetH,
-				vx: 0,
-				vy: 0,
-				r: STONE_SRC_R * this.arena.scale,
-				power: object.power as PowerType,
-				stopped: true,
-				curlBias: DEFAULT_CURL_BIAS * (object.side === 0 ? 1 : -1),
-			};
-			const gfx = this.add.graphics().setDepth(DEPTH_STONES);
-			this.stoneGfx.set(stone.id, gfx);
-			this.allStones.push(stone);
-			const trail =
-				existingTrails.get(stone.id) ??
-				object.trail?.map((point) => ({
-					x: this.arena.sheetX + point.x * this.arena.sheetW,
-					y: this.arena.sheetY + point.y * this.arena.sheetH,
-				}));
-			if (trail?.length) this.stoneTrails.set(stone.id, trail);
-			this.drawPlayerStone(gfx, stone, false);
-		}
-		drawShellCurlStoneTrails(this.stoneTrails, this.trailGfx, this.stonePlayersById(), this.arena);
-	}
-
-	private serializeOnlineObjects(): CurlingSnapshot["objects"] {
-		return this.allStones.map((stone) => ({
-			id: stone.id,
-			side: stone.teamId,
-			x: Math.max(
-				0,
-				Math.min(1, (stone.x - this.arena.sheetX) / this.arena.sheetW),
-			),
-			y: Math.max(
-				0,
-				Math.min(1, (stone.y - this.arena.sheetY) / this.arena.sheetH),
-			),
-			vx: stone.vx / this.arena.scale,
-			vy: stone.vy / this.arena.scale,
-			moving: !stone.stopped,
-			power: stone.power,
-			trail: this.stoneTrails.readRectNormalisedTrail(
-				stone.id,
-				this.arena,
-				{ clamp: true },
-			),
-		}));
-	}
-
-	private onlineThrowsUsedBySide(
-		snapshot: CurlingSnapshot,
-		side: number,
-	): number {
-		const playerCount = Math.max(1, snapshot.score.length);
-		return Math.floor(
-			(snapshot.throwsInEnd + playerCount - 1 - side) / playerCount,
-		);
-	}
-
-	private playerLabel(side: number, playerCount: number): string {
+	public playerLabel(side: number, playerCount: number): string {
 		if (playerCount === 2) return side === 0 ? "Blue" : "Red";
 		return `P${side + 1}`;
 	}
@@ -1726,15 +1309,13 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
 
-	private drawPlayerStone(
+	public drawPlayerStone(
 		gfx: Phaser.GameObjects.Graphics,
 		stone: StoneState,
 		isActive: boolean,
 	): void {
 		drawShellCurlStone(gfx, stone, isActive, this.playerShellSkins, this);
 	}
-
-
 
 	private makeEmptyStone(): StoneState {
 		return {
@@ -1754,9 +1335,9 @@ export class ShellCurlScene extends ResponsiveScene {
 	// ── Bumpers ───────────────────────────────────────────────────────────────
 
 	/** Generate or consume bumper positions and map them to canvas pixels. */
-	private buildBumpers(regenerate = false): void {
+	public buildBumpers(regenerate = false): void {
 		const { sheetX, sheetY, sheetW, sheetH, scale } = this.arena;
-		const onlineSnapshot = this.onlineMatch?.snapshot;
+		const onlineSnapshot = this.online.snapshot;
 		const onlineMap =
 			onlineSnapshot?.gameId === "temple-curling"
 				? onlineSnapshot.map
@@ -1790,12 +1371,11 @@ export class ShellCurlScene extends ResponsiveScene {
 
 	/** Draw all bumpers onto bumperGfx. */
 
-
 	/**
 	 * Elastic reflection off each bumper.
 	 * Stones bounce along the collision normal and receive a 10% speed boost.
 	 */
-	private resolveStoneBumperCollisions(stones: StoneState[]): void {
+	public resolveStoneBumperCollisions(stones: StoneState[]): void {
 		for (const s of stones) {
 			if (s.stopped && s.frozen) continue;
 			for (const b of this.bumpers) {
@@ -1862,11 +1442,15 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		this.curlingPower.applyPower(pickup.type, stone, this.arena);
 		this.powerPickups.draw();
-		showShellCurlPowerPickupNotice(this, pickup.type, pickup.x, pickup.y, this.arena);
+		showShellCurlPowerPickupNotice(
+			this,
+			pickup.type,
+			pickup.x,
+			pickup.y,
+			this.arena,
+		);
 		this.updateSidePanels();
 	}
-
-
 
 	private powerPickupBlockers(): PowerPickupBlocker[] {
 		return [
@@ -1928,7 +1512,12 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.launchInput.cancel();
 		this.launchInput.syncScale();
 
-		drawShellCurlBackground(this.bgGfx, this.arena, this.scale.width, this.scale.height);
+		drawShellCurlBackground(
+			this.bgGfx,
+			this.arena,
+			this.scale.width,
+			this.scale.height,
+		);
 		drawIceSheet(this.sheetGfx, this.arena);
 		this.buildBumpers();
 		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
@@ -1940,7 +1529,7 @@ export class ShellCurlScene extends ResponsiveScene {
 
 		this.hudObjects.forEach((o) => o.destroy());
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
-			this.markOnlineAway(),
+			this.online.markAway(),
 		);
 		this.updateSidePanels();
 	}
@@ -1976,12 +1565,12 @@ export class ShellCurlScene extends ResponsiveScene {
 	/** Returns the power pool for the team whose turn it currently is. */
 	private currentTeamPowers(): PowerType[] {
 		const team = this.turnManager.state.currentTeam;
-		if (this.onlineMatch && team === this.onlineMatch.side)
+		if (this.online.isActive && team === this.online.side)
 			return this.playerPowers[0] ?? FALLBACK_POWERS;
 		return this.playerPowers[team] ?? FALLBACK_POWERS;
 	}
 
-	private updateSidePanels(): void {
+	public updateSidePanels(): void {
 		this.showPowerPanel();
 		this.updateScoreLogPanel();
 	}
@@ -2061,8 +1650,8 @@ export class ShellCurlScene extends ResponsiveScene {
 	private buildScoreLogRows(): SidePanelRow[] {
 		const state = this.turnManager.state;
 		const endScores =
-			this.onlineMatch?.snapshot?.gameId === "temple-curling"
-				? this.onlineMatch.snapshot.endScores
+			this.online.snapshot?.gameId === "temple-curling"
+				? this.online.snapshot.endScores
 				: this.localEndScores;
 
 		return Array.from({ length: TOTAL_ENDS }, (_unused, end) => {
@@ -2150,7 +1739,7 @@ export class ShellCurlScene extends ResponsiveScene {
 		return rows;
 	}
 
-	private playerHexColour(player: number): string {
+	public playerHexColour(player: number): string {
 		return PLAYER_COLOURS[player % PLAYER_COLOURS.length] ?? THEME.textGold;
 	}
 
