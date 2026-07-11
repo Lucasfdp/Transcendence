@@ -41,113 +41,14 @@ export interface Bumper {
 
 export function drawShellCurlBackground(
 	bgGfx: Phaser.GameObjects.Graphics,
-	arena: RectArenaPixels,
+	_arena: RectArenaPixels,
 	width: number,
 	height: number,
 ): void {
-	const a = arena;
 	bgGfx.clear();
 
 	bgGfx.fillStyle(0x0c0a07, 0.58);
 	bgGfx.fillRect(0, 0, width, height);
-
-	if (a.orientation === "horizontal") {
-		const lanternY = a.sheetY - Math.max(8, a.sheetY * 0.35);
-		const fanCX = a.houseFarCX;
-		if (a.sheetY > 20) {
-			drawShellCurlPaperLantern(
-				bgGfx,
-				fanCX - 50 * a.scale,
-				lanternY,
-				0,
-				a.scale,
-			);
-			drawShellCurlPaperLantern(
-				bgGfx,
-				fanCX + 50 * a.scale,
-				lanternY,
-				1,
-				a.scale,
-			);
-		}
-	} else {
-		const lanternY = a.sheetY * 0.48;
-		if (a.sheetY > 28 * a.scale) {
-			drawShellCurlPaperLantern(
-				bgGfx,
-				a.sheetX + a.sheetW * 0.27,
-				lanternY,
-				0,
-				a.scale,
-			);
-			drawShellCurlPaperLantern(
-				bgGfx,
-				a.sheetX + a.sheetW * 0.73,
-				lanternY,
-				1,
-				a.scale,
-			);
-		}
-	}
-
-	const bw = Math.max(3, 5 * a.scale);
-	bgGfx.fillStyle(0x1c1208, 1);
-	bgGfx.fillRect(a.sheetX - bw, a.sheetY - bw, a.sheetW + bw * 2, bw);
-	bgGfx.fillRect(
-		a.sheetX - bw,
-		a.sheetY + a.sheetH,
-		a.sheetW + bw * 2,
-		bw,
-	);
-	bgGfx.fillRect(a.sheetX - bw, a.sheetY, bw, a.sheetH);
-	bgGfx.fillRect(a.sheetX + a.sheetW, a.sheetY, bw, a.sheetH);
-
-	const vigH = Math.max(16, 24 * a.scale);
-	for (let i = 0; i < 5; i++) {
-		const band = vigH * (1 - i / 5);
-		bgGfx.fillStyle(0x000000, 0.07 * (5 - i));
-		bgGfx.fillRect(0, 0, width, band);
-		bgGfx.fillRect(0, height - band, width, band);
-	}
-}
-
-function drawShellCurlPaperLantern(
-	bgGfx: Phaser.GameObjects.Graphics,
-	x: number,
-	y: number,
-	variant: number,
-	scale: number,
-): void {
-	const lw = Math.max(15, 22 * scale);
-	const lh = Math.max(21, 30 * scale);
-
-	bgGfx.lineStyle(Math.max(1, 1 * scale), 0x5a4530, 0.55);
-	bgGfx.lineBetween(x, 0, x, y - lh * 0.52);
-
-	const glowColor = variant === 0 ? 0xff5500 : 0xffaa00;
-	bgGfx.fillStyle(glowColor, 0.07);
-	bgGfx.fillCircle(x, y, lh * 1.3);
-
-	const bodyColor = variant === 0 ? 0xb01818 : 0xcc8800;
-	bgGfx.fillStyle(bodyColor, 0.82);
-	bgGfx.fillEllipse(x, y, lw, lh);
-
-	bgGfx.lineStyle(Math.max(1, 1 * scale), 0x000000, 0.16);
-	for (let i = -2; i <= 2; i++) {
-		const ry = y + i * lh * 0.14;
-		const hw =
-			Math.sqrt(Math.max(0, 1 - Math.pow(i / 2.8, 2))) * lw * 0.5;
-		bgGfx.lineBetween(x - hw, ry, x + hw, ry);
-	}
-
-	bgGfx.fillStyle(0xffdd88, 0.24);
-	bgGfx.fillEllipse(x, y, lw * 0.52, lh * 0.52);
-
-	const capH = Math.max(3, 4.5 * scale);
-	const capW = lw * 0.54;
-	bgGfx.fillStyle(0x1c1208, 0.92);
-	bgGfx.fillRect(x - capW / 2, y - lh * 0.5 - capH, capW, capH);
-	bgGfx.fillRect(x - capW / 2, y + lh * 0.5, capW, capH);
 }
 
 // ── Stone drawing ─────────────────────────────────────────────────────────────

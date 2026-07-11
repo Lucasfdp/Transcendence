@@ -58,6 +58,7 @@ export function drawIngamePlayerTexture(
 		shellAsset.key,
 		state,
 	);
+	hideFallbackTexture(scene, name);
 	if (shell.texture.key !== shellAsset.key) shell.setTexture(shellAsset.key);
 	updateIngamePlayerRoll(shell, state);
 
@@ -100,6 +101,7 @@ export function drawIngameShellTexture(
 		shellAsset.key,
 		state,
 	);
+	hideFallbackTexture(scene, name);
 	if (shell.texture.key !== shellAsset.key) shell.setTexture(shellAsset.key);
 	updateIngamePlayerRoll(shell, state);
 
@@ -160,14 +162,20 @@ export function hideIngamePlayerTexture(
 		const existing = scene.children.getByName(childName);
 		if (existing instanceof Phaser.GameObjects.Image) existing.setVisible(false);
 	}
+	hideFallbackTexture(scene, name);
 }
 
 export function destroyIngamePlayerTexture(
 	scene: Phaser.Scene,
 	name: string,
 ): void {
-	for (const childName of [`${name}-body`, `${name}-shell`, name]) {
+	for (const childName of [`${name}-body`, `${name}-shell`, `${name}-fallback`, name]) {
 		const existing = scene.children.getByName(childName);
 		if (existing instanceof Phaser.GameObjects.Image) existing.destroy();
 	}
+}
+
+function hideFallbackTexture(scene: Phaser.Scene, name: string): void {
+	const existing = scene.children.getByName(`${name}-fallback`);
+	if (existing instanceof Phaser.GameObjects.Image) existing.setVisible(false);
 }

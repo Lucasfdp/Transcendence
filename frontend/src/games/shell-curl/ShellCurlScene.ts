@@ -100,6 +100,7 @@ import {
 	buildShellCurlLocalReplaySnapshot,
 	CommonGameSceneHost,
 	LocalReplayRuntime,
+	resolvePlayerTrailEffects,
 	SlingshotLaunchRuntime,
 	WorldRuntime,
 	type GameDescriptor,
@@ -249,6 +250,7 @@ export class ShellCurlScene extends ResponsiveScene {
 	private activeRingGfx: Phaser.GameObjects.Graphics | null = null;
 	private activeRingTween: Phaser.Tweens.Tween | null = null;
 	private playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
+	private playerTrailEffects: string[] = [];
 	private nextStoneId = 0;
 	private settlingTimer = 0;
 	private settlingStone: StoneState | null = null;
@@ -427,6 +429,13 @@ export class ShellCurlScene extends ResponsiveScene {
 		this.playerShellSkins = resolvePlayerShellSkins(
 			shellSkins,
 			this.playerShellSkins,
+		);
+		const trailEffects = this.registry.get("trailEffects") as
+			| Record<string, string | undefined>
+			| undefined;
+		this.playerTrailEffects = resolvePlayerTrailEffects(
+			trailEffects,
+			this.playerTrailEffects,
 		);
 
 		// Power registry — register ALL powers so the registry can always resolve any type
@@ -1050,7 +1059,17 @@ export class ShellCurlScene extends ResponsiveScene {
 			})),
 			isMoving: (stone) => !(stone as StoneState).stopped,
 			trailOptions: { scale: this.arena.scale },
+			trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
 		});
+	}
+
+	private trailEffectForPlayer(player: number): string {
+		return (
+			this.onlineMatch?.snapshot.players.find((entry) => entry.side === player)
+				?.trailEffect ??
+			this.playerTrailEffects[player] ??
+			"trail_classic"
+		);
 	}
 
 

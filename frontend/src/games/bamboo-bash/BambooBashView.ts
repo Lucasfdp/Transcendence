@@ -33,13 +33,6 @@ export function drawBambooBashBackground(
 	bgGfx.fillStyle(0x0a1208, 0.58);
 	bgGfx.fillRect(0, 0, width, height);
 
-	const step = Math.round(Math.min(width, height) * 0.065);
-	bgGfx.lineStyle(1, 0x152410, 0.55);
-	for (let x = 0; x < width; x += step)
-		bgGfx.lineBetween(x, 0, x, height);
-	for (let y = 0; y < height; y += step)
-		bgGfx.lineBetween(0, y, width, y);
-
 	layoutOvalArenaSkin(arenaSkin, arena);
 }
 

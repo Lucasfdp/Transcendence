@@ -116,7 +116,7 @@ type InfoModal = { title: string; description: string } | null;
 
 type CosmeticCategoryType = Extract<
 	Cosmetic["type"],
-	"shell_skin" | "hub_background" | "dojo_tag"
+	"shell_skin" | "hub_background" | "trail_effect" | "dojo_tag"
 >;
 
 type CosmeticTabType = "all" | CosmeticCategoryType | "soon-1" | "soon-2";
@@ -125,8 +125,8 @@ const COSMETIC_TABS: { id: CosmeticTabType; title: string; disabled?: boolean }[
 	{ id: "all", title: "All" },
 	{ id: "shell_skin", title: "Shells" },
 	{ id: "hub_background", title: "Backgrounds" },
+	{ id: "trail_effect", title: "Trails" },
 	{ id: "dojo_tag", title: "Dojo Tags" },
-	{ id: "soon-1", title: "Soon", disabled: true },
 	{ id: "soon-2", title: "Soon", disabled: true },
 ];
 
@@ -1076,6 +1076,7 @@ function HomeMenu(): JSX.Element {
 		const groups = new Map<CosmeticCategoryType, Cosmetic[]>();
 		groups.set("shell_skin", []);
 		groups.set("hub_background", []);
+		groups.set("trail_effect", []);
 		groups.set("dojo_tag", []);
 		for (const cosmetic of cosmetics ?? []) {
 			if (cosmetic.type === "hub_background_alter") continue;
@@ -1096,7 +1097,7 @@ function HomeMenu(): JSX.Element {
 
 	const cosmeticCategoryProgress = useMemo(() => {
 		const progress = new Map<CosmeticCategoryType, { owned: number; total: number }>();
-		for (const category of ["shell_skin", "hub_background", "dojo_tag"] as const) {
+		for (const category of ["shell_skin", "hub_background", "trail_effect", "dojo_tag"] as const) {
 			const group = cosmeticGroups.get(category) ?? [];
 			progress.set(category, {
 				owned: group.filter((cosmetic) => cosmetic.owned).length,
@@ -1242,9 +1243,12 @@ function HomeMenu(): JSX.Element {
 		setModalError("");
 		try {
 			await api.getCsrfToken();
-			const nextCosmetics = cosmetic.owned
+			let nextCosmetics = cosmetic.owned
 				? await api.equipCosmetic(cosmetic.id)
 				: await api.buyCosmetic(cosmetic.id);
+			if (!cosmetic.owned && cosmetic.type === "trail_effect") {
+				nextCosmetics = await api.equipCosmetic(cosmetic.id);
+			}
 			setCosmetics(nextCosmetics);
 			const equippedBackground = nextCosmetics.find(
 				(item) => item.equipped && item.type === "hub_background",
@@ -1254,6 +1258,9 @@ function HomeMenu(): JSX.Element {
 			);
 			const equippedShell = nextCosmetics.find(
 				(item) => item.equipped && item.type === "shell_skin",
+			);
+			const equippedTrail = nextCosmetics.find(
+				(item) => item.equipped && item.type === "trail_effect",
 			);
 			const equippedTag = nextCosmetics.find(
 				(item) => item.equipped && item.type === "dojo_tag",
@@ -1270,6 +1277,7 @@ function HomeMenu(): JSX.Element {
 					hubBackground: equippedBackground?.id ?? player.hubBackground,
 					hubBackgroundAlter: equippedBackgroundAlter?.id ?? null,
 					shellSkin: equippedShell?.id ?? player.shellSkin,
+					trailEffect: equippedTrail?.id ?? player.trailEffect,
 					profile: player.profile
 						? {
 								...player.profile,
@@ -3992,6 +4000,44 @@ function HomeMenu(): JSX.Element {
 												</article>
 											);
 										})}
+									</div>
+								</section>
+							) : null}
+
+							{activeCosmeticTab === "all" || activeCosmeticTab === "trail_effect" ? (
+								<section className="hub-modal__cosmetic-category">
+									<header className="hub-modal__cosmetic-category-header">
+										<h3>Trails</h3>
+										<span className="hub-modal__cosmetic-category-progress">
+											{cosmeticCategoryProgress.get("trail_effect")?.owned ?? 0} /{" "}
+											{cosmeticCategoryProgress.get("trail_effect")?.total ?? 0}
+										</span>
+									</header>
+									<div className="hub-modal__trail-effects">
+										{(cosmeticGroups.get("trail_effect") ?? []).map((cosmetic) => (
+											<article
+												key={cosmetic.id}
+												className={`hub-modal__trail-card hub-modal__trail-card--${cosmetic.id}${
+													cosmetic.equipped ? " hub-modal__trail-card--equipped" : ""
+												}`}
+												style={getCosmeticPreviewStyle(cosmetic)}
+											>
+												<span className="hub-modal__trail-preview" aria-hidden="true">
+													<span className="hub-modal__trail-line" />
+												</span>
+												<span className="hub-modal__trail-copy">
+													<strong>{getCosmeticDisplayName(cosmetic)}</strong>
+													<small>{getCosmeticDisplayDescription(cosmetic)}</small>
+												</span>
+												<button
+													type="button"
+													disabled={isCosmeticActionDisabled(cosmetic)}
+													onClick={() => void handleCosmeticAction(cosmetic)}
+												>
+													{getCosmeticActionLabel(cosmetic)}
+												</button>
+											</article>
+										))}
 									</div>
 								</section>
 							) : null}

@@ -29,6 +29,7 @@ export abstract class BaseEngine {
 			username: player.user.username,
 			turtleName: player.user.turtleName ?? null,
 			shellSkin: player.user.shellSkin ?? "base",
+			trailEffect: player.user.trailEffect ?? "trail_classic",
 			hubBackground: player.user.hubBackground ?? "night_bg",
 			hubBackgroundAlter: player.user.hubBackgroundAlter ?? null,
 			connected: player.connected,

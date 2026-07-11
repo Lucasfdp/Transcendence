@@ -2,6 +2,7 @@ export type CosmeticType =
 	| "shell_skin"
 	| "hub_background"
 	| "hub_background_alter"
+	| "trail_effect"
 	| "dojo_tag";
 
 export interface CosmeticDefinition {
@@ -193,6 +194,52 @@ export const COSMETICS: CosmeticDefinition[] = [
 		price: 999,
 		accentColor: 0x2f5f7f,
 		previewColor: 0xd7f1ff,
+	},
+	{
+		id: "trail_classic",
+		type: "trail_effect",
+		name: "Classic Trail",
+		description: "Keeps the clean player-colour floor trail with no extra launch effect.",
+		price: 0,
+		defaultUnlocked: true,
+		accentColor: 0xf0d979,
+		previewColor: 0xfff0aa,
+	},
+	{
+		id: "trail_comet",
+		type: "trail_effect",
+		name: "Comet Glow",
+		description: "Adds a bright comet core and soft glow while the shell is flying.",
+		price: 120,
+		accentColor: 0xf0d979,
+		previewColor: 0xfff7c7,
+	},
+	{
+		id: "trail_spark",
+		type: "trail_effect",
+		name: "Spark Trail",
+		description: "Scatters small golden sparks along the freshest part of each launch.",
+		price: 150,
+		accentColor: 0xf0b64f,
+		previewColor: 0xfff0a8,
+	},
+	{
+		id: "trail_ghost",
+		type: "trail_effect",
+		name: "Ghost Echo",
+		description: "Leaves pale echo marks behind the moving shell before the floor paint settles.",
+		price: 150,
+		accentColor: 0xb8d8ff,
+		previewColor: 0xe8f4ff,
+	},
+	{
+		id: "trail_ripple",
+		type: "trail_effect",
+		name: "Ripple Trail",
+		description: "Draws calm circular ripples through the recent launch trail.",
+		price: 180,
+		accentColor: 0x67d5d0,
+		previewColor: 0xc8fff7,
 	},
 	{
 		id: "shell-first",

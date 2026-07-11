@@ -26,6 +26,8 @@ export {
 	ArenaBallTrailRuntime,
 	buildArenaBallTrailObjects,
 	buildArenaPowerBallTrailObjects,
+	DEFAULT_TRAIL_EFFECT,
+	resolvePlayerTrailEffects,
 	type ArenaBallMovingResolver,
 	type ArenaBallTrailId,
 	type ArenaBallTrailObject,

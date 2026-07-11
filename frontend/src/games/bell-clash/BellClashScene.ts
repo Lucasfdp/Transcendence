@@ -22,7 +22,7 @@ import {
 import {
 	BallState,
 	BALL_SRC_R,
-	drawShellBall,
+	drawShellBallTexture,
 	isBallMoving,
 } from "../../shared/mechanics/ball";
 import { buildReturnButton } from "../../shared/mechanics/hud";
@@ -107,6 +107,7 @@ import {
 	buildCommonLocalReplayParticipantContext,
 	CommonGameSceneHost,
 	LocalReplayRuntime,
+	resolvePlayerTrailEffects,
 	SlingshotLaunchRuntime,
 	WorldMapRuntime,
 	WorldRuntime,
@@ -261,6 +262,7 @@ export class BellClashScene extends ResponsiveScene {
 	private localMode: "solo" | "versus" = "solo";
 	private localPlayerCount = 1;
 	private playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
+	private playerTrailEffects: string[] = [];
 	private localTurnNumber = 0;
 	private localScores: number[] = [0];
 	private readonly localReplay = new LocalReplayRuntime<
@@ -429,6 +431,13 @@ export class BellClashScene extends ResponsiveScene {
 		this.playerShellSkins = resolvePlayerShellSkins(
 			shellSkins,
 			this.playerShellSkins,
+		);
+		const trailEffects = this.registry.get("trailEffects") as
+			| Record<string, string | undefined>
+			| undefined;
+		this.playerTrailEffects = resolvePlayerTrailEffects(
+			trailEffects,
+			this.playerTrailEffects,
 		);
 		const localPowerupsEnabled = this.onlineMatch
 			? this.onlineMatch.snapshot?.powerupsEnabled === true
@@ -1590,6 +1599,7 @@ export class BellClashScene extends ResponsiveScene {
 					...BALL_TRAIL_OPTIONS,
 					scale: this.arena.scale,
 				},
+				trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
 			});
 			return;
 		}
@@ -1606,6 +1616,7 @@ export class BellClashScene extends ResponsiveScene {
 					...BALL_TRAIL_OPTIONS,
 					scale: this.arena.scale,
 				},
+				trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
 			});
 			return;
 		}
@@ -1621,7 +1632,17 @@ export class BellClashScene extends ResponsiveScene {
 			powerBalls: this.powerBalls,
 			isMoving: isBallMoving,
 			trailOptions: { ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
+			trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
 		});
+	}
+
+	private trailEffectForPlayer(player: number): string {
+		return (
+			this.onlineMatch?.snapshot.players.find((entry) => entry.side === player)
+				?.trailEffect ??
+			this.playerTrailEffects[player] ??
+			"trail_classic"
+		);
 	}
 
 	private drawBallTrails(): void {
@@ -1913,7 +1934,7 @@ export class BellClashScene extends ResponsiveScene {
 						this.playerShellSkins[side],
 					)
 				)
-					drawShellBall(this.ballGfx, ball, false);
+					drawShellBallTexture(this, `bell-clash-player-local-${side}`, ball, DEPTH_BALL);
 				this.ballGfx.lineStyle(
 					Math.max(2, ball.r * 0.14),
 					colour,
@@ -1940,7 +1961,7 @@ export class BellClashScene extends ResponsiveScene {
 					this.playerShellSkins[0],
 				)
 			)
-				drawShellBall(this.ballGfx, this.ball, false);
+				drawShellBallTexture(this, "bell-clash-player-local", this.ball, DEPTH_BALL);
 			this.powerBallTexCount = drawBellClashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 			return;
 		}
@@ -1962,7 +1983,13 @@ export class BellClashScene extends ResponsiveScene {
 			) {
 				// Apply alpha for translucent powers (ghost, phantom)
 				this.ballGfx.setAlpha(onlineBall.alpha ?? 1);
-				drawShellBall(this.ballGfx, ball, false);
+				drawShellBallTexture(
+					this,
+					`bell-clash-player-${side}`,
+					ball,
+					DEPTH_BALL,
+					onlineBall.alpha ?? 1,
+				);
 				this.ballGfx.setAlpha(1);
 			}
 			// Draw trail for spinning/other powers

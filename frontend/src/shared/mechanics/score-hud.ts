@@ -52,6 +52,7 @@ export class ScoreHud {
 	private readonly container: Phaser.GameObjects.Container;
 	private readonly gfx: Phaser.GameObjects.Graphics;
 	private readonly texts: Map<string, Phaser.GameObjects.Text> = new Map();
+	private lastRenderKey: string | null = null;
 
 	constructor(
 		private readonly scene: Phaser.Scene,
@@ -65,6 +66,9 @@ export class ScoreHud {
 
 	/** Redraw the HUD to reflect the current TurnState. */
 	update(state: TurnState): void {
+		const renderKey = this.renderKey(state);
+		if (renderKey === this.lastRenderKey) return;
+		this.lastRenderKey = renderKey;
 		this.draw(state);
 	}
 
@@ -137,6 +141,34 @@ export class ScoreHud {
 				style("9px", PLAYER_HEX[player]),
 			);
 		}
+	}
+
+	private renderKey(state: TurnState): string {
+		const playerCount = Math.max(
+			this.options.minPlayerCount ?? 2,
+			state.score.length,
+		);
+		const status = Array.from({ length: playerCount }, (_value, player) =>
+			this.options.statusLabel?.(player, state) ?? "",
+		);
+		const labels = Array.from({ length: playerCount }, (_value, player) =>
+			this.playerLabel(player, playerCount),
+		);
+		return JSON.stringify({
+			w: this.scene.scale.width,
+			currentTeam: state.currentTeam,
+			currentEnd: state.currentEnd,
+			phase: state.phase,
+			score: state.score,
+			stonesLeft: state.stonesLeft,
+			playerCount,
+			labels,
+			status,
+			showBackground: this.options.showBackground !== false,
+			showRoundInfo: this.options.showRoundInfo !== false,
+			roundLabel: this.options.roundLabel ?? "END",
+			totalRounds: this.options.totalRounds ?? 3,
+		});
 	}
 
 	private draw(state: TurnState): void {

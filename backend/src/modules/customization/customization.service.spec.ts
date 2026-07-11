@@ -22,6 +22,7 @@ function makeUser(overrides: Partial<User> = {}): User {
 	user.shellSkin = overrides.shellSkin ?? "base";
 	user.hubBackground = overrides.hubBackground ?? "night_bg";
 	user.hubBackgroundAlter = overrides.hubBackgroundAlter ?? null;
+	user.trailEffect = overrides.trailEffect ?? "trail_classic";
 	user.profile = overrides.profile ?? new Profile();
 	return user;
 }
@@ -136,6 +137,9 @@ describe("CustomizationService", () => {
 		expect(
 			cosmetics.find((cosmetic) => cosmetic.id === "night_cycle_bg"),
 		).toEqual(expect.objectContaining({ owned: true }));
+		expect(
+			cosmetics.find((cosmetic) => cosmetic.id === "trail_classic"),
+		).toEqual(expect.objectContaining({ owned: true, equipped: true }));
 	});
 
 	it("treats legacy hub background ids as equipped", async () => {
@@ -211,6 +215,23 @@ describe("CustomizationService", () => {
 		).toBe(true);
 		expect(
 			cosmetics.find((cosmetic) => cosmetic.id === "night_cycle_bg")
+				?.equipped,
+		).toBe(true);
+	});
+
+	it("can equip owned trail effect", async () => {
+		const user = makeUser();
+		cosmeticsRepo.find = jest
+			.fn()
+			.mockResolvedValue([makeCosmetic(user, "trail_comet")]);
+
+		const cosmetics = await service.equip(user, "trail_comet");
+
+		expect(usersRepo.save).toHaveBeenCalledWith(
+			expect.objectContaining({ trailEffect: "trail_comet" }),
+		);
+		expect(
+			cosmetics.find((cosmetic) => cosmetic.id === "trail_comet")
 				?.equipped,
 		).toBe(true);
 	});

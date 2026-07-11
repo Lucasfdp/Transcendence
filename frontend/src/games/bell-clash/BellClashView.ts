@@ -10,7 +10,10 @@ import type { ArenaPixels } from "../../shared/arenas/arena";
 import { layoutOvalArenaSkin } from "../../shared/arenas/arena";
 import type { BallState } from "../../shared/mechanics/ball";
 import { THEME } from "../../shared/theme";
-import { clearArenaPowerBallTextures, drawArenaPowerBalls } from "../../shared/mechanics/arena-power-runtime.render";
+import {
+	clearArenaPowerBallTextures,
+	drawArenaPowerBalls,
+} from "../../shared/mechanics/arena-power-runtime.render";
 import type { ArenaPowerRuntime } from "../../shared/mechanics/arena-power-runtime";
 import { PLAYER_COLOUR_VALUES } from "../../shared/game-ui";
 
@@ -36,14 +39,15 @@ export const ZONE_DEFS: Record<
 	ZoneKind,
 	{ color: number; label: string; multiplier: number }
 > = {
-	red: { color: THEME.red, label: "RED", multiplier: 0.5 },
-	yellow: { color: THEME.gold, label: "YELLOW", multiplier: 1.5 },
-	green: { color: 0x4aa564, label: "GREEN", multiplier: 2 },
+	red: { color: 0xff5a3d, label: "RED", multiplier: 0.5 },
+	yellow: { color: 0xffd45a, label: "YELLOW", multiplier: 1.5 },
+	green: { color: 0x69d96f, label: "GREEN", multiplier: 2 },
 };
 
 const BELL_TEXTURE_KEY = "bell-clash-bell";
 const BELL_TEXTURE_PATH = "/assets/bell-clash/bell.png";
 export const BELL_CLASH_BELL_RADIUS_SRC = 150;
+const BELL_CLASH_ZONE_OUTER_T = 0.9;
 
 // ── Background ───────────────────────────────────────────────────────────────
 
@@ -58,13 +62,6 @@ export function drawBellClashBackground(
 	bgGfx.fillStyle(0x120c08, 0.58);
 	bgGfx.fillRect(0, 0, width, height);
 
-	const ringStep = Math.max(38, Math.round(90 * arena.scale));
-	bgGfx.lineStyle(1, 0x3b2c18, 0.42);
-	for (let x = 0; x < width; x += ringStep)
-		bgGfx.lineBetween(x, 0, x, height);
-	for (let y = 0; y < height; y += ringStep)
-		bgGfx.lineBetween(0, y, width, y);
-
 	layoutOvalArenaSkin(arenaSkin, arena);
 }
 
@@ -77,8 +74,7 @@ export function drawBellClashZones(
 	ball: BallState,
 ): void {
 	zoneGfx.clear();
-	for (const zone of zones)
-		drawBellClashZone(zoneGfx, zone, arena, ball);
+	for (const zone of zones) drawBellClashZone(zoneGfx, zone, arena, ball);
 }
 
 function drawBellClashZone(
@@ -87,42 +83,134 @@ function drawBellClashZone(
 	arena: ArenaPixels,
 	ball: BallState,
 ): void {
-	const points = bellClashZonePolygonPoints(zone.start, zone.end, arena, ball);
 	const def = ZONE_DEFS[zone.kind];
-	if (points.length < 3) return;
 
-	zoneGfx.fillStyle(def.color, 0.28);
-	zoneGfx.beginPath();
-	zoneGfx.moveTo(points[0].x, points[0].y);
-	for (const point of points.slice(1))
-		zoneGfx.lineTo(point.x, point.y);
-	zoneGfx.closePath();
-	zoneGfx.fillPath();
+	drawBellClashZoneGradient(zoneGfx, zone, arena, ball, def.color);
 
-	zoneGfx.lineStyle(Math.max(1, 2 * arena.scale), def.color, 0.55);
-	zoneGfx.beginPath();
-	zoneGfx.moveTo(points[0].x, points[0].y);
-	for (const point of points.slice(1))
-		zoneGfx.lineTo(point.x, point.y);
-	zoneGfx.closePath();
-	zoneGfx.strokePath();
+	drawBellClashZoneArcGlow(zoneGfx, zone, arena, ball, def.color);
 }
 
-function bellClashZonePolygonPoints(
+function drawBellClashZoneGradient(
+	zoneGfx: Phaser.GameObjects.Graphics,
+	zone: ScoreZone,
+	arena: ArenaPixels,
+	ball: BallState,
+	color: number,
+): void {
+	const bands = [
+		{ from: 0, to: 0.2, alpha: 0.42 },
+		{ from: 0.2, to: 0.4, alpha: 0.34 },
+		{ from: 0.4, to: 0.62, alpha: 0.25 },
+		{ from: 0.62, to: 0.82, alpha: 0.16 },
+		{ from: 0.82, to: BELL_CLASH_ZONE_OUTER_T, alpha: 0.07 },
+	];
+
+	for (const band of bands) {
+		const points = bellClashZoneBandPoints(
+			zone.start,
+			zone.end,
+			arena,
+			ball,
+			band.from,
+			band.to,
+		);
+		drawBellClashZonePath(zoneGfx, points, color, band.alpha);
+	}
+}
+
+function drawBellClashZonePath(
+	zoneGfx: Phaser.GameObjects.Graphics,
+	points: Array<{ x: number; y: number }>,
+	color: number,
+	alpha: number,
+): void {
+	zoneGfx.fillStyle(color, alpha);
+	zoneGfx.beginPath();
+	zoneGfx.moveTo(points[0].x, points[0].y);
+	for (const point of points.slice(1)) zoneGfx.lineTo(point.x, point.y);
+	zoneGfx.closePath();
+	zoneGfx.fillPath();
+}
+
+function drawBellClashZoneArcGlow(
+	zoneGfx: Phaser.GameObjects.Graphics,
+	zone: ScoreZone,
+	arena: ArenaPixels,
+	ball: BallState,
+	color: number,
+): void {
+	const inner = bellClashArcPoints(zone.start, zone.end, arena);
+	const scale = arena.scale;
+
+	drawBellClashPolyline(zoneGfx, inner, Math.max(8, 11 * scale), color, 0.18);
+	drawBellClashPolyline(
+		zoneGfx,
+		inner,
+		Math.max(4, 5.5 * scale),
+		color,
+		0.18,
+	);
+	drawBellClashPolyline(
+		zoneGfx,
+		inner,
+		Math.max(1.5, 2.2 * scale),
+		color,
+		0.72,
+	);
+
+	drawBellClashRadialGlow(zoneGfx, arena, ball, zone.start, color);
+	drawBellClashRadialGlow(zoneGfx, arena, ball, zone.end, color);
+}
+
+function bellClashZoneBandPoints(
 	start: number,
 	end: number,
 	arena: ArenaPixels,
 	ball: BallState,
+	from: number,
+	to: number,
 ): Array<{ x: number; y: number }> {
 	const points: Array<{ x: number; y: number }> = [];
-	const inner = bellClashRadius(arena) * 0.74;
 	const segments = 18;
 
 	for (let i = 0; i <= segments; i++) {
 		const angle = start + (end - start) * (i / segments);
-		points.push(bellClashPointOnEllipse(arena, angle, -ball.r * 0.3));
+		points.push(bellClashPointInZone(arena, ball, angle, to));
 	}
 	for (let i = segments; i >= 0; i--) {
+		const angle = start + (end - start) * (i / segments);
+		points.push(bellClashPointInZone(arena, ball, angle, from));
+	}
+	return points;
+}
+
+function bellClashPointInZone(
+	arena: ArenaPixels,
+	ball: BallState,
+	angle: number,
+	t: number,
+): { x: number; y: number } {
+	const inner = bellClashRadius(arena) * 0.74;
+	const innerPoint = {
+		x: arena.cx + Math.cos(angle) * inner,
+		y: arena.cy + Math.sin(angle) * inner,
+	};
+	const outerPoint = bellClashPointOnEllipse(arena, angle, -ball.r * 0.3);
+	return {
+		x: Phaser.Math.Linear(innerPoint.x, outerPoint.x, t),
+		y: Phaser.Math.Linear(innerPoint.y, outerPoint.y, t),
+	};
+}
+
+function bellClashArcPoints(
+	start: number,
+	end: number,
+	arena: ArenaPixels,
+): Array<{ x: number; y: number }> {
+	const points: Array<{ x: number; y: number }> = [];
+	const segments = 18;
+	const inner = bellClashRadius(arena) * 0.74;
+	for (let i = 0; i <= segments; i++) {
 		const angle = start + (end - start) * (i / segments);
 		points.push({
 			x: arena.cx + Math.cos(angle) * inner,
@@ -130,6 +218,44 @@ function bellClashZonePolygonPoints(
 		});
 	}
 	return points;
+}
+
+function drawBellClashPolyline(
+	zoneGfx: Phaser.GameObjects.Graphics,
+	points: Array<{ x: number; y: number }>,
+	width: number,
+	color: number,
+	alpha: number,
+): void {
+	if (points.length < 2) return;
+	zoneGfx.lineStyle(width, color, alpha);
+	zoneGfx.beginPath();
+	zoneGfx.moveTo(points[0].x, points[0].y);
+	for (const point of points.slice(1)) zoneGfx.lineTo(point.x, point.y);
+	zoneGfx.strokePath();
+}
+
+function drawBellClashRadialGlow(
+	zoneGfx: Phaser.GameObjects.Graphics,
+	arena: ArenaPixels,
+	ball: BallState,
+	angle: number,
+	color: number,
+): void {
+	const inner = bellClashRadius(arena) * 0.74;
+	const x0 = arena.cx + Math.cos(angle) * inner;
+	const y0 = arena.cy + Math.sin(angle) * inner;
+	const outer = bellClashPointInZone(
+		arena,
+		ball,
+		angle,
+		BELL_CLASH_ZONE_OUTER_T,
+	);
+
+	zoneGfx.lineStyle(Math.max(5, 7 * arena.scale), color, 0.16);
+	zoneGfx.lineBetween(x0, y0, outer.x, outer.y);
+	zoneGfx.lineStyle(Math.max(1, 1.5 * arena.scale), color, 0.72);
+	zoneGfx.lineBetween(x0, y0, outer.x, outer.y);
 }
 
 function bellClashPointOnEllipse(
@@ -176,11 +302,11 @@ export function layoutBellClashBell(
 	bellPulseMs: number,
 ): void {
 	const r = bellClashRadius(arena);
-	const pulse =
-		bellPulseMs > 0 ? 1 + (bellPulseMs / 180) * 0.08 : 1;
-	bell
-		.setPosition(arena.cx, arena.cy)
-		.setDisplaySize(r * 2 * pulse, r * 2 * pulse);
+	const pulse = bellPulseMs > 0 ? 1 + (bellPulseMs / 180) * 0.08 : 1;
+	bell.setPosition(arena.cx, arena.cy).setDisplaySize(
+		r * 2 * pulse,
+		r * 2 * pulse,
+	);
 }
 
 // ── Trail drawing ────────────────────────────────────────────────────────────
@@ -219,15 +345,21 @@ export function drawBellClashPowerBalls(
 	powerBallTexCount: number,
 	playerShellSkins: string[],
 ): number {
-	return drawArenaPowerBalls(scene, ballGfx, powerBalls.all(), powerBallTexCount, {
-		prefix: "bell-clash-pb",
-		depth: DEPTH_BALL,
-		playerShellSkins,
-		colourForPlayer: (player) =>
-			PLAYER_COLOUR_VALUES[player % PLAYER_COLOUR_VALUES.length] ??
-			THEME.gold,
-		ringScale: 1.08,
-	});
+	return drawArenaPowerBalls(
+		scene,
+		ballGfx,
+		powerBalls.all(),
+		powerBallTexCount,
+		{
+			prefix: "bell-clash-pb",
+			depth: DEPTH_BALL,
+			playerShellSkins,
+			colourForPlayer: (player) =>
+				PLAYER_COLOUR_VALUES[player % PLAYER_COLOUR_VALUES.length] ??
+				THEME.gold,
+			ringScale: 1.08,
+		},
+	);
 }
 
 // ── Score popup ──────────────────────────────────────────────────────────────

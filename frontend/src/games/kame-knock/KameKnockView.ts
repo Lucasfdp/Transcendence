@@ -32,13 +32,6 @@ export function drawKameKnockBackground(
 	bgGfx.fillStyle(THEME.background, 0.62);
 	bgGfx.fillRect(0, 0, width, height);
 
-	const gridStep = Math.max(28, Math.round(70 * arena.scale));
-	bgGfx.lineStyle(1, THEME.greenMuted, 0.45);
-	for (let x = 0; x < width; x += gridStep)
-		bgGfx.lineBetween(x, 0, x, height);
-	for (let y = 0; y < height; y += gridStep)
-		bgGfx.lineBetween(0, y, width, y);
-
 	layoutOvalArenaSkin(arenaSkin, arena);
 }
 

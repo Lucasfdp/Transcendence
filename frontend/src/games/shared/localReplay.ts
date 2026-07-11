@@ -27,6 +27,7 @@ export interface LocalReplayUser {
 	username?: string;
 	turtleName?: string | null;
 	shellSkin?: string;
+	trailEffect?: string;
 	hubBackground?: string;
 	hubBackgroundAlter?: string | null;
 	isGuest?: boolean;
@@ -34,6 +35,7 @@ export interface LocalReplayUser {
 
 export interface LocalReplayPlayerVisuals {
 	shellSkins?: Record<string, string>;
+	trailEffects?: Record<string, string>;
 }
 
 export interface LocalReplayImportOptions {
@@ -166,6 +168,9 @@ export function buildLocalReplayPlayers(
 		shellSkin:
 			visuals.shellSkins?.[`player${index}`] ??
 			(index === 0 ? (user?.shellSkin ?? "base") : "base"),
+		trailEffect:
+			visuals.trailEffects?.[`player${index}`] ??
+			(index === 0 ? (user?.trailEffect ?? "trail_classic") : "trail_classic"),
 		hubBackground: index === 0 ? (user?.hubBackground ?? "night_bg") : "night_bg",
 		hubBackgroundAlter: index === 0 ? (user?.hubBackgroundAlter ?? null) : null,
 		connected: true,

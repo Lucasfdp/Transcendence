@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-import { drawShellBall } from "./ball";
+import { drawShellBallTexture } from "./ball";
 import type { ArenaPowerBallEntry } from "./arena-power-runtime";
 import {
 	destroyIngamePlayerTexture,
@@ -45,7 +45,7 @@ export function drawArenaPowerBalls(
 				options.playerShellSkins[player],
 			)
 		)
-			drawShellBall(gfx, ball, false);
+			drawShellBallTexture(scene, `${options.prefix}-${i}`, ball, options.depth);
 		gfx.lineStyle(
 			Math.max(2, ball.r * 0.14),
 			options.colourForPlayer(player),

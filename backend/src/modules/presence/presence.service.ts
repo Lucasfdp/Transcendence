@@ -3,6 +3,11 @@ import { Injectable } from "@nestjs/common";
 export interface SocketUser {
 	id: number;
 	username: string;
+	turtleName?: string | null;
+	shellSkin?: string;
+	trailEffect?: string;
+	hubBackground?: string;
+	hubBackgroundAlter?: string | null;
 	isGuest: boolean;
 }
 

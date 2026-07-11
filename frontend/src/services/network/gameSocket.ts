@@ -31,6 +31,7 @@ export interface CurlingSnapshot {
 		username: string;
 		turtleName?: string | null;
 		shellSkin?: string;
+		trailEffect?: string;
 		hubBackground?: string;
 		hubBackgroundAlter?: string | null;
 		connected: boolean;
@@ -118,6 +119,7 @@ export interface SnapshotPlayer {
 	username: string;
 	turtleName?: string | null;
 	shellSkin?: string;
+	trailEffect?: string;
 	hubBackground?: string;
 	hubBackgroundAlter?: string | null;
 	connected: boolean;

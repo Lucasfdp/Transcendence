@@ -25,7 +25,7 @@ import { CURL_SHEET } from "../../shared/arenas/curl-sheet";
 import {
 	type BallState,
 	BALL_SRC_R,
-	drawShellBall,
+	drawShellBallTexture,
 } from "../../shared/mechanics/ball";
 import {
 	type RectArenaPixels,
@@ -626,7 +626,7 @@ export class ReplayScene extends ResponsiveScene {
 		if (drawIngamePlayerTexture(this, actorName, ball, DEPTH_ACTORS)) {
 			this.setPlayerActorAlpha(actorName, projectile.alpha);
 		} else {
-			drawShellBall(this.actorGfx, ball, false);
+			drawShellBallTexture(this, actorName, ball, DEPTH_ACTORS);
 		}
 
 		this.actorGfx.lineStyle(Math.max(2, projectile.r * 0.12), colour, 0.95);

@@ -15,6 +15,7 @@ export function buildCommonLocalReplayPlayers(
 	const user = registry.get("user") as LocalReplayUser | undefined;
 	return buildLocalReplayPlayers(user, playerCount, {
 		shellSkins: registry.get("shellSkins") as Record<string, string>,
+		trailEffects: registry.get("trailEffects") as Record<string, string>,
 	});
 }
 
@@ -31,6 +32,7 @@ export function buildCommonLocalReplayParticipantContext(
 	const user = registry.get("user") as LocalReplayUser | undefined;
 	const players = buildLocalReplayPlayers(user, playerCount, {
 		shellSkins: registry.get("shellSkins") as Record<string, string>,
+		trailEffects: registry.get("trailEffects") as Record<string, string>,
 	});
 	return {
 		user,

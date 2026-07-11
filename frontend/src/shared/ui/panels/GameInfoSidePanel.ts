@@ -155,6 +155,7 @@ export class GameInfoSidePanel {
 	// Scroll window over the power rows when the list is taller than the panel.
 	private scrollRow = 0;
 	private maxScrollRows = 0;
+	private lastRenderKey: string | null = null;
 
 	constructor(
 		private readonly scene: Phaser.Scene,
@@ -304,6 +305,9 @@ export class GameInfoSidePanel {
 
 	private rebuild(): void {
 		if (!this.rect || !this.active) return;
+		const renderKey = this.renderKey(this.rect);
+		if (renderKey === this.lastRenderKey) return;
+		this.lastRenderKey = renderKey;
 		this.clear();
 		this.maxScrollRows = 0; // recomputed in the rows section; stays 0 when collapsed
 		const r = this.rect;
@@ -649,6 +653,26 @@ export class GameInfoSidePanel {
 			.setAlpha(alpha);
 		this.images.push(image);
 		return image;
+	}
+
+	private renderKey(rect: PanelRect): string {
+		const details = this.details();
+		return JSON.stringify({
+			active: this.active,
+			collapsible: this.collapsible,
+			collapsed: this.collapsed,
+			side: this.side,
+			scrollRow: this.scrollRow,
+			selected: this.selected,
+			hovered: this.hovered,
+			rect,
+			powers: this.powers,
+			usedPowers: [...this.usedPowers].sort(),
+			infoRows: this.infoRows(),
+			details,
+			gameTitle: this.gameTitle,
+			readOnly: this.readOnly,
+		});
 	}
 
 	private clear(): void {

@@ -26,7 +26,7 @@ import {
 	BALL_SRC_R,
 	isBallMoving,
 	resolveBallCollision,
-	drawShellBall,
+	drawShellBallTexture,
 } from "../../shared/mechanics/ball";
 import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
@@ -108,6 +108,7 @@ import {
 	buildBambooBashLocalReplaySnapshot,
 	CommonGameSceneHost,
 	LocalReplayRuntime,
+	resolvePlayerTrailEffects,
 	SceneSocketChannel,
 	SlingshotLaunchRuntime,
 	WorldRuntime,
@@ -209,6 +210,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 	private powerBallTexCount = 0;
 	private localParticipants: LocalParticipant[] = [];
 	playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
+	playerTrailEffects: string[] = [];
 	private localTimeLeftMs: number[] = [];
 	private activeLocalParticipantIndex = 0;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
@@ -344,6 +346,13 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		this.playerShellSkins = resolvePlayerShellSkins(
 			shellSkins,
 			this.playerShellSkins,
+		);
+		const trailEffects = this.registry.get("trailEffects") as
+			| Record<string, string | undefined>
+			| undefined;
+		this.playerTrailEffects = resolvePlayerTrailEffects(
+			trailEffects,
+			this.playerTrailEffects,
 		);
 		const localMode = this.registry.get("localMode") as
 			| "solo"
@@ -1231,7 +1240,13 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 				) {
 					// Apply alpha for translucent powers (ghost, phantom)
 					this.ballGfx.setAlpha(onlineBall.alpha ?? 1);
-					drawShellBall(this.ballGfx, ball, false);
+					drawShellBallTexture(
+						this,
+						`bamboo-bash-player-${side}`,
+						ball,
+						DEPTH_HUD - 17,
+						onlineBall.alpha ?? 1,
+					);
 					this.ballGfx.setAlpha(1);
 				}
 				// Draw trail for spinning/other powers
@@ -1260,7 +1275,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 					this.playerShellSkins[0],
 				)
 			)
-				drawShellBall(this.ballGfx, this.ball, false);
+				drawShellBallTexture(this, "bamboo-bash-player-local", this.ball, DEPTH_HUD - 17);
 			this.powerBallTexCount = drawBambooBashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 			return;
 		}
@@ -1282,7 +1297,12 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 					this.playerShellSkins[index],
 				)
 			)
-				drawShellBall(this.ballGfx, participant.ball, false);
+				drawShellBallTexture(
+					this,
+					`bamboo-bash-player-local-${index}`,
+					participant.ball,
+					DEPTH_HUD - 17,
+				);
 			this.ballGfx.lineStyle(
 				Math.max(2, participant.ball.r * 0.14),
 				colour,
@@ -1345,6 +1365,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 					...BALL_TRAIL_OPTIONS,
 					scale: this.arena.scale,
 				},
+				trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
 			});
 			return;
 		}
@@ -1362,6 +1383,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 					...BALL_TRAIL_OPTIONS,
 					scale: this.arena.scale,
 				},
+				trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
 			});
 			return;
 		}
@@ -1371,7 +1393,17 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			powerBalls: this.powerBalls,
 			isMoving: isBallMoving,
 			trailOptions: { ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
+			trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
 		});
+	}
+
+	private trailEffectForPlayer(player: number): string {
+		return (
+			this.online.snapshot?.players.find((entry) => entry.side === player)
+				?.trailEffect ??
+			this.playerTrailEffects[player] ??
+			"trail_classic"
+		);
 	}
 
 	private drawBallTrails(): void {

@@ -203,6 +203,54 @@ export function drawShellBall(
 	g.fillCircle(x - r * 0.28, y - r * 0.3, r * 0.22);
 }
 
+const SHELL_BALL_TEXTURE_KEY = "procedural-shell-ball-fallback-v1";
+const SHELL_BALL_TEXTURE_SIZE = 96;
+const SHELL_BALL_TEXTURE_RADIUS = 32;
+
+export function drawShellBallTexture(
+	scene: Phaser.Scene,
+	name: string,
+	b: BallState,
+	depth: number,
+	alpha = 1,
+): Phaser.GameObjects.Image {
+	ensureShellBallTexture(scene);
+	const imageName = `${name}-fallback`;
+	const existing = scene.children.getByName(imageName);
+	const image = existing instanceof Phaser.GameObjects.Image
+		? existing
+		: scene.add.image(b.x, b.y, SHELL_BALL_TEXTURE_KEY).setName(imageName);
+	image
+		.setVisible(true)
+		.setAlpha(alpha)
+		.setPosition(b.x, b.y)
+		.setDepth(depth)
+		.setDisplaySize(b.r * 3, b.r * 3);
+	return image;
+}
+
+function ensureShellBallTexture(scene: Phaser.Scene): void {
+	if (scene.textures.exists(SHELL_BALL_TEXTURE_KEY)) return;
+	const gfx = scene.make.graphics({ x: 0, y: 0 }, false);
+	drawShellBall(
+		gfx,
+		{
+			x: SHELL_BALL_TEXTURE_SIZE / 2,
+			y: SHELL_BALL_TEXTURE_SIZE / 2,
+			vx: 0,
+			vy: 0,
+			r: SHELL_BALL_TEXTURE_RADIUS,
+		},
+		false,
+	);
+	gfx.generateTexture(
+		SHELL_BALL_TEXTURE_KEY,
+		SHELL_BALL_TEXTURE_SIZE,
+		SHELL_BALL_TEXTURE_SIZE,
+	);
+	gfx.destroy();
+}
+
 /** Team colours for curling shell rendering. */
 const TEAM_COLOUR = [0x2255cc, 0xcc2222, 0x22aa55, 0xbb55dd, 0xd4a843] as const;
 const TEAM_DARK = [0x142e6e, 0x6e1111, 0x0e5a2c, 0x5a236b, 0x6e5414] as const;

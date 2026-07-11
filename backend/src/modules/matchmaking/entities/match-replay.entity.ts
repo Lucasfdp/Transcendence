@@ -21,6 +21,7 @@ export interface MatchReplayVisualPlayer {
 	username: string;
 	turtleName?: string | null;
 	shellSkin?: string;
+	trailEffect?: string;
 	hubBackground?: string;
 	hubBackgroundAlter?: string | null;
 }

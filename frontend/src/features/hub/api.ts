@@ -283,6 +283,7 @@ export interface User {
 	username: string;
 	turtleName: string | null;
 	shellSkin: string;
+	trailEffect: string;
 	hubBackground: string;
 	hubBackgroundAlter: string | null;
 	level: number;
@@ -558,7 +559,12 @@ export interface Achievement {
 
 export interface Cosmetic {
 	id: string;
-	type: "shell_skin" | "hub_background" | "hub_background_alter" | "dojo_tag";
+	type:
+		| "shell_skin"
+		| "hub_background"
+		| "hub_background_alter"
+		| "trail_effect"
+		| "dojo_tag";
 	name: string;
 	description: string;
 	price: number;
@@ -721,6 +727,7 @@ export interface ReplayVisualPlayer {
 	username: string;
 	turtleName?: string | null;
 	shellSkin?: string;
+	trailEffect?: string;
 	hubBackground?: string;
 	hubBackgroundAlter?: string | null;
 }

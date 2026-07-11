@@ -60,6 +60,8 @@ export class CustomizationService {
 				throw new ForbiddenException("Parent background is not owned");
 			user.hubBackground = parentCosmetic.id;
 			user.hubBackgroundAlter = cosmetic.id;
+		} else if (cosmetic.type === "trail_effect") {
+			user.trailEffect = cosmetic.id;
 		} else if (cosmetic.type === "dojo_tag") {
 			if (!user.profile)
 				throw new BadRequestException("User profile is missing");
@@ -216,6 +218,8 @@ export class CustomizationService {
 			return (
 				normalizeCosmeticId(user.hubBackgroundAlter ?? "") === cosmetic.id
 			);
+		if (cosmetic.type === "trail_effect")
+			return (user.trailEffect ?? "trail_classic") === cosmetic.id;
 		if (cosmetic.type === "dojo_tag") return user.profile?.tag === cosmetic.id;
 		return false;
 	}

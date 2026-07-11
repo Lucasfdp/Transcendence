@@ -23,7 +23,7 @@ import {
 import {
 	BallState,
 	BALL_SRC_R,
-	drawShellBall,
+	drawShellBallTexture,
 } from "../../shared/mechanics/ball";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
@@ -103,6 +103,7 @@ import {
 	buildKameKnockLocalReplaySnapshot,
 	CommonGameSceneHost,
 	LocalReplayRuntime,
+	resolvePlayerTrailEffects,
 	SlingshotLaunchRuntime,
 	WorldMapRuntime,
 	WorldRuntime,
@@ -279,6 +280,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	/** Per-player power pools. Offline uses player 0; online maps by side. */
 	private playerPowers: PowerType[][] = [FALLBACK_POWERS];
 	playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
+	playerTrailEffects: string[] = [];
 	activePower: PowerType = PowerType.NONE;
 	private replayPower: PowerType = PowerType.NONE;
 	/** Per-player used-power tracking (one-shot each per game, NONE always reusable). */
@@ -380,6 +382,13 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		this.playerShellSkins = resolvePlayerShellSkins(
 			shellSkins,
 			this.playerShellSkins,
+		);
+		const trailEffects = this.registry.get("trailEffects") as
+			| Record<string, string | undefined>
+			| undefined;
+		this.playerTrailEffects = resolvePlayerTrailEffects(
+			trailEffects,
+			this.playerTrailEffects,
 		);
 		const localPowerupsEnabled = this.online.isActive
 			? this.online.snapshot?.powerupsEnabled === true
@@ -1453,7 +1462,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 					this.playerShellSkins[0],
 				)
 			)
-				drawShellBall(this.ballGfx, this.ball, false);
+				drawShellBallTexture(this, "kame-knock-player-local", this.ball, DEPTH_BALL);
 			this.powerBallTexCount = drawKameKnockPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 			return;
 		}
@@ -1477,7 +1486,13 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		) {
 			// Apply alpha for translucent powers (ghost, phantom)
 			this.ballGfx.setAlpha(onlineBall.alpha ?? 1);
-			drawShellBall(this.ballGfx, ball, false);
+			drawShellBallTexture(
+				this,
+				`kame-knock-player-${side}`,
+				ball,
+				DEPTH_BALL,
+				onlineBall.alpha ?? 1,
+			);
 			this.ballGfx.setAlpha(1);
 		}
 		// Draw trail for spinning/other powers
@@ -1507,6 +1522,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 					...BALL_TRAIL_OPTIONS,
 					scale: this.arena.scale,
 				},
+				trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
 			});
 			return;
 		}
@@ -1519,7 +1535,17 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			})),
 			isMoving: (ball) => this.isBallMoving(ball),
 			trailOptions: { ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
+			trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
 		});
+	}
+
+	private trailEffectForPlayer(player: number): string {
+		return (
+			this.online.snapshot?.players.find((entry) => entry.side === player)
+				?.trailEffect ??
+			this.playerTrailEffects[player] ??
+			"trail_classic"
+		);
 	}
 
 	private drawBallTrails(): void {

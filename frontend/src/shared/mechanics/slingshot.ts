@@ -14,7 +14,10 @@
 
 import Phaser from "phaser";
 import { BallState, isBallMoving } from "./ball";
-import { THEME } from "../theme";
+
+const AIM_SHADOW = 0x071218;
+const AIM_BRIGHT = 0x00e5ff;
+const AIM_BRIGHT_SOFT = 0x7cf7ff;
 
 export interface SlingshotConfig {
 	maxDrag: number; // max pull distance in canvas px
@@ -145,8 +148,10 @@ export class Slingshot {
 
 		const power = len / this.maxDrag; // 0..1
 
-		// Rubber band: ball origin → drag point (gold)
-		this.gfx.lineStyle(3, THEME.gold, 0.85);
+		// Rubber band: dark underlay + bright core keeps the cue readable on any arena.
+		this.gfx.lineStyle(6, AIM_SHADOW, 0.5);
+		this.gfx.lineBetween(ox, oy, this.dragPt.x, this.dragPt.y);
+		this.gfx.lineStyle(3, AIM_BRIGHT, 0.95);
 		this.gfx.lineBetween(ox, oy, this.dragPt.x, this.dragPt.y);
 
 		// Launch-direction preview (dashed, fades with distance)
@@ -156,14 +161,16 @@ export class Slingshot {
 		for (let i = 0; i < segments; i++) {
 			const t0 = i / segments;
 			const t1 = (i + 0.5) / segments;
-			const alpha = (0.15 + power * 0.55) * (1 - t0);
-			this.gfx.lineStyle(2, 0xffffff, alpha);
-			this.gfx.lineBetween(
-				ox + (lx - ox) * t0,
-				oy + (ly - oy) * t0,
-				ox + (lx - ox) * t1,
-				oy + (ly - oy) * t1,
-			);
+			const alpha = (0.25 + power * 0.65) * (1 - t0);
+			const x0 = ox + (lx - ox) * t0;
+			const y0 = oy + (ly - oy) * t0;
+			const x1 = ox + (lx - ox) * t1;
+			const y1 = oy + (ly - oy) * t1;
+
+			this.gfx.lineStyle(6, AIM_SHADOW, alpha * 0.45);
+			this.gfx.lineBetween(x0, y0, x1, y1);
+			this.gfx.lineStyle(2, AIM_BRIGHT_SOFT, alpha);
+			this.gfx.lineBetween(x0, y0, x1, y1);
 		}
 
 		// Power ring around ball (green → red as power rises)

@@ -64,6 +64,7 @@ export class SidePanel {
 	private rect: PanelRect | null = null;
 	private scrollRow = 0;
 	private maxScrollRows = 0;
+	private lastRenderKey: string | null = null;
 
 	constructor(
 		private readonly scene: Phaser.Scene,
@@ -124,6 +125,9 @@ export class SidePanel {
 	}
 
 	private render(config: SidePanelConfig): void {
+		const renderKey = this.renderKey(config);
+		if (renderKey === this.lastRenderKey) return;
+		this.lastRenderKey = renderKey;
 		this.lastConfig = config;
 		this.rect = config.rect;
 		this.maxScrollRows = 0; // recomputed in drawRows; stays 0 when collapsed
@@ -151,6 +155,33 @@ export class SidePanel {
 		this.scene.input.off("wheel", this.onWheel, this);
 		this.clearObjects();
 		this.gfx.destroy();
+	}
+
+	private renderKey(config: SidePanelConfig): string {
+		return JSON.stringify({
+			collapsible: this.collapsible,
+			collapsed: this.collapsed,
+			side: this.side,
+			scrollRow: this.scrollRow,
+			title: config.title,
+			rect: config.rect,
+			rows: config.rows.map((row) => this.rowKey(row)),
+			footerRows: (config.footerRows ?? []).map((row) => this.rowKey(row)),
+		});
+	}
+
+	private rowKey(row: SidePanelRow): Record<string, string | boolean | undefined> {
+		return {
+			label: row.label,
+			value: row.value,
+			subtitle: row.subtitle,
+			muted: row.muted,
+			labelColor: row.labelColor,
+			valueColor: row.valueColor,
+			labelFontSize: row.labelFontSize,
+			valueFontSize: row.valueFontSize,
+			hasIcon: Boolean(row.icon),
+		};
 	}
 
 	private drawFrame(rect: PanelRect): void {

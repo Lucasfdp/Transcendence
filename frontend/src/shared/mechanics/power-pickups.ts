@@ -83,6 +83,7 @@ export class PowerPickupManager {
 	private readonly images: Phaser.GameObjects.Image[] = [];
 	private readonly pickups: PowerPickup[] = [];
 	private nextId = 0;
+	private lastDrawKey: string | null = null;
 
 	constructor(options: PowerPickupManagerOptions) {
 		this.scene = options.scene;
@@ -99,19 +100,24 @@ export class PowerPickupManager {
 	}
 
 	clear(): void {
+		if (this.pickups.length === 0 && this.lastDrawKey === this.pickupsKey([])) return;
 		this.pickups.length = 0;
+		this.lastDrawKey = null;
 		this.draw();
 	}
 
 	setPickups(pickups: PowerPickup[]): void {
+		if (this.pickupsKey(pickups) === this.pickupsKey(this.pickups)) return;
 		this.pickups.length = 0;
 		this.pickups.push(...pickups.map((pickup) => ({ ...pickup })));
+		this.lastDrawKey = null;
 		this.draw();
 	}
 
 	destroy(): void {
 		this.clearImages();
 		this.pickups.length = 0;
+		this.lastDrawKey = null;
 		this.graphics.clear();
 	}
 
@@ -131,6 +137,7 @@ export class PowerPickupManager {
 				r: this.radius,
 			}));
 			this.pickups.push(pickup);
+			this.lastDrawKey = null;
 			return pickup;
 		}
 
@@ -149,10 +156,16 @@ export class PowerPickupManager {
 
 	remove(id: number): void {
 		const index = this.pickups.findIndex((pickup) => pickup.id === id);
-		if (index >= 0) this.pickups.splice(index, 1);
+		if (index >= 0) {
+			this.pickups.splice(index, 1);
+			this.lastDrawKey = null;
+		}
 	}
 
 	draw(): void {
+		const drawKey = this.pickupsKey(this.pickups);
+		if (drawKey === this.lastDrawKey) return;
+		this.lastDrawKey = drawKey;
 		this.graphics.clear();
 		this.clearImages();
 
@@ -198,6 +211,18 @@ export class PowerPickupManager {
 	private clearImages(): void {
 		for (const image of this.images) image.destroy();
 		this.images.length = 0;
+	}
+
+	private pickupsKey(pickups: readonly PowerPickup[]): string {
+		return JSON.stringify(
+			pickups.map((pickup) => ({
+				id: pickup.id,
+				type: pickup.type,
+				x: Math.round(pickup.x * 100) / 100,
+				y: Math.round(pickup.y * 100) / 100,
+				r: Math.round(pickup.r * 100) / 100,
+			})),
+		);
 	}
 }
 

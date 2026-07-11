@@ -80,6 +80,7 @@ export default function GamePage(): JSX.Element {
 	const [hubBackground, setHubBackground] = useState<string | null>(null);
 	const [hubBackgroundAlter, setHubBackgroundAlter] = useState<string | null>(null);
 	const [shellSkin, setShellSkin] = useState("base");
+	const [trailEffect, setTrailEffect] = useState("trail_classic");
 	const [currentUser, setCurrentUser] = useState<User | null>(null);
 	const [launchData, setLaunchData] = useState<ShellSmashStartData | null>(null);
 
@@ -107,6 +108,7 @@ export default function GamePage(): JSX.Element {
 					setHubBackground(user.hubBackground);
 					setHubBackgroundAlter(user.hubBackgroundAlter);
 					setShellSkin(user.shellSkin || "base");
+					setTrailEffect(user.trailEffect || "trail_classic");
 				}
 			})
 			.catch((err: unknown) => {
@@ -142,9 +144,10 @@ export default function GamePage(): JSX.Element {
 				sceneData={sceneData}
 				hubBackground={hubBackground}
 				hubBackgroundAlter={hubBackgroundAlter}
-					onBack={() => navigate("/?view=normal", { replace: true })}
-					onLaunch={setLaunchData}
+				onBack={() => navigate("/?view=normal", { replace: true })}
+				onLaunch={setLaunchData}
 				shellSkin={shellSkin}
+				trailEffect={trailEffect}
 				currentUser={currentUser}
 			/>
 		);
@@ -170,6 +173,7 @@ function PowerupMatchmakingPanel({
 	onBack,
 	onLaunch,
 	shellSkin,
+	trailEffect,
 	currentUser,
 }: {
 	sceneData: {
@@ -184,6 +188,7 @@ function PowerupMatchmakingPanel({
 	onBack: () => void;
 	onLaunch: (data: ShellSmashStartData) => void;
 	shellSkin: string;
+	trailEffect: string;
 	currentUser: User | null;
 }): JSX.Element {
 	const gameId = sceneData.gameId as GameId;
@@ -387,6 +392,12 @@ function PowerupMatchmakingPanel({
 					: LOCAL_TEST_SHELL_SKINS[(index - 1) % LOCAL_TEST_SHELL_SKINS.length],
 			]),
 		) as Record<string, string>;
+		const trailEffects = Object.fromEntries(
+			Array.from({ length: playerCount }, (_value, index) => [
+				`player${index}`,
+				index === 0 ? trailEffect : "trail_classic",
+			]),
+		) as Record<string, string>;
 		onLaunch({
 			gameId,
 			targetScene: sceneData.targetScene,
@@ -401,6 +412,7 @@ function PowerupMatchmakingPanel({
 			localPlayerCount: playerCount,
 			localPowerupsEnabled,
 			shellSkins,
+			trailEffects,
 		});
 	};
 

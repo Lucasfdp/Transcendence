@@ -78,6 +78,10 @@ export class User {
 	@Column({ nullable: true, default: null })
 	hubBackgroundAlter: string | null;
 
+	// Cosmetic launch trail effect — e.g. "trail_classic", "trail_comet".
+	@Column({ default: "trail_classic" })
+	trailEffect: string;
+
 	/** True for ephemeral guest accounts created via POST /auth/guest. */
 	@Column({ default: false })
 	isGuest: boolean;

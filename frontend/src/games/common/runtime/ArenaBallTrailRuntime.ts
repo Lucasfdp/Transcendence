@@ -16,10 +16,13 @@ import {
 
 export type ArenaBallTrailId = number | string;
 
+export const DEFAULT_TRAIL_EFFECT = "trail_classic";
+
 export interface ArenaBallTrailObject {
 	readonly id: ArenaBallTrailId;
 	readonly player: number;
 	readonly ball: BallState;
+	readonly trailEffect?: string;
 }
 
 export type ArenaBallMovingResolver = (ball: BallState) => boolean;
@@ -29,18 +32,20 @@ export interface ArenaBallTrailSetOptions {
 	readonly powerBalls?: Iterable<ArenaPowerBallEntry>;
 	readonly isMoving: ArenaBallMovingResolver;
 	readonly trailOptions?: PlayerTrailOptions;
+	readonly trailEffectByPlayer?: (player: number) => string;
 }
 
 export function buildArenaBallTrailObjects(
 	objects: readonly ArenaBallTrailObject[],
 	isMoving: ArenaBallMovingResolver,
 ): PlayerTrailObject[] {
-	return objects.map(({ id, player, ball }) => ({
+	return objects.map(({ id, player, ball, trailEffect }) => ({
 		id,
 		player,
 		x: ball.x,
 		y: ball.y,
 		moving: isMoving(ball),
+		trailEffect,
 	}));
 }
 
@@ -58,11 +63,29 @@ export function buildArenaPowerBallTrailObjects(
 	}));
 }
 
+export function resolvePlayerTrailEffects(
+	trailEffects: Record<string, string | undefined> | undefined,
+	fallback: readonly string[] = [],
+	playerCount = 5,
+): string[] {
+	return Array.from(
+		{ length: playerCount },
+		(_value, index) =>
+			trailEffects?.[`player${index}`] ??
+			fallback[index] ??
+			DEFAULT_TRAIL_EFFECT,
+	);
+}
+
 export class ArenaBallTrailRuntime {
 	private readonly store: PlayerTrailStore = new Map();
+	private readonly trailEffectsById = new Map<ArenaBallTrailId, string>();
+	private readonly movingIds = new Set<ArenaBallTrailId>();
 
 	clear(): void {
 		this.store.clear();
+		this.trailEffectsById.clear();
+		this.movingIds.clear();
 	}
 
 	get(id: ArenaBallTrailId): PlayerTrailPoint[] | undefined {
@@ -74,6 +97,8 @@ export class ArenaBallTrailRuntime {
 	}
 
 	delete(id: ArenaBallTrailId): boolean {
+		this.trailEffectsById.delete(id);
+		this.movingIds.delete(id);
 		return this.store.delete(id);
 	}
 
@@ -83,26 +108,35 @@ export class ArenaBallTrailRuntime {
 
 	reset(id: ArenaBallTrailId, x: number, y: number): void {
 		resetPlayerTrail(this.store, id, x, y);
+		this.movingIds.delete(id);
 	}
 
 	record(
 		objects: readonly PlayerTrailObject[],
 		options: PlayerTrailOptions = {},
 	): void {
+		for (const object of objects) {
+			if (object.trailEffect)
+				this.trailEffectsById.set(object.id, object.trailEffect);
+			if (object.moving) this.movingIds.add(object.id);
+			else this.movingIds.delete(object.id);
+		}
 		recordPlayerTrails(this.store, objects, options);
 	}
 
 	recordSet(options: ArenaBallTrailSetOptions): void {
-		this.record(
-			[
-				...buildArenaBallTrailObjects(options.balls, options.isMoving),
-				...buildArenaPowerBallTrailObjects(
-					options.powerBalls ?? [],
-					options.isMoving,
-				),
-			],
-			options.trailOptions,
-		);
+		const objects = [
+			...buildArenaBallTrailObjects(options.balls, options.isMoving),
+			...buildArenaPowerBallTrailObjects(
+				options.powerBalls ?? [],
+				options.isMoving,
+			),
+		].map((object) => ({
+			...object,
+			trailEffect:
+				object.trailEffect ?? options.trailEffectByPlayer?.(object.player),
+		}));
+		this.record(objects, options.trailOptions);
 	}
 
 	draw(
@@ -110,7 +144,11 @@ export class ArenaBallTrailRuntime {
 		playersById: ReadonlyMap<ArenaBallTrailId, number>,
 		options: PlayerTrailOptions = {},
 	): void {
-		drawPlayerTrails(gfx, this.store, playersById, options);
+		drawPlayerTrails(gfx, this.store, playersById, {
+			...options,
+			trailEffectsById: this.trailEffectsById,
+			movingIds: this.movingIds,
+		});
 	}
 
 	readNormalisedTrail(

@@ -141,6 +141,7 @@ export class MatchmakingGateway
 				username: user.username,
 				turtleName: user.turtleName ?? null,
 				shellSkin: user.shellSkin ?? "base",
+				trailEffect: user.trailEffect ?? "trail_classic",
 				hubBackground: user.hubBackground ?? "night_bg",
 				hubBackgroundAlter: user.hubBackgroundAlter ?? null,
 				isGuest: user.isGuest,

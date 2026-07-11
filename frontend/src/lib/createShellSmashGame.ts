@@ -15,11 +15,13 @@ export interface ShellSmashStartData {
 	targetScene: string;
 	shellSelection: Record<string, string[]>;
 	shellSkins?: Record<string, string>;
+	trailEffects?: Record<string, string>;
 	user?: {
 		id?: number;
 		username?: string;
 		turtleName?: string | null;
 		shellSkin?: string;
+		trailEffect?: string;
 		hubBackground?: string;
 		hubBackgroundAlter?: string | null;
 		isGuest?: boolean;
@@ -61,6 +63,7 @@ export function createShellSmashGame(
 	if (initialScene) {
 		game.registry.set("shellSelection", initialScene.shellSelection);
 		game.registry.set("shellSkins", initialScene.shellSkins ?? {});
+		game.registry.set("trailEffects", initialScene.trailEffects ?? {});
 		if (initialScene.user) game.registry.set("user", initialScene.user);
 		else game.registry.remove("user");
 		game.registry.set("localMode", initialScene.localMode ?? "solo");
