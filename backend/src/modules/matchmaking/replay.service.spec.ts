@@ -99,8 +99,8 @@ describe("ReplayService import contract validation", () => {
 			"temple-curling",
 			{
 				currentTurn: 0,
-				objects: [{ id: 1, type: "stone", side: 0, x: 0.4, y: 0.5 }],
-				entities: [{ id: 1, type: "stone", side: 0, x: 0.4, y: 0.5 }],
+				objects: [{ id: 1, type: "ball", side: 0, x: 0.4, y: 0.5 }],
+				entities: [{ id: 1, type: "ball", side: 0, x: 0.4, y: 0.5 }],
 			},
 		],
 		[

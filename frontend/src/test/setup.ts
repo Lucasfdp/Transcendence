@@ -6,7 +6,16 @@
  */
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
+
+if (typeof HTMLCanvasElement !== "undefined") {
+	vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+		fillStyle: "",
+		fillRect: vi.fn(),
+		getImageData: vi.fn(() => ({ data: new Uint8ClampedArray([0, 0, 0, 0]) })),
+		putImageData: vi.fn(),
+	} as unknown as CanvasRenderingContext2D);
+}
 
 afterEach(() => {
 	cleanup();

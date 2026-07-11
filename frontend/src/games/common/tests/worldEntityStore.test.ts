@@ -4,7 +4,7 @@ import { WorldEntityStore } from "../runtime/worldEntityStore";
 
 interface TestEntity {
 	id: string;
-	kind: "ball" | "stone";
+	kind: "ball" | "target";
 	x: number;
 	y: number;
 	vx: number;
@@ -25,7 +25,7 @@ describe("WorldEntityStore", () => {
 		});
 		store.upsert({
 			id: "entity-1",
-			kind: "stone",
+			kind: "target",
 			x: 30,
 			y: 40,
 			vx: 3,
@@ -35,7 +35,7 @@ describe("WorldEntityStore", () => {
 		expect(store.size).toBe(1);
 		expect(store.get("entity-1")).toEqual({
 			id: "entity-1",
-			kind: "stone",
+			kind: "target",
 			x: 30,
 			y: 40,
 			vx: 3,
@@ -46,7 +46,7 @@ describe("WorldEntityStore", () => {
 	it("removes and clears entities", () => {
 		const store = new WorldEntityStore<TestEntity>();
 		store.upsert({ id: "a", kind: "ball", x: 0, y: 0, vx: 0, vy: 0 });
-		store.upsert({ id: "b", kind: "stone", x: 1, y: 1, vx: 1, vy: 1 });
+		store.upsert({ id: "b", kind: "target", x: 1, y: 1, vx: 1, vy: 1 });
 
 		expect(store.remove("a")).toBe(true);
 		expect(store.remove("missing")).toBe(false);
@@ -62,7 +62,7 @@ describe("WorldEntityStore", () => {
 	it("serialises entities in insertion order", () => {
 		const store = new WorldEntityStore<TestEntity>();
 		store.upsert({ id: "a", kind: "ball", x: 0, y: 0, vx: 0, vy: 0 });
-		store.upsert({ id: "b", kind: "stone", x: 1, y: 1, vx: 1, vy: 1 });
+		store.upsert({ id: "b", kind: "target", x: 1, y: 1, vx: 1, vy: 1 });
 
 		expect(store.serialise().map((entity) => entity.id)).toEqual(["a", "b"]);
 	});

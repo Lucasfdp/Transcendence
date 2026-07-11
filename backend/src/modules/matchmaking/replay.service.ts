@@ -584,7 +584,7 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 				`Replay frame ${frameIndex} curling snapshot is missing currentTurn`,
 			);
 		}
-		this.validateReplayEntities(snapshot.entities, frameIndex, "stone");
+		this.validateReplayEntities(snapshot.entities, frameIndex, "ball");
 	}
 
 	private validateBambooSnapshot(

@@ -20,12 +20,12 @@ const CURL_SHEET_W_SRC = 1570;
 const CURL_SHEET_H_SRC = 880;
 const CURL_DELIVERY_X = 90 / CURL_SHEET_W_SRC;
 const CURL_DELIVERY_Y = 0.5;
-const CURL_STONE_FRICTION = 0.99;
-const CURL_STONE_BOUNCE_DAMP = 0.55;
-const CURL_STONE_MIN_SPEED_SRC = 8;
-const CURL_STONE_RADIUS_NX = 28 / CURL_SHEET_W_SRC;
-const CURL_STONE_RADIUS_NY = 28 / CURL_SHEET_H_SRC;
-const CURL_STONE_TRAIL_STEP = 0.035;
+const CURL_BALL_FRICTION = 0.99;
+const CURL_BALL_BOUNCE_DAMP = 0.55;
+const CURL_BALL_MIN_SPEED_SRC = 8;
+const CURL_BALL_RADIUS_NX = 28 / CURL_SHEET_W_SRC;
+const CURL_BALL_RADIUS_NY = 28 / CURL_SHEET_H_SRC;
+const CURL_BALL_TRAIL_STEP = 0.035;
 
 type ArenaBallSnapshot =
 	| KameKnockSnapshot
@@ -33,7 +33,7 @@ type ArenaBallSnapshot =
 	| BellClashSnapshot;
 
 const DEFAULT_PROJECTILE_SCALE = 1;
-const DEFAULT_STONE_SCALE = 1;
+const DEFAULT_CURLING_BALL_SCALE = 1;
 
 const POWER_SCALE: Record<string, number> = {
 	giant: 2,
@@ -166,7 +166,7 @@ function applyReplayPowerVisuals<T extends BallSnapshotData>(entity: T): T {
 function syncCurlingEntityMirror(snapshot: CurlingSnapshot): void {
 	snapshot.entities = snapshot.objects.map((object) => ({
 		id: object.id,
-		type: "stone",
+		type: "ball",
 		side: object.side,
 		ownerSide: object.ownerSide,
 		x: object.x,
@@ -378,7 +378,7 @@ export function resetArenaReplayBalls(
 	if (options?.clearEntities ?? true) snapshot.entities = [];
 }
 
-export function initializeCurlingReplayStone(
+export function initializeCurlingReplayBall(
 	snapshot: CurlingSnapshot,
 	id: number,
 	side: number,
@@ -391,7 +391,7 @@ export function initializeCurlingReplayStone(
 	const base = {
 		id,
 		side,
-		type: "stone" as const,
+		type: "ball" as const,
 		ownerSide: side,
 		x: CURL_DELIVERY_X,
 		y: CURL_DELIVERY_Y,
@@ -400,10 +400,10 @@ export function initializeCurlingReplayStone(
 		rotation: 0,
 		angularVelocity: 0,
 		moving: true,
-		scale: POWER_SCALE[power] ?? DEFAULT_STONE_SCALE,
+		scale: POWER_SCALE[power] ?? DEFAULT_CURLING_BALL_SCALE,
 		visible: true,
 		alpha: TRANSLUCENT_POWERS.has(power) ? 0.52 : 1,
-		spriteKey: "temple-curling-stone",
+		spriteKey: "temple-curling-ball",
 		stateFlags: power === "none" ? ["launched"] : ["launched", `power:${power}`],
 		createdAt: now,
 		updatedAt: now,
@@ -414,7 +414,7 @@ export function initializeCurlingReplayStone(
 	if (existingIndex >= 0) snapshot.objects[existingIndex] = base;
 	else snapshot.objects.push(base);
 	syncCurlingEntityMirror(snapshot);
-	snapshot.activeStoneId = id;
+	snapshot.activeBallId = id;
 }
 
 function sanitizeTrailPoint(
@@ -460,7 +460,7 @@ export function syncCurlingReplayStateFromPayload(
 			return {
 				id,
 				side,
-				type: "stone" as const,
+				type: "ball" as const,
 				ownerSide: side,
 				x: clamp(x, 0, 1),
 				y: clamp(y, 0, 1),
@@ -469,10 +469,10 @@ export function syncCurlingReplayStateFromPayload(
 				rotation: readNumber(raw, "rotation") ?? 0,
 				angularVelocity: readNumber(raw, "angularVelocity") ?? 0,
 				moving,
-				scale: readNumber(raw, "scale") ?? DEFAULT_STONE_SCALE,
+				scale: readNumber(raw, "scale") ?? DEFAULT_CURLING_BALL_SCALE,
 				visible: raw.visible !== false,
 				alpha: readNumber(raw, "alpha") ?? 1,
-				spriteKey: String(raw.spriteKey ?? "temple-curling-stone"),
+				spriteKey: String(raw.spriteKey ?? "temple-curling-ball"),
 				stateFlags: Array.isArray(raw.stateFlags)
 					? raw.stateFlags.filter((flag): flag is string => typeof flag === "string")
 					: [moving ? "sliding" : "settled"],
@@ -489,7 +489,7 @@ export function syncCurlingReplayStateFromPayload(
 		})
 		.filter((object) => object !== null) as CurlingSnapshot["objects"];
 	syncCurlingEntityMirror(snapshot);
-	snapshot.activeStoneId =
+	snapshot.activeBallId =
 		snapshot.objects.find((object) => object.moving)?.id ?? null;
 	return true;
 }
@@ -544,7 +544,7 @@ function stepArenaBall(ball: BallSnapshotData, deltaMs: number): boolean {
 function updateCurlingTrail(object: CurlingSnapshot["objects"][number]): void {
 	const trail = object.trail ?? [];
 	const last = trail[trail.length - 1];
-	if (!last || Math.hypot(last.x - object.x, last.y - object.y) >= CURL_STONE_TRAIL_STEP) {
+	if (!last || Math.hypot(last.x - object.x, last.y - object.y) >= CURL_BALL_TRAIL_STEP) {
 		trail.push({ x: object.x, y: object.y });
 		object.trail = trail.slice(-80);
 	}
@@ -566,28 +566,28 @@ function stepCurlingObject(
 
 	let nextVx = vx;
 	let nextVy = vy;
-	const leftWall = CURL_STONE_RADIUS_NX;
-	const rightWall = 1 - CURL_STONE_RADIUS_NX;
-	const topWall = CURL_STONE_RADIUS_NY;
-	const bottomWall = 1 - CURL_STONE_RADIUS_NY;
+	const leftWall = CURL_BALL_RADIUS_NX;
+	const rightWall = 1 - CURL_BALL_RADIUS_NX;
+	const topWall = CURL_BALL_RADIUS_NY;
+	const bottomWall = 1 - CURL_BALL_RADIUS_NY;
 
 	if (object.x <= leftWall || object.x >= rightWall) {
 		object.x = clamp(object.x, leftWall, rightWall);
-		nextVx = -nextVx * CURL_STONE_BOUNCE_DAMP;
+		nextVx = -nextVx * CURL_BALL_BOUNCE_DAMP;
 	}
 	if (object.y <= topWall || object.y >= bottomWall) {
 		object.y = clamp(object.y, topWall, bottomWall);
-		nextVy = -nextVy * CURL_STONE_BOUNCE_DAMP;
+		nextVy = -nextVy * CURL_BALL_BOUNCE_DAMP;
 	}
 
-	const friction = Math.pow(CURL_STONE_FRICTION, deltaMs / 16.67);
+	const friction = Math.pow(CURL_BALL_FRICTION, deltaMs / 16.67);
 	nextVx *= friction;
 	nextVy *= friction;
 	object.vx = nextVx;
 	object.vy = nextVy;
 	object.rotation += object.angularVelocity * (deltaMs / 1000);
 	object.updatedAt = Date.now();
-	if (Math.hypot(nextVx, nextVy) < CURL_STONE_MIN_SPEED_SRC) {
+	if (Math.hypot(nextVx, nextVy) < CURL_BALL_MIN_SPEED_SRC) {
 		object.vx = 0;
 		object.vy = 0;
 		object.moving = false;

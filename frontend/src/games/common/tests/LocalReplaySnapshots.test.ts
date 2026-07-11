@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ArenaPixels } from "../../../shared/arenas/arena";
-import type { StoneState } from "../../../shared/mechanics/ball";
+import type { CurlingBallState } from "../../../shared/mechanics/ball";
 import { PowerType } from "../../../shared/mechanics/power-system";
 import type { RectArenaPixels } from "../../../shared/mechanics/rect-arena";
 import {
@@ -10,7 +10,7 @@ import {
 	buildBellClashReplayZones,
 	buildBellClashScoreZoneDescriptor,
 	buildBumperReplayObjects,
-	buildCurlingReplayStoneSnapshot,
+	buildCurlingReplayBallSnapshot,
 	buildKameKnockLocalReplaySnapshot,
 	buildTimedTargetReplayObjects,
 } from "../replay/LocalReplaySnapshots";
@@ -193,8 +193,8 @@ describe("LocalReplaySnapshots", () => {
 		]);
 	});
 
-	it("normalises curling stone state for replay snapshots", () => {
-		const stone: StoneState = {
+	it("normalises curling ball state for replay snapshots", () => {
+		const ball: CurlingBallState = {
 			id: 3,
 			teamId: 1,
 			x: 110,
@@ -208,8 +208,8 @@ describe("LocalReplaySnapshots", () => {
 		};
 
 		expect(
-			buildCurlingReplayStoneSnapshot({
-				stone,
+			buildCurlingReplayBallSnapshot({
+				ball,
 				arena: rectArena,
 				trail: [{ x: 0.1, y: 0.2 }],
 			}),

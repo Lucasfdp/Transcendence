@@ -1,15 +1,15 @@
 /**
  * game/mechanics/sweep-controller.ts — broom-sweeping interaction.
  *
- * During a stone's flight, the active player can sweep by moving the pointer
- * quickly across the sheet. Fast swipes temporarily reduce the stone's friction,
+ * During a ball's flight, the active player can sweep by moving the pointer
+ * quickly across the sheet. Fast swipes temporarily reduce the ball's friction,
  * letting it travel a bit farther.
  *
  * Zero imports from any specific minigame directory.
  */
 
 import Phaser from "phaser";
-import type { StoneState } from "./ball";
+import type { CurlingBallState } from "./ball";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -41,12 +41,12 @@ export class SweepController {
 	private trail: TrailPoint[] = [];
 	private attached = false;
 
-	// NOTE: stone param is accepted but not used internally — the controller only
-	// tracks pointer speed. Kept in the signature so the scene can pass a stone
+	// NOTE: ball param is accepted but not used internally — the controller only
+	// tracks pointer speed. Kept in the signature so the scene can pass a ball
 	// reference without a cast; future features (e.g. proximity checks) may need it.
 	constructor(
 		private readonly scene: Phaser.Scene,
-		_stone: StoneState, // accepted; not used internally
+		_ball: CurlingBallState, // accepted; not used internally
 		depth = 4,
 	) {
 		this.gfx = scene.add.graphics().setDepth(depth);

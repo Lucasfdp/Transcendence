@@ -7,10 +7,10 @@
  */
 
 import type Phaser from "phaser";
-import type { StoneState } from "../../shared/mechanics/ball";
-import { DEFAULT_CURL_BIAS, STONE_SRC_R } from "../../shared/mechanics/ball";
+import type { CurlingBallState } from "../../shared/mechanics/ball";
+import { DEFAULT_CURL_BIAS, CURLING_BALL_SRC_R } from "../../shared/mechanics/ball";
 import {
-	isStoneOutOfBounds,
+	isBallOutOfBounds,
 	type RectArenaPixels,
 } from "../../shared/mechanics/rect-arena";
 import { PowerType } from "../../shared/mechanics/power-system";
@@ -34,17 +34,17 @@ import { THEME } from "../../shared/theme";
 import { destroyIngamePlayerTexture } from "../../shared/mechanics/player-renderer";
 import {
 	drawShellCurlBumpers,
-	drawShellCurlStoneTrails,
+	drawShellCurlBallTrails,
 } from "./ShellCurlView";
 
 const ONLINE_REPLAY_STEP_MS = 1000 / 60;
 const ONLINE_REPLAY_MAX_FRAME_MS = 100;
 const SETTLING_DELAY_MS = 800;
-const DEPTH_STONES = 2;
+const DEPTH_BALLS = 2;
 const DEPTH_HUD = 20;
 const DEPTH_OVERLAY = 100;
 
-export interface OnlineStoneState extends StoneState {
+export interface OnlineCurlingBallState extends CurlingBallState {
 	scale?: number;
 	alpha?: number;
 	trail?: Array<{ x: number; y: number }>;
@@ -70,40 +70,40 @@ export interface ShellCurlOnlineScene {
 	arena: RectArenaPixels;
 	turnManager: TurnManager;
 	curlingPower: CurlingPowerRuntime;
-	stoneGfx: Map<number, Phaser.GameObjects.Graphics>;
-	activeStone: StoneState | null;
-	stoneTrails: ArenaBallTrailRuntime;
+	ballGfx: Map<number, Phaser.GameObjects.Graphics>;
+	activeBall: CurlingBallState | null;
+	ballTrails: ArenaBallTrailRuntime;
 	bumperGfx: Phaser.GameObjects.Graphics;
 	trailGfx: Phaser.GameObjects.Graphics;
 	bumpers: ShellCurlBumper[];
 	scoreHud: ScoreHud;
 	powerSidePanel: GameInfoSidePanel | null;
-	launchInput: SlingshotLaunchRuntime<StoneState>;
+	launchInput: SlingshotLaunchRuntime<CurlingBallState>;
 	overlayContainer: Phaser.GameObjects.Container | null;
 
-	get allStones(): StoneState[];
-	set allStones(stones: readonly StoneState[]);
+	get allBalls(): CurlingBallState[];
+	set allBalls(balls: readonly CurlingBallState[]);
 
 	beginTurn(): void;
 	buildBumpers(regenerate?: boolean): void;
 	buildScoreHudState(): TurnState;
 	clearActiveRing(): void;
-	clearAllStoneGfx(): void;
-	drawPlayerStone(
+	clearAllBallGfx(): void;
+	drawPlayerBall(
 		gfx: Phaser.GameObjects.Graphics,
-		stone: StoneState,
+		ball: CurlingBallState,
 		isActive: boolean,
 	): void;
 	playerHexColour(player: number): string;
 	playerLabel(side: number, playerCount: number): string;
-	redrawAllStones(): void;
-	recordMovingStoneTrails(): void;
-	removeStone(stone: StoneState): void;
+	redrawAllBalls(): void;
+	recordMovingBallTrails(): void;
+	removeBall(ball: CurlingBallState): void;
 	resolveDeliverySpawnBlockers(): void;
-	resolveStoneBumperCollisions(stones: StoneState[]): void;
-	showRemotePlacedStone(side: number): void;
-	spawnActiveStone(teamId: number): StoneState;
-	stonePlayersById(): Map<number | string, number>;
+	resolveBallBumperCollisions(balls: CurlingBallState[]): void;
+	showRemotePlacedBall(side: number): void;
+	spawnActiveBall(teamId: number): CurlingBallState;
+	ballPlayersById(): Map<number | string, number>;
 	updateSidePanels(): void;
 }
 
@@ -119,7 +119,7 @@ export class ShellCurlOnlineController {
 	private replayThrower: number | null = null;
 	private replayThrowId: number | null = null;
 	private pendingSnapshot: CurlingSnapshot | null = null;
-	private confirmedStoneIds: Set<number> = new Set();
+	private confirmedBallIds: Set<number> = new Set();
 
 	constructor(scene: Phaser.Scene & ShellCurlOnlineScene) {
 		this.scene = scene;
@@ -162,7 +162,7 @@ export class ShellCurlOnlineController {
 		this.replayThrower = null;
 		this.replayThrowId = null;
 		this.pendingSnapshot = null;
-		this.confirmedStoneIds.clear();
+		this.confirmedBallIds.clear();
 		return this.isActive;
 	}
 
@@ -213,7 +213,7 @@ export class ShellCurlOnlineController {
 	}
 
 	emitRelease(
-		stone: StoneState,
+		ball: CurlingBallState,
 		vx: number,
 		vy: number,
 		power: PowerType,
@@ -227,7 +227,7 @@ export class ShellCurlOnlineController {
 					0,
 					Math.min(
 						1,
-						(stone.x - this.scene.arena.sheetX) /
+						(ball.x - this.scene.arena.sheetX) /
 							this.scene.arena.sheetW,
 					),
 				),
@@ -235,7 +235,7 @@ export class ShellCurlOnlineController {
 					0,
 					Math.min(
 						1,
-						(stone.y - this.scene.arena.sheetY) /
+						(ball.y - this.scene.arena.sheetY) /
 							this.scene.arena.sheetH,
 					),
 				),
@@ -259,39 +259,39 @@ export class ShellCurlOnlineController {
 			this.replayAccumulatorMs -= ONLINE_REPLAY_STEP_MS;
 
 			let anyMoving = false;
-			const active = this.scene.activeStone;
+			const active = this.scene.activeBall;
 
-			for (const stone of [...this.scene.allStones]) {
-				if (stone.stopped) continue;
-				this.scene.curlingPower.stepStone(
-					stone,
+			for (const ball of [...this.scene.allBalls]) {
+				if (ball.stopped) continue;
+				this.scene.curlingPower.stepCurlingBall(
+					ball,
 					ONLINE_REPLAY_STEP_MS,
 					this.scene.arena,
 				);
-				if (stone === active)
+				if (ball === active)
 					this.scene.curlingPower.updatePower(
-						stone,
+						ball,
 						ONLINE_REPLAY_STEP_MS,
 						this.scene.arena,
 					);
-				if (isStoneOutOfBounds(stone, this.scene.arena)) {
-					this.scene.removeStone(stone);
-					if (stone === active) this.scene.activeStone = null;
-				} else if (!stone.stopped) {
+				if (isBallOutOfBounds(ball, this.scene.arena)) {
+					this.scene.removeBall(ball);
+					if (ball === active) this.scene.activeBall = null;
+				} else if (!ball.stopped) {
 					anyMoving = true;
 				}
 			}
 
 			this.scene.curlingPower.resolveCollisions(
-				this.scene.allStones,
+				this.scene.allBalls,
 				this.scene.arena,
 				{
-					activeStone: active,
+					activeBall: active,
 					triggerActiveCollisionPower: true,
 				},
 			);
 
-			this.scene.resolveStoneBumperCollisions(this.scene.allStones);
+			this.scene.resolveBallBumperCollisions(this.scene.allBalls);
 			for (const bumper of this.scene.bumpers) {
 				if (bumper.flashTimer > 0)
 					bumper.flashTimer = Math.max(
@@ -299,19 +299,19 @@ export class ShellCurlOnlineController {
 						bumper.flashTimer - ONLINE_REPLAY_STEP_MS,
 					);
 			}
-			for (const stone of this.scene.allStones) {
-				if (!stone.stopped) anyMoving = true;
+			for (const ball of this.scene.allBalls) {
+				if (!ball.stopped) anyMoving = true;
 			}
 
 			if (
-				this.scene.activeStone &&
-				this.scene.activeStone.stopped &&
+				this.scene.activeBall &&
+				this.scene.activeBall.stopped &&
 				!this.replayStopApplied
 			) {
 				this.scene.curlingPower.stopPower(
-					this.scene.activeStone,
+					this.scene.activeBall,
 					this.scene.arena,
-					this.scene.allStones,
+					this.scene.allBalls,
 				);
 				this.replayStopApplied = true;
 			}
@@ -332,14 +332,14 @@ export class ShellCurlOnlineController {
 			this.scene.bumpers,
 			this.scene.arena,
 		);
-		this.scene.recordMovingStoneTrails();
-		drawShellCurlStoneTrails(
-			this.scene.stoneTrails,
+		this.scene.recordMovingBallTrails();
+		drawShellCurlBallTrails(
+			this.scene.ballTrails,
 			this.scene.trailGfx,
-			this.scene.stonePlayersById(),
+			this.scene.ballPlayersById(),
 			this.scene.arena,
 		);
-		this.scene.redrawAllStones();
+		this.scene.redrawAllBalls();
 	}
 
 	applySnapshot(snapshot: CurlingSnapshot): void {
@@ -365,10 +365,10 @@ export class ShellCurlOnlineController {
 		(this.scene.turnManager as unknown as { _state: unknown })._state = {
 			currentTeam: snapshot.currentTurn,
 			currentEnd: snapshot.currentEnd,
-			stonesLeft: snapshot.score.map((_, side) =>
+			ballsLeft: snapshot.score.map((_, side) =>
 				Math.max(
 					0,
-					snapshot.stonesPerPlayer -
+					snapshot.ballsPerPlayer -
 						this.throwsUsedBySide(snapshot, side),
 				),
 			),
@@ -400,12 +400,12 @@ export class ShellCurlOnlineController {
 			this.updateStatus(
 				`Your turn (${this.scene.playerLabel(this.side, snapshot.score.length)})`,
 			);
-			if (!this.scene.activeStone) this.scene.beginTurn();
+			if (!this.scene.activeBall) this.scene.beginTurn();
 		} else {
 			this.updateStatus(
 				`${this.scene.playerLabel(snapshot.currentTurn, snapshot.score.length)} turn`,
 			);
-			this.scene.showRemotePlacedStone(snapshot.currentTurn);
+			this.scene.showRemotePlacedBall(snapshot.currentTurn);
 			this.scene.powerSidePanel?.hide();
 			this.scene.launchInput.recreate();
 		}
@@ -433,56 +433,56 @@ export class ShellCurlOnlineController {
 		this.scene.clearActiveRing();
 
 		if (
-			this.scene.activeStone &&
-			this.scene.activeStone.teamId !== event.side &&
-			!this.confirmedStoneIds.has(this.scene.activeStone.id)
+			this.scene.activeBall &&
+			this.scene.activeBall.teamId !== event.side &&
+			!this.confirmedBallIds.has(this.scene.activeBall.id)
 		) {
-			this.scene.removeStone(this.scene.activeStone);
-			this.scene.activeStone = null;
+			this.scene.removeBall(this.scene.activeBall);
+			this.scene.activeBall = null;
 		}
 
-		let stone =
-			this.scene.activeStone?.teamId === event.side
-				? this.scene.activeStone
+		let ball =
+			this.scene.activeBall?.teamId === event.side
+				? this.scene.activeBall
 				: null;
-		if (!stone) stone = this.scene.spawnActiveStone(event.side);
+		if (!ball) ball = this.scene.spawnActiveBall(event.side);
 
-		for (const candidate of [...this.scene.allStones]) {
+		for (const candidate of [...this.scene.allBalls]) {
 			if (
-				candidate !== stone &&
-				!this.confirmedStoneIds.has(candidate.id)
+				candidate !== ball &&
+				!this.confirmedBallIds.has(candidate.id)
 			)
-				this.scene.removeStone(candidate);
+				this.scene.removeBall(candidate);
 		}
 
-		const previousId = stone.id;
-		const gfx = this.scene.stoneGfx.get(previousId);
-		this.scene.stoneGfx.delete(previousId);
-		this.scene.stoneTrails.delete(previousId);
+		const previousId = ball.id;
+		const gfx = this.scene.ballGfx.get(previousId);
+		this.scene.ballGfx.delete(previousId);
+		this.scene.ballTrails.delete(previousId);
 		destroyIngamePlayerTexture(
 			this.scene,
 			`shell-curl-player-${previousId}`,
 		);
-		stone.id = event.id;
-		if (gfx) this.scene.stoneGfx.set(stone.id, gfx);
+		ball.id = event.id;
+		if (gfx) this.scene.ballGfx.set(ball.id, gfx);
 
-		stone.x = this.scene.arena.deliveryX;
-		stone.y = this.scene.arena.deliveryY;
-		stone.vx = event.vx * this.scene.arena.scale;
-		stone.vy = event.vy * this.scene.arena.scale;
-		stone.power = event.power as PowerType;
-		stone.stopped = false;
-		stone.r = STONE_SRC_R * this.scene.arena.scale;
-		stone.curlBias = DEFAULT_CURL_BIAS * (event.side === 0 ? 1 : -1);
+		ball.x = this.scene.arena.deliveryX;
+		ball.y = this.scene.arena.deliveryY;
+		ball.vx = event.vx * this.scene.arena.scale;
+		ball.vy = event.vy * this.scene.arena.scale;
+		ball.power = event.power as PowerType;
+		ball.stopped = false;
+		ball.r = CURLING_BALL_SRC_R * this.scene.arena.scale;
+		ball.curlBias = DEFAULT_CURL_BIAS * (event.side === 0 ? 1 : -1);
 
 		this.scene.curlingPower.applyPower(
-			stone.power,
-			stone,
+			ball.power,
+			ball,
 			this.scene.arena,
 		);
 
-		this.scene.activeStone = stone;
-		this.scene.stoneTrails.set(stone.id, [{ x: stone.x, y: stone.y }]);
+		this.scene.activeBall = ball;
+		this.scene.ballTrails.set(ball.id, [{ x: ball.x, y: ball.y }]);
 		this.replaying = true;
 		this.replaySettlingTimer = 0;
 		this.replayAccumulatorMs = 0;
@@ -515,7 +515,7 @@ export class ShellCurlOnlineController {
 		this.replayStopApplied = false;
 		this.replayThrower = null;
 		this.replayThrowId = null;
-		this.scene.activeStone = null;
+		this.scene.activeBall = null;
 		if (this.pendingSnapshot) {
 			const snapshot = this.pendingSnapshot;
 			this.pendingSnapshot = null;
@@ -524,43 +524,43 @@ export class ShellCurlOnlineController {
 	}
 
 	private renderObjects(snapshot: CurlingSnapshot): void {
-		const existingTrails = new Map(this.scene.stoneTrails.entries());
-		const existingStones = new Map(
-			this.scene.allStones.map((stone) => [
-				stone.id,
-				{ x: stone.x, y: stone.y },
+		const existingTrails = new Map(this.scene.ballTrails.entries());
+		const existingBalls = new Map(
+			this.scene.allBalls.map((ball) => [
+				ball.id,
+				{ x: ball.x, y: ball.y },
 			]),
 		);
-		this.confirmedStoneIds = new Set(
+		this.confirmedBallIds = new Set(
 			snapshot.objects.map((object) => object.id),
 		);
-		this.scene.clearAllStoneGfx();
-		this.scene.activeStone = null;
+		this.scene.clearAllBallGfx();
+		this.scene.activeBall = null;
 		for (const object of snapshot.objects) {
-			const existingStone = existingStones.get(object.id);
-			const stone: StoneState = {
+			const existingBall = existingBalls.get(object.id);
+			const ball: CurlingBallState = {
 				id: object.id,
 				teamId: object.side,
 				x:
-					existingStone?.x ??
+					existingBall?.x ??
 					this.scene.arena.sheetX +
 						object.x * this.scene.arena.sheetW,
 				y:
-					existingStone?.y ??
+					existingBall?.y ??
 					this.scene.arena.sheetY +
 						object.y * this.scene.arena.sheetH,
 				vx: 0,
 				vy: 0,
-				r: STONE_SRC_R * this.scene.arena.scale,
+				r: CURLING_BALL_SRC_R * this.scene.arena.scale,
 				power: object.power as PowerType,
 				stopped: true,
 				curlBias: DEFAULT_CURL_BIAS * (object.side === 0 ? 1 : -1),
 			};
-			const gfx = this.scene.add.graphics().setDepth(DEPTH_STONES);
-			this.scene.stoneGfx.set(stone.id, gfx);
-			this.scene.allStones.push(stone);
+			const gfx = this.scene.add.graphics().setDepth(DEPTH_BALLS);
+			this.scene.ballGfx.set(ball.id, gfx);
+			this.scene.allBalls.push(ball);
 			const trail =
-				existingTrails.get(stone.id) ??
+				existingTrails.get(ball.id) ??
 				object.trail?.map((point) => ({
 					x:
 						this.scene.arena.sheetX +
@@ -569,26 +569,26 @@ export class ShellCurlOnlineController {
 						this.scene.arena.sheetY +
 						point.y * this.scene.arena.sheetH,
 				}));
-			if (trail?.length) this.scene.stoneTrails.set(stone.id, trail);
-			this.scene.drawPlayerStone(gfx, stone, false);
+			if (trail?.length) this.scene.ballTrails.set(ball.id, trail);
+			this.scene.drawPlayerBall(gfx, ball, false);
 		}
-		drawShellCurlStoneTrails(
-			this.scene.stoneTrails,
+		drawShellCurlBallTrails(
+			this.scene.ballTrails,
 			this.scene.trailGfx,
-			this.scene.stonePlayersById(),
+			this.scene.ballPlayersById(),
 			this.scene.arena,
 		);
 	}
 
 	private serializeObjects(): CurlingSnapshot["objects"] {
-		return this.scene.allStones.map((stone) => ({
-			id: stone.id,
-			side: stone.teamId,
+		return this.scene.allBalls.map((ball) => ({
+			id: ball.id,
+			side: ball.teamId,
 			x: Math.max(
 				0,
 				Math.min(
 					1,
-					(stone.x - this.scene.arena.sheetX) /
+					(ball.x - this.scene.arena.sheetX) /
 						this.scene.arena.sheetW,
 				),
 			),
@@ -596,16 +596,16 @@ export class ShellCurlOnlineController {
 				0,
 				Math.min(
 					1,
-					(stone.y - this.scene.arena.sheetY) /
+					(ball.y - this.scene.arena.sheetY) /
 						this.scene.arena.sheetH,
 				),
 			),
-			vx: stone.vx / this.scene.arena.scale,
-			vy: stone.vy / this.scene.arena.scale,
-			moving: !stone.stopped,
-			power: stone.power,
-			trail: this.scene.stoneTrails.readRectNormalisedTrail(
-				stone.id,
+			vx: ball.vx / this.scene.arena.scale,
+			vy: ball.vy / this.scene.arena.scale,
+			moving: !ball.stopped,
+			power: ball.power,
+			trail: this.scene.ballTrails.readRectNormalisedTrail(
+				ball.id,
 				this.scene.arena,
 				{ clamp: true },
 			),

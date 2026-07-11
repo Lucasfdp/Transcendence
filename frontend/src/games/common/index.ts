@@ -8,7 +8,7 @@ export {
 	createLocalReplayId,
 	normalizeReplayImportFrames,
 	replayBallToEntity,
-	replayStoneToEntity,
+	replayCurlingBallToEntity,
 	resolveReplayWinnerSide,
 	SceneReplayRecorder,
 	withPowerStateFlags,
@@ -77,9 +77,9 @@ export {
 	type LocalReplayRegistry,
 } from "./runtime/LocalReplayPlayers";
 export {
+	buildReplayBallEntities,
 	buildReplayProjectileEntities,
-	buildReplayStoneEntities,
-	type ReplayStoneSnapshot,
+	type ReplayCurlingBallSnapshot,
 } from "./runtime/ReplayEntities";
 export {
 	buildArenaReplayProjectileSnapshot,
@@ -89,7 +89,7 @@ export {
 	buildBellClashReplayZones,
 	buildBellClashScoreZoneDescriptor,
 	buildBumperReplayObjects,
-	buildCurlingReplayStoneSnapshot,
+	buildCurlingReplayBallSnapshot,
 	buildKameKnockLocalReplaySnapshot,
 	buildShellCurlLocalReplaySnapshot,
 	buildTimedTargetReplayObjects,

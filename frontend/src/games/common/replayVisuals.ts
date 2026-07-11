@@ -23,11 +23,11 @@ export function resolveActiveReplaySide(
 ): number {
 	if (typeof snapshot.currentTurn === "number") return snapshot.currentTurn;
 
-	const activeStoneSide = resolveSideFromActiveEntity(
-		snapshot.activeStoneId,
+	const activeCurlingBallSide = resolveSideFromActiveEntity(
+		snapshot.activeBallId,
 		snapshot.objects ?? snapshot.entities,
 	);
-	if (activeStoneSide !== null) return activeStoneSide;
+	if (activeCurlingBallSide !== null) return activeCurlingBallSide;
 
 	const activeBallSide = resolveSideFromActiveBall(snapshot);
 	if (activeBallSide !== null) return activeBallSide;

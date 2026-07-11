@@ -15,14 +15,14 @@ import {
 	resolveObstacleRadius,
 	buildCircularObstacleDescriptor,
 } from "../../shared/mechanics/obstacle-descriptor";
-import type { StoneState } from "../../shared/mechanics/ball";
+import type { CurlingBallState } from "../../shared/mechanics/ball";
 import type { RectArenaPixels } from "../../shared/mechanics/rect-arena";
 import type { ArenaBallTrailRuntime } from "../common";
 import type { PowerPickupManager } from "../../shared/mechanics/power-pickups";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DEPTH_STONES = 2;
+const DEPTH_BALLS = 2;
 const DEPTH_HUD = 20;
 const BUMPER_FLASH_MS = 130;
 
@@ -51,11 +51,11 @@ export function drawShellCurlBackground(
 	bgGfx.fillRect(0, 0, width, height);
 }
 
-// ── Stone drawing ─────────────────────────────────────────────────────────────
+// ── Ball drawing ─────────────────────────────────────────────────────────────
 
-export function drawShellCurlStone(
+export function drawShellCurlBall(
 	gfx: Phaser.GameObjects.Graphics,
-	stone: StoneState,
+	ball: CurlingBallState,
 	isActive: boolean,
 	playerShellSkins: string[],
 	scene: Phaser.Scene,
@@ -63,41 +63,41 @@ export function drawShellCurlStone(
 	if (
 		!drawIngameShellTexture(
 			scene,
-			`shell-curl-player-${stone.id}`,
-			stone,
-			DEPTH_STONES,
-			playerShellSkins[stone.teamId],
+			`shell-curl-player-${ball.id}`,
+			ball,
+			DEPTH_BALLS,
+			playerShellSkins[ball.teamId],
 		)
 	) {
-		drawShellCurlShellFallback(gfx, stone, isActive);
+		drawShellCurlShellFallback(gfx, ball, isActive);
 		return;
 	}
 
 	gfx.clear();
 	if (isActive) {
 		gfx.lineStyle(3, 0xd4a843, 0.6);
-		gfx.strokeCircle(stone.x, stone.y, stone.r * 1.45);
+		gfx.strokeCircle(ball.x, ball.y, ball.r * 1.45);
 	}
-	if (stone.frozen) {
+	if (ball.frozen) {
 		gfx.fillStyle(0x88ccff, 0.3);
-		gfx.fillCircle(stone.x, stone.y, stone.r * 1.15);
+		gfx.fillCircle(ball.x, ball.y, ball.r * 1.15);
 	}
-	if (stone.power !== PowerType.NONE) {
+	if (ball.power !== PowerType.NONE) {
 		gfx.lineStyle(2, THEME.gold, 0.85);
 		gfx.strokeCircle(
-			stone.x + stone.r * 0.62,
-			stone.y - stone.r * 0.62,
-			Math.max(4, stone.r * 0.18),
+			ball.x + ball.r * 0.62,
+			ball.y - ball.r * 0.62,
+			Math.max(4, ball.r * 0.18),
 		);
 	}
 }
 
 export function drawShellCurlShellFallback(
 	gfx: Phaser.GameObjects.Graphics,
-	stone: StoneState,
+	ball: CurlingBallState,
 	isActive: boolean,
 ): void {
-	const { x, y, r } = stone;
+	const { x, y, r } = ball;
 	gfx.clear();
 	if (isActive) {
 		gfx.lineStyle(3, 0xd4a843, 0.6);
@@ -116,7 +116,7 @@ export function drawShellCurlShellFallback(
 	gfx.strokePath();
 	gfx.lineBetween(x, y - r * 0.82, x, y + r * 0.8);
 
-	if (stone.frozen) {
+	if (ball.frozen) {
 		gfx.fillStyle(0x88ccff, 0.3);
 		gfx.fillCircle(x, y, r * 1.15);
 	}
@@ -244,48 +244,48 @@ export function showShellCurlSplitterNotice(
 	});
 }
 
-// ── Stone trails ──────────────────────────────────────────────────────────────
+// ── Ball trails ──────────────────────────────────────────────────────────────
 
-export function recordShellCurlStoneTrails(
-	stoneTrails: ArenaBallTrailRuntime,
-	stones: StoneState[],
+export function recordShellCurlBallTrails(
+	ballTrails: ArenaBallTrailRuntime,
+	balls: CurlingBallState[],
 	arena: RectArenaPixels,
 ): void {
-	stoneTrails.recordSet({
-		balls: stones.map((stone) => ({
-			id: stone.id,
-			player: stone.teamId,
-			ball: stone,
+	ballTrails.recordSet({
+		balls: balls.map((ball) => ({
+			id: ball.id,
+			player: ball.teamId,
+			ball: ball,
 		})),
-		isMoving: (stone) => !(stone as StoneState).stopped,
+		isMoving: (ball) => !(ball as CurlingBallState).stopped,
 		trailOptions: { scale: arena.scale },
 	});
 }
 
-export function drawShellCurlStoneTrails(
-	stoneTrails: ArenaBallTrailRuntime,
+export function drawShellCurlBallTrails(
+	ballTrails: ArenaBallTrailRuntime,
 	trailGfx: Phaser.GameObjects.Graphics,
-	stonePlayersById: Map<number | string, number>,
+	ballPlayersById: Map<number | string, number>,
 	arena: RectArenaPixels,
 ): void {
-	stoneTrails.draw(trailGfx, stonePlayersById, {
+	ballTrails.draw(trailGfx, ballPlayersById, {
 		scale: arena.scale,
 	});
 }
 
 // ── Scoring animation ─────────────────────────────────────────────────────────
 
-export function animateShellCurlScoringStones(
+export function animateShellCurlScoringBalls(
 	scene: Phaser.Scene,
-	stones: StoneState[],
-	stoneGfx: Map<number, Phaser.GameObjects.Graphics>,
+	balls: CurlingBallState[],
+	ballGfx: Map<number, Phaser.GameObjects.Graphics>,
 	teamId: number,
 	arena: RectArenaPixels,
-	isStoneInHouse: (stone: StoneState, arena: RectArenaPixels) => boolean,
+	isBallInHouse: (ball: CurlingBallState, arena: RectArenaPixels) => boolean,
 ): void {
-	for (const s of stones) {
-		if (s.teamId !== teamId || !isStoneInHouse(s, arena)) continue;
-		const gfx = stoneGfx.get(s.id);
+	for (const s of balls) {
+		if (s.teamId !== teamId || !isBallInHouse(s, arena)) continue;
+		const gfx = ballGfx.get(s.id);
 		if (!gfx) continue;
 		scene.tweens.add({
 			targets: gfx,

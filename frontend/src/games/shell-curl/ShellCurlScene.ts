@@ -2,8 +2,8 @@
  * game/shell-curl/ShellCurlScene.ts — Shell Curl minigame.
  *
  * A local and online curling game. Turtle shells slide across an ice sheet
- * towards a target house; players deliver stones until all are played
- * then score by counting stones in the house.
+ * towards a target house; players deliver balls until all are played
+ * then score by counting balls in the house.
  */
 
 import Phaser from "phaser";
@@ -13,14 +13,14 @@ import { CURL_SHEET } from "../../shared/arenas/curl-sheet";
 import {
 	rectArenaPlayableToScreenInRect,
 	drawIceSheet,
-	isStoneInHouse,
-	isStoneOutOfBounds,
-	distanceToHouseButton,
+	isBallInHouse,
+	isBallOutOfBounds,
+	distanceFromBallToHouseButton,
 	type RectArenaPixels,
 } from "../../shared/mechanics/rect-arena";
 import {
-	type StoneState,
-	STONE_SRC_R,
+	type CurlingBallState,
+	CURLING_BALL_SRC_R,
 	DEFAULT_CURL_BIAS,
 } from "../../shared/mechanics/ball";
 import {
@@ -101,13 +101,13 @@ import {
 } from "../common";
 import {
 	drawShellCurlBackground,
-	drawShellCurlStone,
+	drawShellCurlBall,
 	drawShellCurlBumpers,
 	drawShellCurlPowerPickups,
 	showShellCurlPowerPickupNotice,
 	showShellCurlSplitterNotice,
-	drawShellCurlStoneTrails,
-	animateShellCurlScoringStones,
+	drawShellCurlBallTrails,
+	animateShellCurlScoringBalls,
 } from "./ShellCurlView";
 import {
 	ShellCurlOnlineController,
@@ -120,13 +120,13 @@ import {
 /** Total ends per game. */
 const TOTAL_ENDS = 3;
 
-/** Stones each team delivers per end. */
-const STONES_PER_TEAM = 3;
+/** Balls each team delivers per end. */
+const BALLS_PER_TEAM = 3;
 
 /** Max slingshot drag distance in source px. */
 const MAX_DRAG_SRC = 450;
 
-/** Slingshot grab zone = stone radius × this factor. Larger = easier to grab. */
+/** Slingshot grab zone = ball radius × this factor. Larger = easier to grab. */
 const GRAB_RADIUS_FACTOR = 6.0;
 
 /** Full-drag launch speed in source px/s. */
@@ -153,8 +153,8 @@ const FALLBACK_POWERS: PowerType[] = [
 /** Depth constants (consistent with HubScene). */
 const DEPTH_BG = 0;
 const DEPTH_SHEET = 1;
-const DEPTH_BUMPERS = 1.5; // between ice sheet and stones
-const DEPTH_STONES = 2;
+const DEPTH_BUMPERS = 1.5; // between ice sheet and balls
+const DEPTH_BALLS = 2;
 const DEPTH_AIM = 3;
 const DEPTH_PARTICLES = 4;
 const DEPTH_HUD = 20;
@@ -219,7 +219,7 @@ function generateBumperDefs(): BumperDef[] {
 	return defs;
 }
 
-const BUMPER_RADIUS_SRC = 28; // source px — same as stone radius
+const BUMPER_RADIUS_SRC = 28; // source px — same as ball radius
 const BUMPER_FLASH_MS = 130; // duration of hit-flash glow
 const BUMPER_BOOST = 1.1; // 10% speed boost on bumper hit (pinball feel)
 const PICKUP_RADIUS_SRC = 18;
@@ -234,10 +234,10 @@ export class ShellCurlScene
 	implements ShellCurlOnlineScene
 {
 	private readonly sceneHost: CommonGameSceneHost;
-	private readonly stoneWorld = new WorldRuntime<StoneState>(
-		(stone) => stone.id,
+	private readonly ballWorld = new WorldRuntime<CurlingBallState>(
+		(ball) => ball.id,
 	);
-	public readonly launchInput: SlingshotLaunchRuntime<StoneState>;
+	public readonly launchInput: SlingshotLaunchRuntime<CurlingBallState>;
 	private readonly online: ShellCurlOnlineController;
 
 	public arena!: RectArenaPixels;
@@ -246,15 +246,15 @@ export class ShellCurlScene
 	public turnManager!: TurnManager;
 	private powerRegistry!: PowerRegistry;
 	public curlingPower!: CurlingPowerRuntime;
-	public stoneGfx: Map<number, Phaser.GameObjects.Graphics> = new Map();
-	public activeStone: StoneState | null = null;
+	public ballGfx: Map<number, Phaser.GameObjects.Graphics> = new Map();
+	public activeBall: CurlingBallState | null = null;
 	private activeRingGfx: Phaser.GameObjects.Graphics | null = null;
 	private activeRingTween: Phaser.Tweens.Tween | null = null;
 	private playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
 	private playerTrailEffects: string[] = [];
-	private nextStoneId = 0;
+	private nextBallId = 0;
 	private settlingTimer = 0;
-	private settlingStone: StoneState | null = null;
+	private settlingBall: CurlingBallState | null = null;
 
 	// ── Mechanics ─────────────────────────────────────────────────────────────
 	private sweepCtrl!: SweepController;
@@ -267,7 +267,7 @@ export class ShellCurlScene
 	private pickupGfx!: Phaser.GameObjects.Graphics;
 	public trailGfx!: Phaser.GameObjects.Graphics;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
-	public stoneTrails = new ArenaBallTrailRuntime();
+	public ballTrails = new ArenaBallTrailRuntime();
 
 	// ── Bumpers ───────────────────────────────────────────────────────────────
 	public bumpers: ShellCurlBumper[] = [];
@@ -312,7 +312,7 @@ export class ShellCurlScene
 		});
 		this.launchInput = new SlingshotLaunchRuntime({
 			scene: this,
-			getLaunchable: () => this.activeStone ?? this.makeEmptyStone(),
+			getLaunchable: () => this.activeBall ?? this.makeEmptyBall(),
 			getScale: () => this.arena.scale,
 			maxDragSrc: MAX_DRAG_SRC,
 			launchSpeedSrc: LAUNCH_SPEED_SRC,
@@ -322,12 +322,12 @@ export class ShellCurlScene
 		});
 	}
 
-	public get allStones(): StoneState[] {
-		return this.stoneWorld.all();
+	public get allBalls(): CurlingBallState[] {
+		return this.ballWorld.all();
 	}
 
-	public set allStones(stones: readonly StoneState[]) {
-		this.stoneWorld.replace(stones);
+	public set allBalls(balls: readonly CurlingBallState[]) {
+		this.ballWorld.replace(balls);
 	}
 
 	preload(): void {
@@ -363,7 +363,7 @@ export class ShellCurlScene
 		);
 		this.turnManager = new TurnManager({
 			totalEnds: TOTAL_ENDS,
-			stonesPerTeam: STONES_PER_TEAM,
+			ballsPerTeam: BALLS_PER_TEAM,
 			playerCount:
 				this.online.snapshot?.gameId === "temple-curling"
 					? this.online.snapshot.score.length
@@ -424,16 +424,16 @@ export class ShellCurlScene
 		}
 		this.curlingPower = new CurlingPowerRuntime(
 			this.powerRegistry,
-			() => this.nextStoneId++,
+			() => this.nextBallId++,
 		);
 
 		// Graphics layers
 		this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
 		this.sheetGfx = this.add.graphics().setDepth(DEPTH_SHEET);
 		this.bumperGfx = this.add.graphics().setDepth(DEPTH_BUMPERS);
-		this.pickupGfx = this.add.graphics().setDepth(DEPTH_STONES - 0.5);
+		this.pickupGfx = this.add.graphics().setDepth(DEPTH_BALLS - 0.5);
 		this.recreatePowerPickups();
-		this.trailGfx = this.add.graphics().setDepth(DEPTH_STONES - 0.25);
+		this.trailGfx = this.add.graphics().setDepth(DEPTH_BALLS - 0.25);
 
 		// Draw background & sheet
 		drawShellCurlBackground(
@@ -459,13 +459,13 @@ export class ShellCurlScene
 			this.online.markAway(),
 		);
 
-		// Slingshot (shared mechanic) — starts detached; attached when stone is placed
+		// Slingshot (shared mechanic) — starts detached; attached when ball is placed
 		this.launchInput.recreate();
 
-		// Sweep controller — created with a placeholder stone, swapped each turn
+		// Sweep controller — created with a placeholder ball, swapped each turn
 		this.sweepCtrl = new SweepController(
 			this,
-			this.makeEmptyStone(),
+			this.makeEmptyBall(),
 			DEPTH_PARTICLES,
 		);
 
@@ -504,7 +504,7 @@ export class ShellCurlScene
 		this.powerSidePanel = null;
 		this.scoreLogPanel?.destroy();
 		this.scoreLogPanel = null;
-		this.clearAllStoneGfx();
+		this.clearAllBallGfx();
 		this.powerPickups?.destroy();
 		this.powerPickups = null;
 		this.bumperGfx.destroy();
@@ -526,41 +526,41 @@ export class ShellCurlScene
 		this.localReplay.addElapsed(delta);
 		const phase = this.turnManager.state.phase;
 
-		if (phase === "sweeping" && this.activeStone) {
-			// Apply sweep friction to active stone only
+		if (phase === "sweeping" && this.activeBall) {
+			// Apply sweep friction to active ball only
 			const sweepMult = this.sweepCtrl.update(delta);
-			if (sweepMult < 1 && !this.activeStone.stopped) {
-				this.activeStone.vx *= sweepMult;
-				this.activeStone.vy *= sweepMult;
+			if (sweepMult < 1 && !this.activeBall.stopped) {
+				this.activeBall.vx *= sweepMult;
+				this.activeBall.vy *= sweepMult;
 			}
 
-			// Step ALL moving stones this frame so knocked stones move immediately
-			for (const s of this.allStones) {
+			// Step ALL moving balls this frame so knocked balls move immediately
+			for (const s of this.allBalls) {
 				if (!s.stopped)
-					this.curlingPower.stepStone(s, delta, this.arena);
+					this.curlingPower.stepCurlingBall(s, delta, this.arena);
 			}
-			this.consumeActiveStonePowerSpawns();
+			this.consumeActiveBallPowerSpawns();
 
-			if (this.activeStone) {
+			if (this.activeBall) {
 				// Apply active power update
 				this.curlingPower.updatePower(
-					this.activeStone,
+					this.activeBall,
 					delta,
 					this.arena,
 				);
 
 				this.curlingPower.resolveCollisions(
-					this.allStones,
+					this.allBalls,
 					this.arena,
 					{
-						activeStone: this.activeStone,
+						activeBall: this.activeBall,
 						triggerActiveCollisionPower: true,
 					},
 				);
 			}
 
-			// Bumper collisions for all moving stones
-			this.resolveStoneBumperCollisions(this.allStones);
+			// Bumper collisions for all moving balls
+			this.resolveBallBumperCollisions(this.allBalls);
 
 			// Decay bumper flash timers
 			let needBumperRedraw = false;
@@ -573,55 +573,55 @@ export class ShellCurlScene
 			if (needBumperRedraw)
 				drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 
-			// Redraw all stones
-			this.recordMovingStoneTrails();
-			drawShellCurlStoneTrails(
-				this.stoneTrails,
+			// Redraw all balls
+			this.recordMovingBallTrails();
+			drawShellCurlBallTrails(
+				this.ballTrails,
 				this.trailGfx,
-				this.stonePlayersById(),
+				this.ballPlayersById(),
 				this.arena,
 			);
-			this.redrawAllStones();
+			this.redrawAllBalls();
 
-			// Transition to settling once the active stone stops, leaves bounds, or was split
-			const as = this.activeStone;
-			if (!as || as.stopped || isStoneOutOfBounds(as, this.arena)) {
+			// Transition to settling once the active ball stops, leaves bounds, or was split
+			const as = this.activeBall;
+			if (!as || as.stopped || isBallOutOfBounds(as, this.arena)) {
 				if (as) {
-					this.settlingStone = as;
-					if (isStoneOutOfBounds(as, this.arena)) {
-						this.removeStone(as);
+					this.settlingBall = as;
+					if (isBallOutOfBounds(as, this.arena)) {
+						this.removeBall(as);
 					} else {
 						this.curlingPower.stopPower(
 							as,
 							this.arena,
-							this.allStones,
+							this.allBalls,
 						);
 					}
 				}
-				this.activeStone = null;
+				this.activeBall = null;
 				this.turnManager.setPhase("settling");
 				this.settlingTimer = 0;
 			}
 		}
 
 		if (phase === "settling") {
-			// Advance all still-moving stones (knock-on effects from BOMB, MAGNET, etc.)
+			// Advance all still-moving balls (knock-on effects from BOMB, MAGNET, etc.)
 			let anyMoving = false;
-			for (const s of this.allStones) {
+			for (const s of this.allBalls) {
 				if (!s.stopped) {
-					this.curlingPower.stepStone(s, delta, this.arena);
-					if (isStoneOutOfBounds(s, this.arena)) {
-						this.removeStone(s);
+					this.curlingPower.stepCurlingBall(s, delta, this.arena);
+					if (isBallOutOfBounds(s, this.arena)) {
+						this.removeBall(s);
 					} else {
 						anyMoving = anyMoving || !s.stopped;
 					}
 				}
 			}
-			this.curlingPower.resolveCollisions(this.allStones, this.arena);
+			this.curlingPower.resolveCollisions(this.allBalls, this.arena);
 			// Bumper collisions in settling phase
-			this.resolveStoneBumperCollisions(this.allStones);
-			// Re-check anyMoving after bumper hits (bumpers can re-launch stopped stones)
-			for (const s of this.allStones) {
+			this.resolveBallBumperCollisions(this.allBalls);
+			// Re-check anyMoving after bumper hits (bumpers can re-launch stopped balls)
+			for (const s of this.allBalls) {
 				if (!s.stopped) anyMoving = true;
 			}
 			// Decay bumper flash timers
@@ -630,24 +630,24 @@ export class ShellCurlScene
 					b.flashTimer = Math.max(0, b.flashTimer - delta);
 			}
 			drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
-			this.recordMovingStoneTrails();
-			drawShellCurlStoneTrails(
-				this.stoneTrails,
+			this.recordMovingBallTrails();
+			drawShellCurlBallTrails(
+				this.ballTrails,
 				this.trailGfx,
-				this.stonePlayersById(),
+				this.ballPlayersById(),
 				this.arena,
 			);
-			this.redrawAllStones();
+			this.redrawAllBalls();
 
 			if (!anyMoving) {
 				this.settlingTimer += delta;
 				if (this.settlingTimer >= SETTLING_DELAY_MS) {
-					const settledStone = this.settlingStone;
-					this.settlingStone = null;
-					if (settledStone)
+					const settledBall = this.settlingBall;
+					this.settlingBall = null;
+					if (settledBall)
 						notifyGameRuleProjectileSettled(
 							this.buildGameRuleHooks(),
-							settledStone,
+							settledBall,
 						);
 					else this.finishThrow();
 				}
@@ -674,21 +674,21 @@ export class ShellCurlScene
 		}
 
 		this.clearActiveRing();
-		this.settlingStone = null;
+		this.settlingBall = null;
 		this.settlingTimer = 0;
 
 		this.resolveDeliverySpawnBlockers();
 
-		// Place active stone at delivery hack position
-		const stone = this.spawnActiveStone(state.currentTeam);
-		this.activeStone = stone;
+		// Place active ball at delivery hack position
+		const ball = this.spawnActiveBall(state.currentTeam);
+		this.activeBall = ball;
 
-		// Point the slingshot at this stone.
+		// Point the slingshot at this ball.
 		this.launchInput.recreate();
 		this.launchInput.attach();
 
 		this.scoreHud.update(this.buildScoreHudState());
-		this.addActiveRing(stone);
+		this.addActiveRing(ball);
 		this.powerPickups?.clear();
 		this.updateSidePanels();
 
@@ -697,33 +697,33 @@ export class ShellCurlScene
 	}
 
 	private onLaunch(vx: number, vy: number): void {
-		if (!this.activeStone || this.turnManager.state.phase !== "aiming")
+		if (!this.activeBall || this.turnManager.state.phase !== "aiming")
 			return;
 
 		if (this.online.isActive) {
 			const power = this.activePower;
 			if (power !== PowerType.NONE) this.currentPowerUsed().add(power);
 			this.activePower = PowerType.NONE;
-			this.online.emitRelease(this.activeStone, vx, vy, power);
+			this.online.emitRelease(this.activeBall, vx, vy, power);
 			this.powerSidePanel?.hide();
 			this.launchInput.recreate();
 			this.clearActiveRing();
 			this.turnManager.setPhase("settling");
-			notifyGameRuleRelease(this.buildGameRuleHooks(), this.activeStone);
+			notifyGameRuleRelease(this.buildGameRuleHooks(), this.activeBall);
 			return;
 		}
 
 		const power = this.activePower;
-		this.settlingStone = this.activeStone;
-		this.activeStone.vx = vx;
-		this.activeStone.vy = vy;
-		this.activeStone.r = STONE_SRC_R * this.arena.scale;
-		this.curlingPower.applyPower(power, this.activeStone, this.arena);
+		this.settlingBall = this.activeBall;
+		this.activeBall.vx = vx;
+		this.activeBall.vy = vy;
+		this.activeBall.r = CURLING_BALL_SRC_R * this.arena.scale;
+		this.curlingPower.applyPower(power, this.activeBall, this.arena);
 		if (power !== PowerType.NONE) this.currentPowerUsed().add(power);
 		this.activePower = PowerType.NONE;
-		this.activeStone.stopped = false;
-		this.stoneTrails.set(this.activeStone.id, [
-			{ x: this.activeStone.x, y: this.activeStone.y },
+		this.activeBall.stopped = false;
+		this.ballTrails.set(this.activeBall.id, [
+			{ x: this.activeBall.x, y: this.activeBall.y },
 		]);
 
 		this.launchInput.recreate();
@@ -731,45 +731,45 @@ export class ShellCurlScene
 		this.powerSidePanel?.hide();
 		this.clearActiveRing();
 
-		// Re-attach sweep controller to the active stone
-		(this.sweepCtrl as unknown as { stone: StoneState }).stone =
-			this.activeStone;
+		// Re-attach sweep controller to the active ball
+		(this.sweepCtrl as unknown as { ball: CurlingBallState }).ball =
+			this.activeBall;
 		this.sweepCtrl.attach();
 
 		this.turnManager.setPhase("sweeping");
 		this.updateSidePanels();
-		notifyGameRuleRelease(this.buildGameRuleHooks(), this.activeStone);
+		notifyGameRuleRelease(this.buildGameRuleHooks(), this.activeBall);
 	}
 
 	private finishThrow(): void {
 		this.sweepCtrl.detach();
 
-		// Remove any stones that ended up out of bounds
-		// Use a snapshot to avoid mutating allStones while iterating
-		const oob = this.allStones.filter((s) =>
-			isStoneOutOfBounds(s, this.arena),
+		// Remove any balls that ended up out of bounds
+		// Use a snapshot to avoid mutating allBalls while iterating
+		const oob = this.allBalls.filter((s) =>
+			isBallOutOfBounds(s, this.arena),
 		);
-		for (const s of oob) this.removeStone(s); // removeStone also splices allStones
+		for (const s of oob) this.removeBall(s); // removeBall also splices allBalls
 
 		const state = this.turnManager.state;
-		// stonesLeft still reflects pre-throw counts. After consuming this throw,
+		// ballsLeft still reflects pre-throw counts. After consuming this throw,
 		// total remaining is the sum across all local players minus this throw.
 		const totalRemaining =
-			state.stonesLeft.reduce((total, left) => total + left, 0) - 1;
+			state.ballsLeft.reduce((total, left) => total + left, 0) - 1;
 
 		if (totalRemaining > 0) {
 			this.turnManager.nextThrow();
 			this.beginTurn();
 		} else {
-			// All stones delivered — tally the end
+			// All balls delivered — tally the end
 			this.turnManager.setPhase("scoring");
 			this.scoreEnd();
 		}
 	}
 
 	private scoreEnd(): void {
-		const inHouse = this.allStones.filter((s) =>
-			isStoneInHouse(s, this.arena),
+		const inHouse = this.allBalls.filter((s) =>
+			isBallInHouse(s, this.arena),
 		);
 		if (inHouse.length === 0) {
 			// Blank end
@@ -783,37 +783,37 @@ export class ShellCurlScene
 			return;
 		}
 
-		// Find closest stone to button
+		// Find closest ball to button
 		let bestDist = Infinity;
 		let scoringTeam = 0;
 		for (const s of inHouse) {
-			const d = distanceToHouseButton(s, this.arena);
+			const d = distanceFromBallToHouseButton(s, this.arena);
 			if (d < bestDist) {
 				bestDist = d;
 				scoringTeam = s.teamId;
 			}
 		}
 
-		// Count scoring stones (all stones of scoring team closer than nearest opponent)
+		// Count scoring balls (all balls of scoring team closer than nearest opponent)
 		const opponentDist = inHouse
 			.filter((s) => s.teamId !== scoringTeam)
-			.map((s) => distanceToHouseButton(s, this.arena))
+			.map((s) => distanceFromBallToHouseButton(s, this.arena))
 			.reduce((min, d) => Math.min(min, d), Infinity);
 
 		const points = inHouse.filter(
 			(s) =>
 				s.teamId === scoringTeam &&
-				distanceToHouseButton(s, this.arena) < opponentDist,
+				distanceFromBallToHouseButton(s, this.arena) < opponentDist,
 		).length;
 
-		// Highlight scoring stones
-		animateShellCurlScoringStones(
+		// Highlight scoring balls
+		animateShellCurlScoringBalls(
 			this,
-			this.allStones,
-			this.stoneGfx,
+			this.allBalls,
+			this.ballGfx,
 			scoringTeam,
 			this.arena,
-			isStoneInHouse,
+			isBallInHouse,
 		);
 
 		const endScores = Array.from(
@@ -828,75 +828,75 @@ export class ShellCurlScene
 		this.showEndScoreOverlay(scoringTeam, points);
 	}
 
-	// ── Stone management ──────────────────────────────────────────────────────
+	// ── Ball management ──────────────────────────────────────────────────────
 
-	public spawnActiveStone(teamId: number): StoneState {
-		const stone: StoneState = {
-			id: this.nextStoneId++,
+	public spawnActiveBall(teamId: number): CurlingBallState {
+		const ball: CurlingBallState = {
+			id: this.nextBallId++,
 			teamId,
 			x: this.arena.deliveryX,
 			y: this.arena.deliveryY,
 			vx: 0,
 			vy: 0,
-			r: STONE_SRC_R * this.arena.scale,
+			r: CURLING_BALL_SRC_R * this.arena.scale,
 			power: PowerType.NONE,
 			stopped: true,
 			curlBias: DEFAULT_CURL_BIAS * (teamId === 0 ? 1 : -1), // teams curl opposite ways
 		};
 
-		const gfx = this.add.graphics().setDepth(DEPTH_STONES);
-		this.stoneGfx.set(stone.id, gfx);
-		this.allStones.push(stone);
-		this.stoneTrails.reset(stone.id, stone.x, stone.y);
-		this.drawPlayerStone(gfx, stone, true);
-		return stone;
+		const gfx = this.add.graphics().setDepth(DEPTH_BALLS);
+		this.ballGfx.set(ball.id, gfx);
+		this.allBalls.push(ball);
+		this.ballTrails.reset(ball.id, ball.x, ball.y);
+		this.drawPlayerBall(gfx, ball, true);
+		return ball;
 	}
 
 	public resolveDeliverySpawnBlockers(): void {
 		let moved = 0;
-		const deliveryR = STONE_SRC_R * this.arena.scale;
+		const deliveryR = CURLING_BALL_SRC_R * this.arena.scale;
 
-		for (const stone of this.allStones) {
-			if (stone === this.activeStone) continue;
+		for (const ball of this.allBalls) {
+			if (ball === this.activeBall) continue;
 			const minDistance =
-				stone.r + deliveryR + DELIVERY_CLEARANCE_SRC * this.arena.scale;
+				ball.r + deliveryR + DELIVERY_CLEARANCE_SRC * this.arena.scale;
 			if (
 				Math.hypot(
-					stone.x - this.arena.deliveryX,
-					stone.y - this.arena.deliveryY,
+					ball.x - this.arena.deliveryX,
+					ball.y - this.arena.deliveryY,
 				) >= minDistance
 			)
 				continue;
 
-			this.moveStoneToLowerLeft(stone, moved++);
+			this.moveBallToLowerLeft(ball, moved++);
 		}
 
 		if (moved <= 0) return;
 		this.showSpawnBlockedNotice(moved);
-		drawShellCurlStoneTrails(
-			this.stoneTrails,
+		drawShellCurlBallTrails(
+			this.ballTrails,
 			this.trailGfx,
-			this.stonePlayersById(),
+			this.ballPlayersById(),
 			this.arena,
 		);
-		this.redrawAllStones();
+		this.redrawAllBalls();
 		this.updateSidePanels();
 	}
 
-	private moveStoneToLowerLeft(stone: StoneState, slot: number): void {
+	private moveBallToLowerLeft(ball: CurlingBallState, slot: number): void {
 		const pad = 18 * this.arena.scale;
-		const offset = slot * stone.r * 0.45;
-		stone.x = this.arena.sheetX + stone.r + pad + offset;
-		stone.y =
-			this.arena.sheetY + this.arena.sheetH - stone.r - pad - offset;
-		stone.vx = 0;
-		stone.vy = 0;
-		stone.stopped = true;
-		this.stoneTrails.reset(stone.id, stone.x, stone.y);
+		const offset = slot * ball.r * 0.45;
+		ball.x = this.arena.sheetX + ball.r + pad + offset;
+		ball.y =
+			this.arena.sheetY + this.arena.sheetH - ball.r - pad - offset;
+		ball.vx = 0;
+		ball.vy = 0;
+		ball.stopped = true;
+		this.ballTrails.reset(ball.id, ball.x, ball.y);
 	}
 
 	private showSpawnBlockedNotice(count: number): void {
-		const label = count === 1 ? "STONE MOVED" : `${count} STONES MOVED`;
+		const label = count === 1 ? "BALL MOVED" : `${count} BALLS MOVED`;
 		const text = this.add
 			.text(
 				this.arena.deliveryX,
@@ -926,16 +926,16 @@ export class ShellCurlScene
 		});
 	}
 
-	private consumeActiveStonePowerSpawns(): void {
-		if (!this.activeStone) return;
-		const source = this.activeStone;
+	private consumeActiveBallPowerSpawns(): void {
+		if (!this.activeBall) return;
+		const source = this.activeBall;
 		const result = this.curlingPower.consumeSpawnRequests(
 			source,
 			this.arena,
 		);
 		if (!result.children.length && !result.removeSource) return;
 
-		for (const child of result.children) this.addRuntimeStone(child);
+		for (const child of result.children) this.addRuntimeBall(child);
 		if (result.split)
 			showShellCurlSplitterNotice(this, source.x, source.y, this.arena);
 		if (result.mirror)
@@ -947,57 +947,57 @@ export class ShellCurlScene
 				this.arena,
 			);
 		if (result.removeSource) {
-			this.removeStone(source);
-			this.activeStone = null;
+			this.removeBall(source);
+			this.activeBall = null;
 		}
-		drawShellCurlStoneTrails(
-			this.stoneTrails,
+		drawShellCurlBallTrails(
+			this.ballTrails,
 			this.trailGfx,
-			this.stonePlayersById(),
+			this.ballPlayersById(),
 			this.arena,
 		);
-		this.redrawAllStones();
+		this.redrawAllBalls();
 	}
 
-	private addRuntimeStone(stone: StoneState): void {
-		const gfx = this.add.graphics().setDepth(DEPTH_STONES);
-		this.stoneGfx.set(stone.id, gfx);
-		this.allStones.push(stone);
-		this.stoneTrails.set(stone.id, [{ x: stone.x, y: stone.y }]);
+	private addRuntimeBall(ball: CurlingBallState): void {
+		const gfx = this.add.graphics().setDepth(DEPTH_BALLS);
+		this.ballGfx.set(ball.id, gfx);
+		this.allBalls.push(ball);
+		this.ballTrails.set(ball.id, [{ x: ball.x, y: ball.y }]);
 	}
 
-	public removeStone(stone: StoneState): void {
-		const gfx = this.stoneGfx.get(stone.id);
+	public removeBall(ball: CurlingBallState): void {
+		const gfx = this.ballGfx.get(ball.id);
 		gfx?.destroy();
-		destroyIngamePlayerTexture(this, `shell-curl-player-${stone.id}`);
-		this.stoneGfx.delete(stone.id);
-		this.stoneTrails.delete(stone.id);
-		this.allStones = this.allStones.filter((s) => s.id !== stone.id);
-		drawShellCurlStoneTrails(
-			this.stoneTrails,
+		destroyIngamePlayerTexture(this, `shell-curl-player-${ball.id}`);
+		this.ballGfx.delete(ball.id);
+		this.ballTrails.delete(ball.id);
+		this.allBalls = this.allBalls.filter((s) => s.id !== ball.id);
+		drawShellCurlBallTrails(
+			this.ballTrails,
 			this.trailGfx,
-			this.stonePlayersById(),
+			this.ballPlayersById(),
 			this.arena,
 		);
 	}
 
-	public clearAllStoneGfx(): void {
-		for (const stone of this.allStones)
-			destroyIngamePlayerTexture(this, `shell-curl-player-${stone.id}`);
-		for (const gfx of this.stoneGfx.values()) gfx.destroy();
-		this.stoneGfx.clear();
-		this.allStones = [];
-		this.stoneTrails.clear();
+	public clearAllBallGfx(): void {
+		for (const ball of this.allBalls)
+			destroyIngamePlayerTexture(this, `shell-curl-player-${ball.id}`);
+		for (const gfx of this.ballGfx.values()) gfx.destroy();
+		this.ballGfx.clear();
+		this.allBalls = [];
+		this.ballTrails.clear();
 		this.trailGfx?.clear();
 	}
 
 	// ── Active ring ───────────────────────────────────────────────────────────
 
-	private addActiveRing(stone: StoneState): void {
+	private addActiveRing(ball: CurlingBallState): void {
 		this.clearActiveRing();
-		const gfx = this.add.graphics().setDepth(DEPTH_STONES + 1);
+		const gfx = this.add.graphics().setDepth(DEPTH_BALLS + 1);
 		gfx.lineStyle(3, 0xd4a843, 0.6);
-		gfx.strokeCircle(stone.x, stone.y, stone.r * 1.45);
+		gfx.strokeCircle(ball.x, ball.y, ball.r * 1.45);
 		this.activeRingGfx = gfx;
 		this.activeRingTween = this.tweens.add({
 			targets: gfx,
@@ -1018,31 +1018,31 @@ export class ShellCurlScene
 
 	// ── Rendering ─────────────────────────────────────────────────────────────
 
-	public redrawAllStones(): void {
-		for (const s of this.allStones) {
-			const gfx = this.stoneGfx.get(s.id);
-			if (gfx) this.drawPlayerStone(gfx, s, false);
+	public redrawAllBalls(): void {
+		for (const s of this.allBalls) {
+			const gfx = this.ballGfx.get(s.id);
+			if (gfx) this.drawPlayerBall(gfx, s, false);
 		}
 		// Redraw active ring position
-		if (this.activeStone && this.activeRingGfx) {
+		if (this.activeBall && this.activeRingGfx) {
 			this.activeRingGfx.clear();
 			this.activeRingGfx.lineStyle(3, 0xd4a843, 0.6);
 			this.activeRingGfx.strokeCircle(
-				this.activeStone.x,
-				this.activeStone.y,
-				this.activeStone.r * 1.45,
+				this.activeBall.x,
+				this.activeBall.y,
+				this.activeBall.r * 1.45,
 			);
 		}
 	}
 
-	public recordMovingStoneTrails(): void {
-		this.stoneTrails.recordSet({
-			balls: this.allStones.map((stone) => ({
-				id: stone.id,
-				player: stone.teamId,
-				ball: stone,
+	public recordMovingBallTrails(): void {
+		this.ballTrails.recordSet({
+			balls: this.allBalls.map((ball) => ({
+				id: ball.id,
+				player: ball.teamId,
+				ball: ball,
 			})),
-			isMoving: (stone) => !(stone as StoneState).stopped,
+			isMoving: (ball) => !(ball as CurlingBallState).stopped,
 			trailOptions: { scale: this.arena.scale },
 			trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
 		});
@@ -1057,8 +1057,8 @@ export class ShellCurlScene
 		);
 	}
 
-	public stonePlayersById(): Map<number | string, number> {
-		return new Map(this.allStones.map((stone) => [stone.id, stone.teamId]));
+	public ballPlayersById(): Map<number | string, number> {
+		return new Map(this.allBalls.map((ball) => [ball.id, ball.teamId]));
 	}
 
 	// ── Overlays ──────────────────────────────────────────────────────────────
@@ -1080,7 +1080,7 @@ export class ShellCurlScene
 		}
 
 		this.showOverlay(message, "NEXT END", () => {
-			this.clearAllStoneGfx();
+			this.clearAllBallGfx();
 			this.powerPickups?.clear();
 			this.buildBumpers(true); // fresh random layout for new end
 			drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
@@ -1190,22 +1190,22 @@ export class ShellCurlScene
 			powerupsEnabled: this.powerupsEnabled,
 			phase,
 			arena: this.arena,
-			stones: this.allStones,
-			activeStoneId: this.activeStone?.id ?? null,
+			balls: this.allBalls,
+			activeBallId: this.activeBall?.id ?? null,
 			playerCount,
 			currentTurn: state.currentTeam,
 			deliveredTurns,
-			maxTurns: playerCount * STONES_PER_TEAM * TOTAL_ENDS,
+			maxTurns: playerCount * BALLS_PER_TEAM * TOTAL_ENDS,
 			currentEnd: state.currentEnd,
-			throwsInEnd: deliveredTurns % (playerCount * STONES_PER_TEAM),
-			stonesPerPlayer: STONES_PER_TEAM,
+			throwsInEnd: deliveredTurns % (playerCount * BALLS_PER_TEAM),
+			ballsPerPlayer: BALLS_PER_TEAM,
 			totalEnds: TOTAL_ENDS,
 			score: state.score,
 			endScores: this.localEndScores,
 			bumpers: this.bumpers.map((bumper) =>
 				this.bumperObstacleDescriptor(bumper),
 			),
-			readStoneTrail: (stoneId) => this.readStoneTrail(stoneId),
+			readBallTrail: (ballId) => this.readBallTrail(ballId),
 			players: replayParticipants.players,
 			winnerSide:
 				phase === "finished" && this.localMode !== "solo"
@@ -1222,13 +1222,13 @@ export class ShellCurlScene
 		return buildTurnStateFromGameRuleHooks(this.buildGameRuleHooks());
 	}
 
-	private buildGameRuleHooks(): GameRuleHooks<StoneState> {
+	private buildGameRuleHooks(): GameRuleHooks<CurlingBallState> {
 		const state = this.turnManager.state;
 		return {
 			getPlayerCount: () => Math.max(1, state.score.length),
 			getCurrentPlayer: () => state.currentTeam,
 			getCurrentRound: () => state.currentEnd,
-			getRemainingTurns: () => state.stonesLeft,
+			getRemainingTurns: () => state.ballsLeft,
 			getScore: () => state.score,
 			getPhase: () => state.phase,
 			hasHammer: () => state.hasHammer,
@@ -1254,23 +1254,23 @@ export class ShellCurlScene
 		});
 	}
 
-	private readStoneTrail(stoneId: number): Array<{ x: number; y: number }> {
-		return this.stoneTrails.readRectNormalisedTrail(stoneId, this.arena);
+	private readBallTrail(ballId: number): Array<{ x: number; y: number }> {
+		return this.ballTrails.readRectNormalisedTrail(ballId, this.arena);
 	}
 
 	private localDeliveredTurns(): number {
-		return Math.max(0, this.nextStoneId - (this.activeStone ? 1 : 0));
+		return Math.max(0, this.nextBallId - (this.activeBall ? 1 : 0));
 	}
 
-	public showRemotePlacedStone(side: number): void {
-		if (this.activeStone) this.removeStone(this.activeStone);
-		this.activeStone = null;
+	public showRemotePlacedBall(side: number): void {
+		if (this.activeBall) this.removeBall(this.activeBall);
+		this.activeBall = null;
 		this.clearActiveRing();
 		this.resolveDeliverySpawnBlockers();
-		const stone = this.spawnActiveStone(side);
-		this.activeStone = stone;
-		this.addActiveRing(stone);
-		this.redrawAllStones();
+		const ball = this.spawnActiveBall(side);
+		this.activeBall = ball;
+		this.addActiveRing(ball);
+		this.redrawAllBalls();
 	}
 
 	public playerLabel(side: number, playerCount: number): string {
@@ -1309,15 +1309,15 @@ export class ShellCurlScene
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
 
-	public drawPlayerStone(
+	public drawPlayerBall(
 		gfx: Phaser.GameObjects.Graphics,
-		stone: StoneState,
+		ball: CurlingBallState,
 		isActive: boolean,
 	): void {
-		drawShellCurlStone(gfx, stone, isActive, this.playerShellSkins, this);
+		drawShellCurlBall(gfx, ball, isActive, this.playerShellSkins, this);
 	}
 
-	private makeEmptyStone(): StoneState {
+	private makeEmptyBall(): CurlingBallState {
 		return {
 			id: -1,
 			teamId: 0,
@@ -1325,7 +1325,7 @@ export class ShellCurlScene
 			y: 0,
 			vx: 0,
 			vy: 0,
-			r: STONE_SRC_R * (this.arena?.scale ?? 1),
+			r: CURLING_BALL_SRC_R * (this.arena?.scale ?? 1),
 			power: PowerType.NONE,
 			stopped: true,
 			curlBias: 0,
@@ -1373,10 +1373,10 @@ export class ShellCurlScene
 
 	/**
 	 * Elastic reflection off each bumper.
-	 * Stones bounce along the collision normal and receive a 10% speed boost.
+	 * Balls bounce along the collision normal and receive a 10% speed boost.
 	 */
-	public resolveStoneBumperCollisions(stones: StoneState[]): void {
-		for (const s of stones) {
+	public resolveBallBumperCollisions(balls: CurlingBallState[]): void {
+		for (const s of balls) {
 			if (s.stopped && s.frozen) continue;
 			for (const b of this.bumpers) {
 				const descriptor = this.bumperObstacleDescriptor(b);
@@ -1388,7 +1388,7 @@ export class ShellCurlScene
 				const minD = s.r + radius;
 				if (dist >= minD || dist < 0.001) continue;
 
-				// Push stone out of overlap
+				// Push ball out of overlap
 				const nx = dx / dist;
 				const ny = dy / dist;
 				const overlap = minD - dist;
@@ -1426,7 +1426,7 @@ export class ShellCurlScene
 		this.powerPickups = new PowerPickupManager({
 			scene: this,
 			graphics: this.pickupGfx,
-			depth: DEPTH_STONES - 0.45,
+			depth: DEPTH_BALLS - 0.45,
 			pool: GAME_POWERS["temple-curling"],
 			radius: PICKUP_RADIUS_SRC * this.arena.scale,
 			spawnAttempts: PICKUP_SPAWN_ATTEMPTS,
@@ -1434,13 +1434,13 @@ export class ShellCurlScene
 		});
 	}
 
-	private collectPowerPickup(stone: StoneState | null): void {
-		if (!stone || stone.power !== PowerType.NONE || !this.powerPickups)
+	private collectPowerPickup(ball: CurlingBallState | null): void {
+		if (!ball || ball.power !== PowerType.NONE || !this.powerPickups)
 			return;
-		const pickup = this.powerPickups.collect(stone.x, stone.y, stone.r);
+		const pickup = this.powerPickups.collect(ball.x, ball.y, ball.r);
 		if (!pickup) return;
 
-		this.curlingPower.applyPower(pickup.type, stone, this.arena);
+		this.curlingPower.applyPower(pickup.type, ball, this.arena);
 		this.powerPickups.draw();
 		showShellCurlPowerPickupNotice(
 			this,
@@ -1460,10 +1460,10 @@ export class ShellCurlScene
 				);
 				return blocker ? [blocker] : [];
 			}),
-			...this.allStones.map((stone) => ({
-				x: stone.x,
-				y: stone.y,
-				r: stone.r,
+			...this.allBalls.map((ball) => ({
+				x: ball.x,
+				y: ball.y,
+				r: ball.r,
 			})),
 		];
 	}
@@ -1496,7 +1496,7 @@ export class ShellCurlScene
 
 		const vScale = this.arena.scale / oldArena.scale;
 
-		for (const s of this.allStones) {
+		for (const s of this.allBalls) {
 			// Rescale position relative to sheet
 			s.x =
 				this.arena.sheetX +
@@ -1504,7 +1504,7 @@ export class ShellCurlScene
 			s.y =
 				this.arena.sheetY +
 				((s.y - oldArena.sheetY) / oldArena.sheetH) * this.arena.sheetH;
-			s.r = STONE_SRC_R * this.arena.scale;
+			s.r = CURLING_BALL_SRC_R * this.arena.scale;
 			s.vx *= vScale;
 			s.vy *= vScale;
 		}
@@ -1523,7 +1523,7 @@ export class ShellCurlScene
 		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 		this.recreatePowerPickups();
 		drawShellCurlPowerPickups(this.powerupsEnabled, this.powerPickups);
-		this.redrawAllStones();
+		this.redrawAllBalls();
 
 		this.scoreHud.update(this.buildScoreHudState());
 
@@ -1697,7 +1697,7 @@ export class ShellCurlScene
 			{
 				label: "IN HOUSE",
 				value: String(
-					this.allStones.filter((s) => isStoneInHouse(s, this.arena))
+					this.allBalls.filter((s) => isBallInHouse(s, this.arena))
 						.length,
 				),
 				labelColor: THEME.text,
@@ -1708,15 +1708,15 @@ export class ShellCurlScene
 			{
 				label: "ACTIVE POWER",
 				value:
-					this.activeStone?.power &&
-					this.activeStone.power !== PowerType.NONE
-						? ALL_POWERS[this.activeStone.power].label
+					this.activeBall?.power &&
+					this.activeBall.power !== PowerType.NONE
+						? ALL_POWERS[this.activeBall.power].label
 						: this.activePower !== PowerType.NONE
 							? ALL_POWERS[this.activePower].label
 							: "None",
 				valueColor:
-					(this.activeStone?.power &&
-						this.activeStone.power !== PowerType.NONE) ||
+					(this.activeBall?.power &&
+						this.activeBall.power !== PowerType.NONE) ||
 					this.activePower !== PowerType.NONE
 						? THEME.textGold
 						: undefined,

@@ -4,10 +4,10 @@ import type {
 } from "../../../services/network/gameSocket";
 import {
 	replayBallToEntity,
-	replayStoneToEntity,
+	replayCurlingBallToEntity,
 } from "../localReplay";
 
-export type ReplayStoneSnapshot = Parameters<typeof replayStoneToEntity>[0];
+export type ReplayCurlingBallSnapshot = Parameters<typeof replayCurlingBallToEntity>[0];
 
 export function buildReplayProjectileEntities(
 	projectiles: readonly BallSnapshotData[],
@@ -18,8 +18,8 @@ export function buildReplayProjectileEntities(
 	);
 }
 
-export function buildReplayStoneEntities(
-	stones: readonly ReplayStoneSnapshot[],
+export function buildReplayBallEntities(
+	balls: readonly ReplayCurlingBallSnapshot[],
 ): ReplayFrameSnapshotEntity[] {
-	return stones.map((stone) => replayStoneToEntity(stone));
+	return balls.map((ball) => replayCurlingBallToEntity(ball));
 }

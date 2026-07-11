@@ -37,7 +37,7 @@ import {
 	hideIngamePlayerTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
-import { type StoneState, drawStone } from "../../shared/mechanics/ball";
+import { type CurlingBallState, drawCurlingBall } from "../../shared/mechanics/ball";
 import { type PowerType } from "../../shared/mechanics/power-system";
 import { THEME } from "../../shared/theme";
 import { ResponsiveScene } from "../../shared/responsive-scene";
@@ -118,7 +118,7 @@ interface ProjectileRenderState {
 	trail: ReplayTrailPoint[];
 }
 
-interface StoneRenderState {
+interface BallRenderState {
 	key: string;
 	id: number;
 	side: number;
@@ -151,11 +151,11 @@ export class ReplayScene extends ResponsiveScene {
 	private curlArena: RectArenaPixels | null = null;
 
 	private objectImages = new Map<string, Phaser.GameObjects.Image>();
-	private stoneGraphics = new Map<string, Phaser.GameObjects.Graphics>();
+	private ballGraphics = new Map<string, Phaser.GameObjects.Graphics>();
 	private visibleActorNames = new Set<string>();
 	private actorNames = new Set<string>();
 	private visibleObjectKeys = new Set<string>();
-	private visibleStoneKeys = new Set<string>();
+	private visibleBallKeys = new Set<string>();
 	private currentBackgroundId: string | null = null;
 	private lastActiveReplaySide: number | null = null;
 
@@ -233,8 +233,8 @@ export class ReplayScene extends ResponsiveScene {
 		this.clearBackgroundObjects();
 		for (const image of this.objectImages.values()) image.destroy();
 		this.objectImages.clear();
-		for (const gfx of this.stoneGraphics.values()) gfx.destroy();
-		this.stoneGraphics.clear();
+		for (const gfx of this.ballGraphics.values()) gfx.destroy();
+		this.ballGraphics.clear();
 	}
 
 	private resolveLayout(): void {
@@ -292,12 +292,12 @@ export class ReplayScene extends ResponsiveScene {
 		this.overlayGfx.clear();
 		this.visibleActorNames.clear();
 		this.visibleObjectKeys.clear();
-		this.visibleStoneKeys.clear();
+		this.visibleBallKeys.clear();
 
 		if (!this.replay || !this.controller) {
 			this.hideUnusedPlayerActors();
 			this.hideUnusedObjectImages();
-			this.hideUnusedStoneGraphics();
+			this.hideUnusedBallGraphics();
 			return;
 		}
 
@@ -340,7 +340,7 @@ export class ReplayScene extends ResponsiveScene {
 
 		this.hideUnusedPlayerActors();
 		this.hideUnusedObjectImages();
-		this.hideUnusedStoneGraphics();
+		this.hideUnusedBallGraphics();
 	}
 
 	private renderCurlingReplay(
@@ -357,17 +357,17 @@ export class ReplayScene extends ResponsiveScene {
 
 		this.drawCurlingBumpers(snapshot);
 
-		const rendered = new Map<number, StoneRenderState>();
-		const nextStones = normalizeReplayStones(
+		const rendered = new Map<number, BallRenderState>();
+		const nextBalls = normalizeReplayCurlingBalls(
 			nextSnapshot?.objects,
 			nextSnapshot?.entities,
 		);
-		for (const object of normalizeReplayStones(
+		for (const object of normalizeReplayCurlingBalls(
 			snapshot.objects,
 			snapshot.entities,
 		)) {
 			const nextObject =
-				nextStones.find((candidate) => candidate.id === object.id) ??
+				nextBalls.find((candidate) => candidate.id === object.id) ??
 				null;
 			rendered.set(object.id, {
 				key: `curling-${object.id}`,
@@ -406,15 +406,15 @@ export class ReplayScene extends ResponsiveScene {
 			});
 		}
 
-		const stones = [...rendered.values()].sort((a, b) => a.id - b.id);
-		for (const stone of stones) {
+		const balls = [...rendered.values()].sort((a, b) => a.id - b.id);
+		for (const ball of balls) {
 			this.drawTrailLine(
-				stone.trail,
-				PLAYER_COLOURS[stone.side % PLAYER_COLOURS.length] ??
+				ball.trail,
+				PLAYER_COLOURS[ball.side % PLAYER_COLOURS.length] ??
 					THEME.gold,
 				0.3,
 			);
-			this.drawStoneActor(stone);
+			this.drawCurlingBallActor(ball);
 		}
 	}
 
@@ -643,22 +643,22 @@ export class ReplayScene extends ResponsiveScene {
 		);
 	}
 
-	private drawStoneActor(stone: StoneRenderState): void {
-		this.visibleStoneKeys.add(stone.key);
-		const gfx = this.getStoneGraphic(stone.key);
-		const state: StoneState = {
-			id: stone.id,
-			teamId: stone.side,
-			x: stone.x,
-			y: stone.y,
+	private drawCurlingBallActor(ball: BallRenderState): void {
+		this.visibleBallKeys.add(ball.key);
+		const gfx = this.getBallGraphic(ball.key);
+		const state: CurlingBallState = {
+			id: ball.id,
+			teamId: ball.side,
+			x: ball.x,
+			y: ball.y,
 			vx: 0,
 			vy: 0,
-			r: stone.r,
-			power: parsePowerType(stone.power) ?? ("none" as PowerType),
-			stopped: !stone.active,
+			r: ball.r,
+			power: parsePowerType(ball.power) ?? ("none" as PowerType),
+			stopped: !ball.active,
 			curlBias: 0,
 		};
-		drawStone(gfx, state, stone.active);
+		drawCurlingBall(gfx, state, ball.active);
 	}
 
 	private drawSpriteObject(
@@ -684,11 +684,11 @@ export class ReplayScene extends ResponsiveScene {
 			.setDisplaySize(width, height);
 	}
 
-	private getStoneGraphic(key: string): Phaser.GameObjects.Graphics {
-		let gfx = this.stoneGraphics.get(key);
+	private getBallGraphic(key: string): Phaser.GameObjects.Graphics {
+		let gfx = this.ballGraphics.get(key);
 		if (!gfx) {
 			gfx = this.add.graphics().setDepth(DEPTH_ACTORS);
-			this.stoneGraphics.set(key, gfx);
+			this.ballGraphics.set(key, gfx);
 		}
 		return gfx;
 	}
@@ -718,9 +718,9 @@ export class ReplayScene extends ResponsiveScene {
 		}
 	}
 
-	private hideUnusedStoneGraphics(): void {
-		for (const [key, gfx] of this.stoneGraphics) {
-			if (!this.visibleStoneKeys.has(key)) gfx.clear();
+	private hideUnusedBallGraphics(): void {
+		for (const [key, gfx] of this.ballGraphics) {
+			if (!this.visibleBallKeys.has(key)) gfx.clear();
 		}
 	}
 
@@ -1126,7 +1126,7 @@ interface ReplayBallWithKey extends BallSnapshotData {
 	key: string;
 }
 
-interface ReplayStoneWithKey {
+interface ReplayCurlingBallWithKey {
 	id: number;
 	side: number;
 	x: number;
@@ -1139,13 +1139,13 @@ interface ReplayStoneWithKey {
 	trail?: Array<{ x: number; y: number }>;
 }
 
-function normalizeReplayStones(
+function normalizeReplayCurlingBalls(
 	objects: CurlingSnapshot["objects"] | undefined,
 	entities?: ReplayFrameSnapshotEntity[] | undefined,
-): ReplayStoneWithKey[] {
+): ReplayCurlingBallWithKey[] {
 	if (Array.isArray(entities) && entities.length > 0) {
 		return entities
-			.filter((entity) => entity.type === "stone")
+			.filter((entity) => entity.type === "ball")
 			.map((entity) => ({
 				id: Number(entity.id),
 				side: entity.side ?? entity.ownerSide ?? 0,
@@ -1158,7 +1158,7 @@ function normalizeReplayStones(
 				alpha: entity.alpha,
 				trail: entity.trail,
 			}))
-			.filter((stone) => Number.isFinite(stone.id));
+			.filter((ball) => Number.isFinite(ball.id));
 	}
 	return (objects ?? []).map((object) => ({
 		id: object.id,

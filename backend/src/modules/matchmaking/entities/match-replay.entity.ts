@@ -28,7 +28,7 @@ export interface MatchReplayVisualPlayer {
 
 export interface MatchReplaySnapshotEntity {
 	id: number | string;
-	type: "projectile" | "stone" | string;
+	type: "projectile" | "ball" | string;
 	side?: number;
 	ownerSide?: number;
 	x: number;
@@ -55,7 +55,7 @@ export interface MatchReplaySnapshot {
 	score?: number[];
 	scores?: number[];
 	currentTurn?: number;
-	activeStoneId?: number | string | null;
+	activeBallId?: number | string | null;
 	activeBallIdBySide?: Array<number | string | null>;
 	entities?: MatchReplaySnapshotEntity[];
 	balls?: MatchReplaySnapshotEntity[];

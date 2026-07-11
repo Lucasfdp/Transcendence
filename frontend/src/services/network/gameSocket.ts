@@ -20,7 +20,7 @@ export interface CurlingSnapshot {
 	maxTurns: number;
 	currentEnd: number;
 	throwsInEnd: number;
-	stonesPerPlayer: number;
+	ballsPerPlayer: number;
 	totalEnds: number;
 	score: number[];
 	endScores: Array<Array<number | null>>;
@@ -41,7 +41,7 @@ export interface CurlingSnapshot {
 	objects: Array<{
 		id: number;
 		side: number;
-		type?: "stone";
+		type?: "ball";
 		ownerSide?: number;
 		x: number;
 		y: number;
@@ -62,7 +62,7 @@ export interface CurlingSnapshot {
 		trail?: Array<{ x: number; y: number }>;
 	}>;
 	entities?: ReplayFrameSnapshotEntity[];
-	activeStoneId?: number | null;
+	activeBallId?: number | null;
 	winnerSide: number | null;
 }
 
@@ -91,7 +91,7 @@ export interface BallSnapshotData {
 
 export interface ReplayFrameSnapshotEntity {
 	id?: number | string;
-	type: "projectile" | "stone";
+	type: "projectile" | "ball";
 	side?: number;
 	ownerSide: number;
 	x: number;

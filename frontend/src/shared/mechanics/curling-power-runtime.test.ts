@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { StoneState } from "./ball";
+import type { CurlingBallState } from "./ball";
 import { CurlingPowerRuntime } from "./curling-power-runtime";
 import { ALL_POWERS, PowerRegistry, PowerType } from "./power-system";
 import type { RectArenaPixels } from "./rect-arena";
@@ -31,7 +31,7 @@ function createRuntime(): CurlingPowerRuntime {
 	return new CurlingPowerRuntime(registry, () => nextId++);
 }
 
-function createStone(overrides: Partial<StoneState> = {}): StoneState {
+function createBall(overrides: Partial<CurlingBallState> = {}): CurlingBallState {
 	return {
 		id: 1,
 		teamId: 0,
@@ -48,30 +48,30 @@ function createStone(overrides: Partial<StoneState> = {}): StoneState {
 }
 
 describe("CurlingPowerRuntime", () => {
-	it("applies registered stone powers through a shared runtime", () => {
+	it("applies registered ball powers through a shared runtime", () => {
 		const runtime = createRuntime();
-		const stone = createStone();
+		const ball = createBall();
 
-		runtime.applyPower(PowerType.HEAVY, stone, arena);
+		runtime.applyPower(PowerType.HEAVY, ball, arena);
 
-		expect(stone.power).toBe(PowerType.HEAVY);
-		expect(stone.vx).toBeLessThan(120);
+		expect(ball.power).toBe(PowerType.HEAVY);
+		expect(ball.vx).toBeLessThan(120);
 	});
 
-	it("steps curling stones through the shared runtime", () => {
+	it("steps curling balls through the shared runtime", () => {
 		const runtime = createRuntime();
-		const stone = createStone();
+		const ball = createBall();
 
-		const moving = runtime.stepStone(stone, 16.67, arena);
+		const moving = runtime.stepCurlingBall(ball, 16.67, arena);
 
 		expect(moving).toBe(true);
-		expect(stone.x).toBeGreaterThan(100);
+		expect(ball.x).toBeGreaterThan(100);
 	});
 
 	it("materialises split and mirror spawn requests outside the scene", () => {
 		const runtime = createRuntime();
-		const splitSource = createStone({ splitterPending: true });
-		const mirrorSource = createStone({
+		const splitSource = createBall({ splitterPending: true });
+		const mirrorSource = createBall({
 			mirrorPending: true,
 			y: 75,
 			vy: 30,
@@ -82,7 +82,7 @@ describe("CurlingPowerRuntime", () => {
 
 		expect(split.removeSource).toBe(true);
 		expect(split.children).toHaveLength(3);
-		expect(split.children.map((stone) => stone.id)).toEqual([10, 11, 12]);
+		expect(split.children.map((ball) => ball.id)).toEqual([10, 11, 12]);
 		expect(mirror.removeSource).toBe(false);
 		expect(mirror.children).toEqual([
 			expect.objectContaining({
@@ -93,15 +93,15 @@ describe("CurlingPowerRuntime", () => {
 		]);
 	});
 
-	it("resolves stone collisions and triggers active collision powers", () => {
+	it("resolves ball collisions and triggers active collision powers", () => {
 		const runtime = createRuntime();
-		const active = createStone({
+		const active = createBall({
 			power: PowerType.GHOST,
 			x: 100,
 			y: 150,
 			vx: 50,
 		});
-		const other = createStone({
+		const other = createBall({
 			id: 2,
 			x: 130,
 			y: 150,
@@ -110,7 +110,7 @@ describe("CurlingPowerRuntime", () => {
 		});
 
 		runtime.resolveCollisions([active, other], arena, {
-			activeStone: active,
+			activeBall: active,
 			triggerActiveCollisionPower: true,
 		});
 

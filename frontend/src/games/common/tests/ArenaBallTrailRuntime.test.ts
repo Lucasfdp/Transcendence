@@ -73,14 +73,14 @@ describe("ArenaBallTrailRuntime", () => {
 			scale: 1,
 		};
 
-		runtime.set("stone", [
+		runtime.set("ball", [
 			{ x: 50, y: 100 },
 			{ x: 250, y: 500 },
 			{ x: 300, y: 700 },
 		]);
 
 		expect(
-			runtime.readRectNormalisedTrail("stone", arena, { clamp: true }),
+			runtime.readRectNormalisedTrail("ball", arena, { clamp: true }),
 		).toEqual([
 			{ x: 0, y: 0 },
 			{ x: 1, y: 1 },

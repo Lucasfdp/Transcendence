@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import type Phaser from "phaser";
 export * from "./ball-core";
 import type { BallState } from "./ball-core";
 import type { RectArenaPixels } from "./rect-arena";
@@ -7,7 +7,7 @@ import { HEAVY_MASS_RATIO, PowerType } from "./power-system";
 // ── Curling shell physics ────────────────────────────────────────────────────
 
 /** Curling shell radius at source resolution. */
-export const STONE_SRC_R = 28;
+export const CURLING_BALL_SRC_R = 28;
 
 /**
  * Per-frame friction multiplier at 60 fps.
@@ -19,7 +19,7 @@ export const FRICTION_ICE = 0.99;
 export const BOUNCE_DAMP = 0.55;
 
 /** Speed fraction retained in shell-on-shell collision. */
-export const STONE_BOUNCE_DAMP = 0.92;
+export const CURLING_BALL_BOUNCE_DAMP = 0.92;
 
 /** Source px/s below which the curling shell snaps to rest. */
 export const MIN_SPEED_SRC = 8;
@@ -30,7 +30,7 @@ export const DEFAULT_CURL_BIAS = 0;
 /** Radians/second per unit of curl bias. */
 export const CURL_STRENGTH = 0.5;
 
-export interface StoneState extends BallState {
+export interface CurlingBallState extends BallState {
 	id: number;
 	teamId: number;
 	power: PowerType;
@@ -48,8 +48,8 @@ export interface StoneState extends BallState {
  * Advance one curling shell on a rectangular sheet.
  * Kept in ball.ts so every game uses the same projectile module.
  */
-export function stepStone(
-	s: StoneState,
+export function stepCurlingBall(
+	s: CurlingBallState,
 	deltaMs: number,
 	a: RectArenaPixels,
 ): boolean {
@@ -122,7 +122,7 @@ export function stepStone(
 }
 
 /** Resolve elastic collision between two curling shells. */
-export function resolveStoneCollision(a: StoneState, b: StoneState): void {
+export function resolveCurlingBallCollision(a: CurlingBallState, b: CurlingBallState): void {
 	if (a.stopped && b.stopped) return;
 
 	if (a.power === PowerType.GHOST && !a.ghostUsed) return;
@@ -154,15 +154,15 @@ export function resolveStoneCollision(a: StoneState, b: StoneState): void {
 	if (a.frozen || b.frozen) {
 		const mover = a.frozen ? b : a;
 		const dot = mover.vx * nx + mover.vy * ny;
-		mover.vx = (mover.vx - 2 * dot * nx) * STONE_BOUNCE_DAMP;
-		mover.vy = (mover.vy - 2 * dot * ny) * STONE_BOUNCE_DAMP;
+		mover.vx = (mover.vx - 2 * dot * nx) * CURLING_BALL_BOUNCE_DAMP;
+		mover.vy = (mover.vy - 2 * dot * ny) * CURLING_BALL_BOUNCE_DAMP;
 		mover.stopped = false;
 		return;
 	}
 
 	const massA = a.power === PowerType.HEAVY ? HEAVY_MASS_RATIO : 1;
 	const massB = b.power === PowerType.HEAVY ? HEAVY_MASS_RATIO : 1;
-	const impulse = ((2 * dvDot) / (massA + massB)) * STONE_BOUNCE_DAMP;
+	const impulse = ((2 * dvDot) / (massA + massB)) * CURLING_BALL_BOUNCE_DAMP;
 
 	a.vx += impulse * massB * nx;
 	a.vy += impulse * massB * ny;
@@ -256,9 +256,9 @@ const TEAM_COLOUR = [0x2255cc, 0xcc2222, 0x22aa55, 0xbb55dd, 0xd4a843] as const;
 const TEAM_DARK = [0x142e6e, 0x6e1111, 0x0e5a2c, 0x5a236b, 0x6e5414] as const;
 
 /** Draw a curling shell at its current position. */
-export function drawStone(
+export function drawCurlingBall(
 	g: Phaser.GameObjects.Graphics,
-	s: StoneState,
+	s: CurlingBallState,
 	isActive: boolean,
 ): void {
 	const { x, y, r } = s;

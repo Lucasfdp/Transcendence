@@ -6,7 +6,7 @@
  * This file has zero imports from any specific minigame directory.
  */
 
-import type { StoneState } from "./ball";
+import type { CurlingBallState } from "./ball";
 import type { RectArenaPixels } from "./rect-arena";
 
 // ── Power enum ────────────────────────────────────────────────────────────────
@@ -28,12 +28,12 @@ export enum PowerType {
 	GIANT = "giant", // 2× radius, slower delivery
 	TINY = "tiny", // 0.5× radius, faster, harder to hit
 	BOOMERANG = "boomerang", // curves back towards delivery point after 60% travel
-	REPEL = "repel", // pushes all stones away on stop (inverse MAGNET)
-	STICKY = "sticky", // fuses with first stone it contacts; they coast together
-	LIGHTNING = "lightning", // on stop: teleports the nearest enemy stone off-sheet
+	REPEL = "repel", // pushes all balls away on stop (inverse MAGNET)
+	STICKY = "sticky", // fuses with first ball it contacts; they coast together
+	LIGHTNING = "lightning", // on stop: teleports the nearest enemy ball off-sheet
 	VORTEX = "vortex", // spirals inward when near the house centre
-	MIRROR = "mirror", // spawns a mirror-image stone on the opposite curl path
-	RICOCHET = "ricochet", // passes through first stone, hits second at full speed
+	MIRROR = "mirror", // spawns a mirror-image ball on the opposite curl path
+	RICOCHET = "ricochet", // passes through first ball, hits second at full speed
 	PHANTOM = "phantom", // ignored by collision checks while moving
 }
 
@@ -44,21 +44,21 @@ export interface PowerDef {
 	readonly label: string;
 	readonly accentColour: number;
 	readonly description: string;
-	/** Mutate stone properties immediately on launch. */
-	onApply(stone: StoneState, arena: RectArenaPixels): void;
-	/** Called every frame while stone is moving (optional). */
-	onUpdate?(stone: StoneState, deltaMs: number, arena: RectArenaPixels): void;
-	/** Called on stone-stone collision (optional). */
+	/** Mutate ball properties immediately on launch. */
+	onApply(ball: CurlingBallState, arena: RectArenaPixels): void;
+	/** Called every frame while ball is moving (optional). */
+	onUpdate?(ball: CurlingBallState, deltaMs: number, arena: RectArenaPixels): void;
+	/** Called on ball-ball collision (optional). */
 	onCollide?(
-		stone: StoneState,
-		other: StoneState,
+		ball: CurlingBallState,
+		other: CurlingBallState,
 		arena: RectArenaPixels,
 	): void;
-	/** Called when the stone comes to rest (optional). */
+	/** Called when the ball comes to rest (optional). */
 	onStop?(
-		stone: StoneState,
+		ball: CurlingBallState,
 		arena: RectArenaPixels,
-		allStones: StoneState[],
+		allBalls: CurlingBallState[],
 	): void;
 }
 
@@ -68,7 +68,7 @@ export interface PowerDef {
 export const FRICTION_SLICK = 0.994;
 /** HEAVY launch speed multiplier. */
 export const HEAVY_SPEED_FACTOR = 0.75;
-/** Mass ratio applied to collision impulse for HEAVY stones. */
+/** Mass ratio applied to collision impulse for HEAVY balls. */
 export const HEAVY_MASS_RATIO = 2.5;
 /** SPINNING curl bias (4× default CURL_BIAS — dramatic arc across the sheet). */
 export const SPINNING_CURL_BIAS = 4.0;
@@ -80,15 +80,15 @@ export const BOMB_IMPULSE_SRC = 380;
 export const MAGNET_RANGE_SRC = 220;
 /** Attraction velocity for MAGNET in source px/s. */
 export const MAGNET_PULL_SRC = 55;
-/** SPLITTER child stone radius factor. */
+/** SPLITTER child ball radius factor. */
 export const SPLITTER_RADIUS = 0.75;
-/** Spread angle (radians) for SPLITTER child stones. */
+/** Spread angle (radians) for SPLITTER child balls. */
 export const SPLITTER_SPREAD = Math.PI / 12; // 15°
 /** ROCKET launch speed multiplier. */
 export const ROCKET_SPEED_FACTOR = 2.0;
-/** GIANT stone radius multiplier (slower, hits hard). */
+/** GIANT ball radius multiplier (slower, hits hard). */
 export const GIANT_RADIUS_FACTOR = 2.0;
-/** TINY stone radius multiplier (fast, precise). */
+/** TINY ball radius multiplier (fast, precise). */
 export const TINY_RADIUS_FACTOR = 0.5;
 /** REPEL push radius in source px (same blast area as BOMB). */
 export const REPEL_RADIUS_SRC = 200;
@@ -118,10 +118,10 @@ const HEAVY_DEF: PowerDef = {
 	label: "Heavy Shell",
 	accentColour: 0x886633,
 	description: "Slower and heavier, harder to deflect. Slower curl.",
-	onApply(stone) {
-		stone.vx *= HEAVY_SPEED_FACTOR;
-		stone.vy *= HEAVY_SPEED_FACTOR;
-		stone.curlBias *= 0.4; // harder to drift
+	onApply(ball) {
+		ball.vx *= HEAVY_SPEED_FACTOR;
+		ball.vy *= HEAVY_SPEED_FACTOR;
+		ball.curlBias *= 0.4; // harder to drift
 	},
 };
 
@@ -133,13 +133,13 @@ const BOMB_DEF: PowerDef = {
 	onApply() {
 		/* nothing at launch */
 	},
-	onStop(stone, arena, allStones) {
+	onStop(ball, arena, allBalls) {
 		const blastR = BOMB_RADIUS_SRC * arena.scale;
 		const impulse = BOMB_IMPULSE_SRC * arena.scale;
-		for (const other of allStones) {
-			if (other.id === stone.id) continue;
-			const dx = other.x - stone.x;
-			const dy = other.y - stone.y;
+		for (const other of allBalls) {
+			if (other.id === ball.id) continue;
+			const dx = other.x - ball.x;
+			const dy = other.y - ball.y;
 			const dist = Math.sqrt(dx * dx + dy * dy);
 			if (dist < blastR && dist > 0.001) {
 				const nx = dx / dist;
@@ -159,11 +159,11 @@ const SPLITTER_DEF: PowerDef = {
 	label: "Splitter",
 	accentColour: 0xffee00,
 	description: "Splits into 3 smaller shells when picked up.",
-	onApply(stone) {
-		(stone as SplittableStone).splitterPending = true;
+	onApply(ball) {
+		(ball as SplittableBall).splitterPending = true;
 	},
-	// Actual split logic is handled in ShellCurlScene which can create new stones.
-	// The flag is read by the scene; see stone.splitterPending.
+	// Actual split logic is handled in ShellCurlScene which can create new balls.
+	// The flag is read by the scene; see ball.splitterPending.
 };
 
 const GHOST_DEF: PowerDef = {
@@ -174,9 +174,9 @@ const GHOST_DEF: PowerDef = {
 	onApply() {
 		/* nothing at launch */
 	},
-	onCollide(stone) {
-		if (!(stone as GhostStone).ghostUsed) {
-			(stone as GhostStone).ghostUsed = true;
+	onCollide(ball) {
+		if (!(ball as GhostBall).ghostUsed) {
+			(ball as GhostBall).ghostUsed = true;
 			// TODO(#ghost-visual): brief translucent overlay on pass-through
 		}
 	},
@@ -190,13 +190,13 @@ const MAGNET_DEF: PowerDef = {
 	onApply() {
 		/* nothing at launch */
 	},
-	onStop(stone, arena, allStones) {
+	onStop(ball, arena, allBalls) {
 		const range = MAGNET_RANGE_SRC * arena.scale;
 		const pull = MAGNET_PULL_SRC * arena.scale;
-		for (const other of allStones) {
-			if (other.id === stone.id || other.stopped) continue;
-			const dx = stone.x - other.x;
-			const dy = stone.y - other.y;
+		for (const other of allBalls) {
+			if (other.id === ball.id || other.stopped) continue;
+			const dx = ball.x - other.x;
+			const dy = ball.y - other.y;
 			const dist = Math.sqrt(dx * dx + dy * dy);
 			if (dist < range && dist > 0.001) {
 				const nx = dx / dist;
@@ -215,10 +215,10 @@ const SPINNING_DEF: PowerDef = {
 	label: "Spinning Shell",
 	accentColour: 0x44ffcc,
 	description: "Extreme curl — arcs dramatically across the sheet.",
-	onApply(stone) {
-		stone.curlBias = SPINNING_CURL_BIAS;
+	onApply(ball) {
+		ball.curlBias = SPINNING_CURL_BIAS;
 		// Higher friction compensates for the longer spiral path — stops in ~2 s.
-		(stone as SlickStone).frictionOverride = 0.984;
+		(ball as SlickBall).frictionOverride = 0.984;
 		// TODO(#spinning-trail): add particle emitter (ice-blue spiral)
 	},
 };
@@ -229,9 +229,9 @@ const BOUNCER_DEF: PowerDef = {
 	accentColour: 0xff8800,
 	description: "Bounces off side-walls without losing speed.",
 	// No bounce damping means friction is the sole brake — use higher friction
-	// so the stone doesn't bounce forever.
-	onApply(stone) {
-		(stone as SlickStone).frictionOverride = 0.984;
+	// so the ball doesn't bounce forever.
+	onApply(ball) {
+		(ball as SlickBall).frictionOverride = 0.984;
 	},
 };
 
@@ -244,14 +244,14 @@ const SHIELD_DEF: PowerDef = {
 	onApply() {
 		/* nothing at launch */
 	},
-	onStop(stone, arena) {
-		// Only activate the shield if the stone actually landed inside the house.
-		const dx = stone.x - arena.houseFarCX;
-		const dy = stone.y - arena.houseFarCY;
+	onStop(ball, arena) {
+		// Only activate the shield if the ball actually landed inside the house.
+		const dx = ball.x - arena.houseFarCX;
+		const dy = ball.y - arena.houseFarCY;
 		const dist = Math.sqrt(dx * dx + dy * dy);
 		if (dist <= arena.houseRadii[0]) {
-			// Make it behave like a very heavy stone so collisions barely move it.
-			stone.power = PowerType.HEAVY;
+			// Make it behave like a very heavy ball so collisions barely move it.
+			ball.power = PowerType.HEAVY;
 		}
 	},
 };
@@ -265,11 +265,11 @@ const FREEZE_DEF: PowerDef = {
 	onApply() {
 		/* nothing at launch */
 	},
-	onCollide(_stone, other) {
+	onCollide(_ball, other) {
 		other.vx = 0;
 		other.vy = 0;
 		other.stopped = true;
-		(other as FrozenStone).frozen = true;
+		(other as FrozenBall).frozen = true;
 	},
 };
 
@@ -278,19 +278,19 @@ const SLICK_DEF: PowerDef = {
 	label: "Slick Shell",
 	accentColour: 0xccffee,
 	description: "Near-zero friction — travels much farther than normal.",
-	onApply(stone) {
-		(stone as SlickStone).frictionOverride = FRICTION_SLICK;
+	onApply(ball) {
+		(ball as SlickBall).frictionOverride = FRICTION_SLICK;
 	},
 };
 
 // ── New power implementations ─────────────────────────────────────────────────
 
-/** Internal flag on a stone that PHANTOM collision checks should ignore. */
-interface PhantomStone {
+/** Internal flag on a ball that PHANTOM collision checks should ignore. */
+interface PhantomBall {
 	phantomHidden: boolean;
 }
-/** Internal flag on a stone that has completed a BOOMERANG reversal. */
-interface BoomerangStone {
+/** Internal flag on a ball that has completed a BOOMERANG reversal. */
+interface BoomerangBall {
 	boomerangFlipped: boolean;
 	launchVx: number;
 	launchVy: number;
@@ -298,12 +298,12 @@ interface BoomerangStone {
 	totalDist: number;
 }
 /** Internal flag used by STICKY fuse logic. */
-interface StickyStone {
+interface StickyBall {
 	stickyFused: boolean;
 	stickyPartnerId?: number;
 }
-/** Internal flag marking a RICOCHET stone that has already passed through one stone. */
-interface RicochetStone {
+/** Internal flag marking a RICOCHET ball that has already passed through one ball. */
+interface RicochetBall {
 	ricochetUsed: boolean;
 }
 
@@ -313,10 +313,10 @@ const ROCKET_DEF: PowerDef = {
 	accentColour: 0xff2222,
 	description:
 		"Launches at 2× speed with zero curl — straight line, maximum impact.",
-	onApply(stone) {
-		stone.vx *= ROCKET_SPEED_FACTOR;
-		stone.vy *= ROCKET_SPEED_FACTOR;
-		stone.curlBias = 0;
+	onApply(ball) {
+		ball.vx *= ROCKET_SPEED_FACTOR;
+		ball.vy *= ROCKET_SPEED_FACTOR;
+		ball.curlBias = 0;
 	},
 };
 
@@ -325,10 +325,10 @@ const GIANT_DEF: PowerDef = {
 	label: "Giant Shell",
 	accentColour: 0xaa44ff,
 	description: "Double the radius. Slow but nearly impossible to avoid.",
-	onApply(stone) {
-		stone.r *= GIANT_RADIUS_FACTOR;
-		stone.curlBias *= 0.3;
-		(stone as SlickStone).frictionOverride = 0.982; // slower stop
+	onApply(ball) {
+		ball.r *= GIANT_RADIUS_FACTOR;
+		ball.curlBias *= 0.3;
+		(ball as SlickBall).frictionOverride = 0.982; // slower stop
 	},
 };
 
@@ -337,11 +337,11 @@ const TINY_DEF: PowerDef = {
 	label: "Tiny Shell",
 	accentColour: 0x44ffaa,
 	description: "Half the size, faster and harder to knock away once placed.",
-	onApply(stone) {
-		stone.r *= TINY_RADIUS_FACTOR;
-		stone.vx *= 1.35;
-		stone.vy *= 1.35;
-		stone.curlBias *= 0.6;
+	onApply(ball) {
+		ball.r *= TINY_RADIUS_FACTOR;
+		ball.vx *= 1.35;
+		ball.vy *= 1.35;
+		ball.curlBias *= 0.6;
 	},
 };
 
@@ -351,28 +351,28 @@ const BOOMERANG_DEF: PowerDef = {
 	accentColour: 0xffcc44,
 	description:
 		"Travels forward, then curves back towards the delivery point.",
-	onApply(stone) {
-		const s = stone as unknown as BoomerangStone;
+	onApply(ball) {
+		const s = ball as unknown as BoomerangBall;
 		s.boomerangFlipped = false;
-		s.launchVx = stone.vx;
-		s.launchVy = stone.vy;
+		s.launchVx = ball.vx;
+		s.launchVy = ball.vy;
 		s.distTravelled = 0;
 		s.totalDist =
-			Math.sqrt(stone.vx * stone.vx + stone.vy * stone.vy) * 2.0;
+			Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy) * 2.0;
 	},
-	onUpdate(stone, deltaMs) {
-		const s = stone as unknown as BoomerangStone;
+	onUpdate(ball, deltaMs) {
+		const s = ball as unknown as BoomerangBall;
 		if (s.boomerangFlipped) return;
-		const spd = Math.sqrt(stone.vx * stone.vx + stone.vy * stone.vy);
+		const spd = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
 		s.distTravelled += spd * (deltaMs / 1000);
 		if (
 			s.totalDist > 0 &&
 			s.distTravelled / s.totalDist >= BOOMERANG_FLIP_FRAC
 		) {
 			s.boomerangFlipped = true;
-			// Reverse the velocity direction so the stone curves back
-			stone.vx = -Math.abs(s.launchVx) * 0.55 * (stone.vx < 0 ? -1 : 1);
-			stone.vy = -Math.abs(s.launchVy) * 0.55;
+			// Reverse the velocity direction so the ball curves back
+			ball.vx = -Math.abs(s.launchVx) * 0.55 * (ball.vx < 0 ? -1 : 1);
+			ball.vy = -Math.abs(s.launchVy) * 0.55;
 		}
 	},
 };
@@ -386,13 +386,13 @@ const REPEL_DEF: PowerDef = {
 	onApply() {
 		/* nothing at launch */
 	},
-	onStop(stone, arena, allStones) {
+	onStop(ball, arena, allBalls) {
 		const blastR = REPEL_RADIUS_SRC * arena.scale;
 		const impulse = REPEL_IMPULSE_SRC * arena.scale;
-		for (const other of allStones) {
-			if (other.id === stone.id) continue;
-			const dx = other.x - stone.x;
-			const dy = other.y - stone.y;
+		for (const other of allBalls) {
+			if (other.id === ball.id) continue;
+			const dx = other.x - ball.x;
+			const dy = other.y - ball.y;
 			const dist = Math.sqrt(dx * dx + dy * dy);
 			if (dist < blastR && dist > 0.001) {
 				const nx = dx / dist;
@@ -412,19 +412,19 @@ const STICKY_DEF: PowerDef = {
 	accentColour: 0x996633,
 	description:
 		"Fuses with the first shell it touches — they glide together and stop as a pair.",
-	onApply(stone) {
-		(stone as unknown as StickyStone).stickyFused = false;
+	onApply(ball) {
+		(ball as unknown as StickyBall).stickyFused = false;
 	},
-	onCollide(stone, other) {
-		const s = stone as unknown as StickyStone;
+	onCollide(ball, other) {
+		const s = ball as unknown as StickyBall;
 		if (s.stickyFused) return;
 		s.stickyFused = true;
 		s.stickyPartnerId = other.id;
 		// Average the velocities so they coast as one mass
-		const avgVx = (stone.vx + other.vx) * 0.5;
-		const avgVy = (stone.vy + other.vy) * 0.5;
-		stone.vx = avgVx;
-		stone.vy = avgVy;
+		const avgVx = (ball.vx + other.vx) * 0.5;
+		const avgVy = (ball.vy + other.vy) * 0.5;
+		ball.vx = avgVx;
+		ball.vy = avgVy;
 		other.vx = avgVx;
 		other.vy = avgVy;
 		other.stopped = false;
@@ -440,15 +440,15 @@ const LIGHTNING_DEF: PowerDef = {
 	onApply() {
 		/* nothing at launch */
 	},
-	onStop(stone, arena, allStones) {
+	onStop(ball, arena, allBalls) {
 		// The scene is responsible for determining ownership;
-		// we eject the nearest OTHER stone by placing it outside the sheet bounds.
-		let nearest: StoneState | null = null;
+		// we eject the nearest OTHER ball by placing it outside the sheet bounds.
+		let nearest: CurlingBallState | null = null;
 		let nearDist = Infinity;
-		for (const other of allStones) {
-			if (other.id === stone.id) continue;
-			const dx = other.x - stone.x;
-			const dy = other.y - stone.y;
+		for (const other of allBalls) {
+			if (other.id === ball.id) continue;
+			const dx = other.x - ball.x;
+			const dy = other.y - ball.y;
 			const dist = Math.sqrt(dx * dx + dy * dy);
 			if (dist < nearDist) {
 				nearDist = dist;
@@ -456,7 +456,7 @@ const LIGHTNING_DEF: PowerDef = {
 			}
 		}
 		if (nearest) {
-			// Move the stone well outside the right edge of the sheet
+			// Move the ball well outside the right edge of the sheet
 			nearest.x = arena.sheetX + arena.sheetW + nearest.r * 4;
 			nearest.stopped = true;
 			nearest.vx = 0;
@@ -475,15 +475,15 @@ const VORTEX_DEF: PowerDef = {
 	onApply() {
 		/* nothing at launch */
 	},
-	onUpdate(stone, _deltaMs, arena) {
-		if (stone.stopped) return;
-		const dx = arena.houseFarCX - stone.x;
-		const dy = arena.houseFarCY - stone.y;
+	onUpdate(ball, _deltaMs, arena) {
+		if (ball.stopped) return;
+		const dx = arena.houseFarCX - ball.x;
+		const dy = arena.houseFarCY - ball.y;
 		const dist = Math.sqrt(dx * dx + dy * dy);
 		if (dist < VORTEX_RANGE_SRC * arena.scale && dist > 0.001) {
 			const pull = VORTEX_PULL_SRC * arena.scale;
-			stone.vx += (dx / dist) * pull * 0.016; // ~per-frame at 60fps
-			stone.vy += (dy / dist) * pull * 0.016;
+			ball.vx += (dx / dist) * pull * 0.016; // ~per-frame at 60fps
+			ball.vy += (dy / dist) * pull * 0.016;
 		}
 	},
 };
@@ -494,9 +494,9 @@ const MIRROR_DEF: PowerDef = {
 	accentColour: 0x88ff88,
 	description:
 		"Creates a mirror copy on the opposite path. Scene must handle the mirror flag.",
-	onApply(stone) {
-		// The scene reads `mirrorPending` and creates the mirror stone.
-		(stone as unknown as { mirrorPending: boolean }).mirrorPending = true;
+	onApply(ball) {
+		// The scene reads `mirrorPending` and creates the mirror ball.
+		(ball as unknown as { mirrorPending: boolean }).mirrorPending = true;
 	},
 };
 
@@ -506,16 +506,16 @@ const RICOCHET_DEF: PowerDef = {
 	accentColour: 0xff8844,
 	description:
 		"Passes straight through the first shell it hits, then impacts the second at full speed.",
-	onApply(stone) {
-		(stone as unknown as RicochetStone).ricochetUsed = false;
+	onApply(ball) {
+		(ball as unknown as RicochetBall).ricochetUsed = false;
 	},
-	onCollide(stone, _other) {
-		const s = stone as unknown as RicochetStone;
+	onCollide(ball, _other) {
+		const s = ball as unknown as RicochetBall;
 		if (!s.ricochetUsed) {
 			s.ricochetUsed = true;
 			// Signal the scene's collision resolver to skip impulse exchange this once.
 			// Flagged by setting the power temporarily to GHOST semantics.
-			(stone as unknown as GhostStone).ghostUsed = false; // reset ghost flag if any
+			(ball as unknown as GhostBall).ghostUsed = false; // reset ghost flag if any
 		}
 	},
 };
@@ -526,11 +526,11 @@ const PHANTOM_DEF: PowerDef = {
 	accentColour: 0xdddddd,
 	description:
 		"Invisible only to collisions while moving; visuals stay readable.",
-	onApply(stone) {
-		(stone as unknown as PhantomStone).phantomHidden = true;
+	onApply(ball) {
+		(ball as unknown as PhantomBall).phantomHidden = true;
 	},
-	onStop(stone) {
-		(stone as unknown as PhantomStone).phantomHidden = false;
+	onStop(ball) {
+		(ball as unknown as PhantomBall).phantomHidden = false;
 	},
 };
 
@@ -601,29 +601,29 @@ export class PowerRegistry {
 	}
 }
 
-// ── Extended stone interfaces (flags added by powers) ─────────────────────────
-// These are structural extensions to StoneState used internally by power logic.
+// ── Extended ball interfaces (flags added by powers) ─────────────────────────
+// These are structural extensions to CurlingBallState used internally by power logic.
 
-interface SplittableStone {
+interface SplittableBall {
 	hasSplit: boolean;
 	splitterPending: boolean;
 }
 
-interface GhostStone {
+interface GhostBall {
 	ghostUsed: boolean;
 }
 
-interface FrozenStone {
+interface FrozenBall {
 	frozen: boolean;
 }
 
-interface SlickStone {
+interface SlickBall {
 	frictionOverride: number;
 }
 
-// ── New power stone interfaces (used internally by power implementations above) ─
+// ── New power ball interfaces (used internally by power implementations above) ─
 
-export interface BoomerangStoneState {
+export interface BoomerangCurlingBallState {
 	boomerangFlipped: boolean;
 	launchVx: number;
 	launchVy: number;
@@ -631,19 +631,19 @@ export interface BoomerangStoneState {
 	totalDist: number;
 }
 
-export interface StickyStoneState {
+export interface StickyCurlingBallState {
 	stickyFused: boolean;
 	stickyPartnerId?: number;
 }
 
-export interface RicochetStoneState {
+export interface RicochetCurlingBallState {
 	ricochetUsed: boolean;
 }
 
-export interface PhantomStoneState {
+export interface PhantomCurlingBallState {
 	phantomHidden: boolean;
 }
 
-export interface MirrorStoneState {
+export interface MirrorCurlingBallState {
 	mirrorPending: boolean;
 }

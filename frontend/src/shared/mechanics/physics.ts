@@ -3,10 +3,10 @@ import type { RectArenaPixels } from "./rect-arena";
 import {
 	BALL_SRC_R,
 	BALL_FRICTION_BASE,
-	STONE_SRC_R,
+	CURLING_BALL_SRC_R,
 	FRICTION_ICE,
-	BOUNCE_DAMP as STONE_BOUNCE_DAMP,
-	MIN_SPEED_SRC as STONE_MIN_SPEED_SRC,
+	BOUNCE_DAMP as CURLING_BALL_BOUNCE_DAMP,
+	MIN_SPEED_SRC as CURLING_BALL_MIN_SPEED_SRC,
 	CURL_STRENGTH,
 	DEFAULT_CURL_BIAS,
 } from "./ball";
@@ -36,7 +36,7 @@ export interface ReplayProjectileState {
 	stopped?: boolean;
 }
 
-export interface ReplayStoneState {
+export interface ReplayCurlingBallState {
 	id?: number;
 	teamId?: number;
 	x: number;
@@ -188,7 +188,7 @@ export function stepReplayProjectile(
 	return true;
 }
 
-export function createReplayStoneState(
+export function createReplayCurlingBallState(
 	arena: RectArenaPixels,
 	x: number,
 	y: number,
@@ -196,15 +196,15 @@ export function createReplayStoneState(
 	vy: number,
 	teamId: number,
 	power: PowerType | undefined,
-): ReplayStoneState {
-	const state: ReplayStoneState = {
+): ReplayCurlingBallState {
+	const state: ReplayCurlingBallState = {
 		id: undefined,
 		teamId,
 		x,
 		y,
 		vx,
 		vy,
-		r: STONE_SRC_R * arena.scale,
+		r: CURLING_BALL_SRC_R * arena.scale,
 		power,
 		stopped: false,
 		curlBias: DEFAULT_CURL_BIAS * (teamId === 0 ? 1 : -1),
@@ -242,8 +242,8 @@ export function createReplayStoneState(
 	return state;
 }
 
-export function stepReplayStone(
-	state: ReplayStoneState,
+export function stepReplayBall(
+	state: ReplayCurlingBallState,
 	deltaMs: number,
 	arena: RectArenaPixels,
 ): boolean {
@@ -268,7 +268,7 @@ export function stepReplayStone(
 	state.x += state.vx * dt;
 	state.y += state.vy * dt;
 
-	const bounceDamp = state.power === "bouncer" ? 1.0 : STONE_BOUNCE_DAMP;
+	const bounceDamp = state.power === "bouncer" ? 1.0 : CURLING_BALL_BOUNCE_DAMP;
 	if (arena.orientation === "horizontal") {
 		const topWall = arena.sheetY + state.r;
 		const bottomWall = arena.sheetY + arena.sheetH - state.r;
@@ -305,7 +305,7 @@ export function stepReplayStone(
 	state.vx *= factor;
 	state.vy *= factor;
 
-	if (Math.hypot(state.vx, state.vy) < STONE_MIN_SPEED_SRC * arena.scale) {
+	if (Math.hypot(state.vx, state.vy) < CURLING_BALL_MIN_SPEED_SRC * arena.scale) {
 		state.vx = 0;
 		state.vy = 0;
 		state.stopped = true;
@@ -333,17 +333,17 @@ export function simulateReplayProjectile(
 	return { state, trail };
 }
 
-export function simulateReplayStone(
-	initial: ReplayStoneState,
+export function simulateReplayBall(
+	initial: ReplayCurlingBallState,
 	totalMs: number,
 	arena: RectArenaPixels,
 	maxTrailPoints = 64,
-): SimulatedReplayObject<ReplayStoneState> {
-	const state: ReplayStoneState = { ...initial };
+): SimulatedReplayObject<ReplayCurlingBallState> {
+	const state: ReplayCurlingBallState = { ...initial };
 	const trail: ReplayTrailPoint[] = [{ x: state.x, y: state.y }];
 
 	runFixedStepSimulation(totalMs, (stepMs) => {
-		if (!stepReplayStone(state, stepMs, arena)) return false;
+		if (!stepReplayBall(state, stepMs, arena)) return false;
 		pushReplayTrailPoint(trail, state.x, state.y, maxTrailPoints);
 		return true;
 	});

@@ -27,13 +27,13 @@ describe("replayVisuals", () => {
 		expect(resolveActiveReplaySide({ players, currentTurn: 1 }, 0)).toBe(1);
 	});
 
-	it("resolves active side from active stone entity", () => {
+	it("resolves active side from active ball entity", () => {
 		const snapshot: ReplayFrameSnapshot = {
 			players,
-			activeStoneId: "stone-2",
+			activeBallId: "ball-2",
 			entities: [
-				{ id: "stone-1", type: "stone", side: 0, x: 0, y: 0 },
-				{ id: "stone-2", type: "stone", side: 1, x: 0, y: 0 },
+				{ id: "ball-1", type: "ball", side: 0, x: 0, y: 0 },
+				{ id: "ball-2", type: "ball", side: 1, x: 0, y: 0 },
 			],
 		};
 

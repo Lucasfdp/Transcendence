@@ -5,7 +5,7 @@
  *   - Team name + score (left and right)
  *   - Current end + phase label (centre)
  *   - Active team underline
- *   - Stones-remaining row below the main bar
+ *   - Balls-remaining row below the main bar
  *
  * Zero imports from any specific minigame directory.
  */
@@ -18,9 +18,9 @@ import { PLAYER_COLOUR_VALUES, PLAYER_HEX_COLOURS } from "../game-ui";
 // ── Layout constants ──────────────────────────────────────────────────────────
 
 const BAR_HEIGHT = 52; // px
-const STONES_ROW_H = 18; // px below main bar
-const STONE_DOT_R = 5; // radius of each stone-remaining dot
-const STONE_DOT_GAP = 14; // centre-to-centre gap between dots
+const BALLS_ROW_H = 18; // px below main bar
+const BALL_DOT_R = 5; // radius of each ball-remaining dot
+const BALL_DOT_GAP = 14; // centre-to-centre gap between dots
 const PLAYER_COLOURS = PLAYER_COLOUR_VALUES;
 const PLAYER_HEX = PLAYER_HEX_COLOURS;
 const TEAM_LABELS = ["P1", "P2"] as const;
@@ -136,7 +136,7 @@ export class ScoreHud {
 			add(
 				`status${player}`,
 				0,
-				BAR_HEIGHT + STONES_ROW_H / 2 + 2,
+				BAR_HEIGHT + BALLS_ROW_H / 2 + 2,
 				"",
 				style("9px", PLAYER_HEX[player]),
 			);
@@ -160,7 +160,7 @@ export class ScoreHud {
 			currentEnd: state.currentEnd,
 			phase: state.phase,
 			score: state.score,
-			stonesLeft: state.stonesLeft,
+			ballsLeft: state.ballsLeft,
 			playerCount,
 			labels,
 			status,
@@ -173,7 +173,7 @@ export class ScoreHud {
 
 	private draw(state: TurnState): void {
 		const w = this.scene.scale.width;
-		const totH = BAR_HEIGHT + STONES_ROW_H + 4;
+		const totH = BAR_HEIGHT + BALLS_ROW_H + 4;
 
 		this.gfx.clear();
 
@@ -196,9 +196,9 @@ export class ScoreHud {
 		this.gfx.fillStyle(this.playerColour(state.currentTeam), 0.85);
 		this.gfx.fillRect(underX0, underY, underW, 2);
 
-		// Stones-remaining dots, or game-specific per-player status labels.
+		// Balls-remaining dots, or game-specific per-player status labels.
 		if (this.options.statusLabel) this.drawStatusLabels(state, w);
-		else this.drawStoneDots(state, w);
+		else this.drawCurlingBallDots(state, w);
 
 		// Update text values
 		this.repositionTexts(w, playerCount);
@@ -240,8 +240,8 @@ export class ScoreHud {
 			);
 	}
 
-	private drawStoneDots(state: TurnState, w: number): void {
-		const dotY = BAR_HEIGHT + STONES_ROW_H / 2 + 2;
+	private drawCurlingBallDots(state: TurnState, w: number): void {
+		const dotY = BAR_HEIGHT + BALLS_ROW_H / 2 + 2;
 
 		const playerCount = Math.max(
 			this.options.minPlayerCount ?? 2,
@@ -250,16 +250,16 @@ export class ScoreHud {
 		const slotW = w / playerCount;
 
 		for (let team = 0; team < playerCount; team++) {
-			const count = state.stonesLeft[team] ?? 0;
+			const count = state.ballsLeft[team] ?? 0;
 			const colour = this.playerColour(team);
-			const totalW = count * STONE_DOT_GAP;
+			const totalW = count * BALL_DOT_GAP;
 			const startX =
-				slotW * team + (slotW - totalW) / 2 + STONE_DOT_GAP / 2;
+				slotW * team + (slotW - totalW) / 2 + BALL_DOT_GAP / 2;
 
 			for (let i = 0; i < count; i++) {
-				const cx = startX + i * STONE_DOT_GAP;
+				const cx = startX + i * BALL_DOT_GAP;
 				this.gfx.fillStyle(colour, 0.85);
-				this.gfx.fillCircle(cx, dotY, STONE_DOT_R);
+				this.gfx.fillCircle(cx, dotY, BALL_DOT_R);
 			}
 		}
 	}

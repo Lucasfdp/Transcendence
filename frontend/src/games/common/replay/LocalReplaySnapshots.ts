@@ -1,5 +1,5 @@
 import type { ArenaPixels } from "../../../shared/arenas/arena";
-import type { BallState, StoneState } from "../../../shared/mechanics/ball";
+import type { BallState, CurlingBallState } from "../../../shared/mechanics/ball";
 import type { ObstacleDescriptor } from "../../../shared/mechanics/obstacle-descriptor";
 import type { RectArenaPixels } from "../../../shared/mechanics/rect-arena";
 import type {
@@ -16,7 +16,7 @@ import {
 } from "../localReplay";
 import {
 	buildReplayProjectileEntities,
-	buildReplayStoneEntities,
+	buildReplayBallEntities,
 } from "../runtime/ReplayEntities";
 
 interface ReplaySnapshotBaseOptions {
@@ -420,8 +420,8 @@ export function buildBellClashLocalReplaySnapshot(
 	};
 }
 
-interface CurlingReplayStoneOptions {
-	readonly stone: StoneState;
+interface CurlingReplayBallOptions {
+	readonly ball: CurlingBallState;
 	readonly arena: RectArenaPixels;
 	readonly trail: readonly { x: number; y: number }[];
 }
@@ -434,38 +434,38 @@ type BumperReplayObstacleDescriptor = SerializableObstacleDescriptor<
 	}
 >;
 
-export function buildCurlingReplayStoneSnapshot(
-	options: CurlingReplayStoneOptions,
+export function buildCurlingReplayBallSnapshot(
+	options: CurlingReplayBallOptions,
 ): CurlingSnapshot["objects"][number] {
-	const power = options.stone.power;
+	const power = options.ball.power;
 	return {
-		id: options.stone.id,
-		side: options.stone.teamId,
-		type: "stone",
-		ownerSide: options.stone.teamId,
-		x: (options.stone.x - options.arena.sheetX) / options.arena.sheetW,
-		y: (options.stone.y - options.arena.sheetY) / options.arena.sheetH,
-		vx: options.stone.vx / options.arena.scale,
-		vy: options.stone.vy / options.arena.scale,
+		id: options.ball.id,
+		side: options.ball.teamId,
+		type: "ball",
+		ownerSide: options.ball.teamId,
+		x: (options.ball.x - options.arena.sheetX) / options.arena.sheetW,
+		y: (options.ball.y - options.arena.sheetY) / options.arena.sheetH,
+		vx: options.ball.vx / options.arena.scale,
+		vy: options.ball.vy / options.arena.scale,
 		rotation: 0,
 		angularVelocity: 0,
-		moving: !options.stone.stopped,
-		scale: options.stone.r / (28 * options.arena.scale),
+		moving: !options.ball.stopped,
+		scale: options.ball.r / (28 * options.arena.scale),
 		visible: true,
 		alpha:
 			(power === "phantom" || power === "ghost") &&
-			(options.stone as { phantomHidden?: boolean }).phantomHidden !==
+			(options.ball as { phantomHidden?: boolean }).phantomHidden !==
 				false
 				? 0.52
 				: 1,
-		spriteKey: "temple-curling-stone",
+		spriteKey: "temple-curling-ball",
 		stateFlags: withPowerStateFlags(
-			options.stone.stopped ? ["settled"] : ["moving"],
+			options.ball.stopped ? ["settled"] : ["moving"],
 			power,
 		),
-		createdAt: options.stone.id,
-		updatedAt: options.stone.id,
-		stopped: options.stone.stopped,
+		createdAt: options.ball.id,
+		updatedAt: options.ball.id,
+		stopped: options.ball.stopped,
 		power,
 		...(options.trail.length ? { trail: [...options.trail] } : {}),
 	};
@@ -474,21 +474,21 @@ export function buildCurlingReplayStoneSnapshot(
 export interface ShellCurlLocalReplaySnapshotOptions extends ReplaySnapshotBaseOptions {
 	readonly phase: CurlingSnapshot["phase"];
 	readonly arena: RectArenaPixels;
-	readonly stones: readonly StoneState[];
-	readonly activeStoneId: number | null;
+	readonly balls: readonly CurlingBallState[];
+	readonly activeBallId: number | null;
 	readonly playerCount: number;
 	readonly currentTurn: number;
 	readonly deliveredTurns: number;
 	readonly maxTurns: number;
 	readonly currentEnd: number;
 	readonly throwsInEnd: number;
-	readonly stonesPerPlayer: number;
+	readonly ballsPerPlayer: number;
 	readonly totalEnds: number;
 	readonly score: readonly number[];
 	readonly endScores: readonly (readonly (number | null)[])[];
 	readonly bumpers: readonly BumperReplayObstacleDescriptor[];
-	readonly readStoneTrail: (
-		stoneId: number,
+	readonly readBallTrail: (
+		ballId: number,
 	) => readonly { x: number; y: number }[];
 	readonly winnerSide: number | null;
 }
@@ -496,11 +496,11 @@ export interface ShellCurlLocalReplaySnapshotOptions extends ReplaySnapshotBaseO
 export function buildShellCurlLocalReplaySnapshot(
 	options: ShellCurlLocalReplaySnapshotOptions,
 ): CurlingSnapshot {
-	const objects = options.stones.map((stone) =>
-		buildCurlingReplayStoneSnapshot({
-			stone,
+	const objects = options.balls.map((ball) =>
+		buildCurlingReplayBallSnapshot({
+			ball,
 			arena: options.arena,
-			trail: options.readStoneTrail(stone.id),
+			trail: options.readBallTrail(ball.id),
 		}),
 	);
 
@@ -519,7 +519,7 @@ export function buildShellCurlLocalReplaySnapshot(
 		maxTurns: options.maxTurns,
 		currentEnd: Math.min(options.currentEnd, options.totalEnds - 1),
 		throwsInEnd: options.throwsInEnd,
-		stonesPerPlayer: options.stonesPerPlayer,
+		ballsPerPlayer: options.ballsPerPlayer,
 		totalEnds: options.totalEnds,
 		score: [...options.score],
 		endScores: options.endScores.map((scores) => [...scores]),
@@ -529,8 +529,8 @@ export function buildShellCurlLocalReplaySnapshot(
 		},
 		players: options.players,
 		objects,
-		entities: buildReplayStoneEntities(objects),
-		activeStoneId: options.activeStoneId,
+		entities: buildReplayBallEntities(objects),
+		activeBallId: options.activeBallId,
 		winnerSide: options.phase === "finished" ? options.winnerSide : null,
 	};
 }

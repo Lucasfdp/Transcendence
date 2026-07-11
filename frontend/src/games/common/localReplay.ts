@@ -246,7 +246,7 @@ export function replayBallToEntity(
 	};
 }
 
-export function replayStoneToEntity(stone: {
+export function replayCurlingBallToEntity(ball: {
 	id: number;
 	side: number;
 	ownerSide?: number;
@@ -268,32 +268,32 @@ export function replayStoneToEntity(stone: {
 	power?: string;
 	trail?: Array<{ x: number; y: number }>;
 }): ReplayFrameSnapshotEntity {
-	const stopped = stone.stopped ?? !stone.moving;
-	const power = stone.power ?? "none";
+	const stopped = ball.stopped ?? !ball.moving;
+	const power = ball.power ?? "none";
 	return {
-		id: stone.id,
-		type: "stone",
-		side: stone.side,
-		ownerSide: stone.ownerSide ?? stone.side,
-		x: stone.x,
-		y: stone.y,
-		vx: stone.vx ?? 0,
-		vy: stone.vy ?? 0,
-		rotation: stone.rotation ?? 0,
-		angularVelocity: stone.angularVelocity ?? 0,
-		scale: POWER_SCALE[power] ?? stone.scale ?? 1,
-		visible: stone.visible ?? true,
-		alpha: TRANSLUCENT_POWERS.has(power) ? 0.52 : stone.alpha ?? 1,
-		spriteKey: stone.spriteKey ?? "temple-curling-stone",
+		id: ball.id,
+		type: "ball",
+		side: ball.side,
+		ownerSide: ball.ownerSide ?? ball.side,
+		x: ball.x,
+		y: ball.y,
+		vx: ball.vx ?? 0,
+		vy: ball.vy ?? 0,
+		rotation: ball.rotation ?? 0,
+		angularVelocity: ball.angularVelocity ?? 0,
+		scale: POWER_SCALE[power] ?? ball.scale ?? 1,
+		visible: ball.visible ?? true,
+		alpha: TRANSLUCENT_POWERS.has(power) ? 0.52 : ball.alpha ?? 1,
+		spriteKey: ball.spriteKey ?? "temple-curling-ball",
 		stateFlags: withPowerStateFlags(
-			stone.stateFlags ?? [stopped ? "settled" : "moving"],
+			ball.stateFlags ?? [stopped ? "settled" : "moving"],
 			power,
 		),
-		createdAt: stone.createdAt ?? 0,
-		updatedAt: stone.updatedAt ?? 0,
+		createdAt: ball.createdAt ?? 0,
+		updatedAt: ball.updatedAt ?? 0,
 		stopped,
 		power,
-		...(stone.trail?.length ? { trail: stone.trail.map((point) => ({ ...point })) } : {}),
+		...(ball.trail?.length ? { trail: ball.trail.map((point) => ({ ...point })) } : {}),
 	};
 }
 

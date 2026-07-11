@@ -7,14 +7,14 @@ import {
 	RoomPlayer,
 } from "../matchmaking.types";
 import {
-	initializeCurlingReplayStone,
+	initializeCurlingReplayBall,
 	syncCurlingReplayStateFromPayload,
 } from "../replay-state.helpers";
 import { BaseEngine } from "./base.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
 const TOTAL_ENDS = 3;
-const STONES_PER_PLAYER = 3;
+const BALLS_PER_PLAYER = 3;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 5;
 
@@ -58,10 +58,10 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			phase: "pending",
 			currentTurn: 0,
 			turnNumber: 0,
-			maxTurns: playerCount * STONES_PER_PLAYER * TOTAL_ENDS,
+			maxTurns: playerCount * BALLS_PER_PLAYER * TOTAL_ENDS,
 			currentEnd: 0,
 			throwsInEnd: 0,
-			stonesPerPlayer: STONES_PER_PLAYER,
+			ballsPerPlayer: BALLS_PER_PLAYER,
 			totalEnds: TOTAL_ENDS,
 			score: Array.from({ length: playerCount }, () => 0),
 			endScores: Array.from({ length: TOTAL_ENDS }, () =>
@@ -71,7 +71,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			players: roomPlayers.map((player) => this.toSnapshotPlayer(player)),
 			objects: [],
 			entities: [],
-			activeStoneId: null,
+			activeBallId: null,
 			winnerSide: null,
 		};
 	}
@@ -117,7 +117,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		if (state.objects.some((object) => object.id === state.turnNumber))
 			return null;
 
-		initializeCurlingReplayStone(
+		initializeCurlingReplayBall(
 			state,
 			state.turnNumber,
 			player.side,
@@ -158,7 +158,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		state.turnNumber += 1;
 		state.throwsInEnd += 1;
 
-		if (state.throwsInEnd >= room.players.length * state.stonesPerPlayer) {
+		if (state.throwsInEnd >= room.players.length * state.ballsPerPlayer) {
 			const endScore = this.scoreEnd(state.objects);
 			const endScores = Array.from(
 				{ length: state.score.length },
@@ -173,7 +173,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			state.throwsInEnd = 0;
 			state.objects = [];
 			state.entities = [];
-			state.activeStoneId = null;
+			state.activeBallId = null;
 			if (state.currentEnd < state.totalEnds) state.map = createShellCurlMap();
 		}
 

@@ -1,7 +1,7 @@
 import {
-	resolveStoneCollision,
-	type StoneState,
-	stepStone as stepCurlingStone,
+	resolveCurlingBallCollision,
+	type CurlingBallState,
+	stepCurlingBall as stepCurlingBall,
 } from "./ball";
 import {
 	type PowerRegistry,
@@ -12,14 +12,14 @@ import {
 import type { RectArenaPixels } from "./rect-arena";
 
 export interface CurlingPowerSpawnResult {
-	readonly children: StoneState[];
+	readonly children: CurlingBallState[];
 	readonly split: boolean;
 	readonly mirror: boolean;
 	readonly removeSource: boolean;
 }
 
 export interface CurlingCollisionOptions {
-	readonly activeStone?: StoneState | null;
+	readonly activeBall?: CurlingBallState | null;
 	readonly skipActivePairs?: boolean;
 	readonly triggerActiveCollisionPower?: boolean;
 }
@@ -27,60 +27,60 @@ export interface CurlingCollisionOptions {
 export class CurlingPowerRuntime {
 	constructor(
 		private readonly registry: PowerRegistry,
-		private readonly nextStoneId: () => number,
+		private readonly nextBallId: () => number,
 	) {}
 
 	applyPower(
 		power: PowerType,
-		stone: StoneState,
+		ball: CurlingBallState,
 		arena: RectArenaPixels,
 	): void {
-		stone.power = power;
-		this.registry.get(power).onApply(stone, arena);
+		ball.power = power;
+		this.registry.get(power).onApply(ball, arena);
 	}
 
-	stepStone(
-		stone: StoneState,
+	stepCurlingBall(
+		ball: CurlingBallState,
 		delta: number,
 		arena: RectArenaPixels,
 	): boolean {
-		return stepCurlingStone(stone, delta, arena);
+		return stepCurlingBall(ball, delta, arena);
 	}
 
 	updatePower(
-		stone: StoneState,
+		ball: CurlingBallState,
 		delta: number,
 		arena: RectArenaPixels,
 	): void {
-		this.registry.get(stone.power).onUpdate?.(stone, delta, arena);
+		this.registry.get(ball.power).onUpdate?.(ball, delta, arena);
 	}
 
 	collidePower(
-		stone: StoneState,
-		other: StoneState,
+		ball: CurlingBallState,
+		other: CurlingBallState,
 		arena: RectArenaPixels,
 	): void {
-		this.registry.get(stone.power).onCollide?.(stone, other, arena);
+		this.registry.get(ball.power).onCollide?.(ball, other, arena);
 	}
 
 	stopPower(
-		stone: StoneState,
+		ball: CurlingBallState,
 		arena: RectArenaPixels,
-		allStones: StoneState[],
+		allBalls: CurlingBallState[],
 	): void {
-		this.registry.get(stone.power).onStop?.(stone, arena, allStones);
+		this.registry.get(ball.power).onStop?.(ball, arena, allBalls);
 	}
 
 	resolveCollisions(
-		stones: readonly StoneState[],
+		balls: readonly CurlingBallState[],
 		arena: RectArenaPixels,
 		options: CurlingCollisionOptions = {},
 	): void {
-		const active = options.activeStone ?? null;
-		for (let i = 0; i < stones.length; i++) {
-			for (let j = i + 1; j < stones.length; j++) {
-				const a = stones[i];
-				const b = stones[j];
+		const active = options.activeBall ?? null;
+		for (let i = 0; i < balls.length; i++) {
+			for (let j = i + 1; j < balls.length; j++) {
+				const a = balls[i];
+				const b = balls[j];
 				const includesActive = active === a || active === b;
 				if (options.skipActivePairs && includesActive) continue;
 				if (this.isPhantomHidden(a) || this.isPhantomHidden(b))
@@ -91,8 +91,8 @@ export class CurlingPowerRuntime {
 						active &&
 						options.triggerActiveCollisionPower &&
 						includesActive,
-					) && this.stonesOverlapping(a, b);
-				resolveStoneCollision(a, b);
+					) && this.ballsOverlapping(a, b);
+				resolveCurlingBallCollision(a, b);
 				if (colliding && active)
 					this.collidePower(active, active === a ? b : a, arena);
 			}
@@ -100,30 +100,30 @@ export class CurlingPowerRuntime {
 	}
 
 	consumeSpawnRequests(
-		stone: StoneState,
+		ball: CurlingBallState,
 		arena: RectArenaPixels,
 	): CurlingPowerSpawnResult {
-		const children: StoneState[] = [];
+		const children: CurlingBallState[] = [];
 		let split = false;
 		let mirror = false;
 		let removeSource = false;
 
-		if (stone.splitterPending) {
-			stone.splitterPending = false;
-			children.push(...this.createSplitStones(stone));
+		if (ball.splitterPending) {
+			ball.splitterPending = false;
+			children.push(...this.createSplitBalls(ball));
 			split = true;
 			removeSource = true;
 		}
-		if (stone.mirrorPending) {
-			stone.mirrorPending = false;
-			children.push(this.createMirrorStone(stone, arena));
+		if (ball.mirrorPending) {
+			ball.mirrorPending = false;
+			children.push(this.createMirrorBall(ball, arena));
 			mirror = true;
 		}
 
 		return { children, split, mirror, removeSource };
 	}
 
-	private createSplitStones(parent: StoneState): StoneState[] {
+	private createSplitBalls(parent: CurlingBallState): CurlingBallState[] {
 		const parentSpeed = Math.hypot(parent.vx, parent.vy);
 		const parentAngle = Math.atan2(parent.vy, parent.vx);
 		const childRadius = parent.r * SPLITTER_RADIUS;
@@ -132,7 +132,7 @@ export class CurlingPowerRuntime {
 		return [-SPLITTER_SPREAD, 0, SPLITTER_SPREAD].map((offset) => {
 			const angle = parentAngle + offset;
 			return {
-				id: this.nextStoneId(),
+				id: this.nextBallId(),
 				teamId: parent.teamId,
 				x: parent.x + Math.cos(angle) * spawnOffset,
 				y: parent.y + Math.sin(angle) * spawnOffset,
@@ -146,14 +146,14 @@ export class CurlingPowerRuntime {
 		});
 	}
 
-	private createMirrorStone(
-		parent: StoneState,
+	private createMirrorBall(
+		parent: CurlingBallState,
 		arena: RectArenaPixels,
-	): StoneState {
+	): CurlingBallState {
 		const mirroredY =
 			arena.sheetY + arena.sheetH - (parent.y - arena.sheetY);
 		return {
-			id: this.nextStoneId(),
+			id: this.nextBallId(),
 			teamId: parent.teamId,
 			x: parent.x,
 			y: mirroredY,
@@ -166,11 +166,11 @@ export class CurlingPowerRuntime {
 		};
 	}
 
-	private isPhantomHidden(stone: StoneState): boolean {
-		return Boolean((stone as { phantomHidden?: boolean }).phantomHidden);
+	private isPhantomHidden(ball: CurlingBallState): boolean {
+		return Boolean((ball as { phantomHidden?: boolean }).phantomHidden);
 	}
 
-	private stonesOverlapping(a: StoneState, b: StoneState): boolean {
+	private ballsOverlapping(a: CurlingBallState, b: CurlingBallState): boolean {
 		const dx = b.x - a.x;
 		const dy = b.y - a.y;
 		return Math.hypot(dx, dy) < a.r + b.r;

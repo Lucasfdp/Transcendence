@@ -2,14 +2,14 @@
  * game/mechanics/rect-arena.ts — rectangular arena geometry and rendering.
  *
  * Supports two orientations:
- *   'vertical'   — stone delivered from the top, travels DOWN towards house at bottom.
- *   'horizontal' — stone delivered from the left, travels RIGHT towards house at right.
+ *   'vertical'   — ball delivered from the top, travels DOWN towards house at bottom.
+ *   'horizontal' — ball delivered from the left, travels RIGHT towards house at right.
  *
  * All coordinates in RectArenaPixels are canvas pixels after letterbox-fitting.
  */
 
 import Phaser from "phaser";
-import type { StoneState } from "./ball";
+import type { CurlingBallState } from "./ball";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -43,13 +43,13 @@ export interface RectArenaPixels {
 	/** [outer, mid, inner, button] radii in canvas px. */
 	houseRadii: [number, number, number, number];
 
-	/** Stone spawn X (delivery-end x for horizontal; sheet centre x for vertical). */
+	/** Ball spawn X (delivery-end x for horizontal; sheet centre x for vertical). */
 	deliveryX: number;
-	/** Stone spawn Y (sheet centre y for horizontal; delivery-end y for vertical). */
+	/** Ball spawn Y (sheet centre y for horizontal; delivery-end y for vertical). */
 	deliveryY: number;
 
 	/**
-	 * Hog line coordinate — stones must clear this or are removed.
+	 * Hog line coordinate — balls must clear this or are removed.
 	 * hogX is used when orientation === 'horizontal'; hogY when 'vertical'.
 	 */
 	hogX: number;
@@ -63,7 +63,7 @@ export interface RectArenaPixels {
 
 /** Source-px inset from the far end: visual-only hog line (vertical mode). */
 const HOG_LINE_INSET_SRC = 160;
-/** Source-px inset from the near end: stone spawns here (delivery hack). */
+/** Source-px inset from the near end: ball spawns here (delivery hack). */
 const DELIVERY_LINE_INSET_SRC = 90;
 
 /** Letterbox-fit the arena def into the canvas, preserving aspect ratio. */
@@ -104,7 +104,7 @@ export function rectArenaToScreenInRect(
 	];
 
 	if (orientation === "horizontal") {
-		// Stone travels LEFT → RIGHT; scoring house on the right
+		// Ball travels LEFT → RIGHT; scoring house on the right
 		const midY = sheetY + sheetH / 2;
 		return {
 			sheetX,
@@ -125,7 +125,7 @@ export function rectArenaToScreenInRect(
 		};
 	}
 
-	// Default: vertical — stone travels TOP → BOTTOM; scoring house at bottom
+	// Default: vertical — ball travels TOP → BOTTOM; scoring house at bottom
 	const midX = sheetX + sheetW / 2;
 	return {
 		sheetX,
@@ -171,16 +171,16 @@ export function rectArenaPlayableToScreenInRect(
 
 // ── Boundary helpers ──────────────────────────────────────────────────────────
 
-/** True if the stone centre is within the outermost house ring at the scoring end. */
-export function isStoneInHouse(s: StoneState, a: RectArenaPixels): boolean {
+/** True if the ball centre is within the outermost house ring at the scoring end. */
+export function isBallInHouse(s: CurlingBallState, a: RectArenaPixels): boolean {
 	const dx = s.x - a.houseFarCX;
 	const dy = s.y - a.houseFarCY;
 	return Math.sqrt(dx * dx + dy * dy) <= a.houseRadii[0];
 }
 
-/** Distance from the stone centre to the scoring house button (centre dot). */
-export function distanceToHouseButton(
-	s: StoneState,
+/** Distance from the ball centre to the scoring house button (centre dot). */
+export function distanceFromBallToHouseButton(
+	s: CurlingBallState,
 	a: RectArenaPixels,
 ): number {
 	const dx = s.x - a.houseFarCX;
@@ -188,10 +188,10 @@ export function distanceToHouseButton(
 	return Math.sqrt(dx * dx + dy * dy);
 }
 
-/** True if the stone has left the playable sheet.
- *  Horizontal mode: all four walls bounce (handled in stepStone), so stones
+/** True if the ball has left the playable sheet.
+ *  Horizontal mode: all four walls bounce (handled in stepCurlingBall), so balls
  *  are never out-of-bounds — they can never leave the enclosed sheet. */
-export function isStoneOutOfBounds(s: StoneState, a: RectArenaPixels): boolean {
+export function isBallOutOfBounds(s: CurlingBallState, a: RectArenaPixels): boolean {
 	if (a.orientation === "horizontal") {
 		return false; // fully enclosed — walls bounce, no removal
 	}
@@ -208,7 +208,7 @@ export function isStoneOutOfBounds(s: StoneState, a: RectArenaPixels): boolean {
 const COLOR_ICE = 0xddeef8; // warm pale ice blue
 const COLOR_WALL = 0x5aaecc; // sheet boundary walls
 const COLOR_CENTRE_LINE = 0x5aaecc; // mid-sheet line (perpendicular to travel)
-const COLOR_HOG_LINE = 0xcc4444; // far hog line — must clear or stone removed
+const COLOR_HOG_LINE = 0xcc4444; // far hog line — must clear or ball removed
 const COLOR_HOG_LINE_DIM = 0xcc4444; // delivery guide line (drawn faint)
 const COLOR_HACK_MARK = 0xffffff; // delivery hack cross
 
@@ -259,7 +259,7 @@ export function drawIceSheet(
 	}
 }
 
-// ── Horizontal sheet (stone travels left → right) ────────────────────────────
+// ── Horizontal sheet (ball travels left → right) ────────────────────────────
 
 function drawHorizontalSheet(
 	g: Phaser.GameObjects.Graphics,
@@ -299,7 +299,7 @@ function drawHorizontalSheet(
 	);
 }
 
-// ── Vertical sheet (stone travels top → bottom) ───────────────────────────────
+// ── Vertical sheet (ball travels top → bottom) ───────────────────────────────
 
 function drawVerticalSheet(
 	g: Phaser.GameObjects.Graphics,

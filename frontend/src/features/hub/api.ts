@@ -749,7 +749,7 @@ export interface ReplayVisualPlayer {
 
 export interface ReplaySnapshotEntity {
 	id: number | string;
-	type: "projectile" | "stone" | string;
+	type: "projectile" | "ball" | string;
 	side?: number;
 	ownerSide?: number;
 	x: number;
@@ -776,7 +776,7 @@ export interface ReplayFrameSnapshot {
 	score?: number[];
 	scores?: number[];
 	currentTurn?: number;
-	activeStoneId?: number | string | null;
+	activeBallId?: number | string | null;
 	activeBallIdBySide?: Array<number | string | null>;
 	entities?: ReplaySnapshotEntity[];
 	balls?: ReplaySnapshotEntity[];

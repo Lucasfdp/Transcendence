@@ -42,7 +42,7 @@ describe("launchable remap runtime helper", () => {
 
 	it("preserves normalised velocity when the target arena scale changes", () => {
 		const remapped = remapLaunchable(
-			{ id: "stone-1", x: 0, y: 0, vx: 90, vy: -30 },
+			{ id: "ball-1", x: 0, y: 0, vx: 90, vy: -30 },
 			{ originX: 0, originY: 0, width: 100, height: 100, velocityScale: 3 },
 			{ originX: 0, originY: 0, width: 200, height: 200, velocityScale: 5 },
 		);

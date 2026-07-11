@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	buildReplayProjectileEntities,
-	buildReplayStoneEntities,
+	buildReplayBallEntities,
 } from "../runtime/ReplayEntities";
 
 describe("ReplayEntities", () => {
@@ -34,9 +34,9 @@ describe("ReplayEntities", () => {
 		]);
 	});
 
-	it("maps stone snapshots through the common replay entity boundary", () => {
+	it("maps ball snapshots through the common replay entity boundary", () => {
 		expect(
-			buildReplayStoneEntities([
+			buildReplayBallEntities([
 				{
 					id: 3,
 					side: 1,
@@ -49,7 +49,7 @@ describe("ReplayEntities", () => {
 		).toEqual([
 			expect.objectContaining({
 				id: 3,
-				type: "stone",
+				type: "ball",
 				side: 1,
 				alpha: 0.52,
 				stateFlags: expect.arrayContaining(["settled", "power:ghost"]),
