@@ -6909,17 +6909,17 @@ img.power-card__orb {
 	gap: 20px;
 }
 .hub-monte__row {
-	display: flex;
-	gap: 18px;
+	position: relative;
 	min-height: 132px;
-	align-items: flex-end;
-	justify-content: center;
+	height: 132px;
 }
 .hub-monte__canvas {
 	display: block;
 }
 .hub-monte__shell {
-	position: relative;
+	position: absolute;
+	left: 0;
+	bottom: 0;
 	width: 102px;
 	height: 118px;
 	border: 0;
@@ -6930,6 +6930,9 @@ img.power-card__orb {
 	align-items: center;
 	justify-content: flex-end;
 	padding: 0;
+	transition-property: transform;
+	transition-timing-function: cubic-bezier(0.28, 0.72, 0.2, 1);
+	will-change: transform;
 }
 .hub-monte__shell:disabled {
 	cursor: not-allowed;
@@ -6942,6 +6945,15 @@ img.power-card__orb {
 	border: 2px solid rgba(12, 17, 24, 0.85);
 	box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
 	transition: transform 0.12s ease, border-color 0.15s ease;
+}
+.hub-monte__shell.is-swapping .hub-monte__shell-face {
+	transform: translateY(-18px);
+}
+.hub-monte__shell.is-lifted .hub-monte__shell-face {
+	transform: translateY(-22px) rotate(-7deg);
+}
+.hub-monte__shell.is-covering .hub-monte__shell-face {
+	transform: translateY(2px);
 }
 .hub-monte__shell.is-pick .hub-monte__shell-face {
 	border-color: var(--accent);
@@ -7027,6 +7039,8 @@ img.power-card__orb {
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	flex-wrap: wrap;
+	justify-content: center;
 }
 .hub-monte__stake-label {
 	color: var(--muted);

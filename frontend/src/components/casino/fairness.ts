@@ -8,6 +8,7 @@
  */
 import type {
 	DiceDirection,
+	MonteRoundResolution,
 	SlotSymbolView,
 	SpinResolution,
 	SpinResult,
@@ -189,6 +190,41 @@ export function verifyMonte(
 	return verifyResolution(result, (computedRolls) =>
 		monteOutcomeId(winningShell(computedRolls[0], shells)),
 	);
+}
+
+/** Verify a two-step Monte round after the server reveals its seed. */
+export async function verifyMonteRound(
+	result: MonteRoundResolution,
+): Promise<OutcomeFairnessCheck> {
+	const {
+		serverSeed,
+		serverSeedHash,
+		clientSeed,
+		nonce,
+		roll,
+		rolls,
+		winningCupHash,
+	} = result.fairness;
+
+	const computedHash = await sha256Hex(serverSeed);
+	const computedRoll = await computeRollBrowser(serverSeed, clientSeed, nonce);
+	const winningIndex = winningShell(computedRoll, result.cupIds.length);
+	const computedCup = result.cupIds[winningIndex];
+	const computedCupHash = await sha256Hex(
+		`${serverSeed}:${clientSeed}:${nonce}:${computedCup}`,
+	);
+
+	const hashOk =
+		computedHash === serverSeedHash && computedCupHash === winningCupHash;
+	const rollOk =
+		rolls.length === 1 &&
+		Math.abs(computedRoll - rolls[0]) < ROLL_EPSILON &&
+		Math.abs(computedRoll - roll) < ROLL_EPSILON;
+	const outcomeOk =
+		computedCup === result.ballCupId &&
+		(result.selectedCupId === result.ballCupId) === result.won;
+
+	return { hashOk, rollOk, outcomeOk, ok: hashOk && rollOk && outcomeOk };
 }
 
 /**

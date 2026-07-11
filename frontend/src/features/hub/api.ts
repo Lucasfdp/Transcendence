@@ -470,6 +470,38 @@ export interface MonteConfig {
 	coins: number;
 }
 
+export interface MonteRoundStart {
+	roundId: string;
+	cupIds: string[];
+	ballCupId: string;
+	serverSeedHash: string;
+	winningCupHash: string;
+	clientSeed: string;
+	nonce: number;
+	stake: number;
+	expiresAt: string;
+	coins: number;
+}
+
+export interface MonteRoundResolution {
+	roundId: string;
+	game: "monte";
+	mode: "wagered";
+	cupIds: string[];
+	ballCupId: string;
+	selectedCupId: string;
+	won: boolean;
+	multiplier: number;
+	stake: number;
+	paid: number;
+	payout: number;
+	net: number;
+	coins: number;
+	fairness: SpinFairness & {
+		winningCupHash: string;
+	};
+}
+
 // ── Koi Dice ─────────────────────────────────────────────────────────────────
 
 /** A called betting direction. */
@@ -990,17 +1022,28 @@ export const api = {
 	/** Fetch the Three-Shell Monte layout: risk tiers, RTP, bounds and balance. */
 	getMonte: (): Promise<MonteConfig> => apiFetch<MonteConfig>("/casino/monte"),
 
-	/** Guess a shell and stake coins. Returns the outcome and new balance. */
-	monte: (
+	/** Start a committed Three-Shell Monte round. */
+	startMonteRound: (
 		stake: number,
-		pick: number,
-		shells?: number,
 		clientSeed?: string,
-	): Promise<SpinResolution> =>
-		apiFetch<SpinResolution>("/casino/monte", {
+	): Promise<MonteRoundStart> =>
+		apiFetch<MonteRoundStart>("/casino/monte/rounds", {
 			method: "POST",
-			body: JSON.stringify({ stake, pick, shells, clientSeed }),
+			body: JSON.stringify({ stake, clientSeed }),
 		}),
+
+	/** Resolve a committed Three-Shell Monte round with the selected cup. */
+	resolveMonteRound: (
+		roundId: string,
+		selectedCupId: string,
+	): Promise<MonteRoundResolution> =>
+		apiFetch<MonteRoundResolution>(
+			`/casino/monte/rounds/${encodeURIComponent(roundId)}/resolve`,
+			{
+				method: "POST",
+				body: JSON.stringify({ selectedCupId }),
+			},
+		),
 
 	/** Fetch the Shrine Slots reel, paytable, RTP, bounds and balance. */
 	getSlots: (): Promise<SlotsView> => apiFetch<SlotsView>("/casino/slots"),

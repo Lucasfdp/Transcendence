@@ -1,10 +1,9 @@
 /**
  * Three-Shell Monte — catalogue & economy constants.
  *
- * A pearl hides under one of N shells; the player points at a shell and a single
- * provably-fair roll reveals where the pearl actually sat. A correct guess pays
- * N× the stake, a wrong one loses it. The player picks the risk tier — more
- * shells means a longer odds and a bigger payout.
+ * A pearl hides under one of three shells; the player watches the reveal, the
+ * shells cover it, then chooses a shell after the shuffle. A correct guess pays
+ * 3× the stake, a wrong one loses it.
  *
  * Economy design: with N equally-likely shells, a correct guess has probability
  * 1/N and pays N×, so the expected return is exactly 1.0 for every N —
@@ -12,8 +11,8 @@
  * owns only the shell maths.
  */
 
-/** Risk tiers: how many shells the pearl can hide under. */
-export const MONTE_SHELL_OPTIONS = [3, 4, 5] as const;
+/** Three-Shell Monte is fixed to the classic three-shell layout. */
+export const MONTE_SHELL_OPTIONS = [3] as const;
 
 /** A chosen shell count. */
 export type MonteShells = (typeof MONTE_SHELL_OPTIONS)[number];

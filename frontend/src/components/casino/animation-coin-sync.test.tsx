@@ -22,6 +22,7 @@ import {
 	type DiceConfig,
 	type FlipConfig,
 	type MonteConfig,
+	type MonteRoundStart,
 	type PlinkoView,
 	type SlotsView,
 	type SpinFairness,
@@ -46,7 +47,8 @@ vi.mock("../../features/hub/api", () => ({
 		getFlip: vi.fn(),
 		flip: vi.fn(),
 		getMonte: vi.fn(),
-		monte: vi.fn(),
+		startMonteRound: vi.fn(),
+		resolveMonteRound: vi.fn(),
 		getSlots: vi.fn(),
 		spinSlots: vi.fn(),
 		getPlinko: vi.fn(),
@@ -236,7 +238,7 @@ describe("casino modals sync coins immediately, independent of the cosmetic anim
 
 	it("ThreeShellMonteModal: calls onCoinsChange with the server balance before the shuffle animation completes", async () => {
 		const config: MonteConfig = {
-			shellOptions: [3, 4, 5],
+			shellOptions: [3],
 			defaultShells: 3,
 			rtp: 1,
 			minWager: 10,
@@ -244,28 +246,28 @@ describe("casino modals sync coins immediately, independent of the cosmetic anim
 			coins: 500,
 		};
 		vi.mocked(api.getMonte).mockResolvedValue(config);
-		const outcome: SpinResolution = {
-			game: "monte",
-			mode: "wagered",
-			outcomeId: "shell-1",
-			multiplier: 3,
+		const started: MonteRoundStart = {
+			roundId: "round-1",
+			cupIds: ["cup-a", "cup-b", "cup-c"],
+			ballCupId: "cup-b",
+			serverSeedHash: "hash",
+			winningCupHash: "cup-hash",
+			clientSeed: "",
+			nonce: 1,
 			stake: 10,
-			paid: 10,
-			payout: 30,
-			net: 20,
-			coins: 520,
-			fairness: fairness(),
+			expiresAt: new Date(Date.now() + 60_000).toISOString(),
+			coins: 490,
 		};
-		vi.mocked(api.monte).mockResolvedValue(outcome);
+		vi.mocked(api.startMonteRound).mockResolvedValue(started);
 
 		const onCoinsChange = vi.fn();
 		render(<ThreeShellMonteModal coins={500} onCoinsChange={onCoinsChange} />);
 
 		fireEvent.click(
-			await screen.findByRole("button", { name: /Guess for/ }),
+			await screen.findByRole("button", { name: /Start game/ }),
 		);
 
-		await waitFor(() => expect(onCoinsChange).toHaveBeenCalledWith(520));
+		await waitFor(() => expect(onCoinsChange).toHaveBeenCalledWith(490));
 	});
 
 	it("ShrineSlotsModal: calls onCoinsChange with the server balance before the reel animation completes", async () => {

@@ -5,6 +5,7 @@ import {
 	HttpCode,
 	HttpException,
 	Post,
+	Param,
 	Request,
 	UnauthorizedException,
 	UseGuards,
@@ -28,6 +29,11 @@ import { DiceService } from "./dice.service";
 import { type FlipConfig } from "./flip.constants";
 import { FlipService } from "./flip.service";
 import { type MonteConfig } from "./monte.constants";
+import {
+	type MonteRoundResolveResult,
+	type MonteRoundStartResult,
+} from "./monte-round.constants";
+import { MonteRoundService } from "./monte-round.service";
 import { MonteService } from "./monte.service";
 import { type PlinkoView } from "./plinko.constants";
 import { PlinkoService } from "./plinko.service";
@@ -35,7 +41,10 @@ import { type SlotsView } from "./slots.constants";
 import { SlotsService } from "./slots.service";
 import { DiceDto } from "./dto/dice.dto";
 import { FlipDto } from "./dto/flip.dto";
-import { MonteDto } from "./dto/monte.dto";
+import {
+	ResolveMonteRoundDto,
+	StartMonteRoundDto,
+} from "./dto/monte-round.dto";
 import { PlinkoDto } from "./dto/plinko.dto";
 import { SlotsSpinDto } from "./dto/slots.dto";
 import { FreeSpinDto, SpinDto } from "./dto/spin.dto";
@@ -75,6 +84,7 @@ export class CasinoController {
 		private readonly casinoService: CasinoService,
 		private readonly flipService: FlipService,
 		private readonly monteService: MonteService,
+		private readonly monteRoundService: MonteRoundService,
 		private readonly slotsService: SlotsService,
 		private readonly diceService: DiceService,
 		private readonly plinkoService: PlinkoService,
@@ -146,19 +156,39 @@ export class CasinoController {
 		return this.monteService.getMonteConfig(user);
 	}
 
-	/** POST /casino/monte — guess a shell and stake coins (CSRF-protected). */
-	@Post("monte")
+	/** POST /casino/monte/rounds — start a committed round (CSRF-protected). */
+	@Post("monte/rounds")
 	@HttpCode(200)
 	@UseGuards(CsrfGuard)
-	async monte(
+	async startMonteRound(
 		@Request() req: AuthedRequest,
-		@Body() dto: MonteDto,
-	): Promise<SpinResolution> {
+		@Body() dto: StartMonteRoundDto,
+	): Promise<MonteRoundStartResult> {
 		this.enforceSpinRate(req, "monte");
 		const user = await this.requireUser(req);
-		return this.monteService.monte(user, dto.pick, dto.shells, dto.stake, {
-			clientSeed: dto.clientSeed,
-		});
+		return this.monteRoundService.startRound(
+			user,
+			dto.stake,
+			dto.clientSeed ?? "",
+		);
+	}
+
+	/** POST /casino/monte/rounds/:roundId/resolve — settle a cup choice. */
+	@Post("monte/rounds/:roundId/resolve")
+	@HttpCode(200)
+	@UseGuards(CsrfGuard)
+	async resolveMonteRound(
+		@Request() req: AuthedRequest,
+		@Param("roundId") roundId: string,
+		@Body() dto: ResolveMonteRoundDto,
+	): Promise<MonteRoundResolveResult> {
+		this.enforceSpinRate(req, "monte");
+		const user = await this.requireUser(req);
+		return this.monteRoundService.resolveRound(
+			user,
+			roundId,
+			dto.selectedCupId,
+		);
 	}
 
 	/** GET /casino/slots — reel, paytable, RTP, bounds and balance. */

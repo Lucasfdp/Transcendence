@@ -1,191 +1,63 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	api,
 	type MonteConfig,
-	type SpinResolution,
+	type MonteRoundResolution,
+	type MonteRoundStart,
 } from "../../features/hub/api";
+import { type OutcomeFairnessCheck, verifyMonteRound } from "./fairness";
 import {
-	type BoardStep,
-	clamp01,
-	easeInOutCubic,
-	easeOutBack,
-	lerp,
-	runBoardAnimation,
-	setupCanvas,
-} from "./board-canvas";
-import { type OutcomeFairnessCheck, verifyMonte } from "./fairness";
-import {
-	generateSwapSequence,
-	positionsAfterSwaps,
-	swapSnapshots,
-} from "./shuffle";
+	MONTE_CUP_COUNT,
+	monteSwapDurations,
+	monteSwapPairs,
+	swapTwoCupPositions,
+} from "./monte";
 import { useReducedMotion } from "./useReducedMotion";
 
-/** Pixel width reserved per shell slot on the shuffle board (matches the idle row's 102px shell + 18px gap). */
-const SHELL_SLOT_PX = 120;
-/** Pixel height of the shuffle board canvas. */
-const BOARD_HEIGHT_PX = 155;
-/** Vertical resting position (px) of each shell token on the board. */
-const BASELINE_Y_PX = 107;
-/** How high (px) a shell arcs upward while crossing to its new slot. */
-const LIFT_PX = 31;
-/** Font size (px) the shell emoji token is drawn at. */
-const SHELL_FONT_PX = 42;
-/** How many cosmetic position swaps the shuffle performs — tuned to read clearly without dragging. */
-const SWAP_COUNT = 8;
-/** Total wall-clock time (ms) the shuffle takes, swaps + settle combined. */
-const SHUFFLE_DURATION_MS = 2000;
-/** Portion of the total duration (ms) spent on the final settle "pop". */
-const SETTLE_DURATION_MS = 260;
-/** Time (ms) each individual swap step takes. */
-const SWAP_STEP_DURATION_MS =
-	(SHUFFLE_DURATION_MS - SETTLE_DURATION_MS) / SWAP_COUNT;
+type MontePhase =
+	| "idle"
+	| "preview"
+	| "covering"
+	| "shuffling"
+	| "choosing"
+	| "revealing";
 
-/** Parse the winning shell index from an outcome id like "shell-2". */
-function shellFromOutcome(outcomeId: string): number {
-	return Number.parseInt(outcomeId.replace("shell-", ""), 10);
-}
-
-/**
- * The server-resolved outcome for a guess that's already been played, held
- * back from `result` until the cosmetic shuffle animation finishes. Bundles
- * the shell count and pick used for *this* round so the animation effect
- * below never has to depend on the live `shells`/`pick` state (which could
- * otherwise change out from under an in-flight animation).
- */
-interface PendingReveal {
-	outcome: SpinResolution;
-	shells: number;
-	pick: number;
-}
-
-/** One shell token's cosmetic slide from one board position to another. */
-interface ShuffleFrameShell {
-	id: number;
-	fromX: number;
-	toX: number;
-	moves: boolean;
-}
-
-/** Normalised (0..1) horizontal center of board slot `position` out of `count`. */
-function slotCenter(position: number, count: number): number {
-	return (position + 0.5) / count;
-}
-
-/** Inverts a position->identity snapshot into an identity->position lookup. */
-function identityPositions(snapshot: readonly number[]): number[] {
-	const positions = new Array<number>(snapshot.length);
-	snapshot.forEach((identity, position) => {
-		positions[identity] = position;
-	});
-	return positions;
-}
-
-/**
- * Builds one timed `BoardStep` per cosmetic swap (every shell token's slide
- * from its pre-swap slot to its post-swap slot) plus a final settle step used
- * purely for a small "pop" flourish once every shell is at rest.
- */
-function buildShuffleSteps(
-	count: number,
-	snapshots: readonly number[][],
-): BoardStep<ShuffleFrameShell[]>[] {
-	const steps: BoardStep<ShuffleFrameShell[]>[] = [];
-	for (let i = 0; i < snapshots.length - 1; i++) {
-		const fromPositions = identityPositions(snapshots[i]);
-		const toPositions = identityPositions(snapshots[i + 1]);
-		const frame: ShuffleFrameShell[] = [];
-		for (let id = 0; id < count; id++) {
-			frame.push({
-				id,
-				fromX: slotCenter(fromPositions[id], count),
-				toX: slotCenter(toPositions[id], count),
-				moves: fromPositions[id] !== toPositions[id],
-			});
-		}
-		steps.push({ durationMs: SWAP_STEP_DURATION_MS, data: frame });
-	}
-
-	const restPositions = identityPositions(snapshots[snapshots.length - 1]);
-	const restFrame: ShuffleFrameShell[] = Array.from(
-		{ length: count },
-		(_, id) => ({
-			id,
-			fromX: slotCenter(restPositions[id], count),
-			toX: slotCenter(restPositions[id], count),
-			moves: false,
-		}),
-	);
-	steps.push({ durationMs: SETTLE_DURATION_MS, data: restFrame });
-
-	return steps;
-}
-
-/** Colours resolved once from the board's own computed style (dojo palette). */
-interface MontePalette {
-	pick: string;
-}
-
-/** Reads the "this is your shell" ring colour from the page's CSS custom properties. */
-function readMontePalette(canvas: HTMLCanvasElement): MontePalette {
-	const style = getComputedStyle(canvas);
-	return {
-		pick: style.getPropertyValue("--accent").trim() || "#e6a23c",
-	};
-}
-
-/**
- * Draws one frame of the shuffle board: every shell token at its current
- * interpolated position, with a ring around whichever token is the player's
- * original pick so it can be tracked through the shuffle. The pearl itself is
- * never drawn here — it's revealed only once the shuffle is fully settled,
- * via the DOM row that takes over afterwards (see the component below).
- */
-function drawShuffleFrame(
-	ctx: CanvasRenderingContext2D,
-	width: number,
-	height: number,
-	frame: readonly ShuffleFrameShell[],
-	progress: number,
-	isSettleStep: boolean,
-	pickIdentity: number,
-	palette: MontePalette,
-): void {
-	ctx.clearRect(0, 0, width, height);
-	const eased = isSettleStep ? easeOutBack(progress) : easeInOutCubic(progress);
-
-	for (const shell of frame) {
-		const x = lerp(shell.fromX, shell.toX, isSettleStep ? 1 : eased) * width;
-		const lift =
-			!isSettleStep && shell.moves
-				? Math.sin(Math.PI * clamp01(progress)) * LIFT_PX
-				: 0;
-		const pop = isSettleStep ? 1 + (1 - eased) * 0.12 : 1;
-		const y = BASELINE_Y_PX - lift;
-
-		ctx.save();
-		ctx.translate(x, y);
-		ctx.scale(pop, pop);
-		if (shell.id === pickIdentity) {
-			ctx.beginPath();
-			ctx.arc(0, 2, SHELL_FONT_PX * 0.62, 0, Math.PI * 2);
-			ctx.strokeStyle = palette.pick;
-			ctx.lineWidth = 2;
-			ctx.stroke();
-		}
-		ctx.font = `${SHELL_FONT_PX}px sans-serif`;
-		ctx.textAlign = "center";
-		ctx.textBaseline = "middle";
-		ctx.fillText("🐚", 0, 0);
-		ctx.restore();
-	}
-}
+const PREVIEW_MS = 1200;
+const COVERING_MS = 450;
+const REVEAL_MS = 700;
+const SHUFFLE_STEPS = 8;
+const CUP_SLOT_PX = 120;
 
 interface ThreeShellMonteModalProps {
 	/** Current coin balance, used to gate wagers. */
 	coins: number;
 	/** Sync the player's coin balance up to the hub after a guess. */
 	onCoinsChange: (coins: number) => void;
+}
+
+function cupNumber(cupIds: readonly string[], cupId: string): number {
+	return cupIds.indexOf(cupId) + 1;
+}
+
+function phaseMessage(
+	phase: MontePhase,
+	result: MonteRoundResolution | null,
+	round: MonteRoundStart | null,
+): string {
+	if (result) {
+		const cup = cupNumber(result.cupIds, result.ballCupId);
+		return result.won
+			? `Pearl under cup ${cup} · +${result.net} ⬡`
+			: `Pearl under cup ${cup} · ${result.net} ⬡`;
+	}
+	if (phase === "preview" && round) {
+		return `Watch the pearl under cup ${cupNumber(round.cupIds, round.ballCupId)}.`;
+	}
+	if (phase === "covering") return "Cups down.";
+	if (phase === "shuffling") return "Shuffling...";
+	if (phase === "choosing") return "Choose a cup.";
+	if (phase === "revealing") return "Revealing...";
+	return "";
 }
 
 export function ThreeShellMonteModal({
@@ -195,34 +67,26 @@ export function ThreeShellMonteModal({
 	const [config, setConfig] = useState<MonteConfig | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
-	const [shells, setShells] = useState(0);
-	const [pick, setPick] = useState(0);
 	const [stake, setStake] = useState(0);
 	const [clientSeed, setClientSeed] = useState("");
-	const [revealing, setRevealing] = useState(false);
-	const [result, setResult] = useState<SpinResolution | null>(null);
-	const [playedShells, setPlayedShells] = useState(0);
+	const [phase, setPhase] = useState<MontePhase>("idle");
+	const [round, setRound] = useState<MonteRoundStart | null>(null);
+	const [cupOrder, setCupOrder] = useState<string[]>([]);
+	const [currentSwapMs, setCurrentSwapMs] = useState(220);
+	const [activeSwapCupIds, setActiveSwapCupIds] = useState<string[]>([]);
+	const [selectedCupId, setSelectedCupId] = useState<string | null>(null);
+	const [result, setResult] = useState<MonteRoundResolution | null>(null);
 	const [showFairness, setShowFairness] = useState(false);
 	const [verify, setVerify] = useState<OutcomeFairnessCheck | null>(null);
 	const [verifying, setVerifying] = useState(false);
-	/**
-	 * The outcome the server already returned, held back from `result` until
-	 * the cosmetic shuffle animation finishes. Bundling the shell count and
-	 * pick used for this round alongside the outcome means the animation
-	 * effect below can key off this single value without needing to depend on
-	 * (and therefore risk restarting on) the live `shells`/`pick` state.
-	 */
-	const [pendingReveal, setPendingReveal] = useState<PendingReveal | null>(
-		null,
-	);
-	/** Which position each shell identity settled into after the last shuffle — null once the board is "fresh" (nothing shuffled since the last pick). */
-	const [finalPositions, setFinalPositions] = useState<number[] | null>(null);
-	/** The pick that was actually played for the round `finalPositions` belongs to. */
-	const [revealedPick, setRevealedPick] = useState(0);
-	const boardCanvasRef = useRef<HTMLCanvasElement | null>(null);
-	const reducedMotion = useReducedMotion();
-	/** Bumped by the "Retry" button on a load failure to re-run the load effect. */
 	const [reloadToken, setReloadToken] = useState(0);
+	const timersRef = useRef<number[]>([]);
+	const reducedMotion = useReducedMotion();
+
+	const clearTimers = (): void => {
+		timersRef.current.forEach((timer) => window.clearTimeout(timer));
+		timersRef.current = [];
+	};
 
 	useEffect(() => {
 		let cancelled = false;
@@ -233,7 +97,6 @@ export function ThreeShellMonteModal({
 			.then((data) => {
 				if (cancelled) return;
 				setConfig(data);
-				setShells(data.defaultShells);
 				setStake(data.minWager);
 			})
 			.catch(() => {
@@ -247,113 +110,147 @@ export function ThreeShellMonteModal({
 		};
 	}, [reloadToken]);
 
-	/**
-	 * Runs the cosmetic shuffle once the server has resolved a guess, then
-	 * reveals it. Deliberately keyed only on `pendingReveal` (and
-	 * `reducedMotion`, which only changes when the OS setting actually does)
-	 * so unrelated re-renders never restart an in-flight animation. The wallet
-	 * sync (`onCoinsChange`) happens in `runMonte` as soon as the server
-	 * responds, not here — this effect is purely cosmetic.
-	 */
-	useEffect(() => {
-		if (!pendingReveal) return;
-		const { outcome, shells: playedWith, pick: playedPick } = pendingReveal;
+	useEffect(() => clearTimers, []);
 
-		const finish = (positions: number[]): void => {
-			setResult(outcome);
-			setPlayedShells(playedWith);
-			setRevealedPick(playedPick);
-			setFinalPositions(positions);
-			setRevealing(false);
-			setPendingReveal(null);
-		};
+	const stakeValid =
+		config !== null &&
+		Number.isInteger(stake) &&
+		stake >= config.minWager &&
+		stake <= config.maxWager;
+	const busy = !["idle", "choosing"].includes(phase);
+	const canStart = Boolean(config) && stakeValid && coins >= stake && phase === "idle";
+	const canCheck = phase === "choosing" && selectedCupId !== null;
+	const rtpPercent = config ? Math.round(config.rtp * 100) : 100;
+	const status = phaseMessage(phase, result, round);
+	const displayCupIds =
+		round?.cupIds ?? Array.from({ length: MONTE_CUP_COUNT }, (_, i) => `idle-${i}`);
+	const positionedCupIds = cupOrder.length ? cupOrder : displayCupIds;
+	const cupPositions = useMemo(
+		() => new Map(positionedCupIds.map((cupId, index) => [cupId, index])),
+		[positionedCupIds],
+	);
+	const ballVisible =
+		phase === "preview" || phase === "revealing" || result !== null;
+	const winningCupId = result?.ballCupId ?? (phase === "preview" ? round?.ballCupId : null);
+	const cupLabels = useMemo(
+		() =>
+			new Map(
+				displayCupIds.map((cupId) => [
+					cupId,
+					(cupPositions.get(cupId) ?? 0) + 1,
+				]),
+			),
+		[displayCupIds, cupPositions],
+	);
 
-		const identityLayout = Array.from({ length: playedWith }, (_, i) => i);
-		const canvas = boardCanvasRef.current;
-		if (reducedMotion || !canvas) {
-			// Reduced motion (or no board to draw on): skip the shuffle entirely
-			// and reveal at the original, unshuffled positions.
-			finish(identityLayout);
-			return;
-		}
-
-		const width = playedWith * SHELL_SLOT_PX;
-		const height = BOARD_HEIGHT_PX;
-		const ctx = setupCanvas(canvas, width, height);
-		const palette = readMontePalette(canvas);
-		const swaps = generateSwapSequence(playedWith, SWAP_COUNT);
-		const snapshots = swapSnapshots(playedWith, swaps);
-		const steps = buildShuffleSteps(playedWith, snapshots);
-		const totalSteps = steps.length;
-
-		const cancel = runBoardAnimation(
-			steps,
-			(data, progress, stepIndex) => {
-				drawShuffleFrame(
-					ctx,
-					width,
-					height,
-					data,
-					progress,
-					stepIndex === totalSteps - 1,
-					playedPick,
-					palette,
+	const scheduleRoundFlow = (started: MonteRoundStart): void => {
+		clearTimers();
+		setPhase("preview");
+		const previewDelay = reducedMotion ? 350 : PREVIEW_MS;
+		const coveringDelay = reducedMotion ? 120 : COVERING_MS;
+		timersRef.current.push(
+			window.setTimeout(() => {
+				setPhase("covering");
+				timersRef.current.push(
+					window.setTimeout(() => {
+						if (reducedMotion) {
+							setPhase("choosing");
+							return;
+						}
+						setPhase("shuffling");
+						runShuffle(started.cupIds);
+					}, coveringDelay),
 				);
-			},
-			() => finish(positionsAfterSwaps(playedWith, swaps)),
+			}, previewDelay),
 		);
-
-		return () => cancel();
-	}, [pendingReveal, reducedMotion]);
-
-	/** Switch risk tier, clamping the current pick into the new shell range. */
-	const changeShells = (next: number): void => {
-		setShells(next);
-		setPick((prev) => Math.min(prev, next - 1));
-		setResult(null);
-		setVerify(null);
-		setFinalPositions(null);
 	};
 
-	/** Reset the board to a fresh, unshuffled layout and record a new pick. */
-	const choosePick = (index: number): void => {
-		if (finalPositions) {
-			setFinalPositions(null);
-			setResult(null);
-			setVerify(null);
-		}
-		setPick(index);
+	const runShuffle = (initialCupIds: string[]): void => {
+		const pairs = monteSwapPairs(SHUFFLE_STEPS);
+		const durations = monteSwapDurations(SHUFFLE_STEPS);
+		let order = [...initialCupIds];
+		let elapsed = 0;
+		pairs.forEach(([first, second], index) => {
+			const duration = durations[index];
+			elapsed += duration;
+			timersRef.current.push(
+				window.setTimeout(() => {
+					setCurrentSwapMs(duration);
+					setActiveSwapCupIds([order[first], order[second]]);
+					order = swapTwoCupPositions(order, first, second);
+					setCupOrder(order);
+					if (index === pairs.length - 1) {
+						timersRef.current.push(
+							window.setTimeout(() => {
+								setActiveSwapCupIds([]);
+								setPhase("choosing");
+							}, duration),
+						);
+					}
+				}, elapsed),
+			);
+		});
 	};
 
-	const runMonte = async (): Promise<void> => {
-		if (revealing || !config) return;
-		setRevealing(true);
+	const startRound = async (): Promise<void> => {
+		if (!canStart) return;
+		clearTimers();
 		setError("");
 		setResult(null);
 		setVerify(null);
-		setFinalPositions(null);
-		const playedWith = shells;
-		const playedPick = pick;
+		setSelectedCupId(null);
+		setActiveSwapCupIds([]);
+		setPhase("preview");
 		try {
 			await api.getCsrfToken();
-			const outcome = await api.monte(
-				stake,
-				playedPick,
-				playedWith,
-				clientSeed || undefined,
-			);
-			// Sync the wallet the moment the server settles the wager — do not
-			// wait for the cosmetic shuffle animation, which may never finish if
-			// the modal is closed early.
-			onCoinsChange(outcome.coins);
-			setConfig((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
-			setPendingReveal({ outcome, shells: playedWith, pick: playedPick });
+			const started = await api.startMonteRound(stake, clientSeed || undefined);
+			setRound(started);
+			setCupOrder(started.cupIds);
+			onCoinsChange(started.coins);
+			setConfig((prev) => (prev ? { ...prev, coins: started.coins } : prev));
+			scheduleRoundFlow(started);
 		} catch (err) {
 			setError(
-				err instanceof Error ? err.message : "Guess failed. Try again.",
+				err instanceof Error ? err.message : "Could not start the round.",
 			);
-			setRevealing(false);
+			setPhase("idle");
 		}
+	};
+
+	const resolveRound = async (): Promise<void> => {
+		if (!round || !selectedCupId || phase !== "choosing") return;
+		setError("");
+		setVerify(null);
+		setPhase("revealing");
+		try {
+			await api.getCsrfToken();
+			const settled = await api.resolveMonteRound(round.roundId, selectedCupId);
+			setResult(settled);
+			onCoinsChange(settled.coins);
+			setConfig((prev) => (prev ? { ...prev, coins: settled.coins } : prev));
+			timersRef.current.push(
+				window.setTimeout(
+					() => setPhase("idle"),
+					reducedMotion ? 150 : REVEAL_MS,
+				),
+			);
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Could not resolve the round.",
+			);
+			setPhase("choosing");
+		}
+	};
+
+	const resetBoard = (): void => {
+		clearTimers();
+		setPhase("idle");
+		setRound(null);
+		setCupOrder([]);
+		setActiveSwapCupIds([]);
+		setSelectedCupId(null);
+		setResult(null);
+		setVerify(null);
 	};
 
 	if (loading) return <p>Loading Three-Shell Monte...</p>;
@@ -371,107 +268,79 @@ export function ThreeShellMonteModal({
 			</div>
 		);
 
-	const stakeValid =
-		Number.isInteger(stake) &&
-		stake >= config.minWager &&
-		stake <= config.maxWager;
-	const canPlay = stakeValid && coins >= stake && !revealing;
-	const rtpPercent = Math.round(config.rtp * 100);
-	const winningShellIndex = result ? shellFromOutcome(result.outcomeId) : -1;
-	/**
-	 * The *displayed* position of the winning pearl — i.e. where it actually
-	 * gets drawn after the shuffle, not the identity's original pre-shuffle
-	 * slot. `winningShellIndex` is an identity; the shuffle can (and usually
-	 * does) move that identity to a different position, so the reveal text
-	 * must read off `finalPositions`, the same source of truth the row below
-	 * uses to decide which button gets the pearl.
-	 */
-	const winningPosition =
-		finalPositions !== null
-			? finalPositions.indexOf(winningShellIndex)
-			: winningShellIndex;
-	const showBoard = pendingReveal !== null && !reducedMotion;
-	const shellIndexes = Array.from({ length: shells }, (_, index) => index);
-
 	return (
-		<div className="hub-monte">
+		<div className="hub-monte" data-phase={phase}>
 			{error ? <p className="hub-modal__error">{error}</p> : null}
 
-			<div className="hub-monte__row">
-				{showBoard ? (
-					<canvas
-						className="hub-monte__canvas"
-						ref={boardCanvasRef}
-						style={{ width: shells * SHELL_SLOT_PX, height: BOARD_HEIGHT_PX }}
-						aria-hidden="true"
-					/>
-				) : (
-					shellIndexes.map((index) => {
-						const identity = finalPositions ? finalPositions[index] : index;
-						const isPick = finalPositions
-							? identity === revealedPick
-							: index === pick;
-						const isWinner =
-							result !== null &&
-							finalPositions !== null &&
-							identity === winningShellIndex;
-						return (
-							<button
-								key={index}
-								type="button"
-								className={[
-									"hub-monte__shell",
-									isPick ? "is-pick" : "",
-									isWinner ? "is-winner" : "",
-								].join(" ")}
-								disabled={revealing}
-								aria-pressed={isPick}
-								aria-label={`Shell ${index + 1}`}
-								onClick={() => choosePick(index)}
-							>
-								<span className="hub-monte__shell-face" aria-hidden="true" />
-								{isWinner ? (
-									<span className="hub-monte__pearl" aria-hidden="true" />
-								) : null}
-								<span className="hub-monte__shell-num">{index + 1}</span>
-							</button>
-						);
-					})
-				)}
+			<div
+				className="hub-monte__row"
+				aria-live="polite"
+				style={{ width: MONTE_CUP_COUNT * CUP_SLOT_PX }}
+			>
+				{displayCupIds.map((cupId) => {
+					const isSelected = selectedCupId === cupId;
+					const isWinner = winningCupId === cupId;
+					const label = cupLabels.get(cupId) ?? 0;
+					const position = cupPositions.get(cupId) ?? 0;
+					const isSwapping = activeSwapCupIds.includes(cupId);
+					return (
+						<button
+							key={cupId}
+							type="button"
+							className={[
+								"hub-monte__shell",
+								isSelected ? "is-pick" : "",
+								isWinner && result ? "is-winner" : "",
+								ballVisible && isWinner ? "is-lifted" : "",
+								phase === "covering" ? "is-covering" : "",
+								isSwapping ? "is-swapping" : "",
+							].join(" ")}
+							style={{
+								transform: `translateX(${position * CUP_SLOT_PX}px)`,
+								transitionDuration:
+									reducedMotion || phase !== "shuffling"
+										? "180ms"
+										: `${currentSwapMs}ms`,
+							}}
+							disabled={phase !== "choosing"}
+							aria-pressed={isSelected}
+							aria-label={`Cup ${label}`}
+							onClick={() => setSelectedCupId(cupId)}
+						>
+							<span className="hub-monte__shell-face" aria-hidden="true" />
+							{ballVisible && isWinner ? (
+								<span className="hub-monte__pearl" aria-hidden="true" />
+							) : null}
+							<span className="hub-monte__shell-num">{label}</span>
+						</button>
+					);
+				})}
 			</div>
 
-			{showBoard ? (
-				<p className="hub-monte__balance" role="status">
-					Shuffling…
-				</p>
-			) : result ? (
+			{status ? (
 				<p
 					className={[
 						"hub-monte__result",
-						result.net > 0 ? "is-win" : "is-loss",
+						result?.won ? "is-win" : "",
+						result && !result.won ? "is-loss" : "",
 					].join(" ")}
 					role="status"
 				>
-					Pearl under shell {winningPosition + 1} ·{" "}
-					{result.net > 0 ? `+${result.net} ⬡` : `${result.net} ⬡`}
+					{status}
 				</p>
 			) : (
 				<p className="hub-monte__balance">Balance: {coins} ⬡</p>
 			)}
 
 			<div className="hub-monte__tiers" role="group" aria-label="Risk tier">
-				{config.shellOptions.map((option) => (
-					<button
-						key={option}
-						type="button"
-						className={`hub-monte__tier ${shells === option ? "is-selected" : ""}`}
-						disabled={revealing}
-						aria-pressed={shells === option}
-						onClick={() => changeShells(option)}
-					>
-						{option} shells · {option}×
-					</button>
-				))}
+				<button
+					type="button"
+					className="hub-monte__tier is-selected"
+					disabled
+					aria-pressed="true"
+				>
+					3 cups · 3×
+				</button>
 			</div>
 
 			<div className="hub-monte__controls">
@@ -486,11 +355,8 @@ export function ThreeShellMonteModal({
 						min={config.minWager}
 						max={config.maxWager}
 						step={1}
-						// NaN (not 0) represents "cleared, still typing" so the field
-						// can actually go empty instead of snapping back to "0" on
-						// every keystroke (Bug Audit 3.6).
 						value={Number.isNaN(stake) ? "" : stake}
-						disabled={revealing}
+						disabled={busy || phase === "choosing"}
 						onChange={(event) =>
 							setStake(
 								event.target.value === ""
@@ -502,17 +368,25 @@ export function ThreeShellMonteModal({
 					<button
 						type="button"
 						className="hub-monte__play-button"
-						disabled={!canPlay}
-						onClick={() => void runMonte()}
+						disabled={!canStart}
+						onClick={() => void startRound()}
 					>
-						{revealing ? "Revealing..." : `Guess for ${shells}×`}
+						Start game
+					</button>
+					<button
+						type="button"
+						className="hub-monte__play-button"
+						disabled={!canCheck}
+						onClick={() => void resolveRound()}
+					>
+						Check
 					</button>
 				</div>
 				{!stakeValid ? (
 					<p className="hub-monte__hint">
-						Stake must be {config.minWager}–{config.maxWager} coins.
+						Stake must be {config.minWager}-{config.maxWager} coins.
 					</p>
-				) : !canPlay && !revealing ? (
+				) : coins < stake && phase === "idle" ? (
 					<p className="hub-monte__hint">Not enough coins for that stake.</p>
 				) : null}
 			</div>
@@ -525,10 +399,12 @@ export function ThreeShellMonteModal({
 						setShowFairness((event.target as HTMLDetailsElement).open)
 					}
 				>
-					<summary>Provably fair — verify this guess</summary>
+					<summary>Provably fair - verify this round</summary>
 					<dl className="hub-monte__fairness-grid">
 						<dt>Server seed hash</dt>
 						<dd>{result.fairness.serverSeedHash}</dd>
+						<dt>Winning cup hash</dt>
+						<dd>{result.fairness.winningCupHash}</dd>
 						<dt>Server seed</dt>
 						<dd>{result.fairness.serverSeed}</dd>
 						<dt>Client seed</dt>
@@ -537,8 +413,6 @@ export function ThreeShellMonteModal({
 						<dd>{result.fairness.nonce}</dd>
 						<dt>Roll</dt>
 						<dd>{result.fairness.roll.toFixed(8)}</dd>
-						<dt>Shells</dt>
-						<dd>{playedShells}</dd>
 					</dl>
 					<div className="hub-monte__verify">
 						<button
@@ -547,7 +421,7 @@ export function ThreeShellMonteModal({
 							disabled={verifying}
 							onClick={() => {
 								setVerifying(true);
-								verifyMonte(result, playedShells)
+								verifyMonteRound(result)
 									.then(setVerify)
 									.catch(() =>
 										setVerify({
@@ -560,7 +434,7 @@ export function ThreeShellMonteModal({
 									.finally(() => setVerifying(false));
 							}}
 						>
-							{verifying ? "Verifying..." : "Verify this guess"}
+							{verifying ? "Verifying..." : "Verify this round"}
 						</button>
 						{verify ? (
 							<p
@@ -570,15 +444,20 @@ export function ThreeShellMonteModal({
 								role="status"
 							>
 								{verify.ok
-									? "✓ Verified — hash, roll and outcome all match."
-									: `✗ Mismatch — hash ${
-											verify.hashOk ? "ok" : "bad"
-										}, roll ${verify.rollOk ? "ok" : "bad"}, outcome ${
-											verify.outcomeOk ? "ok" : "bad"
-										}.`}
+									? "Verified - hash, roll and cup all match."
+									: `Mismatch - hash ${verify.hashOk ? "ok" : "bad"}, roll ${
+											verify.rollOk ? "ok" : "bad"
+										}, cup ${verify.outcomeOk ? "ok" : "bad"}.`}
 							</p>
 						) : null}
 					</div>
+					<button
+						type="button"
+						className="hub-monte__verify-button"
+						onClick={resetBoard}
+					>
+						New round
+					</button>
 				</details>
 			) : (
 				<label className="hub-monte__seed">
@@ -587,7 +466,7 @@ export function ThreeShellMonteModal({
 						type="text"
 						maxLength={64}
 						value={clientSeed}
-						disabled={revealing}
+						disabled={phase !== "idle"}
 						placeholder="Add your own seed for the roll"
 						onChange={(event) => setClientSeed(event.target.value)}
 					/>
@@ -595,7 +474,7 @@ export function ThreeShellMonteModal({
 			)}
 
 			<p className="hub-monte__notice">
-				Play money only — coins have no real-world value. Monte takes no house
+				Play money only - coins have no real-world value. Monte takes no house
 				cut (fair payout {rtpPercent}%).
 			</p>
 		</div>

@@ -8,6 +8,7 @@ import { CasinoService } from "./casino.service";
 import { DiceService } from "./dice.service";
 import { FlipService } from "./flip.service";
 import { MonteService } from "./monte.service";
+import { MonteRoundService } from "./monte-round.service";
 import { PlinkoService } from "./plinko.service";
 import { SlotsService } from "./slots.service";
 
@@ -42,6 +43,10 @@ describe("CasinoController", () => {
 	};
 	let flipService: { getFlipConfig: jest.Mock; flip: jest.Mock };
 	let monteService: { getMonteConfig: jest.Mock; monte: jest.Mock };
+	let monteRoundService: {
+		startRound: jest.Mock;
+		resolveRound: jest.Mock;
+	};
 	let slotsService: { getSlotsView: jest.Mock; slots: jest.Mock };
 	let diceService: { getDiceConfig: jest.Mock; dice: jest.Mock };
 	let plinkoService: { getPlinkoView: jest.Mock; drop: jest.Mock };
@@ -66,6 +71,20 @@ describe("CasinoController", () => {
 				.fn()
 				.mockResolvedValue({ game: "monte", outcomeId: "shell-1" }),
 		};
+		monteRoundService = {
+			startRound: jest.fn().mockResolvedValue({
+				roundId: "round-1",
+				cupIds: ["cup-a", "cup-b", "cup-c"],
+				ballCupId: "cup-b",
+				coins: 400,
+			}),
+			resolveRound: jest.fn().mockResolvedValue({
+				roundId: "round-1",
+				game: "monte",
+				selectedCupId: "cup-b",
+				won: true,
+			}),
+		};
 		slotsService = {
 			getSlotsView: jest.fn().mockReturnValue({ coins: 500, reelCount: 3 }),
 			slots: jest
@@ -89,6 +108,7 @@ describe("CasinoController", () => {
 				{ provide: CasinoService, useValue: casinoService },
 				{ provide: FlipService, useValue: flipService },
 				{ provide: MonteService, useValue: monteService },
+				{ provide: MonteRoundService, useValue: monteRoundService },
 				{ provide: SlotsService, useValue: slotsService },
 				{ provide: DiceService, useValue: diceService },
 				{ provide: PlinkoService, useValue: plinkoService },
@@ -220,33 +240,54 @@ describe("CasinoController", () => {
 		});
 	});
 
-	describe("POST /casino/monte", () => {
-		it("should delegate to monte with pick, shells, stake and client seed", async () => {
-			const result = await controller.monte(req, {
+	describe("POST /casino/monte/rounds", () => {
+		it("should start a committed round with stake and client seed", async () => {
+			const result = await controller.startMonteRound(req, {
 				stake: 100,
-				pick: 1,
-				shells: 4,
 				clientSeed: "x",
 			});
 
-			expect(monteService.monte).toHaveBeenCalledWith(
+			expect(monteRoundService.startRound).toHaveBeenCalledWith(
 				expect.any(User),
-				1,
-				4,
 				100,
-				{ clientSeed: "x" },
+				"x",
 			);
-			expect(result).toEqual({ game: "monte", outcomeId: "shell-1" });
+			expect(result).toEqual({
+				roundId: "round-1",
+				cupIds: ["cup-a", "cup-b", "cup-c"],
+				ballCupId: "cup-b",
+				coins: 400,
+			});
 		});
 
 		it("should reject with HTTP 429 when rate-limited", async () => {
 			rateLimiter.allowKey.mockReturnValue(false);
 
 			await expectStatus(
-				controller.monte(req, { stake: 100, pick: 0 }),
+				controller.startMonteRound(req, { stake: 100 }),
 				429,
 			);
-			expect(monteService.monte).not.toHaveBeenCalled();
+			expect(monteRoundService.startRound).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("POST /casino/monte/rounds/:roundId/resolve", () => {
+		it("should resolve a committed round with the selected cup", async () => {
+			const result = await controller.resolveMonteRound(req, "round-1", {
+				selectedCupId: "cup-b",
+			});
+
+			expect(monteRoundService.resolveRound).toHaveBeenCalledWith(
+				expect.any(User),
+				"round-1",
+				"cup-b",
+			);
+			expect(result).toEqual({
+				roundId: "round-1",
+				game: "monte",
+				selectedCupId: "cup-b",
+				won: true,
+			});
 		});
 	});
 

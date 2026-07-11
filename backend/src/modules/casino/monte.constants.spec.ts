@@ -8,8 +8,8 @@ import {
 
 describe("monte.constants", () => {
 	describe("MONTE_SHELL_OPTIONS", () => {
-		it("should offer the 3/4/5-shell risk tiers", () => {
-			expect([...MONTE_SHELL_OPTIONS]).toEqual([3, 4, 5]);
+		it("should offer only the classic three-shell layout", () => {
+			expect([...MONTE_SHELL_OPTIONS]).toEqual([3]);
 		});
 
 		it("should default to three shells", () => {
