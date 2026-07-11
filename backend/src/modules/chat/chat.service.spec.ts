@@ -724,6 +724,9 @@ describe("ChatService", () => {
 			userRepo.findOne
 				.mockResolvedValueOnce(makeUser({ id: 1, username: "owner" })) // leaver
 				.mockResolvedValueOnce(makeUser({ id: 2, username: "successor" })); // new owner
+			const roomEmit = jest.fn();
+			const server = { ...mockServer(), to: jest.fn().mockReturnValue({ emit: roomEmit }) };
+			service.setServer(server as unknown as Server);
 
 			await service.leaveGroup(10, 1);
 
@@ -739,6 +742,11 @@ describe("ChatService", () => {
 					body: "successor is now the group owner",
 				}),
 			);
+			// The successor's clients get the new ownerId live (Decision 1).
+			expect(roomEmit).toHaveBeenCalledWith("chat:conversation-updated", {
+				conversationId: 10,
+				ownerId: 2,
+			});
 		});
 
 		it("should NOT transfer ownership when a non-owner leaves", async () => {

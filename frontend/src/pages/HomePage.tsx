@@ -1118,17 +1118,24 @@ function HomeMenu(): JSX.Element {
 			}
 		};
 
-		// Owner renamed a group (Decision 1): patch the name in the list — the
-		// thread header derives its title from the list, so it updates too.
+		// Group metadata changed (Decision 1): patch whichever field is present —
+		// `name` on an owner rename (the thread header derives its title from the
+		// list, so it updates too) and/or `ownerId` on an ownership transfer, so
+		// the new owner's owner-only controls light up live.
 		const onChatConversationUpdated = (data: {
 			conversationId: number;
-			name: string;
+			name?: string;
+			ownerId?: number | null;
 		}) => {
 			setConversations((prev) =>
 				prev
-					? prev.map((c) =>
-							c.id === data.conversationId ? { ...c, name: data.name } : c,
-						)
+					? prev.map((c) => {
+							if (c.id !== data.conversationId) return c;
+							const patched = { ...c };
+							if (data.name !== undefined) patched.name = data.name;
+							if (data.ownerId !== undefined) patched.ownerId = data.ownerId;
+							return patched;
+						})
 					: prev,
 			);
 		};
@@ -3713,6 +3720,17 @@ function HomeMenu(): JSX.Element {
 																}
 															>
 																Rename
+															</button>
+															<button
+																type="button"
+																className="hub-modal__chat-members-toggle"
+																disabled={chatActionLoading}
+																onClick={() =>
+																	void handleLeaveGroup(activeConversationId)
+																}
+																title="Leave the group; ownership passes to the longest-standing member"
+															>
+																Leave group
 															</button>
 															<button
 																type="button"

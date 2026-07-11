@@ -78,9 +78,11 @@ export const WS_EVENT_CHAT_READ_SYNC = "chat:read-sync" as const;
 export const WS_EVENT_CHAT_REMOVED = "chat:removed" as const;
 
 /**
- * Pushed to a group room when its metadata changes (currently: an owner
- * rename) so open clients patch the conversation's name in the list and the
- * open-thread title without a full refetch (Decision 1).
+ * Pushed to a group room when its metadata changes so open clients patch the
+ * conversation without a full refetch (Decision 1). Payload carries whichever
+ * field changed: `name` (owner rename) and/or `ownerId` (ownership transfer
+ * when the owner leaves) — so the successor's owner-only controls light up
+ * live.
  */
 export const WS_EVENT_CHAT_CONVERSATION_UPDATED = "chat:conversation-updated" as const;
 
@@ -507,6 +509,15 @@ export class ChatService {
 						newOwner?.username ?? "",
 						`${newOwner?.username ?? "Someone"} is now the group owner`,
 					);
+					// Tell open clients the owner changed so the new owner's
+					// owner-only controls (rename/delete/kick) light up live without
+					// a Social refetch (Decision 1).
+					this.server
+						?.to(chatRoomName(conversationId))
+						.emit(WS_EVENT_CHAT_CONVERSATION_UPDATED, {
+							conversationId,
+							ownerId: successor.userId,
+						});
 				}
 			}
 
