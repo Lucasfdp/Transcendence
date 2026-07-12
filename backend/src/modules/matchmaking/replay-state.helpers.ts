@@ -3,29 +3,17 @@ import {
 	BambooBashSnapshot,
 	BellClashSnapshot,
 	CurlingSnapshot,
-	GameSnapshot,
 	KameKnockSnapshot,
-	MatchRoom,
 } from "./matchmaking.types";
 
 const ARENA_RX_SRC = 705;
 const ARENA_RY_SRC = 491;
-const BALL_FRICTION_BASE = 0.985;
-const BALL_BOUNCE_DAMP = 0.8;
-const BALL_MIN_SPEED_SRC = 6;
 const BELL_SPAWN_RADIUS_NX = (150 + 52 + 118) / ARENA_RX_SRC;
 const BELL_SPAWN_RADIUS_NY = (150 + 52 + 118) / ARENA_RY_SRC;
 
 const CURL_SHEET_W_SRC = 1570;
-const CURL_SHEET_H_SRC = 880;
 const CURL_DELIVERY_X = 90 / CURL_SHEET_W_SRC;
 const CURL_DELIVERY_Y = 0.5;
-const CURL_BALL_FRICTION = 0.99;
-const CURL_BALL_BOUNCE_DAMP = 0.55;
-const CURL_BALL_MIN_SPEED_SRC = 8;
-const CURL_BALL_RADIUS_NX = 28 / CURL_SHEET_W_SRC;
-const CURL_BALL_RADIUS_NY = 28 / CURL_SHEET_H_SRC;
-const CURL_BALL_TRAIL_STEP = 0.035;
 
 type ArenaBallSnapshot =
 	| KameKnockSnapshot
@@ -491,132 +479,5 @@ export function syncCurlingReplayStateFromPayload(
 	syncCurlingEntityMirror(snapshot);
 	snapshot.activeBallId =
 		snapshot.objects.find((object) => object.moving)?.id ?? null;
-	return true;
-}
-
-function isArenaBallMoving(ball: BallSnapshotData): boolean {
-	return Math.abs(ball.vx) > 0.1 || Math.abs(ball.vy) > 0.1;
-}
-
-function stepArenaBall(ball: BallSnapshotData, deltaMs: number): boolean {
-	const wasMoving = isArenaBallMoving(ball);
-	if (!wasMoving) return false;
-
-	const dt = deltaMs / 1000;
-	ball.x += (ball.vx * dt) / ARENA_RX_SRC;
-	ball.y += (ball.vy * dt) / ARENA_RY_SRC;
-
-	const ex = ball.x;
-	const ey = ball.y;
-	const distSq = ex * ex + ey * ey;
-	if (distSq >= 1) {
-		const inv = 1 / Math.sqrt(distSq);
-		ball.x *= inv;
-		ball.y *= inv;
-
-		const nRawX = ball.x;
-		const nRawY = ball.y;
-		const nLen = Math.max(0.0001, Math.hypot(nRawX, nRawY));
-		const nx = nRawX / nLen;
-		const ny = nRawY / nLen;
-		const dot = ball.vx * nx + ball.vy * ny;
-		ball.vx = (ball.vx - 2 * dot * nx) * BALL_BOUNCE_DAMP;
-		ball.vy = (ball.vy - 2 * dot * ny) * BALL_BOUNCE_DAMP;
-	}
-
-	const friction = Math.pow(BALL_FRICTION_BASE, deltaMs / 16.67);
-	ball.vx *= friction;
-	ball.vy *= friction;
-	ball.rotation += ball.angularVelocity * (deltaMs / 1000);
-	ball.updatedAt = Date.now();
-	if (Math.hypot(ball.vx, ball.vy) < BALL_MIN_SPEED_SRC) {
-		ball.vx = 0;
-		ball.vy = 0;
-		ball.stopped = true;
-		ball.stateFlags = ["settled"];
-		return true;
-	}
-	ball.stopped = false;
-	ball.stateFlags = ["sliding"];
-	return true;
-}
-
-export function advanceArenaReplaySimulation(
-	snapshot: ArenaBallSnapshot,
-	deltaMs: number,
-): boolean {
-	let changed = false;
-	for (const ball of snapshot.balls) {
-		if (!stepArenaBall(ball, deltaMs)) continue;
-		const entity = snapshot.entities.find((candidate) => candidate.id === ball.id);
-		if (entity) {
-			Object.assign(entity, ball, { stateFlags: [...ball.stateFlags] });
-			syncArenaProjectileMirror(snapshot, entity as BallSnapshotData);
-		} else syncArenaProjectileMirror(snapshot, ball);
-		changed = true;
-	}
-	return changed;
-}
-
-function updateCurlingTrail(object: CurlingSnapshot["objects"][number]): void {
-	const trail = object.trail ?? [];
-	const last = trail[trail.length - 1];
-	if (!last || Math.hypot(last.x - object.x, last.y - object.y) >= CURL_BALL_TRAIL_STEP) {
-		trail.push({ x: object.x, y: object.y });
-		object.trail = trail.slice(-80);
-	}
-}
-
-function stepCurlingObject(
-	object: CurlingSnapshot["objects"][number],
-	deltaMs: number,
-): boolean {
-	const vx = object.vx ?? 0;
-	const vy = object.vy ?? 0;
-	const wasMoving =
-		Boolean(object.moving) || Math.abs(vx) > 0.1 || Math.abs(vy) > 0.1;
-	if (!wasMoving) return false;
-
-	const dt = deltaMs / 1000;
-	object.x = clamp(object.x + (vx * dt) / CURL_SHEET_W_SRC, 0, 1);
-	object.y = clamp(object.y + (vy * dt) / CURL_SHEET_H_SRC, 0, 1);
-
-	let nextVx = vx;
-	let nextVy = vy;
-	const leftWall = CURL_BALL_RADIUS_NX;
-	const rightWall = 1 - CURL_BALL_RADIUS_NX;
-	const topWall = CURL_BALL_RADIUS_NY;
-	const bottomWall = 1 - CURL_BALL_RADIUS_NY;
-
-	if (object.x <= leftWall || object.x >= rightWall) {
-		object.x = clamp(object.x, leftWall, rightWall);
-		nextVx = -nextVx * CURL_BALL_BOUNCE_DAMP;
-	}
-	if (object.y <= topWall || object.y >= bottomWall) {
-		object.y = clamp(object.y, topWall, bottomWall);
-		nextVy = -nextVy * CURL_BALL_BOUNCE_DAMP;
-	}
-
-	const friction = Math.pow(CURL_BALL_FRICTION, deltaMs / 16.67);
-	nextVx *= friction;
-	nextVy *= friction;
-	object.vx = nextVx;
-	object.vy = nextVy;
-	object.rotation += object.angularVelocity * (deltaMs / 1000);
-	object.updatedAt = Date.now();
-	if (Math.hypot(nextVx, nextVy) < CURL_BALL_MIN_SPEED_SRC) {
-		object.vx = 0;
-		object.vy = 0;
-		object.moving = false;
-		object.stopped = true;
-		object.stateFlags = ["settled"];
-		updateCurlingTrail(object);
-		return true;
-	}
-
-	object.moving = true;
-	object.stopped = false;
-	object.stateFlags = ["sliding"];
-	updateCurlingTrail(object);
 	return true;
 }

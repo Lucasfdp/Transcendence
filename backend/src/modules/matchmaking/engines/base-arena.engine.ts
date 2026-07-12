@@ -1,17 +1,11 @@
 import {
-	BallSnapshotData,
 	BambooBashSnapshot,
 	BellClashSnapshot,
 	KameKnockSnapshot,
 	MatchRoom,
-	ReplayFrameSnapshotEntity,
 	RoomPlayer,
-	SnapshotPlayer,
 } from "../matchmaking.types";
-import {
-	advanceArenaReplaySimulation,
-	resetArenaReplayBalls,
-} from "../replay-state.helpers";
+import { resetArenaReplayBalls } from "../replay-state.helpers";
 import { BaseEngine } from "./base.engine";
 
 type ArenaReplaySnapshot =
@@ -86,13 +80,5 @@ export abstract class BaseArenaEngine extends BaseEngine {
 		if (state.usedPowersBySide[side].includes(power)) return "none";
 		state.usedPowersBySide[side].push(power);
 		return power;
-	}
-
-	advanceSimulation(room: MatchRoom, deltaMs: number): boolean {
-		if (room.status !== "active") return false;
-		const state = room.state as ArenaReplaySnapshot;
-		if (!advanceArenaReplaySimulation(state, deltaMs)) return false;
-		this.bumpRoomState(room);
-		return true;
 	}
 }

@@ -34,14 +34,11 @@ export interface OnlineBallState extends BallState {
 	power?: string;
 	trail?: Array<{ x: number; y: number }>;
 	stateFlags?: string[];
-	syncTarget?: { x: number; y: number; stopped: boolean };
 }
 
 interface GameInputAck {
 	accepted: boolean;
 }
-
-const REMOTE_SYNC_LERP_MS = 100;
 
 function isKameKnockSnapshot(
 	snapshot: GameSnapshot | null | undefined,
@@ -559,24 +556,6 @@ export class KameKnockOnlineController {
 		);
 	}
 
-	isLocalReplay(): boolean {
-		return this.replayThrower === this.side && !this.spectator;
-	}
-
-	updateRemoteBall(delta: number): boolean {
-		const ball = this.ballForOnlineSide(this.replayThrower ?? this.visibleBallSide);
-		const target = ball.syncTarget;
-		if (!target) return false;
-		const factor = Math.min(1, delta / REMOTE_SYNC_LERP_MS);
-		ball.x += (target.x - ball.x) * factor;
-		ball.y += (target.y - ball.y) * factor;
-		if (target.stopped && factor === 1) {
-			ball.vx = 0;
-			ball.vy = 0;
-		}
-		return !target.stopped;
-	}
-
 	// ── Ball sync ───────────────────────────────────────────────────────────────
 
 	ballForOnlineSide(side: number): OnlineBallState {
@@ -616,21 +595,6 @@ export class KameKnockOnlineController {
 				this.resetOnlineBall(ball, index, players.length);
 			// Sync powerup visual properties from server entity
 			if (serverBall) {
-				const x = this.scene.arena.cx + serverBall.x * this.scene.arena.rx;
-				const y = this.scene.arena.cy + serverBall.y * this.scene.arena.ry;
-				if (isLocal) {
-					ball.x += (x - ball.x) * 0.35;
-					ball.y += (y - ball.y) * 0.35;
-					ball.vx = serverBall.vx * this.scene.arena.scale;
-					ball.vy = serverBall.vy * this.scene.arena.scale;
-				}
-				if (!isLocal) {
-					ball.syncTarget = {
-						x,
-						y,
-						stopped: Boolean(serverBall.stopped),
-					};
-				}
 				ball.scale = serverBall.stopped ? 1 : (serverBall.scale ?? 1);
 				ball.alpha = serverBall.alpha ?? 1;
 				ball.power = serverBall.power ?? "none";
@@ -692,7 +656,6 @@ export class KameKnockOnlineController {
 		ball.power = "none";
 		ball.trail = undefined;
 		ball.stateFlags = [];
-		ball.syncTarget = undefined;
 	}
 
 	private restoreRejectedRelease(): void {

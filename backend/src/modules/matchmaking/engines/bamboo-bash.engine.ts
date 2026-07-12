@@ -8,6 +8,7 @@ import {
 import {
 	initializeArenaReplayBall,
 	resetArenaReplayBalls,
+	syncArenaReplayBallFromPayload,
 } from "../replay-state.helpers";
 import { BaseArenaEngine } from "./base-arena.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
@@ -92,6 +93,8 @@ export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 			return this.applyRelease(room, userId, input.payload ?? {});
 		if (input.action === "bamboo:hit")
 			return this.applyBambooHit(room, userId, input.payload ?? {});
+		if (input.action === "bamboo:sync")
+			return this.applyBambooSync(room, userId, input.payload ?? {});
 		if (input.action === "bamboo:power-pickup")
 			return this.applyPowerPickup(room, userId, input.payload ?? {});
 		if (input.action !== "round:score") return room;
@@ -202,6 +205,7 @@ export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 		const bambooId = Math.floor(Number(payload.bambooId));
 		if (roundNumber !== state.roundNumber || !Number.isFinite(bambooId))
 			return null;
+		syncArenaReplayBallFromPayload(state, player.side, payload);
 		const index = state.bamboos.findIndex(
 			(bamboo) => bamboo.id === bambooId,
 		);
@@ -212,6 +216,22 @@ export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 		state.liveRoundScores[player.side] =
 			(state.liveRoundScores[player.side] ?? 0) + points;
 		this.spawnUpToLimit(state);
+		this.bumpRoomState(room);
+		return room;
+	}
+
+	private applyBambooSync(
+		room: MatchRoom,
+		userId: number,
+		payload: Record<string, unknown> = {},
+	): MatchRoom | null {
+		const state = room.state as BambooBashSnapshot;
+		const player = this.findRoomPlayer(room, userId);
+		if (!player || room.status !== "active" || state.phase !== "active")
+			return null;
+		if (state.roundScores[player.side] !== null) return null;
+		this.updateSharedBamboos(state);
+		syncArenaReplayBallFromPayload(state, player.side, payload);
 		this.bumpRoomState(room);
 		return room;
 	}
@@ -238,6 +258,7 @@ export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 		state.lastPowerBySide[player.side] = state.powerPickups[index].type;
 		state.lastPowerPickupIdBySide[player.side] = pickupId;
 		state.powerPickups.splice(index, 1);
+		syncArenaReplayBallFromPayload(state, player.side, payload);
 		this.bumpRoomState(room);
 		return room;
 	}

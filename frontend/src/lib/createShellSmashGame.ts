@@ -1,5 +1,4 @@
 import Phaser from "phaser";
-import { installHiDPI } from "../shared/hidpi";
 import { ShellPickerScene } from "../features/hub/ShellPickerScene";
 import { ReturnToHubScene } from "../features/hub/ReturnToHubScene";
 import { PhaserBootScene } from "../features/hub/PhaserBootScene";
@@ -43,6 +42,13 @@ export function createShellSmashGame(
 		backgroundColor: "rgba(0,0,0,0)",
 		transparent: true,
 		parent,
+		callbacks: {
+			postBoot: (game) => {
+				configureInitialScene(game, initialScene);
+				if (!initialScene) return;
+				window.setTimeout(() => game.scene.start(initialScene.targetScene), 0);
+			},
+		},
 		scene: [
 			PhaserBootScene,
 			ShellPickerScene,
@@ -59,25 +65,29 @@ export function createShellSmashGame(
 	};
 
 	const game = new Phaser.Game(config);
-	installHiDPI(game);
-	if (initialScene) {
-		game.registry.set("shellSelection", initialScene.shellSelection);
-		game.registry.set("shellSkins", initialScene.shellSkins ?? {});
-		game.registry.set("trailEffects", initialScene.trailEffects ?? {});
-		if (initialScene.user) game.registry.set("user", initialScene.user);
-		else game.registry.remove("user");
-		game.registry.set("localMode", initialScene.localMode ?? "solo");
-		game.registry.set("localPlayerCount", initialScene.localPlayerCount ?? 1);
-		game.registry.set(
-			"localPowerupsEnabled",
-			initialScene.localPowerupsEnabled ?? true,
-		);
-		if (initialScene.onlineMatch) {
-			game.registry.set("onlineMatch", initialScene.onlineMatch);
-		} else {
-			game.registry.remove("onlineMatch");
-		}
-		game.scene.start(initialScene.targetScene);
-	}
 	return game;
+}
+
+function configureInitialScene(
+	game: Phaser.Game,
+	initialScene?: ShellSmashStartData,
+): void {
+	if (!initialScene) return;
+
+	game.registry.set("shellSelection", initialScene.shellSelection);
+	game.registry.set("shellSkins", initialScene.shellSkins ?? {});
+	game.registry.set("trailEffects", initialScene.trailEffects ?? {});
+	if (initialScene.user) game.registry.set("user", initialScene.user);
+	else game.registry.remove("user");
+	game.registry.set("localMode", initialScene.localMode ?? "solo");
+	game.registry.set("localPlayerCount", initialScene.localPlayerCount ?? 1);
+	game.registry.set(
+		"localPowerupsEnabled",
+		initialScene.localPowerupsEnabled ?? true,
+	);
+	if (initialScene.onlineMatch) {
+		game.registry.set("onlineMatch", initialScene.onlineMatch);
+	} else {
+		game.registry.remove("onlineMatch");
+	}
 }

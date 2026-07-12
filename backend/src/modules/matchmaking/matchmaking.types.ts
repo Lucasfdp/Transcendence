@@ -31,6 +31,7 @@ export interface GameInputPayload {
 		| "settled"
 		| "round:score"
 		| "bamboo:hit"
+		| "bamboo:sync"
 		| "bamboo:power-pickup"
 		| "target:hit"
 		| "bell:hit";

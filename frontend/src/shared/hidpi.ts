@@ -92,20 +92,14 @@ export function installHiDPI(game: Phaser.Game): void {
 
 	const applyCamera = (cam: Phaser.Cameras.Scene2D.Camera): void => {
 		// Bridge the logical world (gameSize = CSS px) onto the physical backing.
-		// Camera zoom = currentDPR maps the cssPx-wide world EXACTLY onto the
-		// cssPx × currentDPR backing — a perfect fit, so nothing ever crops in either
-		// zoom direction. The scroll offset anchors that mapping at the top-left for
-		// BOTH the render transform and Camera.worldView (Phaser derives worldView
-		// from the camera centre regardless of origin, so changing the origin would
-		// desync them — and desync hit-testing). Identity no-op at dpr 1 / no zoom.
+		// Camera zoom = currentDPR maps css-pixel world coordinates onto the larger
+		// backing store. Keep scroll at the world origin: scenes lay out HUD, arenas
+		// and input targets in the 0..cssW / 0..cssH coordinate space.
 		const bw = game.scale.baseSize.width;
 		const bh = game.scale.baseSize.height;
 		cam.setSize(bw, bh);
 		cam.setZoom(currentDPR);
-		cam.setScroll(
-			(bw / 2) * (1 / currentDPR - 1),
-			(bh / 2) * (1 / currentDPR - 1),
-		);
+		cam.setScroll(0, 0);
 	};
 
 	const apply = (): void => {

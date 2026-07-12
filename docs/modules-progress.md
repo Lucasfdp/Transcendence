@@ -265,7 +265,7 @@ Missing for completion:
 - Nothing critical to claim this base module.
 
 ### Major: Remote players
-Status: `Done`
+Status: `In progress`
 
 Requirement breakdown:
 - Two remote players.
@@ -276,7 +276,10 @@ Evidence:
 - Rejoin, away, abandon, and reconnect timeout implemented.
 
 Missing for completion:
-- Fine-tune real multi-team testing before evaluation.
+- Complete the manual two-client validation matrix for Kame Knock, Bell Clash,
+  Bamboo Bash, and Shell Curl after the 2026-07-12 recovery from the partial
+  server-authoritative experiment. It must cover launch input, full-screen
+  resize, settlement, reconnect, spectator entry, and replay capture.
 
 ### Major: Multiplayer game with more than two players
 Status: `In progress`

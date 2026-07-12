@@ -56,6 +56,7 @@ import {
 import {
 	PowerPickupManager,
 	createEllipsePowerPickupArea,
+	remapPowerPickups,
 	type PowerPickupBlocker,
 } from "../../shared/mechanics/power-pickups";
 import { BallExtState } from "../../shared/mechanics/ball-powers";
@@ -513,16 +514,13 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		}
 
 		const ball = this.activeBall();
-		const isRemoteReplay = this.online.isActive && !this.online.isLocalReplay();
-		const moving = isRemoteReplay
-			? this.online.updateRemoteBall(delta)
-			: stepArenaBall(ball, delta, this.arena);
+		const moving = stepArenaBall(ball, delta, this.arena);
 		const ext = ball as BallExtState;
 
-		const movingPowerBalls = isRemoteReplay ? [] : this.updatePowerBalls(delta);
-		if (!isRemoteReplay) this.resolvePowerBallCollisions();
+		const movingPowerBalls = this.updatePowerBalls(delta);
+		this.resolvePowerBallCollisions();
 
-		if (moving && !isRemoteReplay) {
+		if (moving) {
 			this.collectPowerPickup(ball);
 			this.checkTargetHits(ball);
 		}
@@ -531,7 +529,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		}
 
 		// Resolve stop flags when ball comes to rest
-		if (!moving && this.launchedThisBall && !isRemoteReplay) {
+		if (!moving && this.launchedThisBall) {
 			if (ext.phantomHidden) ext.phantomHidden = false;
 			if (ext.bombPending) {
 				this.resolveStopBomb();
@@ -550,8 +548,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		if (
 			this.launchedThisBall &&
 			!moving &&
-			movingPowerBalls.length === 0 &&
-			!isRemoteReplay
+			movingPowerBalls.length === 0
 		)
 			notifyGameRuleProjectileSettled(
 				this.buildGameRuleHooks(),
@@ -1745,6 +1742,9 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 
 	private relayoutKameKnock(): void {
 		const oldArena = this.arena;
+		const previousPickups = this.powerPickups
+			? remapPowerPickups(this.powerPickups.all(), (pickup) => pickup)
+			: [];
 		this.arena = this.resolveArena();
 
 		this.launchInput.cancel();
@@ -1765,6 +1765,21 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			resizeBall(this.ball);
 		}
 		for (const entry of this.powerBalls) resizeBall(entry.ball);
+		this.recreatePowerPickups();
+		if (previousPickups.length > 0) {
+			this.powerPickups?.setPickups(
+				remapPowerPickups(previousPickups, (pickup) => ({
+					...pickup,
+					x:
+						this.arena.cx +
+						((pickup.x - oldArena.cx) / oldArena.rx) * this.arena.rx,
+					y:
+						this.arena.cy +
+						((pickup.y - oldArena.cy) / oldArena.ry) * this.arena.ry,
+					r: PICKUP_RADIUS_SRC * this.arena.scale,
+				})),
+			);
+		}
 
 		drawKameKnockBackground(this.bgGfx, this.arenaSkin, this.arena, this.scale.width, this.scale.height);
 		this.drawTargets();

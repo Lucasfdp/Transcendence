@@ -36,6 +36,7 @@ import {
 import {
 	PowerPickupManager,
 	createRectPowerPickupArea,
+	remapPowerPickups,
 	type PowerPickupBlocker,
 } from "../../shared/mechanics/power-pickups";
 import {
@@ -755,7 +756,7 @@ export class ShellCurlScene
 		// ballsLeft still reflects pre-throw counts. After consuming this throw,
 		// total remaining is the sum across all local players minus this throw.
 		const totalRemaining =
-			state.ballsLeft.reduce((total, left) => total + left, 0) - 1;
+			state.stonesLeft.reduce((total, left) => total + left, 0) - 1;
 
 		if (totalRemaining > 0) {
 			this.turnManager.nextThrow();
@@ -1228,7 +1229,7 @@ export class ShellCurlScene
 			getPlayerCount: () => Math.max(1, state.score.length),
 			getCurrentPlayer: () => state.currentTeam,
 			getCurrentRound: () => state.currentEnd,
-			getRemainingTurns: () => state.ballsLeft,
+			getRemainingTurns: () => state.stonesLeft,
 			getScore: () => state.score,
 			getPhase: () => state.phase,
 			hasHammer: () => state.hasHammer,
@@ -1492,6 +1493,9 @@ export class ShellCurlScene
 
 	private relayoutShellCurl(): void {
 		const oldArena = this.arena;
+		const previousPickups = this.powerPickups
+			? remapPowerPickups(this.powerPickups.all(), (pickup) => pickup)
+			: [];
 		this.arena = this.resolveArena();
 
 		const vScale = this.arena.scale / oldArena.scale;
@@ -1522,6 +1526,22 @@ export class ShellCurlScene
 		this.buildBumpers();
 		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 		this.recreatePowerPickups();
+		if (previousPickups.length > 0) {
+			this.powerPickups?.setPickups(
+				remapPowerPickups(previousPickups, (pickup) => ({
+					...pickup,
+					x:
+						this.arena.sheetX +
+						((pickup.x - oldArena.sheetX) / oldArena.sheetW) *
+							this.arena.sheetW,
+					y:
+						this.arena.sheetY +
+						((pickup.y - oldArena.sheetY) / oldArena.sheetH) *
+							this.arena.sheetH,
+					r: PICKUP_RADIUS_SRC * this.arena.scale,
+				})),
+			);
+		}
 		drawShellCurlPowerPickups(this.powerupsEnabled, this.powerPickups);
 		this.redrawAllBalls();
 
@@ -1530,6 +1550,11 @@ export class ShellCurlScene
 		this.hudObjects.forEach((o) => o.destroy());
 		this.hudObjects = buildReturnButton(this, "HubScene", () =>
 			this.online.markAway(),
+		);
+		this.online.repositionStatus(this.scale.width / 2, 48);
+		this.overlayContainer?.setPosition(
+			this.scale.width / 2,
+			this.scale.height / 2,
 		);
 		this.updateSidePanels();
 	}

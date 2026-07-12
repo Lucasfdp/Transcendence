@@ -39,6 +39,7 @@ export class Slingshot {
 	private dragging = false;
 	private origin = { x: 0, y: 0 };
 	private dragPt = { x: 0, y: 0 };
+	private readonly onWindowPointerUp = (): void => this.onUp();
 
 	constructor(
 		private readonly scene: Phaser.Scene,
@@ -66,6 +67,7 @@ export class Slingshot {
 		this.scene.input.off("pointerdown", this.onDown, this);
 		this.scene.input.off("pointermove", this.onMove, this);
 		this.scene.input.off("pointerup", this.onUp, this);
+		this.removeWindowReleaseListener();
 		this.gfx?.destroy();
 		this.gfx = null;
 		this.attached = false;
@@ -75,6 +77,7 @@ export class Slingshot {
 	/** Cancel an in-flight drag (e.g. on resize) without launching. */
 	cancel(): void {
 		this.dragging = false;
+		this.removeWindowReleaseListener();
 		this.gfx?.clear();
 	}
 
@@ -96,6 +99,7 @@ export class Slingshot {
 		this.origin.y = this.ball.y;
 		this.dragPt.x = ptr.worldX;
 		this.dragPt.y = ptr.worldY;
+		window.addEventListener("pointerup", this.onWindowPointerUp, true);
 	}
 
 	private onMove(ptr: Phaser.Input.Pointer): void {
@@ -117,6 +121,7 @@ export class Slingshot {
 	private onUp(): void {
 		if (!this.dragging) return;
 		this.dragging = false;
+		this.removeWindowReleaseListener();
 		this.gfx?.clear();
 
 		const dx = this.dragPt.x - this.origin.x;
@@ -131,6 +136,10 @@ export class Slingshot {
 		this.ball.vx = vx;
 		this.ball.vy = vy;
 		this.onLaunch?.(vx, vy);
+	}
+
+	private removeWindowReleaseListener(): void {
+		window.removeEventListener("pointerup", this.onWindowPointerUp, true);
 	}
 
 	// ── Aim rendering ───────────────────────────────────────────────────────────

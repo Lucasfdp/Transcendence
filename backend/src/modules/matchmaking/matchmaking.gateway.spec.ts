@@ -201,7 +201,6 @@ describe("MatchmakingGateway", () => {
 			expect(emit).toHaveBeenCalledWith("game:state", room.state);
 		});
 	});
-
 	// ── syncRoomPresence (private — invoked via cast, no public seam) ──────────
 
 	describe("syncRoomPresence", () => {

@@ -31,7 +31,7 @@ export interface GameEngine {
 		userId: number,
 		input: GameInputPayload,
 	): MatchRoom | null;
-	advanceSimulation?(room: MatchRoom, deltaMs: number): boolean;
+	advanceSimulation?(room: MatchRoom, elapsedMs: number): boolean;
 	abandon(room: MatchRoom, abandonedPlayer: RoomPlayer): number | null;
 	onRoomClosed?(room: MatchRoom): void;
 }

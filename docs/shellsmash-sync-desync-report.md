@@ -162,3 +162,58 @@ Keep simulation on clients but make it bit-identical: fixed timestep with an acc
 Ship **Option A immediately** — it is small, it reuses helpers that already exist and are tested, and it turns "two different matches" into "one match with slightly laggy remote balls". Then build **Option B's interpolation buffer and generic entity-event channel** as the shared module all four games adopt, and treat **Option C** as the target architecture, reached incrementally: B's client work carries over unchanged, and the server tick added in B becomes C's simulation loop by swapping "rebroadcast last-known" for "step the shared physics".
 
 Independent of the option chosen, four cheap fixes are worth doing in the very first pass: apply throw positions in `playThrow`, add position to `bell:hit`, send a settle message via `settleArenaReplayBall`, and add the input ack/nack to remove the "Launching…" soft-lock.
+
+---
+
+## 6. Server-authoritative handoff (next session)
+
+### Current safe state
+
+The current branch contains a 30 Hz backend physics loop and periodic
+`game:state` broadcasts for arena matches. Manual testing has reported broken
+scene initialisation, including missing panels, unavailable launch input, and
+misaligned game content. Treat this path as unstable until the existing games
+are manually verified as playable again.
+
+The failure was architectural, not a physics-constant issue. Existing online
+controllers treat `game:state` as a full lifecycle snapshot: it may rebuild a
+round, reset entities, start a countdown, or alter UI controls. A high-rate
+physics stream must therefore never reuse that event without a strict
+projection-only application path.
+
+### Required implementation order
+
+1. Establish a manually-tested baseline before changing netcode. Start the
+   normal development stack and verify launch input, HUD panels, round flow,
+   reconnect, spectator entry, and replay capture in Bell Clash, Bamboo Bash,
+   and Kame Knock.
+2. Add a distinct `game:physics-state` event and a typed payload containing
+   only match id, monotonically increasing physics sequence, server timestamp,
+   and entity transforms. It must not carry round or UI fields.
+3. Implement the backend fixed-step loop behind a development feature flag,
+   initially for casual Bell Clash only. Simulate at 30 Hz and publish
+   `game:physics-state` at 10 Hz only while an entity is moving.
+4. In Bell Clash, add a dedicated physics-state listener that only updates
+   interpolation targets and local prediction reconciliation. It must not call
+   `applySnapshot`, `startRound`, reset logic, or HUD/countdown methods.
+5. Add automated tests for fixed-step advancement, monotonic sequence numbers,
+   final settled-state emission, replay-frame capture, and that physics events
+   do not invoke scene lifecycle methods. Then manually test two browsers at
+   different frame rates, delayed network conditions, reconnect, and spectator
+   join before enabling the flag by default.
+6. Move Bell Clash wall/bell collision, hit detection, zone multiplier, score,
+   and round completion into the backend tick. Remove `bell:hit` only after
+   server-side scoring has matching tests and manual proof.
+7. Generalise the proven projection event and rule hooks to Bamboo Bash, then
+   Kame Knock. Keep Shell Curl separate: its persistent, turn-based stone
+   model needs its own server-authoritative design.
+
+### Non-negotiable constraints
+
+- Keep the existing full `game:state` event for lifecycle changes only.
+- Roll out one game at a time under a feature flag; retain the prior path until
+  manual validation passes.
+- Do not make a ranked claim until server-side collision, pickup, scoring, and
+  settlement rules are complete for that game.
+- Test UI interaction and scene transitions as part of every netcode change;
+  compilation and engine unit tests did not detect the prior regression.

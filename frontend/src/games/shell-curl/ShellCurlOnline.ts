@@ -205,6 +205,10 @@ export class ShellCurlOnlineController {
 		this.statusText?.setText(message);
 	}
 
+	repositionStatus(x: number, y: number): void {
+		this.statusText?.setPosition(x, y);
+	}
+
 	markAway(): void {
 		const phase = this.snapshot?.phase;
 		if (this.match && phase !== "finished" && phase !== "abandoned") {

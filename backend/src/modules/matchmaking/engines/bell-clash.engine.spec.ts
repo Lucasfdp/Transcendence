@@ -114,26 +114,4 @@ describe("BellClashEngine", () => {
 		expect(state.balls[0]?.power).toBe("none");
 	});
 
-	it("advances launched balls from the server simulation", () => {
-		const engine = new BellClashEngine();
-		const room = makeRoom();
-		const state = room.state as BellClashSnapshot;
-		engine.start(room);
-		engine.handleInput(room, 1, {
-			matchId: room.matchId,
-			action: "release",
-			payload: {
-				roundNumber: 1,
-				x: -0.4,
-				y: 0.2,
-				vx: 260,
-				vy: -90,
-			},
-		});
-
-		const before = { x: state.balls[0].x, y: state.balls[0].y };
-		expect(engine.advanceSimulation(room, 1_000 / 30)).toBe(true);
-		expect(state.balls[0]).not.toMatchObject(before);
-		expect(state.entities[0]).toMatchObject(state.balls[0]);
-	});
 });

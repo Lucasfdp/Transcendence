@@ -34,14 +34,11 @@ export interface OnlineBallState extends BallState {
 	power?: string;
 	trail?: Array<{ x: number; y: number }>;
 	stateFlags?: string[];
-	syncTarget?: { x: number; y: number; stopped: boolean };
 }
 
 interface GameInputAck {
 	accepted: boolean;
 }
-
-const REMOTE_SYNC_LERP_MS = 100;
 
 function isBambooBashSnapshot(
 	snapshot: GameSnapshot | null | undefined,
@@ -93,6 +90,7 @@ export class BambooBashOnlineController {
 	private lastSeq = -1;
 	private statusText: Phaser.GameObjects.Text | null = null;
 	private pendingBambooHits = new Set<number>();
+	private bambooSyncAccMs = 0;
 	private roundSubmitted = false;
 	private roundNumber = 1;
 	private totalRounds = 3;
@@ -173,6 +171,7 @@ export class BambooBashOnlineController {
 	private resetState(): void {
 		this.lastSeq = -1;
 		this.pendingBambooHits.clear();
+		this.bambooSyncAccMs = 0;
 		this.roundSubmitted = false;
 		this.roundNumber = 1;
 		this.totalRounds = 3;
@@ -520,6 +519,26 @@ export class BambooBashOnlineController {
 		});
 	}
 
+	/** Periodically publish the local owner's transform for remote rendering. */
+	syncBamboos(delta: number): void {
+		if (!this.match || this.spectator || this.roundSubmitted) return;
+		this.bambooSyncAccMs += delta;
+		if (this.bambooSyncAccMs < 1000) return;
+		this.bambooSyncAccMs = 0;
+		getGameSocket().emit("game:input", {
+			matchId: this.match.matchId,
+			action: "bamboo:sync",
+			payload: {
+				roundNumber: this.roundNumber,
+				x: (this.scene.ball.x - this.scene.arena.cx) / this.scene.arena.rx,
+				y: (this.scene.ball.y - this.scene.arena.cy) / this.scene.arena.ry,
+				vx: this.scene.ball.vx / this.scene.arena.scale,
+				vy: this.scene.ball.vy / this.scene.arena.scale,
+				stopped: !isBallMoving(this.scene.ball),
+			},
+		});
+	}
+
 	/** Emit round score when the round ends. */
 	submitRoundScore(): void {
 		if (
@@ -543,6 +562,7 @@ export class BambooBashOnlineController {
 	/** Full round reset for a new online round (called from snapshot handler). */
 	private startOnlineRound(snapshot: BambooBashSnapshot): void {
 		this.roundSubmitted = false;
+		this.bambooSyncAccMs = 0;
 		this.pendingBambooHits.clear();
 		this.scene.clearPowerBalls();
 		this.scene.bamboos = [];
@@ -622,15 +642,13 @@ export class BambooBashOnlineController {
 						vy: 0,
 						r: BALL_SRC_R * this.scene.arena.scale,
 					});
+			if (serverBall && !isLocal) {
+				ball.x = this.scene.arena.cx + serverBall.x * this.scene.arena.rx;
+				ball.y = this.scene.arena.cy + serverBall.y * this.scene.arena.ry;
+				ball.vx = serverBall.vx * this.scene.arena.scale;
+				ball.vy = serverBall.vy * this.scene.arena.scale;
+			}
 			if (serverBall) {
-				const x = this.scene.arena.cx + serverBall.x * this.scene.arena.rx;
-				const y = this.scene.arena.cy + serverBall.y * this.scene.arena.ry;
-				if (isLocal) {
-					ball.x += (x - ball.x) * 0.35;
-					ball.y += (y - ball.y) * 0.35;
-					ball.vx = serverBall.vx * this.scene.arena.scale;
-					ball.vy = serverBall.vy * this.scene.arena.scale;
-				} else ball.syncTarget = { x, y, stopped: Boolean(serverBall.stopped) };
 				ball.scale = serverBall.stopped
 					? 1
 					: (serverBall.scale ?? 1);
@@ -690,20 +708,6 @@ export class BambooBashOnlineController {
 		ball.power = "none";
 		ball.trail = undefined;
 		ball.stateFlags = [];
-		ball.syncTarget = undefined;
-	}
-
-	updateRemoteBalls(delta: number): void {
-		for (const [side, ball] of this.balls) {
-			if (side === this.side || !ball.syncTarget) continue;
-			const factor = Math.min(1, delta / REMOTE_SYNC_LERP_MS);
-			ball.x += (ball.syncTarget.x - ball.x) * factor;
-			ball.y += (ball.syncTarget.y - ball.y) * factor;
-			if (ball.syncTarget.stopped && factor === 1) {
-				ball.vx = 0;
-				ball.vy = 0;
-			}
-		}
 	}
 
 	private restoreRejectedRelease(): void {

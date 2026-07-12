@@ -17,7 +17,6 @@ import { ChatService, chatRoomName } from "../chat/chat.service";
 import { FriendsService } from "../friends/friends.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UsersService } from "../users/users.service";
-import { ArenaSimulationService } from "./arena-simulation.service";
 import { GameSessionService } from "./game-session.service";
 import { MatchmakingService } from "./matchmaking.service";
 import {
@@ -97,7 +96,6 @@ export class MatchmakingGateway
 		private readonly friendsService: FriendsService,
 		private readonly replays: ReplayService,
 		private readonly chatService: ChatService,
-		private readonly arenaSimulation: ArenaSimulationService,
 		// Optional so the gateway spec (which mocks only the services it
 		// exercises) still instantiates without wiring a limiter; production
 		// always provides one via MatchmakingModule.
@@ -155,9 +153,6 @@ export class MatchmakingGateway
 	afterInit(server: Server): void {
 		this.notificationsService.setServer(server);
 		this.chatService.setServer(server);
-		// The arena loop owns its timer + pacing; the gateway only supplies the
-		// Socket.IO broadcast side.
-		this.arenaSimulation.start((matchId) => this.emitState(matchId));
 	}
 
 	async handleConnection(socket: Socket): Promise<void> {
@@ -651,7 +646,7 @@ export class MatchmakingGateway
 				}
 			}
 			this.emitState(room.matchId);
-			return;
+			return { accepted: true };
 		}
 
 		this.emitState(room.matchId);
@@ -1087,7 +1082,6 @@ export class MatchmakingGateway
 			this.server.to(sid).emit(event, payload);
 		}
 	}
-
 	private emitLobbyExpired(lobby: PrivateLobby): void {
 		for (const participant of lobby.participants) {
 			this.emitToUser(participant.user.id, "lobby:expired", {

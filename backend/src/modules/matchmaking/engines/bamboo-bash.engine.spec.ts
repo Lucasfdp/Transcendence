@@ -55,7 +55,7 @@ function makeRoom(): MatchRoom {
 }
 
 describe("BambooBashEngine", () => {
-	it("advances launched balls from the server simulation", () => {
+	it("updates the owner transform through the legacy sync input", () => {
 		const engine = new BambooBashEngine();
 		const room = makeRoom();
 		const state = room.state as BambooBashSnapshot;
@@ -73,9 +73,25 @@ describe("BambooBashEngine", () => {
 			},
 		});
 
-		const before = { x: state.balls[0].x, y: state.balls[0].y };
-		expect(engine.advanceSimulation(room, 1_000 / 30)).toBe(true);
-		expect(state.balls[0]).not.toMatchObject(before);
+		engine.handleInput(room, 1, {
+			matchId: room.matchId,
+			action: "bamboo:sync",
+			payload: {
+				roundNumber: 1,
+				x: 0.1,
+				y: -0.3,
+				vx: 20,
+				vy: -10,
+				stopped: false,
+			},
+		});
+
+		expect(state.balls[0]).toMatchObject({
+			x: 0.1,
+			y: -0.3,
+			vx: 20,
+			vy: -10,
+		});
 		expect(state.entities[0]).toMatchObject(state.balls[0]);
 	});
 });

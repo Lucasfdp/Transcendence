@@ -40,14 +40,11 @@ export interface OnlineBallState extends BallState {
 	power?: string;
 	trail?: Array<{ x: number; y: number }>;
 	stateFlags?: string[];
-	syncTarget?: { x: number; y: number; stopped: boolean };
 }
 
 interface GameInputAck {
 	accepted: boolean;
 }
-
-const REMOTE_SYNC_LERP_MS = 100;
 
 export function isBellClashSnapshot(
 	snapshot: GameSnapshot | null | undefined,
@@ -299,20 +296,17 @@ export class BellClashOnlineController {
 		this.scene.bellPulseMs = Math.max(0, this.scene.bellPulseMs - delta);
 
 		for (const [side, ball] of this.mutableBallMap.entries()) {
-			if (side !== this.side) {
-				this.updateRemoteBall(ball, delta);
-				continue;
-			}
 			const moving = stepArenaBall(ball, delta, this.scene.arena);
 			const ext = ball as BallExtState;
 			if (moving) {
-				this.scene.collectPowerPickup(ball);
-				this.scene.checkBellHitForBall(ball, true);
+				if (side === this.side) this.scene.collectPowerPickup(ball);
+				this.scene.checkBellHitForBall(ball, side === this.side);
 			}
 			if (!moving)
 				this.scene.clearStoppedPowerFlags(ext, side === this.side);
 		}
 		this.scene.updatePowerBalls(delta);
+		this.scene.resolveOnlineBallCollisions();
 
 		const localMoving =
 			isBallMoving(this.scene.ball) ||
@@ -541,21 +535,6 @@ export class BellClashOnlineController {
 				this.scene.ballTrails.reset(player.side, ball.x, ball.y);
 			}
 			if (serverBall) {
-				const x = this.scene.arena.cx + serverBall.x * this.scene.arena.rx;
-				const y = this.scene.arena.cy + serverBall.y * this.scene.arena.ry;
-				if (isLocal) {
-					ball.x += (x - ball.x) * 0.35;
-					ball.y += (y - ball.y) * 0.35;
-					ball.vx = serverBall.vx * this.scene.arena.scale;
-					ball.vy = serverBall.vy * this.scene.arena.scale;
-				}
-				if (!isLocal) {
-					ball.syncTarget = { x, y, stopped: Boolean(serverBall.stopped) };
-					if (resetPositions) {
-						ball.x = x;
-						ball.y = y;
-					}
-				}
 				ball.scale = serverBall.stopped ? 1 : (serverBall.scale ?? 1);
 				ball.alpha = serverBall.alpha ?? 1;
 				ball.power = serverBall.power ?? "none";
@@ -569,18 +548,6 @@ export class BellClashOnlineController {
 			next.set(player.side, ball);
 		});
 		this.ballWorld.replace(next);
-	}
-
-	private updateRemoteBall(ball: OnlineBallState, delta: number): void {
-		const target = ball.syncTarget;
-		if (!target) return;
-		const factor = Math.min(1, delta / REMOTE_SYNC_LERP_MS);
-		ball.x += (target.x - ball.x) * factor;
-		ball.y += (target.y - ball.y) * factor;
-		if (target.stopped && factor === 1) {
-			ball.vx = 0;
-			ball.vy = 0;
-		}
 	}
 
 	private restoreRejectedRelease(): void {
