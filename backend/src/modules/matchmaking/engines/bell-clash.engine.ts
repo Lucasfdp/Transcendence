@@ -8,7 +8,6 @@ import {
 import {
 	initializeArenaReplayBall,
 	resetArenaReplayBalls,
-	syncArenaReplayBallFromPayload,
 } from "../replay-state.helpers";
 import { BaseArenaEngine } from "./base-arena.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
@@ -94,10 +93,18 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 			return null;
 
 		const roundNumber = Math.floor(Number(payload.roundNumber));
+		const x = Number(payload.x);
+		const y = Number(payload.y);
 		const vx = Number(payload.vx);
 		const vy = Number(payload.vy);
 		if (roundNumber !== state.roundNumber) return null;
-		if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
+		if (
+			!Number.isFinite(x) ||
+			!Number.isFinite(y) ||
+			!Number.isFinite(vx) ||
+			!Number.isFinite(vy)
+		)
+			return null;
 
 		state.shotCounts[player.side] =
 			(state.shotCounts[player.side] ?? 0) + 1;
@@ -107,7 +114,7 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 			player.side,
 			vx,
 			vy,
-			undefined,
+			{ x, y },
 			power,
 		);
 		this.bumpRoomState(room);
@@ -134,7 +141,6 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 			return null;
 		if ((state.shotCounts[player.side] ?? 0) <= 0) return null;
 
-		syncArenaReplayBallFromPayload(state, player.side, payload);
 		state.liveRoundScores[player.side] =
 			(state.liveRoundScores[player.side] ?? 0) + points;
 		this.bumpRoomState(room);

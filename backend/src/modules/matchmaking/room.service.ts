@@ -68,6 +68,10 @@ export class RoomService {
 		return this.rooms.get(matchId) ?? null;
 	}
 
+	getActiveRooms(): MatchRoom[] {
+		return [...this.rooms.values()].filter((room) => room.status === "active");
+	}
+
 	getRoomForUser(userId: number): MatchRoom | null {
 		const matchId = this.userRoom.get(userId);
 		return matchId ? this.getRoom(matchId) : null;

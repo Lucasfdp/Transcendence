@@ -9,7 +9,6 @@ import {
 	initializeArenaReplayBall,
 	resetArenaReplayBalls,
 	settleArenaReplayBall,
-	syncArenaReplayBallFromPayload,
 } from "../replay-state.helpers";
 import { BaseArenaEngine } from "./base-arena.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
@@ -106,6 +105,8 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 
 		const roundNumber = Math.floor(Number(payload.roundNumber));
 		const turnNumber = Math.floor(Number(payload.turnNumber));
+		const x = Number(payload.x);
+		const y = Number(payload.y);
 		const vx = Number(payload.vx);
 		const vy = Number(payload.vy);
 		if (
@@ -113,7 +114,13 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 			turnNumber !== state.turnNumber
 		)
 			return null;
-		if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
+		if (
+			!Number.isFinite(x) ||
+			!Number.isFinite(y) ||
+			!Number.isFinite(vx) ||
+			!Number.isFinite(vy)
+		)
+			return null;
 
 		state.activeTurnNumber = state.turnNumber;
 		const power = this.consumeArenaPower(state, player.side, payload.power);
@@ -122,7 +129,7 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 			player.side,
 			vx,
 			vy,
-			undefined,
+			{ x, y },
 			power,
 		);
 		this.bumpRoomState(room);
@@ -163,7 +170,6 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 		const target = state.targets[index];
 		if (!target.breakable) return room;
 
-		syncArenaReplayBallFromPayload(state, player.side, payload);
 		state.targets.splice(index, 1);
 		const gained = target.points * combo + (perfect ? 500 : 0);
 		state.score[player.side] = (state.score[player.side] ?? 0) + gained;

@@ -541,6 +541,23 @@ function stepArenaBall(ball: BallSnapshotData, deltaMs: number): boolean {
 	return true;
 }
 
+export function advanceArenaReplaySimulation(
+	snapshot: ArenaBallSnapshot,
+	deltaMs: number,
+): boolean {
+	let changed = false;
+	for (const ball of snapshot.balls) {
+		if (!stepArenaBall(ball, deltaMs)) continue;
+		const entity = snapshot.entities.find((candidate) => candidate.id === ball.id);
+		if (entity) {
+			Object.assign(entity, ball, { stateFlags: [...ball.stateFlags] });
+			syncArenaProjectileMirror(snapshot, entity as BallSnapshotData);
+		} else syncArenaProjectileMirror(snapshot, ball);
+		changed = true;
+	}
+	return changed;
+}
+
 function updateCurlingTrail(object: CurlingSnapshot["objects"][number]): void {
 	const trail = object.trail ?? [];
 	const last = trail[trail.length - 1];

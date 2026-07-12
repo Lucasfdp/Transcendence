@@ -513,13 +513,16 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		}
 
 		const ball = this.activeBall();
-		const moving = stepArenaBall(ball, delta, this.arena);
+		const isRemoteReplay = this.online.isActive && !this.online.isLocalReplay();
+		const moving = isRemoteReplay
+			? this.online.updateRemoteBall(delta)
+			: stepArenaBall(ball, delta, this.arena);
 		const ext = ball as BallExtState;
 
-		const movingPowerBalls = this.updatePowerBalls(delta);
-		this.resolvePowerBallCollisions();
+		const movingPowerBalls = isRemoteReplay ? [] : this.updatePowerBalls(delta);
+		if (!isRemoteReplay) this.resolvePowerBallCollisions();
 
-		if (moving) {
+		if (moving && !isRemoteReplay) {
 			this.collectPowerPickup(ball);
 			this.checkTargetHits(ball);
 		}
@@ -528,7 +531,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		}
 
 		// Resolve stop flags when ball comes to rest
-		if (!moving && this.launchedThisBall) {
+		if (!moving && this.launchedThisBall && !isRemoteReplay) {
 			if (ext.phantomHidden) ext.phantomHidden = false;
 			if (ext.bombPending) {
 				this.resolveStopBomb();
@@ -544,12 +547,16 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			}
 		}
 
-		if (this.launchedThisBall && !moving && movingPowerBalls.length === 0)
+		if (
+			this.launchedThisBall &&
+			!moving &&
+			movingPowerBalls.length === 0 &&
+			!isRemoteReplay
+		)
 			notifyGameRuleProjectileSettled(
 				this.buildGameRuleHooks(),
 				this.activeBall(),
 			);
-
 		this.recordBallTrails();
 		this.drawTargets();
 		this.drawBallTrails();

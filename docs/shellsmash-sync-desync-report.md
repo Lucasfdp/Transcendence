@@ -7,6 +7,28 @@ Analysis only — no code was changed.
 
 ---
 
+## Implementation status (2026-07-12)
+
+The initial server-authoritative position layer is now in place for the three
+arena games (Bell Clash, Bamboo Bash, and Kame Knock):
+
+- Active arena rooms run a fixed 30 Hz backend physics tick and broadcast
+  snapshots at 10 Hz while projectiles are moving.
+- The backend tick updates both live balls and snapshot entities, so
+  spectators and replay frames observe the same server state.
+- Arena clients retain local prediction but reconcile their own projectile
+  against server snapshots; remote projectiles are interpolated rather than
+  independently simulated.
+- The client-to-server projectile position sync action has been removed, so a
+  client can no longer overwrite the server trajectory after launch.
+
+This does not yet make gameplay fully server-authoritative. Collision handling,
+pickups, hit detection, scoring, and Kame Knock turn settlement still require
+their per-game rules to move into the backend tick. Those steps remain the
+next implementation priority before treating ranked arena results as secure.
+
+---
+
 ## 1. Executive summary
 
 The desync is not a bug in any single function. The current netcode is a **"fire-and-forget initial-conditions" replication model**: when a player launches a shell, only the initial velocity is broadcast, and every client then simulates the entire flight **independently, forever, with no correction mechanism of any kind**. The server never simulates physics and never learns where any ball actually is. For this model to work, every client's simulation would need to be bit-for-bit deterministic — and it is nothing close to deterministic (variable timestep, per-client RNG, per-client collisions, per-client power effects).

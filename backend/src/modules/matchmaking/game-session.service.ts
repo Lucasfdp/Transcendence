@@ -62,6 +62,10 @@ export class GameSessionService implements OnModuleInit {
 		return this.engines.get(room.gameId).handleInput(room, userId, input);
 	}
 
+	advanceSimulation(room: MatchRoom, deltaMs: number): boolean {
+		return this.engines.get(room.gameId).advanceSimulation?.(room, deltaMs) ?? false;
+	}
+
 	async startIfReady(matchId: string): Promise<MatchRoom | null> {
 		const room = this.roomService.getRoom(matchId);
 		if (

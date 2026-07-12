@@ -634,7 +634,6 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 
 		if (this.online.isActive) {
 			this.updateOnlineRemoteBalls(delta);
-			this.resolveOnlineBallCollisions();
 			moving = isBallMoving(this.ball);
 		}
 
@@ -666,8 +665,6 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			this.showPowerPanel();
 		}
 		this.ballWasMoving = moving;
-
-		if (this.online.isActive) this.online.syncBamboos(delta);
 
 		this.recordBallTrails();
 		this.drawBamboos();
@@ -1624,32 +1621,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 	}
 
 	private updateOnlineRemoteBalls(delta: number): void {
-		if (!this.online.isActive) return;
-		for (const [side, ball] of this.online.ballMap.entries()) {
-			if (side === this.online.side) continue;
-			const moving = stepArenaBall(ball, delta, this.arena);
-			const ext = ball as BallExtState;
-			if (!moving) {
-				ext.phantomHidden = false;
-				ext.bombPending = false;
-				ext.repelPending = false;
-				ext.freezePending = false;
-			}
-		}
-	}
-
-	private resolveOnlineBallCollisions(): void {
-		const balls = [...new Set(this.online.ballMap.values())];
-		for (let i = 0; i < balls.length; i++) {
-			for (let j = i + 1; j < balls.length; j++) {
-				if (
-					(balls[i] as BallExtState).phantomHidden ||
-					(balls[j] as BallExtState).phantomHidden
-				)
-					continue;
-				resolveBallCollision(balls[i], balls[j]);
-			}
-		}
+		if (this.online.isActive) this.online.updateRemoteBalls(delta);
 	}
 
 

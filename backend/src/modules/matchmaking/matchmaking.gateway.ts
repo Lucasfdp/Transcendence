@@ -1,4 +1,4 @@
-import { Logger, Optional } from "@nestjs/common";
+import { Logger, OnModuleDestroy, Optional } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import {
 	ConnectedSocket,
@@ -51,6 +51,13 @@ const RECONNECT_TIMEOUT_MS = 45_000;
  */
 const CHAT_SEND_RATE_LIMIT_MAX = 30;
 const CHAT_SEND_RATE_LIMIT_WINDOW_MS = 10_000;
+const ARENA_SIMULATION_TICK_MS = 1_000 / 30;
+const ARENA_STATE_BROADCAST_MS = 100;
+
+interface GameInputAck {
+	accepted: boolean;
+	reason?: "invalid-input" | "rate-limited";
+}
 
 function parseCookie(
 	cookieHeader: string | undefined,
@@ -72,12 +79,14 @@ function parseCookie(
 	},
 })
 export class MatchmakingGateway
-	implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+	implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
 {
 	@WebSocketServer()
 	server: Server;
 
 	private readonly logger = new Logger(MatchmakingGateway.name);
+	private arenaSimulationTimer: NodeJS.Timeout | null = null;
+	private readonly arenaBroadcastElapsedMs = new Map<string, number>();
 
 	constructor(
 		private readonly jwtService: JwtService,
@@ -148,6 +157,16 @@ export class MatchmakingGateway
 	afterInit(server: Server): void {
 		this.notificationsService.setServer(server);
 		this.chatService.setServer(server);
+		this.arenaSimulationTimer ??= setInterval(
+			() => this.advanceArenaSimulations(),
+			ARENA_SIMULATION_TICK_MS,
+		);
+	}
+
+	onModuleDestroy(): void {
+		if (this.arenaSimulationTimer) clearInterval(this.arenaSimulationTimer);
+		this.arenaSimulationTimer = null;
+		this.arenaBroadcastElapsedMs.clear();
 	}
 
 	async handleConnection(socket: Socket): Promise<void> {
@@ -448,11 +467,11 @@ export class MatchmakingGateway
 	async onGameInput(
 		@ConnectedSocket() socket: Socket,
 		@MessageBody() payload: GameInputPayload,
-	): Promise<void> {
+	): Promise<GameInputAck> {
 		const user = this.resolveSocketUser(socket);
-		if (!user) return;
+		if (!user) return { accepted: false, reason: "invalid-input" };
 		const room = this.sessions.handleInput(user.id, payload);
-		if (!room) return;
+		if (!room) return { accepted: false, reason: "invalid-input" };
 
 		if (
 			payload.action === "release" &&
@@ -479,7 +498,7 @@ export class MatchmakingGateway
 				this.server.to(room.matchId).emit("game:throw", throwEvent);
 			}
 			this.emitState(room.matchId);
-			return;
+			return { accepted: true };
 		}
 
 		if (
@@ -516,7 +535,7 @@ export class MatchmakingGateway
 					.emit("game:bamboo-throw", throwEvent);
 			}
 			this.emitState(room.matchId);
-			return;
+			return { accepted: true };
 		}
 
 		if (
@@ -545,7 +564,7 @@ export class MatchmakingGateway
 				});
 			}
 			this.emitState(room.matchId);
-			return;
+			return { accepted: true };
 		}
 
 		if (
@@ -593,7 +612,7 @@ export class MatchmakingGateway
 				}
 			}
 			this.emitState(room.matchId);
-			return;
+			return { accepted: true };
 		}
 
 		if (
@@ -650,6 +669,7 @@ export class MatchmakingGateway
 			this.syncRoomPresence(room);
 			this.server.to(room.matchId).emit("game:end", room.state);
 		}
+		return { accepted: true };
 	}
 
 	@SubscribeMessage("spectator:join")
@@ -1069,6 +1089,30 @@ export class MatchmakingGateway
 			this.syncRoomPresence(room);
 			this.replays.captureFrame(room);
 			this.server.to(matchId).emit("game:state", room.state);
+		}
+	}
+
+	private advanceArenaSimulations(): void {
+		const activeMatchIds = new Set<string>();
+		for (const room of this.rooms.getActiveRooms()) {
+			activeMatchIds.add(room.matchId);
+			if (!this.sessions.advanceSimulation(room, ARENA_SIMULATION_TICK_MS))
+				continue;
+			const elapsed =
+				(this.arenaBroadcastElapsedMs.get(room.matchId) ?? 0) +
+				ARENA_SIMULATION_TICK_MS;
+			if (elapsed < ARENA_STATE_BROADCAST_MS) {
+				this.arenaBroadcastElapsedMs.set(room.matchId, elapsed);
+				continue;
+			}
+			this.arenaBroadcastElapsedMs.set(
+				room.matchId,
+				elapsed - ARENA_STATE_BROADCAST_MS,
+			);
+			this.emitState(room.matchId);
+		}
+		for (const matchId of this.arenaBroadcastElapsedMs.keys()) {
+			if (!activeMatchIds.has(matchId)) this.arenaBroadcastElapsedMs.delete(matchId);
 		}
 	}
 

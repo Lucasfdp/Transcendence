@@ -67,6 +67,8 @@ describe("KameKnockEngine", () => {
 			payload: {
 				roundNumber: 1,
 				turnNumber: 0,
+				x: 0,
+				y: 0,
 				vx: 220,
 				vy: -180,
 				power: "giant",
@@ -86,6 +88,8 @@ describe("KameKnockEngine", () => {
 			payload: {
 				roundNumber: 1,
 				turnNumber: 0,
+				x: 0,
+				y: 0,
 				vx: 220,
 				vy: -180,
 				power: "laser-sword",

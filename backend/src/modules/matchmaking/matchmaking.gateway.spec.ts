@@ -90,6 +90,7 @@ describe("MatchmakingGateway", () => {
 		markDisconnected: jest.Mock;
 		setReady: jest.Mock;
 		getRoom: jest.Mock;
+		getActiveRooms: jest.Mock;
 	};
 	let matchmaking: { removeSocket: jest.Mock };
 	let privateLobbies: {
@@ -99,7 +100,7 @@ describe("MatchmakingGateway", () => {
 		getLobbyByPin: jest.Mock;
 		getStartedMatchByPin: jest.Mock;
 	};
-	let sessions: { startIfReady: jest.Mock };
+	let sessions: { startIfReady: jest.Mock; advanceSimulation: jest.Mock };
 	let replays: { captureFrame: jest.Mock };
 	let chatService: {
 		sendMessage: jest.Mock;
@@ -123,6 +124,7 @@ describe("MatchmakingGateway", () => {
 			markDisconnected: jest.fn().mockReturnValue(null),
 			setReady: jest.fn(),
 			getRoom: jest.fn(),
+			getActiveRooms: jest.fn().mockReturnValue([]),
 		};
 		matchmaking = { removeSocket: jest.fn() };
 		privateLobbies = {
@@ -132,7 +134,7 @@ describe("MatchmakingGateway", () => {
 			getLobbyByPin: jest.fn().mockReturnValue(null),
 			getStartedMatchByPin: jest.fn().mockReturnValue(null),
 		};
-		sessions = { startIfReady: jest.fn() };
+		sessions = { startIfReady: jest.fn(), advanceSimulation: jest.fn() };
 		replays = { captureFrame: jest.fn() };
 		chatService = {
 			sendMessage: jest.fn(),
@@ -168,6 +170,28 @@ describe("MatchmakingGateway", () => {
 		}).compile();
 
 		gateway = module.get(MatchmakingGateway);
+	});
+
+	describe("arena simulation broadcasts", () => {
+		it("captures and broadcasts a server simulation snapshot every 100 ms", () => {
+			const room = makeRoom({ status: "active" });
+			const emit = jest.fn();
+			rooms.getActiveRooms.mockReturnValue([room]);
+			rooms.getRoom.mockReturnValue(room);
+			sessions.advanceSimulation.mockReturnValue(true);
+			gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
+
+			const advance = gateway as unknown as {
+				advanceArenaSimulations: () => void;
+			};
+			advance.advanceArenaSimulations();
+			advance.advanceArenaSimulations();
+			advance.advanceArenaSimulations();
+
+			expect(replays.captureFrame).toHaveBeenCalledWith(room);
+			expect(gateway.server.to).toHaveBeenCalledWith(room.matchId);
+			expect(emit).toHaveBeenCalledWith("game:state", room.state);
+		});
 	});
 
 	// ── syncRoomPresence (private — invoked via cast, no public seam) ──────────
