@@ -5,6 +5,7 @@ import { MatchPlayer } from "./entities/match-player.entity";
 import { UserRating } from "./entities/user-rating.entity";
 import { GameEngineRegistry } from "./engines/game-engine.registry";
 import { GameSessionService } from "./game-session.service";
+import { MatchLifecycleEvents } from "./match-lifecycle.events";
 import { MatchRoom, RoomPlayer } from "./matchmaking.types";
 import { RoomService } from "./room.service";
 
@@ -148,6 +149,7 @@ describe("GameSessionService", () => {
 			matchRepo as never,
 			matchPlayerRepo as never,
 			ratingRepo as never,
+			new MatchLifecycleEvents(),
 		);
 	});
 
@@ -369,6 +371,7 @@ describe("GameSessionService — applyEloRatings (Bug Audit H1)", () => {
 			matchRepo as never,
 			matchPlayerRepo as never,
 			ratingRepo as never,
+			new MatchLifecycleEvents(),
 		);
 	});
 

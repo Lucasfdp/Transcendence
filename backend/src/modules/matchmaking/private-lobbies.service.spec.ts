@@ -4,6 +4,7 @@ import { getRepositoryToken } from "@nestjs/typeorm";
 import { MatchPlayer } from "./entities/match-player.entity";
 import { Match } from "./entities/match.entity";
 import { GameEngineRegistry } from "./engines/game-engine.registry";
+import { MatchFactoryService } from "./match-factory.service";
 import {
 	PRIVATE_LOBBY_NOT_FOUND_MESSAGE,
 	PrivateLobbiesService,
@@ -61,6 +62,9 @@ describe("PrivateLobbiesService", () => {
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				PrivateLobbiesService,
+				// Real factory — resolves the repo mocks + RoomService below, so the
+				// existing assertions on roomService.createRoom keep working.
+				MatchFactoryService,
 				{ provide: getRepositoryToken(Match), useValue: mockMatchRepo() },
 				{ provide: getRepositoryToken(MatchPlayer), useValue: mockMatchPlayerRepo() },
 				{ provide: RoomService, useValue: roomService },

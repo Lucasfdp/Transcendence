@@ -1,3 +1,4 @@
+import { MatchFactoryService } from "./match-factory.service";
 import { MatchmakingService } from "./matchmaking.service";
 import { RoomService } from "./room.service";
 import { ShellsService } from "../shells/shells.service";
@@ -30,12 +31,12 @@ describe("MatchmakingService.joinQueue — powerupsEnabled resolution (Bug Audit
 		};
 		matchPlayerRepo = { save: jest.fn(), create: jest.fn((p) => p) };
 
-		service = new MatchmakingService(
-			shellsService,
-			roomService,
+		const matchFactory = new MatchFactoryService(
 			matchRepo as never,
 			matchPlayerRepo as never,
+			roomService,
 		);
+		service = new MatchmakingService(shellsService, roomService, matchFactory);
 	});
 
 	it("resolves the room's powerupsEnabled from the first-in-queue player, not a hard-coded true", async () => {

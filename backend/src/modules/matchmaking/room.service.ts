@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { MatchMode } from "./entities/match.entity";
 import { GameEngineRegistry } from "./engines/game-engine.registry";
 import { MatchRoom, RoomPlayer, SocketUser } from "./matchmaking.types";
+import { toSnapshotPlayer } from "./snapshot-player.util";
 
 const MAX_PLAYERS = 5;
 
@@ -234,19 +235,7 @@ export class RoomService {
 	}
 
 	private refreshSnapshotPlayers(room: MatchRoom, bumpSeq = false): void {
-		room.state.players = room.players.map((player) => ({
-			side: player.side,
-			userId: player.user.id,
-			username: player.user.username,
-			turtleName: player.user.turtleName ?? null,
-			shellSkin: player.user.shellSkin ?? "base",
-			trailEffect: player.user.trailEffect ?? "trail_classic",
-			hubBackground: player.user.hubBackground ?? "night_bg",
-			hubBackgroundAlter: player.user.hubBackgroundAlter ?? null,
-			connected: player.connected,
-			ready: player.ready,
-			reconnectExpiresAt: player.reconnectExpiresAt ?? null,
-		}));
+		room.state.players = room.players.map(toSnapshotPlayer);
 		room.state.seq = bumpSeq ? ++room.seq : room.seq;
 	}
 }

@@ -7,6 +7,7 @@ import { Match } from "./entities/match.entity";
 import { MatchPlayer } from "./entities/match-player.entity";
 import { UserRating } from "./entities/user-rating.entity";
 import { GameEngineRegistry } from "./engines/game-engine.registry";
+import { MatchLifecycleEvents } from "./match-lifecycle.events";
 import { GameInputPayload, MatchRoom, RoomPlayer } from "./matchmaking.types";
 import { ReplayService } from "./replay.service";
 import { RoomService } from "./room.service";
@@ -30,6 +31,7 @@ export class GameSessionService implements OnModuleInit {
 		private readonly matchPlayerRepo: Repository<MatchPlayer>,
 		@InjectRepository(UserRating)
 		private readonly ratingRepo: Repository<UserRating>,
+		private readonly matchEvents: MatchLifecycleEvents,
 	) {}
 
 	async onModuleInit(): Promise<void> {
@@ -79,6 +81,7 @@ export class GameSessionService implements OnModuleInit {
 			status: "active",
 			startedAt: new Date(),
 		});
+		if (started) this.matchEvents.emit({ type: "started", room: started });
 		return started;
 	}
 
@@ -182,6 +185,13 @@ export class GameSessionService implements OnModuleInit {
 			});
 			await this.replayService.persistReplayForRoom(room);
 			room.rewardsGranted = true;
+			// Fires only after the outcome is fully persisted (statuses, rewards,
+			// ratings, replay) so listeners can trust what they read. Listener
+			// errors are contained inside MatchLifecycleEvents.emit.
+			this.matchEvents.emit({
+				type: abandoned ? "abandoned" : "finished",
+				room,
+			});
 		} catch (err) {
 			this.logger.error(
 				`Failed to persist match ${room.matchId}: ${

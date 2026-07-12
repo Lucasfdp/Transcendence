@@ -1,9 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
-import { MatchPlayer } from "./entities/match-player.entity";
-import { Match } from "./entities/match.entity";
+import { MatchFactoryService } from "./match-factory.service";
 import { RoomService } from "./room.service";
 import { MatchRoom, SocketUser } from "./matchmaking.types";
 
@@ -60,11 +57,8 @@ export class PrivateLobbiesService {
 	private readonly startedPinMatches = new Map<string, StartedPinMatch>();
 
 	constructor(
-		@InjectRepository(Match)
-		private readonly matchRepo: Repository<Match>,
-		@InjectRepository(MatchPlayer)
-		private readonly matchPlayerRepo: Repository<MatchPlayer>,
 		private readonly roomService: RoomService,
+		private readonly matchFactory: MatchFactoryService,
 	) {}
 
 	/**
@@ -284,31 +278,13 @@ export class PrivateLobbiesService {
 		players: PrivateLobbyParticipant[],
 		powerupsEnabled: boolean,
 	): Promise<LobbyJoinResult> {
-		const match = await this.matchRepo.save(
-			this.matchRepo.create({
-				gameId,
-				mode: "casual", // private lobbies are always casual
-				status: "pending",
-			}),
-		);
-
-		const room = this.roomService.createRoom(match.id, gameId, "casual", players, {
+		const room = await this.matchFactory.createMatch({
+			gameId,
+			mode: "casual", // private lobbies are always casual
+			players,
 			powerupsEnabled,
 		});
-
-		await this.matchPlayerRepo.save(
-			room.players.map((p) =>
-				this.matchPlayerRepo.create({
-					matchId: match.id,
-					userId: p.user.id,
-					side: p.side,
-					outcome: null,
-					shellSelection: p.shellSelection,
-				}),
-			),
-		);
-
-		return { matchId: match.id, room };
+		return { matchId: room.matchId, room };
 	}
 
 	/**

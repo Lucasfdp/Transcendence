@@ -1,4 +1,5 @@
 import { MatchRoom, RoomPlayer, SnapshotPlayer } from "../matchmaking.types";
+import { toSnapshotPlayer } from "../snapshot-player.util";
 
 export abstract class BaseEngine {
 	/**
@@ -23,19 +24,7 @@ export abstract class BaseEngine {
 	}
 
 	protected toSnapshotPlayer(player: RoomPlayer): SnapshotPlayer {
-		return {
-			side: player.side,
-			userId: player.user.id,
-			username: player.user.username,
-			turtleName: player.user.turtleName ?? null,
-			shellSkin: player.user.shellSkin ?? "base",
-			trailEffect: player.user.trailEffect ?? "trail_classic",
-			hubBackground: player.user.hubBackground ?? "night_bg",
-			hubBackgroundAlter: player.user.hubBackgroundAlter ?? null,
-			connected: player.connected,
-			ready: player.ready,
-			reconnectExpiresAt: player.reconnectExpiresAt ?? null,
-		};
+		return toSnapshotPlayer(player);
 	}
 
 	protected getWinnerSide(score: number[]): number | null {

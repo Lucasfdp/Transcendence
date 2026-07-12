@@ -10,6 +10,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
 import { PresenceModule } from "../presence/presence.module";
 import { ShellsModule } from "../shells/shells.module";
 import { UsersModule } from "../users/users.module";
+import { ArenaSimulationService } from "./arena-simulation.service";
 import { Match } from "./entities/match.entity";
 import { MatchPlayer } from "./entities/match-player.entity";
 import { MatchReplay } from "./entities/match-replay.entity";
@@ -22,6 +23,8 @@ import { GameEngineRegistry } from "./engines/game-engine.registry";
 import { KameKnockEngine } from "./engines/kame-knock.engine";
 import { ShellCurlEngine } from "./engines/shell-curl.engine";
 import { GameSessionService } from "./game-session.service";
+import { MatchFactoryService } from "./match-factory.service";
+import { MatchLifecycleEvents } from "./match-lifecycle.events";
 import { MatchesController } from "./matches.controller";
 import { MatchmakingGateway } from "./matchmaking.gateway";
 import { MatchmakingService } from "./matchmaking.service";
@@ -63,6 +66,9 @@ import { RoomService } from "./room.service";
 		BellClashEngine,
 		GameEngineRegistry,
 		RoomService,
+		MatchFactoryService,
+		MatchLifecycleEvents,
+		ArenaSimulationService,
 		PrivateLobbiesService,
 		ReplayService,
 		GameSessionService,
@@ -71,5 +77,9 @@ import { RoomService } from "./room.service";
 		// gateway injects it as @Optional() so tests can omit it.
 		RateLimiterService,
 	],
+	// Exported so future orchestrators outside this module (e.g. a tournament
+	// module) can create matches and observe their lifecycle without reaching
+	// into matchmaking internals.
+	exports: [MatchFactoryService, MatchLifecycleEvents],
 })
 export class MatchmakingModule {}

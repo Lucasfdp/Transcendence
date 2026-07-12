@@ -5,6 +5,7 @@ import { ChatService } from "../chat/chat.service";
 import { FriendsService } from "../friends/friends.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UsersService } from "../users/users.service";
+import { ArenaSimulationService } from "./arena-simulation.service";
 import { GameSessionService } from "./game-session.service";
 import { MatchmakingGateway } from "./matchmaking.gateway";
 import { MatchmakingService } from "./matchmaking.service";
@@ -83,6 +84,7 @@ const makeSocket = (overrides: Partial<{ id: string; data: Record<string, unknow
 
 describe("MatchmakingGateway", () => {
 	let gateway: MatchmakingGateway;
+	let arenaSimulation: ArenaSimulationService;
 	let presence: ReturnType<typeof makePresenceMock>;
 	let usersService: ReturnType<typeof makeUsersServiceMock>;
 	let rooms: {
@@ -155,6 +157,9 @@ describe("MatchmakingGateway", () => {
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				MatchmakingGateway,
+				// Real service — resolves the RoomService/GameSessionService mocks
+				// below, so the arena broadcast test drives real pacing logic.
+				ArenaSimulationService,
 				{ provide: JwtService, useValue: {} },
 				{ provide: UsersService, useValue: usersService },
 				{ provide: PresenceService, useValue: presence },
@@ -170,6 +175,7 @@ describe("MatchmakingGateway", () => {
 		}).compile();
 
 		gateway = module.get(MatchmakingGateway);
+		arenaSimulation = module.get(ArenaSimulationService);
 	});
 
 	describe("arena simulation broadcasts", () => {
@@ -181,12 +187,14 @@ describe("MatchmakingGateway", () => {
 			sessions.advanceSimulation.mockReturnValue(true);
 			gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
 
-			const advance = gateway as unknown as {
-				advanceArenaSimulations: () => void;
-			};
-			advance.advanceArenaSimulations();
-			advance.advanceArenaSimulations();
-			advance.advanceArenaSimulations();
+			// Same broadcast callback the gateway wires in afterInit().
+			const broadcast = (matchId: string) =>
+				(
+					gateway as unknown as { emitState: (id: string) => void }
+				).emitState(matchId);
+			arenaSimulation.tick(broadcast);
+			arenaSimulation.tick(broadcast);
+			arenaSimulation.tick(broadcast);
 
 			expect(replays.captureFrame).toHaveBeenCalledWith(room);
 			expect(gateway.server.to).toHaveBeenCalledWith(room.matchId);

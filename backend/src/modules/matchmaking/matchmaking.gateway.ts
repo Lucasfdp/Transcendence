@@ -1,4 +1,4 @@
-import { Logger, OnModuleDestroy, Optional } from "@nestjs/common";
+import { Logger, Optional } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import {
 	ConnectedSocket,
@@ -17,6 +17,7 @@ import { ChatService, chatRoomName } from "../chat/chat.service";
 import { FriendsService } from "../friends/friends.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UsersService } from "../users/users.service";
+import { ArenaSimulationService } from "./arena-simulation.service";
 import { GameSessionService } from "./game-session.service";
 import { MatchmakingService } from "./matchmaking.service";
 import {
@@ -51,8 +52,6 @@ const RECONNECT_TIMEOUT_MS = 45_000;
  */
 const CHAT_SEND_RATE_LIMIT_MAX = 30;
 const CHAT_SEND_RATE_LIMIT_WINDOW_MS = 10_000;
-const ARENA_SIMULATION_TICK_MS = 1_000 / 30;
-const ARENA_STATE_BROADCAST_MS = 100;
 
 interface GameInputAck {
 	accepted: boolean;
@@ -79,14 +78,12 @@ function parseCookie(
 	},
 })
 export class MatchmakingGateway
-	implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
+	implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
 	@WebSocketServer()
 	server: Server;
 
 	private readonly logger = new Logger(MatchmakingGateway.name);
-	private arenaSimulationTimer: NodeJS.Timeout | null = null;
-	private readonly arenaBroadcastElapsedMs = new Map<string, number>();
 
 	constructor(
 		private readonly jwtService: JwtService,
@@ -100,6 +97,7 @@ export class MatchmakingGateway
 		private readonly friendsService: FriendsService,
 		private readonly replays: ReplayService,
 		private readonly chatService: ChatService,
+		private readonly arenaSimulation: ArenaSimulationService,
 		// Optional so the gateway spec (which mocks only the services it
 		// exercises) still instantiates without wiring a limiter; production
 		// always provides one via MatchmakingModule.
@@ -157,16 +155,9 @@ export class MatchmakingGateway
 	afterInit(server: Server): void {
 		this.notificationsService.setServer(server);
 		this.chatService.setServer(server);
-		this.arenaSimulationTimer ??= setInterval(
-			() => this.advanceArenaSimulations(),
-			ARENA_SIMULATION_TICK_MS,
-		);
-	}
-
-	onModuleDestroy(): void {
-		if (this.arenaSimulationTimer) clearInterval(this.arenaSimulationTimer);
-		this.arenaSimulationTimer = null;
-		this.arenaBroadcastElapsedMs.clear();
+		// The arena loop owns its timer + pacing; the gateway only supplies the
+		// Socket.IO broadcast side.
+		this.arenaSimulation.start((matchId) => this.emitState(matchId));
 	}
 
 	async handleConnection(socket: Socket): Promise<void> {
@@ -268,9 +259,9 @@ export class MatchmakingGateway
 		if (user) {
 			const cancelledLobby = this.privateLobbies.removeLobbyForUser(user.id);
 			if (cancelledLobby?.pendingInviteeId) {
-				for (const sid of this.presence.getSocketIds(cancelledLobby.pendingInviteeId)) {
-					this.server.to(sid).emit("lobby:cancelled", { lobbyId: cancelledLobby.lobbyId });
-				}
+				this.emitToUser(cancelledLobby.pendingInviteeId, "lobby:cancelled", {
+					lobbyId: cancelledLobby.lobbyId,
+				});
 			}
 		}
 
@@ -807,15 +798,13 @@ export class MatchmakingGateway
 		this.privateLobbies.setInvitee(payload.lobbyId, payload.inviteeUserId);
 
 		const expiresAt = lobby.createdAt + 2 * 60 * 1_000;
-		for (const sid of this.presence.getSocketIds(payload.inviteeUserId)) {
-			this.server.to(sid).emit("lobby:invited", {
-				lobbyId: lobby.lobbyId,
-				fromUserId: user.id,
-				fromUsername: user.username,
-				gameId: lobby.gameId,
-				expiresAt,
-			});
-		}
+		this.emitToUser(payload.inviteeUserId, "lobby:invited", {
+			lobbyId: lobby.lobbyId,
+			fromUserId: user.id,
+			fromUsername: user.username,
+			gameId: lobby.gameId,
+			expiresAt,
+		});
 		socket.emit("lobby:invite-sent", { inviteeUserId: payload.inviteeUserId });
 	}
 
@@ -926,9 +915,9 @@ export class MatchmakingGateway
 		const lobby = this.privateLobbies.getLobby(payload.lobbyId);
 		if (!lobby) return;
 		lobby.pendingInviteeId = null;
-		for (const sid of this.presence.getSocketIds(lobby.host.id)) {
-			this.server.to(sid).emit("lobby:declined", { lobbyId: payload.lobbyId });
-		}
+		this.emitToUser(lobby.host.id, "lobby:declined", {
+			lobbyId: payload.lobbyId,
+		});
 	}
 
 	/** Host cancels the lobby — notifies any pending invitee. */
@@ -944,15 +933,15 @@ export class MatchmakingGateway
 		const cancelled = this.privateLobbies.cancelLobby(payload.lobbyId);
 		if (cancelled) {
 			for (const participant of cancelled.participants) {
-				for (const sid of this.presence.getSocketIds(participant.user.id)) {
-					this.server.to(sid).emit("lobby:cancelled", { lobbyId: payload.lobbyId });
-				}
+				this.emitToUser(participant.user.id, "lobby:cancelled", {
+					lobbyId: payload.lobbyId,
+				});
 			}
 		}
 		if (cancelled?.pendingInviteeId) {
-			for (const sid of this.presence.getSocketIds(cancelled.pendingInviteeId)) {
-				this.server.to(sid).emit("lobby:cancelled", { lobbyId: payload.lobbyId });
-			}
+			this.emitToUser(cancelled.pendingInviteeId, "lobby:cancelled", {
+				lobbyId: payload.lobbyId,
+			});
 		}
 	}
 
@@ -1092,40 +1081,23 @@ export class MatchmakingGateway
 		}
 	}
 
-	private advanceArenaSimulations(): void {
-		const activeMatchIds = new Set<string>();
-		for (const room of this.rooms.getActiveRooms()) {
-			activeMatchIds.add(room.matchId);
-			if (!this.sessions.advanceSimulation(room, ARENA_SIMULATION_TICK_MS))
-				continue;
-			const elapsed =
-				(this.arenaBroadcastElapsedMs.get(room.matchId) ?? 0) +
-				ARENA_SIMULATION_TICK_MS;
-			if (elapsed < ARENA_STATE_BROADCAST_MS) {
-				this.arenaBroadcastElapsedMs.set(room.matchId, elapsed);
-				continue;
-			}
-			this.arenaBroadcastElapsedMs.set(
-				room.matchId,
-				elapsed - ARENA_STATE_BROADCAST_MS,
-			);
-			this.emitState(room.matchId);
-		}
-		for (const matchId of this.arenaBroadcastElapsedMs.keys()) {
-			if (!activeMatchIds.has(matchId)) this.arenaBroadcastElapsedMs.delete(matchId);
+	/** Emit an event to every connected socket of a user (all tabs/devices). */
+	private emitToUser(userId: number, event: string, payload: unknown): void {
+		for (const sid of this.presence.getSocketIds(userId)) {
+			this.server.to(sid).emit(event, payload);
 		}
 	}
 
 	private emitLobbyExpired(lobby: PrivateLobby): void {
 		for (const participant of lobby.participants) {
-			for (const sid of this.presence.getSocketIds(participant.user.id)) {
-				this.server.to(sid).emit("lobby:expired", { lobbyId: lobby.lobbyId });
-			}
+			this.emitToUser(participant.user.id, "lobby:expired", {
+				lobbyId: lobby.lobbyId,
+			});
 		}
 		if (lobby.pendingInviteeId) {
-			for (const sid of this.presence.getSocketIds(lobby.pendingInviteeId)) {
-				this.server.to(sid).emit("lobby:cancelled", { lobbyId: lobby.lobbyId });
-			}
+			this.emitToUser(lobby.pendingInviteeId, "lobby:cancelled", {
+				lobbyId: lobby.lobbyId,
+			});
 		}
 	}
 
@@ -1139,40 +1111,51 @@ export class MatchmakingGateway
 			expiresAt: lobby.createdAt + 2 * 60 * 1_000,
 		};
 		for (const participant of lobby.participants) {
-			for (const sid of this.presence.getSocketIds(participant.user.id)) {
-				this.server.to(sid).emit("lobby:waiting", payload);
-			}
+			this.emitToUser(participant.user.id, "lobby:waiting", payload);
 		}
 	}
 
 	private async launchPrivateMatch(result: LobbyJoinResult): Promise<void> {
-		const { matchId, room } = result;
+		await this.startServerInitiatedMatch(result.room, "lobby:matched");
+	}
+
+	/**
+	 * Launch a match that was created server-side (private lobby, rematch, or
+	 * any future orchestrator) instead of through the public queue's
+	 * queue:join → room:ready handshake: join every player's sockets into the
+	 * match room (leaving `leaveMatchId` first if given), force-ready everyone,
+	 * start the session, broadcast the fresh state, and notify each player via
+	 * `eventName` with the standard {matchId, side, gameId, snapshot} payload.
+	 */
+	private async startServerInitiatedMatch(
+		room: MatchRoom,
+		eventName: "lobby:matched" | "match:rematch-start",
+		leaveMatchId?: string,
+	): Promise<MatchRoom> {
 		this.syncRoomPresence(room);
 		for (const player of room.players) {
 			for (const sid of this.presence.getSocketIds(player.user.id)) {
 				const s = this.server.sockets.sockets.get(sid);
-				if (s) s.join(matchId);
+				if (s) {
+					if (leaveMatchId) s.leave(leaveMatchId);
+					s.join(room.matchId);
+				}
 			}
+			this.rooms.setReady(room.matchId, player.user.id);
 		}
-
-		// Private matches skip queue:join -> room:ready, so start them directly.
-		for (const player of room.players) {
-			this.rooms.setReady(matchId, player.user.id);
-		}
-		const started = await this.sessions.startIfReady(matchId);
+		const started = await this.sessions.startIfReady(room.matchId);
 		const activeRoom = started ?? room;
 		this.emitState(activeRoom.matchId);
 
 		for (const player of activeRoom.players) {
-			for (const sid of this.presence.getSocketIds(player.user.id)) {
-				this.server.to(sid).emit("lobby:matched", {
-					matchId: activeRoom.matchId,
-					side: player.side,
-					gameId: activeRoom.gameId,
-					snapshot: activeRoom.state,
-				});
-			}
+			this.emitToUser(player.user.id, eventName, {
+				matchId: activeRoom.matchId,
+				side: player.side,
+				gameId: activeRoom.gameId,
+				snapshot: activeRoom.state,
+			});
 		}
+		return activeRoom;
 	}
 
 	private emitRematchStatus(room: MatchRoom): void {
@@ -1210,31 +1193,11 @@ export class MatchmakingGateway
 
 		const rematch = await this.matchmaking.createRematch(room, remaining);
 		room.rematchStartedMatchId = rematch.matchId;
-		for (const player of rematch.players) {
-			for (const sid of this.presence.getSocketIds(player.user.id)) {
-				const s = this.server.sockets.sockets.get(sid);
-				if (s) {
-					s.leave(room.matchId);
-					s.join(rematch.matchId);
-				}
-			}
-			this.rooms.setReady(rematch.matchId, player.user.id);
-		}
-		const started = await this.sessions.startIfReady(rematch.matchId);
-		const activeRoom = started ?? rematch;
-		this.syncRoomPresence(activeRoom);
-		this.emitState(activeRoom.matchId);
-
-		for (const player of activeRoom.players) {
-			for (const sid of this.presence.getSocketIds(player.user.id)) {
-				this.server.to(sid).emit("match:rematch-start", {
-					matchId: activeRoom.matchId,
-					side: player.side,
-					gameId: activeRoom.gameId,
-					snapshot: activeRoom.state,
-				});
-			}
-		}
+		await this.startServerInitiatedMatch(
+			rematch,
+			"match:rematch-start",
+			room.matchId,
+		);
 	}
 
 	/**
