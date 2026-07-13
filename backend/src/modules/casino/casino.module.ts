@@ -10,6 +10,7 @@ import { DiceService } from "./dice.service";
 import { FlipService } from "./flip.service";
 import { MonteService } from "./monte.service";
 import { MonteRoundService } from "./monte-round.service";
+import { MonteRoundSweeper } from "./monte-round.sweeper";
 import { PlinkoService } from "./plinko.service";
 import { SlotsService } from "./slots.service";
 import { MonteRound } from "./entities/monte-round.entity";
@@ -34,6 +35,7 @@ import { Wager } from "./entities/wager.entity";
 		FlipService,
 		MonteService,
 		MonteRoundService,
+		MonteRoundSweeper,
 		SlotsService,
 		DiceService,
 		PlinkoService,

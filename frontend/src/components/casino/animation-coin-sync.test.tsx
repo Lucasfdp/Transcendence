@@ -1,19 +1,25 @@
 /**
- * Regression coverage for Bug Audit finding 1.1: every casino modal must sync
- * the hub's coin balance the moment the server settles a wager, not once the
- * purely-cosmetic spin/roll/shuffle/drop animation finishes. Before the fix,
- * `onCoinsChange` lived inside each animation's `onComplete` callback, so
- * closing (unmounting) a modal — or, as simulated here, an animation that
- * simply never gets to finish — permanently desynced the hub header's
- * balance from what the server actually settled.
+ * Regression coverage for the "balance updates too early" bug: every casino
+ * modal except Three-Shell Monte used to sync the hub's coin balance the
+ * moment the server settled a wager, before the cosmetic spin/roll/shuffle/
+ * drop animation had shown the player whether they won or lost. That let the
+ * balance change on screen before the outcome did, spoiling the result.
+ *
+ * The fix holds `onCoinsChange` back until each animation's own
+ * `finish()`/`onComplete` handler runs (i.e. until the result is actually
+ * revealed), while still guaranteeing the balance is flushed if the modal is
+ * closed mid-animation (via a "sync on unmount if not yet settled" fallback
+ * — otherwise closing early would silently desync the hub header).
  *
  * Every test below freezes the cosmetic animation mid-flight by stubbing
  * `requestAnimationFrame` to never invoke its callback, so each modal's own
- * `finish()`/`onComplete` handler can never run. If `onCoinsChange` still
- * fired, it proves the sync happens immediately after the server responds,
- * independent of the animation. Canvas-backed boards (Shell Drop, Monte,
- * Slots) additionally need a real-looking `getContext`/`getBoundingClientRect`
- * since jsdom implements neither by default.
+ * `finish()`/`onComplete` handler can never run through the normal path.
+ * That lets each test assert `onCoinsChange` has NOT fired yet once the
+ * server has responded, then unmount the modal (simulating the player
+ * closing it) and assert the fallback still flushes the correct balance.
+ * Canvas-backed boards (Shell Drop, Slots) additionally need a
+ * real-looking `getContext`/`getBoundingClientRect` since jsdom implements
+ * neither by default.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -48,6 +54,7 @@ vi.mock("../../features/hub/api", () => ({
 		flip: vi.fn(),
 		getMonte: vi.fn(),
 		startMonteRound: vi.fn(),
+		getMonteSteps: vi.fn(),
 		resolveMonteRound: vi.fn(),
 		getSlots: vi.fn(),
 		spinSlots: vi.fn(),
@@ -68,19 +75,20 @@ function fairness(rolls: number[] = [0.42]): SpinFairness {
 	};
 }
 
-describe("casino modals sync coins immediately, independent of the cosmetic animation", () => {
+describe("casino modals hold the coin sync until the outcome animation reveals the result", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.mocked(api.getCsrfToken).mockResolvedValue("token");
 
 		// Freeze every cosmetic animation mid-flight: `runBoardAnimation`
 		// schedules one initial frame and never gets another, so its
-		// `onComplete` (each modal's `finish()`) can never run.
+		// `onComplete` (each modal's `finish()`) can never run through the
+		// normal path — only the unmount fallback can flush the balance.
 		vi.stubGlobal("requestAnimationFrame", vi.fn(() => 0));
 		vi.stubGlobal("cancelAnimationFrame", vi.fn());
 
 		// jsdom implements neither a real canvas 2D context nor real layout
-		// boxes. Stub both so Shell Drop / Monte / Slots take their real
+		// boxes. Stub both so Shell Drop / Slots take their real
 		// (canvas-driven) animation path instead of silently short-circuiting.
 		vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
 			{
@@ -136,7 +144,7 @@ describe("casino modals sync coins immediately, independent of the cosmetic anim
 		vi.restoreAllMocks();
 	});
 
-	it("FortuneWheelModal: calls onCoinsChange with the server balance before the spin animation completes", async () => {
+	it("FortuneWheelModal: does not sync coins until the spin animation reveals the result", async () => {
 		const segment = { id: "x2", label: "2x", multiplier: 2, weight: 1 };
 		const wheel: WheelView = {
 			segments: [{ ...segment, probability: 1 }],
@@ -164,14 +172,23 @@ describe("casino modals sync coins immediately, independent of the cosmetic anim
 		vi.mocked(api.spinWheel).mockResolvedValue(spin);
 
 		const onCoinsChange = vi.fn();
-		render(<FortuneWheelModal coins={500} onCoinsChange={onCoinsChange} />);
+		const { unmount } = render(
+			<FortuneWheelModal coins={500} onCoinsChange={onCoinsChange} />,
+		);
 
 		fireEvent.click(await screen.findByRole("button", { name: "Spin" }));
 
-		await waitFor(() => expect(onCoinsChange).toHaveBeenCalledWith(510));
+		// The server has settled the wager, but the wheel hasn't landed yet
+		// (requestAnimationFrame is frozen) — the balance must not move.
+		await waitFor(() => expect(api.spinWheel).toHaveBeenCalled());
+		expect(onCoinsChange).not.toHaveBeenCalled();
+
+		// Closing the modal mid-spin must still flush the true balance.
+		unmount();
+		expect(onCoinsChange).toHaveBeenCalledWith(510);
 	});
 
-	it("KoiDiceModal: calls onCoinsChange with the server balance before the odometer animation completes", async () => {
+	it("KoiDiceModal: does not sync coins until the odometer animation reveals the result", async () => {
 		const config: DiceConfig = {
 			range: 100,
 			minTargetUnder: 1,
@@ -198,14 +215,20 @@ describe("casino modals sync coins immediately, independent of the cosmetic anim
 		vi.mocked(api.dice).mockResolvedValue(outcome);
 
 		const onCoinsChange = vi.fn();
-		render(<KoiDiceModal coins={500} onCoinsChange={onCoinsChange} />);
+		const { unmount } = render(
+			<KoiDiceModal coins={500} onCoinsChange={onCoinsChange} />,
+		);
 
 		fireEvent.click(await screen.findByRole("button", { name: "Roll" }));
 
-		await waitFor(() => expect(onCoinsChange).toHaveBeenCalledWith(510));
+		await waitFor(() => expect(api.dice).toHaveBeenCalled());
+		expect(onCoinsChange).not.toHaveBeenCalled();
+
+		unmount();
+		expect(onCoinsChange).toHaveBeenCalledWith(510);
 	});
 
-	it("ShellFlipModal: calls onCoinsChange with the server balance before the flip animation completes", async () => {
+	it("ShellFlipModal: does not sync coins until the flip animation reveals the result", async () => {
 		const config: FlipConfig = {
 			multiplier: 2,
 			rtp: 1,
@@ -229,48 +252,20 @@ describe("casino modals sync coins immediately, independent of the cosmetic anim
 		vi.mocked(api.flip).mockResolvedValue(outcome);
 
 		const onCoinsChange = vi.fn();
-		render(<ShellFlipModal coins={500} onCoinsChange={onCoinsChange} />);
+		const { unmount } = render(
+			<ShellFlipModal coins={500} onCoinsChange={onCoinsChange} />,
+		);
 
 		fireEvent.click(await screen.findByRole("button", { name: /Flip for/ }));
 
-		await waitFor(() => expect(onCoinsChange).toHaveBeenCalledWith(510));
+		await waitFor(() => expect(api.flip).toHaveBeenCalled());
+		expect(onCoinsChange).not.toHaveBeenCalled();
+
+		unmount();
+		expect(onCoinsChange).toHaveBeenCalledWith(510);
 	});
 
-	it("ThreeShellMonteModal: calls onCoinsChange with the server balance before the shuffle animation completes", async () => {
-		const config: MonteConfig = {
-			shellOptions: [3],
-			defaultShells: 3,
-			rtp: 1,
-			minWager: 10,
-			maxWager: 1000,
-			coins: 500,
-		};
-		vi.mocked(api.getMonte).mockResolvedValue(config);
-		const started: MonteRoundStart = {
-			roundId: "round-1",
-			cupIds: ["cup-a", "cup-b", "cup-c"],
-			ballCupId: "cup-b",
-			serverSeedHash: "hash",
-			winningCupHash: "cup-hash",
-			clientSeed: "",
-			nonce: 1,
-			stake: 10,
-			expiresAt: new Date(Date.now() + 60_000).toISOString(),
-			coins: 490,
-		};
-		vi.mocked(api.startMonteRound).mockResolvedValue(started);
-
-		const onCoinsChange = vi.fn();
-		render(<ThreeShellMonteModal coins={500} onCoinsChange={onCoinsChange} />);
-
-		fireEvent.click(
-			await screen.findByRole("button", { name: /Start game/ }),
-		);
-
-		await waitFor(() => expect(onCoinsChange).toHaveBeenCalledWith(490));
-	});
-
-	it("ShrineSlotsModal: calls onCoinsChange with the server balance before the reel animation completes", async () => {
+	it("ShrineSlotsModal: does not sync coins until the reel animation reveals the result", async () => {
 		const symbols = [
 			{ id: "shell", label: "Shell", weight: 1, probability: 1, payout: 5 },
 		];
@@ -298,14 +293,20 @@ describe("casino modals sync coins immediately, independent of the cosmetic anim
 		vi.mocked(api.spinSlots).mockResolvedValue(outcome);
 
 		const onCoinsChange = vi.fn();
-		render(<ShrineSlotsModal coins={500} onCoinsChange={onCoinsChange} />);
+		const { unmount } = render(
+			<ShrineSlotsModal coins={500} onCoinsChange={onCoinsChange} />,
+		);
 
 		fireEvent.click(await screen.findByRole("button", { name: "Spin" }));
 
-		await waitFor(() => expect(onCoinsChange).toHaveBeenCalledWith(540));
+		await waitFor(() => expect(api.spinSlots).toHaveBeenCalled());
+		expect(onCoinsChange).not.toHaveBeenCalled();
+
+		unmount();
+		expect(onCoinsChange).toHaveBeenCalledWith(540);
 	});
 
-	it("ShellDropModal: calls onCoinsChange with the server balance before the board animation completes", async () => {
+	it("ShellDropModal: does not sync coins until the board animation reveals the result", async () => {
 		const view: PlinkoView = {
 			rowOptions: [8, 12],
 			defaultRows: 8,
@@ -340,10 +341,65 @@ describe("casino modals sync coins immediately, independent of the cosmetic anim
 		vi.mocked(api.dropPlinko).mockResolvedValue(outcome);
 
 		const onCoinsChange = vi.fn();
-		render(<ShellDropModal coins={500} onCoinsChange={onCoinsChange} />);
+		const { unmount } = render(
+			<ShellDropModal coins={500} onCoinsChange={onCoinsChange} />,
+		);
 
 		fireEvent.click(await screen.findByRole("button", { name: "Drop" }));
 
-		await waitFor(() => expect(onCoinsChange).toHaveBeenCalledWith(495));
+		await waitFor(() => expect(api.dropPlinko).toHaveBeenCalled());
+		expect(onCoinsChange).not.toHaveBeenCalled();
+
+		unmount();
+		expect(onCoinsChange).toHaveBeenCalledWith(495);
+	});
+
+	it("ThreeShellMonteModal: still syncs the stake deduction immediately on start (no outcome to spoil yet)", async () => {
+		// Unlike the other five games, starting a Monte round only takes the
+		// stake — it doesn't reveal a win/loss outcome, so there's nothing to
+		// spoil by syncing immediately here. The actual result (`resolveRound`)
+		// already syncs coins in the same tick as revealing the pearl, which is
+		// the behaviour the other games were fixed to match.
+		const config: MonteConfig = {
+			shellOptions: [3],
+			defaultShells: 3,
+			rtp: 1,
+			minWager: 10,
+			maxWager: 1000,
+			coins: 500,
+		};
+		vi.mocked(api.getMonte).mockResolvedValue(config);
+		const started: MonteRoundStart = {
+			roundId: "round-1",
+			cupIds: ["cup-a", "cup-b", "cup-c"],
+			ballStartSlot: 1,
+			stepCount: 8,
+			stepDurations: [],
+			shuffleLeadMs: 1650,
+			totalShuffleMs: 0,
+			serverSeedHash: "hash",
+			commitHash: "commit",
+			clientSeed: "",
+			nonce: 1,
+			stake: 10,
+			expiresAt: new Date(Date.now() + 60_000).toISOString(),
+			coins: 490,
+		};
+		vi.mocked(api.startMonteRound).mockResolvedValue(started);
+		vi.mocked(api.getMonteSteps).mockResolvedValue({
+			roundId: "round-1",
+			steps: [],
+			stepCount: 8,
+			ready: false,
+		});
+
+		const onCoinsChange = vi.fn();
+		render(<ThreeShellMonteModal coins={500} onCoinsChange={onCoinsChange} />);
+
+		fireEvent.click(
+			await screen.findByRole("button", { name: /Start game/ }),
+		);
+
+		await waitFor(() => expect(onCoinsChange).toHaveBeenCalledWith(490));
 	});
 });

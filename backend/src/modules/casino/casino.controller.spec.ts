@@ -42,9 +42,11 @@ describe("CasinoController", () => {
 		wageredSpin: jest.Mock;
 	};
 	let flipService: { getFlipConfig: jest.Mock; flip: jest.Mock };
-	let monteService: { getMonteConfig: jest.Mock; monte: jest.Mock };
+	let monteService: { getMonteConfig: jest.Mock };
 	let monteRoundService: {
 		startRound: jest.Mock;
+		getActiveRound: jest.Mock;
+		getSteps: jest.Mock;
 		resolveRound: jest.Mock;
 	};
 	let slotsService: { getSlotsView: jest.Mock; slots: jest.Mock };
@@ -67,21 +69,26 @@ describe("CasinoController", () => {
 			getMonteConfig: jest
 				.fn()
 				.mockReturnValue({ coins: 500, defaultShells: 3 }),
-			monte: jest
-				.fn()
-				.mockResolvedValue({ game: "monte", outcomeId: "shell-1" }),
 		};
 		monteRoundService = {
 			startRound: jest.fn().mockResolvedValue({
 				roundId: "round-1",
 				cupIds: ["cup-a", "cup-b", "cup-c"],
-				ballCupId: "cup-b",
+				ballStartSlot: 1,
+				stepCount: 8,
 				coins: 400,
+			}),
+			getActiveRound: jest.fn().mockResolvedValue(null),
+			getSteps: jest.fn().mockResolvedValue({
+				roundId: "round-1",
+				steps: [],
+				stepCount: 8,
+				ready: false,
 			}),
 			resolveRound: jest.fn().mockResolvedValue({
 				roundId: "round-1",
 				game: "monte",
-				selectedCupId: "cup-b",
+				selectedSlot: 1,
 				won: true,
 			}),
 		};
@@ -236,7 +243,14 @@ describe("CasinoController", () => {
 			expect(monteService.getMonteConfig).toHaveBeenCalledWith(
 				expect.any(User),
 			);
-			expect(config).toEqual({ coins: 500, defaultShells: 3 });
+			expect(monteRoundService.getActiveRound).toHaveBeenCalledWith(
+				expect.any(User),
+			);
+			expect(config).toEqual({
+				coins: 500,
+				defaultShells: 3,
+				activeRound: null,
+			});
 		});
 	});
 
@@ -255,7 +269,8 @@ describe("CasinoController", () => {
 			expect(result).toEqual({
 				roundId: "round-1",
 				cupIds: ["cup-a", "cup-b", "cup-c"],
-				ballCupId: "cup-b",
+				ballStartSlot: 1,
+				stepCount: 8,
 				coins: 400,
 			});
 		});
@@ -271,21 +286,38 @@ describe("CasinoController", () => {
 		});
 	});
 
+	describe("GET /casino/monte/rounds/:roundId/steps", () => {
+		it("should return the just-in-time swaps for the round", async () => {
+			const result = await controller.monteRoundSteps(req, "round-1");
+
+			expect(monteRoundService.getSteps).toHaveBeenCalledWith(
+				expect.any(User),
+				"round-1",
+			);
+			expect(result).toEqual({
+				roundId: "round-1",
+				steps: [],
+				stepCount: 8,
+				ready: false,
+			});
+		});
+	});
+
 	describe("POST /casino/monte/rounds/:roundId/resolve", () => {
-		it("should resolve a committed round with the selected cup", async () => {
+		it("should resolve a committed round with the selected slot", async () => {
 			const result = await controller.resolveMonteRound(req, "round-1", {
-				selectedCupId: "cup-b",
+				selectedSlot: 1,
 			});
 
 			expect(monteRoundService.resolveRound).toHaveBeenCalledWith(
 				expect.any(User),
 				"round-1",
-				"cup-b",
+				1,
 			);
 			expect(result).toEqual({
 				roundId: "round-1",
 				game: "monte",
-				selectedCupId: "cup-b",
+				selectedSlot: 1,
 				won: true,
 			});
 		});

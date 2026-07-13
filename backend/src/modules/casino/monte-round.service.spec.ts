@@ -22,7 +22,7 @@ describe("MonteRoundService", () => {
 	let rounds: MonteRound[];
 	let wagers: Wager[];
 	let profile: Profile;
-	let dataSource: { transaction: jest.Mock };
+	let dataSource: { transaction: jest.Mock; getRepository: jest.Mock };
 
 	beforeEach(async () => {
 		user = makeUser();
@@ -89,22 +89,21 @@ describe("MonteRoundService", () => {
 				return profile;
 			}),
 		};
+		const getRepository = (entity: unknown): unknown => {
+			if (entity === User) return usersRepo;
+			if (entity === MonteRound) return roundsRepo;
+			if (entity === Wager) return wagersRepo;
+			if (entity === Profile) return profilesRepo;
+			throw new Error("Unknown repository");
+		};
 		dataSource = {
+			getRepository: jest.fn(getRepository),
 			transaction: jest.fn(
 				async (
 					callback: (manager: {
 						getRepository: (entity: unknown) => unknown;
 					}) => unknown,
-				) =>
-					callback({
-						getRepository: (entity: unknown) => {
-							if (entity === User) return usersRepo;
-							if (entity === MonteRound) return roundsRepo;
-							if (entity === Wager) return wagersRepo;
-							if (entity === Profile) return profilesRepo;
-							throw new Error("Unknown repository");
-						},
-					}),
+				) => callback({ getRepository }),
 			),
 		};
 
@@ -118,19 +117,31 @@ describe("MonteRoundService", () => {
 		service = moduleRef.get(MonteRoundService);
 	});
 
+	/** Push a round's creation time back so its shuffle gate has elapsed. */
+	function openGate(index = 0): void {
+		rounds[index].createdAt = new Date(Date.now() - 60_000);
+	}
+
 	it("starts a round by debiting once and returning the commitment", async () => {
 		const result = await service.startRound(user, 100, "client");
 
 		expect(result.roundId).toBe("round-1");
 		expect(result.cupIds).toHaveLength(3);
-		expect(result.cupIds).toContain(result.ballCupId);
+		expect(result.ballStartSlot).toBeGreaterThanOrEqual(0);
+		expect(result.ballStartSlot).toBeLessThan(3);
+		expect(result.stepCount).toBeGreaterThan(0);
+		expect(result.stepDurations).toHaveLength(result.stepCount);
 		expect(result.serverSeedHash).toHaveLength(64);
-		expect(result.winningCupHash).toHaveLength(64);
+		expect(result.commitHash).toHaveLength(64);
 		expect(result.clientSeed).toBe("client");
 		expect(result.nonce).toBe(0);
 		expect(result.coins).toBe(400);
 		expect(user.coins).toBe(400);
 		expect(user.wagerCount).toBe(1);
+		// The winning slot must never be part of the start payload.
+		expect(result).not.toHaveProperty("winningSlot");
+		expect(result).not.toHaveProperty("ballCupId");
+		expect(result).not.toHaveProperty("shuffle");
 	});
 
 	it("reuses an active pending round without double-debiting", async () => {
@@ -143,19 +154,72 @@ describe("MonteRoundService", () => {
 		expect(rounds).toHaveLength(1);
 	});
 
-	it("pays 3x and writes a wager row for the correct cup", async () => {
+	it("returns the active round for resume, or null when none is open", async () => {
+		expect(await service.getActiveRound(user)).toBeNull();
+
+		const started = await service.startRound(user, 100, "seed");
+		const active = await service.getActiveRound(user);
+
+		expect(active?.roundId).toBe(started.roundId);
+		expect(active).not.toHaveProperty("winningSlot");
+		expect(active).not.toHaveProperty("ballCupId");
+	});
+
+	it("expires a stale pending round instead of resuming it", async () => {
+		await service.startRound(user, 100, "");
+		rounds[0].expiresAt = new Date(Date.now() - 1);
+
+		expect(await service.getActiveRound(user)).toBeNull();
+		expect(rounds[0].status).toBe("expired");
+	});
+
+	it("expireStaleRounds settles only rounds past their TTL", async () => {
+		await service.startRound(user, 100, "");
+		// Fresh round is not stale — nothing to sweep.
+		expect(await service.expireStaleRounds()).toBe(0);
+		expect(rounds[0].status).toBe("pending");
+
+		rounds[0].expiresAt = new Date(Date.now() - 1);
+		const swept = await service.expireStaleRounds();
+
+		expect(swept).toBe(1);
+		expect(rounds[0].status).toBe("expired");
+		expect(wagers.at(-1)).toEqual(
+			expect.objectContaining({ payout: 0, net: -100 }),
+		);
+		// Idempotent: a second pass finds nothing left to settle.
+		expect(await service.expireStaleRounds()).toBe(0);
+	});
+
+	it("streams no swaps immediately, then all once the gate opens", async () => {
 		const started = await service.startRound(user, 100, "");
-		const result = await service.resolveRound(user, started.roundId, started.ballCupId);
+
+		const early = await service.getSteps(user, started.roundId);
+		expect(early.steps).toHaveLength(0);
+		expect(early.ready).toBe(false);
+
+		openGate();
+		const late = await service.getSteps(user, started.roundId);
+		expect(late.steps).toHaveLength(late.stepCount);
+		expect(late.ready).toBe(true);
+	});
+
+	it("pays 3x and writes a wager row for the winning slot", async () => {
+		const started = await service.startRound(user, 100, "");
+		openGate();
+		const winningSlot = rounds[0].winningSlot;
+		const result = await service.resolveRound(user, started.roundId, winningSlot);
 
 		expect(result.won).toBe(true);
+		expect(result.selectedSlot).toBe(winningSlot);
 		expect(result.payout).toBe(300);
 		expect(result.net).toBe(200);
 		expect(result.coins).toBe(700);
+		expect(result.shuffle).toHaveLength(started.stepCount);
 		expect(wagers).toHaveLength(1);
 		expect(wagers[0]).toEqual(
 			expect.objectContaining({
 				game: "monte",
-				segmentId: started.ballCupId,
 				payout: 300,
 				net: 200,
 				nonce: 0,
@@ -164,10 +228,11 @@ describe("MonteRoundService", () => {
 		expect(profile.totalCoinsEarned).toBe(200);
 	});
 
-	it("loses the debited stake for the wrong cup", async () => {
+	it("loses the debited stake for a wrong slot", async () => {
 		const started = await service.startRound(user, 100, "");
-		const wrongCup = started.cupIds.find((cupId) => cupId !== started.ballCupId);
-		const result = await service.resolveRound(user, started.roundId, wrongCup!);
+		openGate();
+		const wrongSlot = (rounds[0].winningSlot + 1) % 3;
+		const result = await service.resolveRound(user, started.roundId, wrongSlot);
 
 		expect(result.won).toBe(false);
 		expect(result.payout).toBe(0);
@@ -176,11 +241,22 @@ describe("MonteRoundService", () => {
 		expect(wagers[0]).toEqual(expect.objectContaining({ payout: 0, net: -100 }));
 	});
 
-	it("rejects invalid cup ids", async () => {
+	it("rejects a resolve before the shuffle could have finished", async () => {
 		const started = await service.startRound(user, 100, "");
+		// Gate NOT opened: the round was just created.
+		await expect(
+			service.resolveRound(user, started.roundId, rounds[0].winningSlot),
+		).rejects.toBeInstanceOf(BadRequestException);
+		// Stake must not have been settled.
+		expect(rounds[0].status).toBe("pending");
+	});
+
+	it("rejects an out-of-range slot", async () => {
+		const started = await service.startRound(user, 100, "");
+		openGate();
 
 		await expect(
-			service.resolveRound(user, started.roundId, "not-a-round-cup"),
+			service.resolveRound(user, started.roundId, 7),
 		).rejects.toBeInstanceOf(BadRequestException);
 	});
 

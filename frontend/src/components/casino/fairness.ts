@@ -16,7 +16,7 @@ import type {
 } from "../../features/hub/api";
 import { diceOutcomeId, diceValue } from "./dice";
 import { flipSide } from "./flip";
-import { monteOutcomeId, winningShell } from "./monte";
+import { applyShuffle, monteOutcomeId, winningShell } from "./monte";
 import { bucketIndexFromRolls, plinkoOutcomeId } from "./plinko";
 import { selectSymbolFrom, slotsOutcomeId } from "./slots";
 import { selectSegmentFrom } from "./wheel";
@@ -192,37 +192,78 @@ export function verifyMonte(
 	);
 }
 
-/** Verify a two-step Monte round after the server reveals its seed. */
+/** The three swaps possible with three cups — must match the backend order. */
+const MONTE_SWAP_CHOICES: readonly [number, number][] = [
+	[0, 1],
+	[0, 2],
+	[1, 2],
+];
+
+/** Recompute the server-authored shuffle from the revealed seed. */
+async function computeShuffleBrowser(
+	serverSeed: string,
+	clientSeed: string,
+	nonce: number,
+	steps: number,
+): Promise<[number, number][]> {
+	const key = await importHmacKey(serverSeed);
+	const shuffle: [number, number][] = [];
+	for (let step = 0; step < steps; step++) {
+		const roll = await rollFromMessage(
+			key,
+			`${clientSeed}:${nonce}:shuffle:${step}`,
+		);
+		const index = Math.min(
+			Math.floor(roll * MONTE_SWAP_CHOICES.length),
+			MONTE_SWAP_CHOICES.length - 1,
+		);
+		shuffle.push([...MONTE_SWAP_CHOICES[index]]);
+	}
+	return shuffle;
+}
+
+/**
+ * Verify a Monte round after the server reveals its seed: recompute the start
+ * slot, the whole shuffle and the winning slot, then confirm they match what
+ * the server returned and that the win/loss call follows from the chosen slot.
+ */
 export async function verifyMonteRound(
 	result: MonteRoundResolution,
 ): Promise<OutcomeFairnessCheck> {
-	const {
-		serverSeed,
-		serverSeedHash,
-		clientSeed,
-		nonce,
-		roll,
-		rolls,
-		winningCupHash,
-	} = result.fairness;
+	const { serverSeed, serverSeedHash, clientSeed, nonce, roll, rolls, commitHash } =
+		result.fairness;
 
 	const computedHash = await sha256Hex(serverSeed);
 	const computedRoll = await computeRollBrowser(serverSeed, clientSeed, nonce);
-	const winningIndex = winningShell(computedRoll, result.cupIds.length);
-	const computedCup = result.cupIds[winningIndex];
-	const computedCupHash = await sha256Hex(
-		`${serverSeed}:${clientSeed}:${nonce}:${computedCup}`,
+	const computedStartSlot = winningShell(computedRoll, result.cupIds.length);
+	const computedShuffle = await computeShuffleBrowser(
+		serverSeed,
+		clientSeed,
+		nonce,
+		result.shuffle.length,
+	);
+	const computedWinningSlot = applyShuffle(computedStartSlot, computedShuffle);
+	const computedCommit = await sha256Hex(
+		`${serverSeed}:${clientSeed}:${nonce}:${computedStartSlot}:${computedWinningSlot}`,
 	);
 
-	const hashOk =
-		computedHash === serverSeedHash && computedCupHash === winningCupHash;
+	const shuffleMatches =
+		computedShuffle.length === result.shuffle.length &&
+		computedShuffle.every(
+			(pair, i) =>
+				pair[0] === result.shuffle[i][0] && pair[1] === result.shuffle[i][1],
+		);
+
+	const hashOk = computedHash === serverSeedHash && computedCommit === commitHash;
 	const rollOk =
 		rolls.length === 1 &&
 		Math.abs(computedRoll - rolls[0]) < ROLL_EPSILON &&
 		Math.abs(computedRoll - roll) < ROLL_EPSILON;
 	const outcomeOk =
-		computedCup === result.ballCupId &&
-		(result.selectedCupId === result.ballCupId) === result.won;
+		shuffleMatches &&
+		computedStartSlot === result.ballStartSlot &&
+		computedWinningSlot === result.winningSlot &&
+		(result.selectedSlot === result.winningSlot) === result.won;
 
 	return { hashOk, rollOk, outcomeOk, ok: hashOk && rollOk && outcomeOk };
 }

@@ -1,9 +1,27 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-export default defineConfig({
+/**
+ * `mode` lets us harden only the production bundle. Dev keeps console output and
+ * readable code; the shipped bundle is mangled with console/debugger stripped so
+ * the client-side shuffle maths is meaningfully harder to reverse-engineer.
+ *
+ * NOTE: this is deliberately "raise the bar", not a security boundary — a
+ * determined attacker can always read a shipped bundle. The real protections for
+ * Three-Shell Monte are server-side (the winning slot never leaves the server
+ * before resolve, the swaps are streamed just-in-time, and the resolve is
+ * time-gated). Do NOT rely on obfuscation to keep the game honest. For stronger
+ * mangling you can add `vite-plugin-javascript-obfuscator`, production-only, so
+ * dev stays debuggable.
+ */
+export default defineConfig(({ mode }) => ({
 	plugins: [react()],
 	publicDir: "../public",
+	// Strip console/debugger from the production build only.
+	esbuild:
+		mode === "production"
+			? { drop: ["console", "debugger"], legalComments: "none" }
+			: {},
 	server: {
 		port: 3000,
 		force: true, // always clear the pre-bundle cache on startup
@@ -25,6 +43,9 @@ export default defineConfig({
 	},
 	build: {
 		outDir: "dist",
+		// esbuild (Vite's default) already mangles local identifiers; keeping it
+		// explicit documents that the shipped bundle is minified + name-mangled.
+		minify: "esbuild",
 		chunkSizeWarningLimit: 2000,
 		rollupOptions: {
 			output: {
@@ -42,4 +63,4 @@ export default defineConfig({
 			},
 		},
 	},
-});
+}));

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+	applyShuffle,
 	MONTE_FASTEST_SWAP_MS,
 	MONTE_FIRST_SWAP_MS,
-	monteSwapPairs,
 	monteSwapDurations,
 	swapTwoCupPositions,
 } from "./monte";
@@ -27,15 +27,12 @@ describe("monte shuffle helpers", () => {
 		)).toBe(true);
 	});
 
-	it("builds random valid swap pairs from the supplied random source", () => {
-		const values = [0, 0.4, 0.99];
-		const pairs = monteSwapPairs(3, () => values.shift() ?? 0);
-
-		expect(pairs).toEqual([
-			[0, 1],
-			[0, 2],
-			[1, 2],
-		]);
-		expect(pairs.every(([first, second]) => first !== second)).toBe(true);
+	it("follows the ball through a swap sequence to its final slot", () => {
+		// Ball at slot 0: [0,1] → 1, then [1,2] → 2, then [0,2] → 0.
+		expect(applyShuffle(0, [[0, 1]])).toBe(1);
+		expect(applyShuffle(0, [[0, 1], [1, 2]])).toBe(2);
+		expect(applyShuffle(0, [[0, 1], [1, 2], [0, 2]])).toBe(0);
+		// A swap not touching the ball's slot leaves it put.
+		expect(applyShuffle(1, [[0, 2]])).toBe(1);
 	});
 });

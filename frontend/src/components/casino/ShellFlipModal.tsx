@@ -117,13 +117,24 @@ export function ShellFlipModal({
 	 * latest value without listing it as a dependency. The effect is
 	 * deliberately keyed only on `pendingOutcome` (and `reducedMotion`, a real
 	 * user setting change worth reacting to), not on values that change for
-	 * unrelated reasons — `onCoinsChange` no longer needs this treatment since
-	 * it's now called from `runFlip` directly, before the animation starts.
+	 * unrelated reasons.
 	 */
 	const rotationRef = useRef(rotation);
 	useEffect(() => {
 		rotationRef.current = rotation;
 	}, [rotation]);
+
+	/**
+	 * `onCoinsChange` mirrored into a ref for the same reason: it's now called
+	 * from inside the animation effect (once the coin actually lands, not the
+	 * moment the server responds), and it's a fresh inline closure on every
+	 * `HomePage` render, so listing it as a dependency would tear down and
+	 * restart the in-flight animation on unrelated parent re-renders.
+	 */
+	const onCoinsChangeRef = useRef(onCoinsChange);
+	useEffect(() => {
+		onCoinsChangeRef.current = onCoinsChange;
+	}, [onCoinsChange]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -164,11 +175,27 @@ export function ShellFlipModal({
 			FLIP_TURNS,
 		);
 
+		// Tracks whether the wallet has been synced yet for this outcome, so
+		// the cleanup below can flush it exactly once even if the animation
+		// never reaches `finish` (e.g. the modal is closed mid-flip).
+		let settled = false;
+		const syncCoins = (): void => {
+			if (settled) return;
+			settled = true;
+			onCoinsChangeRef.current(pendingOutcome.coins);
+			setConfig((prev) =>
+				prev ? { ...prev, coins: pendingOutcome.coins } : prev,
+			);
+		};
+
 		const finish = (): void => {
+			// Reveal the result and sync the wallet together — the player
+			// should never see the balance move before the flip lands.
 			setRotation(targetAngle);
 			setResult(pendingOutcome);
 			setFlipping(false);
 			setPendingOutcome(null);
+			syncCoins();
 		};
 
 		const coinEl = coinRef.current;
@@ -230,7 +257,13 @@ export function ShellFlipModal({
 			finish,
 		);
 
-		return () => cancel();
+		return () => {
+			cancel();
+			// If the animation was cut short (unmount, or a new flip started
+			// before this one finished), the wallet still needs to end up
+			// correct even though the reveal never played.
+			syncCoins();
+		};
 	}, [pendingOutcome, reducedMotion]);
 
 	const runFlip = async (): Promise<void> => {
@@ -243,11 +276,9 @@ export function ShellFlipModal({
 		try {
 			await api.getCsrfToken();
 			const outcome = await api.flip(stake, pick, clientSeed || undefined);
-			// Sync the wallet the moment the server settles the wager — do not
-			// wait for the cosmetic flip animation, which may never finish if
-			// the modal is closed early.
-			onCoinsChange(outcome.coins);
-			setConfig((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
+			// Hold the wallet sync until the coin animation reveals the flip
+			// (see the animation effect's `finish`/`syncCoins`) so the balance
+			// never changes before the player sees the outcome.
 			setPendingOutcome(outcome);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Flip failed. Try again.");
@@ -311,6 +342,7 @@ export function ShellFlipModal({
 				</div>
 			</div>
 
+			<p className="hub-flip__balance">Balance: {coins} ⬡</p>
 			{result ? (
 				<p
 					className={[
@@ -322,9 +354,7 @@ export function ShellFlipModal({
 					{flipSideLabel(landed as FlipSide)} ·{" "}
 					{result.net > 0 ? `+${result.net} ⬡` : `${result.net} ⬡`}
 				</p>
-			) : (
-				<p className="hub-flip__balance">Balance: {coins} ⬡</p>
-			)}
+			) : null}
 
 			<div className="hub-flip__sides" role="group" aria-label="Call a shell">
 				{SIDES.map((side) => (

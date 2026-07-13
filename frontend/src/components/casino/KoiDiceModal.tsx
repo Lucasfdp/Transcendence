@@ -179,11 +179,28 @@ export function KoiDiceModal({
 		const landed = valueFromOutcome(pendingOutcome.outcomeId);
 		const strip = odometerStripRef.current;
 		const marker = landedMarkerRef.current;
+		// Tracks whether the wallet has been synced yet for this outcome, so
+		// the cleanup below can flush it exactly once even if the animation
+		// never reaches `finish` (e.g. the modal is closed mid-roll).
+		let settled = false;
+
+		const syncCoins = (): void => {
+			if (settled) return;
+			settled = true;
+			onCoinsChangeRef.current(pendingOutcome.coins);
+			setConfig((prev) =>
+				prev ? { ...prev, coins: pendingOutcome.coins } : prev,
+			);
+		};
 
 		const finish = (): void => {
+			// Reveal the result and sync the wallet together — the player
+			// should never see the balance move before the roll it belongs
+			// to is on screen.
 			setResult(pendingOutcome);
 			setRolling(false);
 			setPendingOutcome(null);
+			syncCoins();
 		};
 
 		if (reducedMotionRef.current || !strip || !marker) {
@@ -219,7 +236,13 @@ export function KoiDiceModal({
 			finish,
 		);
 
-		return () => cancel();
+		return () => {
+			cancel();
+			// If the animation was cut short (unmount, or a new roll started
+			// before this one finished), the wallet still needs to end up
+			// correct even though the reveal never played.
+			syncCoins();
+		};
 	}, [pendingOutcome]);
 
 	const selectDirection = (next: DiceDirection): void => {
@@ -243,11 +266,9 @@ export function KoiDiceModal({
 				target,
 				clientSeed || undefined,
 			);
-			// Sync the wallet the moment the server settles the wager — do not
-			// wait for the cosmetic odometer animation, which may never finish
-			// if the modal is closed early.
-			onCoinsChangeRef.current(outcome.coins);
-			setConfig((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
+			// Hold the wallet sync until the odometer animation reveals the
+			// roll (see the animation effect's `finish`/`syncCoins`) so the
+			// balance never changes before the player sees the outcome.
 			setPendingOutcome(outcome);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Roll failed. Try again.");
@@ -311,6 +332,7 @@ export function KoiDiceModal({
 				</div>
 			</div>
 
+			<p className="hub-dice__balance">Balance: {coins} ⬡</p>
 			{result ? (
 				<p
 					className={[
@@ -330,9 +352,7 @@ export function KoiDiceModal({
 							? `${result.net} ⬡`
 							: "Push — stake returned"}
 				</p>
-			) : (
-				<p className="hub-dice__balance">Balance: {coins} ⬡</p>
-			)}
+			) : null}
 
 			<div
 				className="hub-dice__directions"

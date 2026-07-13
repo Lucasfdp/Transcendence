@@ -32,6 +32,7 @@ import { type MonteConfig } from "./monte.constants";
 import {
 	type MonteRoundResolveResult,
 	type MonteRoundStartResult,
+	type MonteRoundStepsResult,
 } from "./monte-round.constants";
 import { MonteRoundService } from "./monte-round.service";
 import { MonteService } from "./monte.service";
@@ -149,11 +150,17 @@ export class CasinoController {
 		});
 	}
 
-	/** GET /casino/monte — Three-Shell Monte tiers, RTP, bounds and balance. */
+	/**
+	 * GET /casino/monte — Three-Shell Monte tiers, RTP, bounds and balance, plus
+	 * any round already in progress so a reloaded client can resume it instead of
+	 * forfeiting its already-debited stake to the TTL.
+	 */
 	@Get("monte")
 	async monteConfig(@Request() req: AuthedRequest): Promise<MonteConfig> {
 		const user = await this.requireUser(req);
-		return this.monteService.getMonteConfig(user);
+		const config = this.monteService.getMonteConfig(user);
+		const activeRound = await this.monteRoundService.getActiveRound(user);
+		return { ...config, activeRound };
 	}
 
 	/** POST /casino/monte/rounds — start a committed round (CSRF-protected). */
@@ -173,7 +180,24 @@ export class CasinoController {
 		);
 	}
 
-	/** POST /casino/monte/rounds/:roundId/resolve — settle a cup choice. */
+	/**
+	 * GET /casino/monte/rounds/:roundId/steps — just-in-time swap delivery.
+	 *
+	 * Read-only and idempotent, so it's outside the spin throttle (the client
+	 * polls it a handful of times per round while the shuffle animates). The
+	 * service returns only the swaps whose scheduled time has elapsed, so the
+	 * winning slot can't be precomputed from an early call.
+	 */
+	@Get("monte/rounds/:roundId/steps")
+	async monteRoundSteps(
+		@Request() req: AuthedRequest,
+		@Param("roundId") roundId: string,
+	): Promise<MonteRoundStepsResult> {
+		const user = await this.requireUser(req);
+		return this.monteRoundService.getSteps(user, roundId);
+	}
+
+	/** POST /casino/monte/rounds/:roundId/resolve — settle a slot choice. */
 	@Post("monte/rounds/:roundId/resolve")
 	@HttpCode(200)
 	@UseGuards(CsrfGuard)
@@ -187,7 +211,7 @@ export class CasinoController {
 		return this.monteRoundService.resolveRound(
 			user,
 			roundId,
-			dto.selectedCupId,
+			dto.selectedSlot,
 		);
 	}
 

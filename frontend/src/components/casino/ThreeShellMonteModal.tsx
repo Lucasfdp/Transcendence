@@ -4,14 +4,10 @@ import {
 	type MonteConfig,
 	type MonteRoundResolution,
 	type MonteRoundStart,
+	type MonteSwap,
 } from "../../features/hub/api";
 import { type OutcomeFairnessCheck, verifyMonteRound } from "./fairness";
-import {
-	MONTE_CUP_COUNT,
-	monteSwapDurations,
-	monteSwapPairs,
-	swapTwoCupPositions,
-} from "./monte";
+import { MONTE_CUP_COUNT, swapTwoCupPositions } from "./monte";
 import { useReducedMotion } from "./useReducedMotion";
 
 type MontePhase =
@@ -25,8 +21,9 @@ type MontePhase =
 const PREVIEW_MS = 1200;
 const COVERING_MS = 450;
 const REVEAL_MS = 700;
-const SHUFFLE_STEPS = 8;
 const CUP_SLOT_PX = 120;
+/** How often the client asks the server for the next just-in-time swaps. */
+const STEP_POLL_MS = 180;
 
 interface ThreeShellMonteModalProps {
 	/** Current coin balance, used to gate wagers. */
@@ -35,23 +32,19 @@ interface ThreeShellMonteModalProps {
 	onCoinsChange: (coins: number) => void;
 }
 
-function cupNumber(cupIds: readonly string[], cupId: string): number {
-	return cupIds.indexOf(cupId) + 1;
-}
-
 function phaseMessage(
 	phase: MontePhase,
 	result: MonteRoundResolution | null,
 	round: MonteRoundStart | null,
 ): string {
 	if (result) {
-		const cup = cupNumber(result.cupIds, result.ballCupId);
+		const cup = result.winningSlot + 1;
 		return result.won
 			? `Pearl under cup ${cup} · +${result.net} ⬡`
 			: `Pearl under cup ${cup} · ${result.net} ⬡`;
 	}
 	if (phase === "preview" && round) {
-		return `Watch the pearl under cup ${cupNumber(round.cupIds, round.ballCupId)}.`;
+		return `Watch the pearl under cup ${round.ballStartSlot + 1}.`;
 	}
 	if (phase === "covering") return "Cups down.";
 	if (phase === "shuffling") return "Shuffling...";
@@ -74,13 +67,14 @@ export function ThreeShellMonteModal({
 	const [cupOrder, setCupOrder] = useState<string[]>([]);
 	const [currentSwapMs, setCurrentSwapMs] = useState(220);
 	const [activeSwapCupIds, setActiveSwapCupIds] = useState<string[]>([]);
-	const [selectedCupId, setSelectedCupId] = useState<string | null>(null);
+	const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
 	const [result, setResult] = useState<MonteRoundResolution | null>(null);
 	const [showFairness, setShowFairness] = useState(false);
 	const [verify, setVerify] = useState<OutcomeFairnessCheck | null>(null);
 	const [verifying, setVerifying] = useState(false);
 	const [reloadToken, setReloadToken] = useState(0);
 	const timersRef = useRef<number[]>([]);
+	const appliedStepsRef = useRef(0);
 	const reducedMotion = useReducedMotion();
 
 	const clearTimers = (): void => {
@@ -98,6 +92,9 @@ export function ThreeShellMonteModal({
 				if (cancelled) return;
 				setConfig(data);
 				setStake(data.minWager);
+				// A round was left open (stake already debited) — resume it rather
+				// than let the player forfeit it to the TTL.
+				if (data.activeRound) resumeRound(data.activeRound);
 			})
 			.catch(() => {
 				if (!cancelled) setError("Could not load Three-Shell Monte.");
@@ -118,78 +115,103 @@ export function ThreeShellMonteModal({
 		stake >= config.minWager &&
 		stake <= config.maxWager;
 	const busy = !["idle", "choosing"].includes(phase);
-	const canStart = Boolean(config) && stakeValid && coins >= stake && phase === "idle";
-	const canCheck = phase === "choosing" && selectedCupId !== null;
+	const canStart =
+		Boolean(config) && stakeValid && coins >= stake && phase === "idle";
+	const canCheck = phase === "choosing" && selectedSlot !== null;
 	const rtpPercent = config ? Math.round(config.rtp * 100) : 100;
 	const status = phaseMessage(phase, result, round);
 	const displayCupIds =
-		round?.cupIds ?? Array.from({ length: MONTE_CUP_COUNT }, (_, i) => `idle-${i}`);
+		round?.cupIds ??
+		Array.from({ length: MONTE_CUP_COUNT }, (_, i) => `idle-${i}`);
 	const positionedCupIds = cupOrder.length ? cupOrder : displayCupIds;
 	const cupPositions = useMemo(
 		() => new Map(positionedCupIds.map((cupId, index) => [cupId, index])),
 		[positionedCupIds],
 	);
-	const ballVisible =
-		phase === "preview" || phase === "revealing" || result !== null;
-	const winningCupId = result?.ballCupId ?? (phase === "preview" ? round?.ballCupId : null);
-	const cupLabels = useMemo(
-		() =>
-			new Map(
-				displayCupIds.map((cupId) => [
-					cupId,
-					(cupPositions.get(cupId) ?? 0) + 1,
-				]),
-			),
-		[displayCupIds, cupPositions],
-	);
+
+	// Which slot the pearl is shown at: the start slot during the preview, the
+	// revealed winning slot after resolution, and nowhere while cups are down.
+	const ballSlot =
+		result?.winningSlot ?? (phase === "preview" ? round?.ballStartSlot : null) ?? null;
+
+	const applySwap = (pair: MonteSwap, index: number): void => {
+		setCurrentSwapMs(round?.stepDurations[index] ?? 220);
+		setCupOrder((prev) => {
+			const order = prev.length ? prev : displayCupIds;
+			setActiveSwapCupIds([order[pair[0]], order[pair[1]]]);
+			return swapTwoCupPositions(order, pair[0], pair[1]);
+		});
+	};
+
+	/**
+	 * Poll the server for just-in-time swaps and animate each newly-released one.
+	 * The server only opens the choice once every swap is delivered AND its
+	 * resolve gate has elapsed, so the player can never pick early — and can
+	 * never see the final swap before it's due.
+	 */
+	const pollSteps = (started: MonteRoundStart): void => {
+		const tick = async (): Promise<void> => {
+			let ready = false;
+			try {
+				const res = await api.getMonteSteps(started.roundId);
+				for (let i = appliedStepsRef.current; i < res.steps.length; i++) {
+					applySwap(res.steps[i].pair, res.steps[i].index);
+				}
+				appliedStepsRef.current = Math.max(
+					appliedStepsRef.current,
+					res.steps.length,
+				);
+				ready = res.ready;
+			} catch {
+				// Transient failure — keep polling; the round is still valid.
+			}
+			if (ready) {
+				setActiveSwapCupIds([]);
+				setPhase("choosing");
+				return;
+			}
+			const timer = window.setTimeout(() => void tick(), STEP_POLL_MS);
+			timersRef.current.push(timer);
+		};
+		void tick();
+	};
+
+	/**
+	 * Resume a round the server reports still open (client reloaded mid-round).
+	 * Skips the preview/cover beats and drops straight into the shuffle: the
+	 * steps endpoint is time-authoritative, so it replays whatever swaps are due
+	 * and opens the choice as soon as the server's gate has elapsed.
+	 */
+	const resumeRound = (active: MonteRoundStart): void => {
+		clearTimers();
+		appliedStepsRef.current = 0;
+		setRound(active);
+		setCupOrder(active.cupIds);
+		setResult(null);
+		setSelectedSlot(null);
+		setActiveSwapCupIds([]);
+		setPhase("shuffling");
+		pollSteps(active);
+	};
 
 	const scheduleRoundFlow = (started: MonteRoundStart): void => {
 		clearTimers();
+		appliedStepsRef.current = 0;
+		setCupOrder(started.cupIds);
 		setPhase("preview");
-		const previewDelay = reducedMotion ? 350 : PREVIEW_MS;
+		const previewDelay = reducedMotion ? 300 : PREVIEW_MS;
 		const coveringDelay = reducedMotion ? 120 : COVERING_MS;
 		timersRef.current.push(
 			window.setTimeout(() => {
 				setPhase("covering");
 				timersRef.current.push(
 					window.setTimeout(() => {
-						if (reducedMotion) {
-							setPhase("choosing");
-							return;
-						}
 						setPhase("shuffling");
-						runShuffle(started.cupIds);
+						pollSteps(started);
 					}, coveringDelay),
 				);
 			}, previewDelay),
 		);
-	};
-
-	const runShuffle = (initialCupIds: string[]): void => {
-		const pairs = monteSwapPairs(SHUFFLE_STEPS);
-		const durations = monteSwapDurations(SHUFFLE_STEPS);
-		let order = [...initialCupIds];
-		let elapsed = 0;
-		pairs.forEach(([first, second], index) => {
-			const duration = durations[index];
-			elapsed += duration;
-			timersRef.current.push(
-				window.setTimeout(() => {
-					setCurrentSwapMs(duration);
-					setActiveSwapCupIds([order[first], order[second]]);
-					order = swapTwoCupPositions(order, first, second);
-					setCupOrder(order);
-					if (index === pairs.length - 1) {
-						timersRef.current.push(
-							window.setTimeout(() => {
-								setActiveSwapCupIds([]);
-								setPhase("choosing");
-							}, duration),
-						);
-					}
-				}, elapsed),
-			);
-		});
 	};
 
 	const startRound = async (): Promise<void> => {
@@ -198,14 +220,13 @@ export function ThreeShellMonteModal({
 		setError("");
 		setResult(null);
 		setVerify(null);
-		setSelectedCupId(null);
+		setSelectedSlot(null);
 		setActiveSwapCupIds([]);
 		setPhase("preview");
 		try {
 			await api.getCsrfToken();
 			const started = await api.startMonteRound(stake, clientSeed || undefined);
 			setRound(started);
-			setCupOrder(started.cupIds);
 			onCoinsChange(started.coins);
 			setConfig((prev) => (prev ? { ...prev, coins: started.coins } : prev));
 			scheduleRoundFlow(started);
@@ -218,13 +239,13 @@ export function ThreeShellMonteModal({
 	};
 
 	const resolveRound = async (): Promise<void> => {
-		if (!round || !selectedCupId || phase !== "choosing") return;
+		if (!round || selectedSlot === null || phase !== "choosing") return;
 		setError("");
 		setVerify(null);
 		setPhase("revealing");
 		try {
 			await api.getCsrfToken();
-			const settled = await api.resolveMonteRound(round.roundId, selectedCupId);
+			const settled = await api.resolveMonteRound(round.roundId, selectedSlot);
 			setResult(settled);
 			onCoinsChange(settled.coins);
 			setConfig((prev) => (prev ? { ...prev, coins: settled.coins } : prev));
@@ -244,11 +265,12 @@ export function ThreeShellMonteModal({
 
 	const resetBoard = (): void => {
 		clearTimers();
+		appliedStepsRef.current = 0;
 		setPhase("idle");
 		setRound(null);
 		setCupOrder([]);
 		setActiveSwapCupIds([]);
-		setSelectedCupId(null);
+		setSelectedSlot(null);
 		setResult(null);
 		setVerify(null);
 	};
@@ -278,10 +300,10 @@ export function ThreeShellMonteModal({
 				style={{ width: MONTE_CUP_COUNT * CUP_SLOT_PX }}
 			>
 				{displayCupIds.map((cupId) => {
-					const isSelected = selectedCupId === cupId;
-					const isWinner = winningCupId === cupId;
-					const label = cupLabels.get(cupId) ?? 0;
 					const position = cupPositions.get(cupId) ?? 0;
+					const label = position + 1;
+					const isSelected = selectedSlot === position;
+					const isBall = ballSlot !== null && position === ballSlot;
 					const isSwapping = activeSwapCupIds.includes(cupId);
 					return (
 						<button
@@ -290,8 +312,8 @@ export function ThreeShellMonteModal({
 							className={[
 								"hub-monte__shell",
 								isSelected ? "is-pick" : "",
-								isWinner && result ? "is-winner" : "",
-								ballVisible && isWinner ? "is-lifted" : "",
+								isBall && result ? "is-winner" : "",
+								isBall ? "is-lifted" : "",
 								phase === "covering" ? "is-covering" : "",
 								isSwapping ? "is-swapping" : "",
 							].join(" ")}
@@ -305,10 +327,10 @@ export function ThreeShellMonteModal({
 							disabled={phase !== "choosing"}
 							aria-pressed={isSelected}
 							aria-label={`Cup ${label}`}
-							onClick={() => setSelectedCupId(cupId)}
+							onClick={() => setSelectedSlot(position)}
 						>
 							<span className="hub-monte__shell-face" aria-hidden="true" />
-							{ballVisible && isWinner ? (
+							{isBall ? (
 								<span className="hub-monte__pearl" aria-hidden="true" />
 							) : null}
 							<span className="hub-monte__shell-num">{label}</span>
@@ -317,6 +339,7 @@ export function ThreeShellMonteModal({
 				})}
 			</div>
 
+			<p className="hub-monte__balance">Balance: {coins} ⬡</p>
 			{status ? (
 				<p
 					className={[
@@ -328,9 +351,7 @@ export function ThreeShellMonteModal({
 				>
 					{status}
 				</p>
-			) : (
-				<p className="hub-monte__balance">Balance: {coins} ⬡</p>
-			)}
+			) : null}
 
 			<div className="hub-monte__tiers" role="group" aria-label="Risk tier">
 				<button
@@ -403,8 +424,8 @@ export function ThreeShellMonteModal({
 					<dl className="hub-monte__fairness-grid">
 						<dt>Server seed hash</dt>
 						<dd>{result.fairness.serverSeedHash}</dd>
-						<dt>Winning cup hash</dt>
-						<dd>{result.fairness.winningCupHash}</dd>
+						<dt>Commit hash</dt>
+						<dd>{result.fairness.commitHash}</dd>
 						<dt>Server seed</dt>
 						<dd>{result.fairness.serverSeed}</dd>
 						<dt>Client seed</dt>
@@ -444,10 +465,10 @@ export function ThreeShellMonteModal({
 								role="status"
 							>
 								{verify.ok
-									? "Verified - hash, roll and cup all match."
+									? "Verified - hash, roll and shuffle all match."
 									: `Mismatch - hash ${verify.hashOk ? "ok" : "bad"}, roll ${
 											verify.rollOk ? "ok" : "bad"
-										}, cup ${verify.outcomeOk ? "ok" : "bad"}.`}
+										}, shuffle ${verify.outcomeOk ? "ok" : "bad"}.`}
 							</p>
 						) : null}
 					</div>

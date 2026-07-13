@@ -153,6 +153,15 @@ export function FortuneWheelModal({
 	const reducedMotion = useReducedMotion();
 	/** Cancels the in-flight rotation animation, if any (set only while spinning). */
 	const cancelSpinAnimation = useRef<(() => void) | null>(null);
+	/**
+	 * Coin balance from the last settled spin that hasn't been synced to the
+	 * hub yet, because the landing animation is still playing. Read on
+	 * unmount so an early-closed modal still flushes the true balance instead
+	 * of silently dropping it (Bug Audit 1.1 fix: normally this only synced
+	 * once the reveal was visible, but a cancelled animation never calls
+	 * `finish`, so this ref is the fallback path).
+	 */
+	const pendingCoinsRef = useRef<number | null>(null);
 	/** Pointer element the tick pulse is toggled on directly, bypassing re-renders. */
 	const pointerRef = useRef<HTMLDivElement | null>(null);
 	/** Segment under the pointer as of the last animated frame, for tick detection. */
@@ -178,7 +187,12 @@ export function FortuneWheelModal({
 		return () => {
 			cancelled = true;
 			cancelSpinAnimation.current?.();
+			if (pendingCoinsRef.current !== null) {
+				onCoinsChange(pendingCoinsRef.current);
+				pendingCoinsRef.current = null;
+			}
 		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [reloadToken]);
 
 	const runSpin = async (
@@ -193,20 +207,12 @@ export function FortuneWheelModal({
 		try {
 			await api.getCsrfToken();
 			const spin = await produce();
-			// Sync the wallet (and any other server-truth flags) the moment the
-			// server settles the wager — do not wait for the cosmetic spin
-			// animation, which may never finish if the modal is closed early.
-			onCoinsChange(spin.coins);
-			setWheel((prev) =>
-				prev
-					? {
-							...prev,
-							coins: spin.coins,
-							freeSpinAvailable:
-								spin.mode === "free" ? false : prev.freeSpinAvailable,
-						}
-					: prev,
-			);
+			// Hold the settled balance until the landing animation actually
+			// shows the result — syncing immediately would let the player see
+			// their coin total change before they know whether they won or
+			// lost. `pendingCoinsRef` still guarantees it lands even if the
+			// modal is closed before the animation finishes.
+			pendingCoinsRef.current = spin.coins;
 
 			const index = wheel.segments.findIndex(
 				(segment) => segment.id === spin.segment.id,
@@ -223,6 +229,20 @@ export function FortuneWheelModal({
 				}
 				setResult(spin);
 				setSpinning(false);
+				// Now that the outcome is visible, sync the wallet (and any
+				// other server-truth flags) to match.
+				pendingCoinsRef.current = null;
+				onCoinsChange(spin.coins);
+				setWheel((prev) =>
+					prev
+						? {
+								...prev,
+								coins: spin.coins,
+								freeSpinAvailable:
+									spin.mode === "free" ? false : prev.freeSpinAvailable,
+							}
+						: prev,
+				);
 			};
 
 			if (reducedMotion) {
@@ -291,6 +311,7 @@ export function FortuneWheelModal({
 				<WheelFace segments={wheel.segments} rotation={rotation} />
 			</div>
 
+			<p className="hub-wheel__balance">Balance: {coins} ⬡</p>
 			{result ? (
 				<p
 					className={[
@@ -310,9 +331,7 @@ export function FortuneWheelModal({
 							? `${result.net} ⬡`
 							: "Push — stake returned"}
 				</p>
-			) : (
-				<p className="hub-wheel__balance">Balance: {coins} ⬡</p>
-			)}
+			) : null}
 
 			<div className="hub-wheel__controls">
 				<button
