@@ -532,6 +532,18 @@ export class BellClashOnlineController {
 				),
 				target,
 			].slice(-4);
+			if (
+				entity.primary &&
+				entity.ownerSide === this.side &&
+				entity.stopped
+			) {
+				// The input gate must see the authoritative settled velocity now,
+				// rather than after the interpolation buffer reaches this sample.
+				ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
+				ball.y = this.scene.arena.cy + target.y * this.scene.arena.scale;
+				ball.vx = 0;
+				ball.vy = 0;
+			}
 			if (entity.primary) primaryBySide.set(entity.ownerSide, ball);
 			else derived.push({ ball, player: entity.ownerSide });
 		}
