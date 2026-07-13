@@ -28,7 +28,6 @@ import {
 import {
 	BambooBashThrowEvent,
 	BambooBashSnapshot,
-	BellClashThrowEvent,
 	CurlingThrowEvent,
 	GameInputPayload,
 	KameKnockThrowEvent,
@@ -41,6 +40,7 @@ import {
 import { PresenceService } from "./presence.service";
 import { ReplayService } from "./replay.service";
 import { RoomService } from "./room.service";
+import { ArenaSimulationService } from "./arena-simulation.service";
 
 const RECONNECT_TIMEOUT_MS = 45_000;
 
@@ -83,6 +83,8 @@ export class MatchmakingGateway
 	server: Server;
 
 	private readonly logger = new Logger(MatchmakingGateway.name);
+	private readonly lastBroadcastLifecycleSeq = new Map<string, number>();
+	private readonly finishingMatchIds = new Set<string>();
 
 	constructor(
 		private readonly jwtService: JwtService,
@@ -96,6 +98,7 @@ export class MatchmakingGateway
 		private readonly friendsService: FriendsService,
 		private readonly replays: ReplayService,
 		private readonly chatService: ChatService,
+		private readonly arenaSimulation: ArenaSimulationService,
 		// Optional so the gateway spec (which mocks only the services it
 		// exercises) still instantiates without wiring a limiter; production
 		// always provides one via MatchmakingModule.
@@ -153,6 +156,7 @@ export class MatchmakingGateway
 	afterInit(server: Server): void {
 		this.notificationsService.setServer(server);
 		this.chatService.setServer(server);
+		this.arenaSimulation.start((matchId) => this.emitPhysicsState(matchId));
 	}
 
 	async handleConnection(socket: Socket): Promise<void> {
@@ -209,6 +213,8 @@ export class MatchmakingGateway
 					side: room.players.find((p) => p.user.id === user.id)?.side,
 				});
 				socket.emit("game:state", room.state);
+				if (room.physicsState)
+					socket.emit("game:physics-state", this.publicPhysicsState(room));
 				this.emitUserMatchStatus(socket);
 				this.emitState(room.matchId);
 			}
@@ -372,6 +378,8 @@ export class MatchmakingGateway
 		}
 		socket.join(room.matchId);
 		socket.emit("game:state", room.state);
+		if (room.physicsState)
+			socket.emit("game:physics-state", this.publicPhysicsState(room));
 		this.emitUserMatchStatus(socket);
 		this.emitState(room.matchId);
 	}
@@ -607,44 +615,9 @@ export class MatchmakingGateway
 			"roundNumber" in room.state &&
 			"shotCounts" in room.state
 		) {
-			const player = room.players.find(
-				(candidate) => candidate.user.id === user.id,
-			);
-			if (player) {
-				const ball =
-					"balls" in room.state
-						? room.state.balls.find((candidate) => candidate.side === player.side)
-						: null;
-				const power = ball?.power ?? "none";
-				const throwEvent: BellClashThrowEvent = {
-					matchId: room.matchId,
-					roundNumber: room.state.roundNumber,
-					shotNumber: room.state.shotCounts[player.side] ?? 0,
-					side: player.side,
-					x: ball?.x ?? 0,
-					y: ball?.y ?? 0,
-					vx: Number(payload.payload?.vx ?? 0),
-					vy: Number(payload.payload?.vy ?? 0),
-					power,
-				};
-				this.replays.recordEvent(
-					room,
-					"game:bell-throw",
-					throwEvent as unknown as Record<string, unknown>,
-				);
-				this.server
-					.to(room.matchId)
-					.emit("game:bell-throw", throwEvent);
-				if (power !== "none") {
-					this.server.to(room.matchId).emit("game:bell-power-pickup", {
-						matchId: room.matchId,
-						roundNumber: room.state.roundNumber,
-						shotNumber: room.state.shotCounts[player.side] ?? 0,
-						side: player.side,
-						power,
-					});
-				}
-			}
+			// Bell Clash clients render only this authoritative projection. Sending it
+			// now prevents the short local prediction window from crossing the bell.
+			this.emitPhysicsState(room.matchId);
 			this.emitState(room.matchId);
 			return { accepted: true };
 		}
@@ -656,6 +629,19 @@ export class MatchmakingGateway
 			this.server.to(room.matchId).emit("game:end", room.state);
 		}
 		return { accepted: true };
+	}
+
+	@SubscribeMessage("game:physics-request")
+	onPhysicsRequest(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { matchId?: string },
+	): Record<string, unknown> | null {
+		const user = this.resolveSocketUser(socket);
+		const room = payload?.matchId ? this.rooms.getRoom(payload.matchId) : null;
+		if (!user || !room?.physicsState) return null;
+		const isPlayer = room.players.some((player) => player.user.id === user.id);
+		if (!isPlayer && !room.spectators.has(socket.id)) return null;
+		return this.publicPhysicsState(room);
 	}
 
 	@SubscribeMessage("spectator:join")
@@ -671,6 +657,8 @@ export class MatchmakingGateway
 		if (!room) return;
 		socket.join(room.matchId);
 		socket.emit("game:state", room.state);
+		if (room.physicsState)
+			socket.emit("game:physics-state", this.publicPhysicsState(room));
 	}
 
 	@SubscribeMessage("spectator:leave")
@@ -897,6 +885,9 @@ export class MatchmakingGateway
 			matchId: room.matchId,
 			gameId: room.gameId,
 			snapshot: room.state,
+			physicsState: room.physicsState
+				? this.publicPhysicsState(room)
+				: undefined,
 		});
 		socket.emit("game:state", room.state);
 	}
@@ -1073,7 +1064,67 @@ export class MatchmakingGateway
 			this.syncRoomPresence(room);
 			this.replays.captureFrame(room);
 			this.server.to(matchId).emit("game:state", room.state);
+			if (room.status === "finished" || room.status === "abandoned")
+				this.lastBroadcastLifecycleSeq.delete(matchId);
+			else this.lastBroadcastLifecycleSeq.set(matchId, room.state.seq);
 		}
+	}
+
+	private emitPhysicsState(matchId: string): void {
+		const room = this.rooms.getRoom(matchId);
+		if (!room?.physicsState) return;
+		this.server
+			.to(matchId)
+			.emit("game:physics-state", this.publicPhysicsState(room));
+		this.replays.captureFrame(room, true);
+		if (this.lastBroadcastLifecycleSeq.get(matchId) !== room.state.seq)
+			this.emitState(matchId);
+		if (
+			room.status === "finished" &&
+			!this.finishingMatchIds.has(matchId)
+		) {
+			this.finishingMatchIds.add(matchId);
+			void this.finishAuthoritativeMatch(room, 0);
+		}
+	}
+
+	private async finishAuthoritativeMatch(
+		room: MatchRoom,
+		attempt: number,
+	): Promise<void> {
+		try {
+			await this.sessions.finishIfEnded(room);
+			this.syncRoomPresence(room);
+			this.server.to(room.matchId).emit("game:end", room.state);
+			this.finishingMatchIds.delete(room.matchId);
+			this.lastBroadcastLifecycleSeq.delete(room.matchId);
+		} catch (error) {
+			if (attempt < 2) {
+				setTimeout(
+					() => void this.finishAuthoritativeMatch(room, attempt + 1),
+					1_000 * (attempt + 1),
+				);
+				return;
+			}
+			this.finishingMatchIds.delete(room.matchId);
+			this.logger.error(
+				`Failed to persist authoritative match ${room.matchId}`,
+				error,
+			);
+		}
+	}
+
+	private publicPhysicsState(room: MatchRoom): Record<string, unknown> {
+		const physics = room.physicsState;
+		if (!physics) return {};
+		return {
+			matchId: physics.matchId,
+			physicsSeq: physics.physicsSeq,
+			serverTime: physics.serverTime,
+			entities: physics.entities,
+			pickups: physics.pickups,
+			scoreEvents: physics.scoreEvents,
+		};
 	}
 
 	/** Emit an event to every connected socket of a user (all tabs/devices). */
@@ -1147,6 +1198,9 @@ export class MatchmakingGateway
 				side: player.side,
 				gameId: activeRoom.gameId,
 				snapshot: activeRoom.state,
+				physicsState: activeRoom.physicsState
+					? this.publicPhysicsState(activeRoom)
+					: undefined,
 			});
 		}
 		return activeRoom;
@@ -1237,6 +1291,9 @@ export class MatchmakingGateway
 			side: status.side,
 			reconnectExpiresAt: status.reconnectExpiresAt,
 			snapshot: status.room.state,
+			physicsState: status.room.physicsState
+				? this.publicPhysicsState(status.room)
+				: undefined,
 		});
 	}
 

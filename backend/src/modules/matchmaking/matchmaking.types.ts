@@ -302,6 +302,52 @@ export interface BellClashSnapshot {
 	winnerSide: number | null;
 }
 
+export interface BellClashPhysicsEntity {
+	id: number;
+	ownerSide: number;
+	shotNumber: number;
+	primary: boolean;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	radius: number;
+	rotation: number;
+	angularVelocity: number;
+	power: string;
+	stopped: boolean;
+	alpha: number;
+	ghostCollisionAvailable: boolean;
+}
+
+export interface BellClashPhysicsPickup {
+	id: number;
+	type: string;
+	x: number;
+	y: number;
+	radius: number;
+}
+
+export interface BellClashScoreEvent {
+	id: number;
+	side: number;
+	points: number;
+	zoneKind: "red" | "yellow" | "green" | "neutral";
+}
+
+export interface BellClashPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: BellClashPhysicsEntity[];
+	pickups: BellClashPhysicsPickup[];
+	scoreEvents: BellClashScoreEvent[];
+	nextEntityId: number;
+	nextPickupId: number;
+	nextScoreEventId: number;
+	bellCooldownMs: number[];
+}
+
 export type GameSnapshot =
 	| CurlingSnapshot
 	| BambooBashSnapshot
@@ -328,6 +374,7 @@ export interface MatchRoom {
 	spectators: Map<string, SocketUser>;
 	seq: number;
 	state: GameSnapshot;
+	physicsState?: BellClashPhysicsState;
 	rewardsGranted?: boolean;
 	rematchReadyUserIds?: Set<number>;
 	rematchLeftUserIds?: Set<number>;

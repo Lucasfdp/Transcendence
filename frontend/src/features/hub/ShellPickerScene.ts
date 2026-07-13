@@ -19,6 +19,7 @@ import { THEME } from "../../shared/theme";
 import { api, ShellInventory } from "./api";
 import {
 	getGameSocket,
+	type BellClashPhysicsState,
 	type GameSnapshot,
 } from "../../services/network/gameSocket";
 
@@ -74,6 +75,7 @@ interface MatchStatusPayload {
 	side?: number;
 	reconnectExpiresAt?: number | null;
 	snapshot?: GameSnapshot;
+	physicsState?: BellClashPhysicsState;
 }
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
@@ -668,6 +670,7 @@ export class ShellPickerScene extends ResponsiveScene {
 			matchId: status.matchId,
 			side: status.side,
 			snapshot: status.snapshot,
+			physicsState: status.physicsState,
 		});
 		this.scene.start(targetScene);
 	}

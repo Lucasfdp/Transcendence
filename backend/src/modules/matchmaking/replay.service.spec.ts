@@ -3,6 +3,7 @@ import {
 	REPLAY_CONTRACT_VERSION,
 } from "./entities/match-replay.entity";
 import { ReplayImportInput, ReplayService } from "./replay.service";
+import { MatchRoom } from "./matchmaking.types";
 
 type ReplayServiceProbe = {
 	validateImportedReplay: (input: ReplayImportInput) => void;
@@ -64,6 +65,44 @@ function makeImport(
 }
 
 describe("ReplayService import contract validation", () => {
+	it("captures the authoritative physics projection in replay frames", () => {
+		const service = new ReplayService({} as never, {} as never, {} as never);
+		const room = {
+			matchId: "physics-replay",
+			gameId: "bell-clash",
+			mode: "casual",
+			status: "active",
+			players: [],
+			spectators: new Map(),
+			seq: 1,
+			state: { seq: 1, gameId: "bell-clash" },
+			physicsState: {
+				matchId: "physics-replay",
+				physicsSeq: 8,
+				serverTime: 100,
+				entities: [],
+				pickups: [],
+				scoreEvents: [],
+				nextEntityId: 1,
+				nextPickupId: 1,
+				nextScoreEventId: 1,
+				bellCooldownMs: [],
+			},
+			replayFrames: [],
+			replayEvents: [],
+			replayLastCapturedSeq: null,
+			replayStartedAt: null,
+			replayLastRecordedAt: null,
+		} as unknown as MatchRoom;
+
+		service.captureFrame(room, true);
+
+		const recorded = room.replayFrames[0].snapshot as Record<string, unknown>;
+		expect(recorded.physicsState).toEqual(
+			expect.objectContaining({ physicsSeq: 8, matchId: room.matchId }),
+		);
+	});
+
 	it("normalises imported frame timing and sequence before validation", () => {
 		const service = makeService();
 		const frames = service.normalizeImportedFrames([

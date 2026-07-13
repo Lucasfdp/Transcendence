@@ -113,7 +113,23 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 			recordedAtMs: now,
 			tickTs,
 			deltaMs,
-			snapshot: JSON.parse(JSON.stringify(room.state)) as MatchReplayFrame["snapshot"],
+			snapshot: JSON.parse(
+				JSON.stringify({
+					...room.state,
+					...(room.physicsState
+						? {
+							physicsState: {
+								matchId: room.physicsState.matchId,
+								physicsSeq: room.physicsState.physicsSeq,
+								serverTime: room.physicsState.serverTime,
+								entities: room.physicsState.entities,
+								pickups: room.physicsState.pickups,
+								scoreEvents: room.physicsState.scoreEvents,
+							},
+						}
+						: {}),
+				}),
+			) as MatchReplayFrame["snapshot"],
 		});
 		room.replayLastCapturedSeq = room.state.seq;
 		room.replayLastRecordedAt = now;

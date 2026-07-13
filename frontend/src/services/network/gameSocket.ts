@@ -284,11 +284,49 @@ export interface BellClashThrowEvent {
 	power: string;
 }
 
+export interface BellClashPhysicsEntity {
+	id: number;
+	ownerSide: number;
+	shotNumber: number;
+	primary: boolean;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	radius: number;
+	rotation: number;
+	angularVelocity: number;
+	power: string;
+	stopped: boolean;
+	alpha: number;
+}
+
+export interface BellClashPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: BellClashPhysicsEntity[];
+	pickups: Array<{
+		id: number;
+		type: string;
+		x: number;
+		y: number;
+		radius: number;
+	}>;
+	scoreEvents: Array<{
+		id: number;
+		side: number;
+		points: number;
+		zoneKind: "red" | "yellow" | "green" | "neutral";
+	}>;
+}
+
 export interface OnlineMatchContext {
 	matchId: string;
 	side: number;
 	spectator?: boolean;
 	snapshot?: GameSnapshot;
+	physicsState?: BellClashPhysicsState;
 }
 
 let socket: Socket | null = null;

@@ -6,9 +6,15 @@ import {
 	RoomPlayer,
 } from "../matchmaking.types";
 import {
-	initializeArenaReplayBall,
 	resetArenaReplayBalls,
 } from "../replay-state.helpers";
+import {
+	advanceBellPhysics,
+	createBellPhysicsState,
+	ensureBellPhysicsPickup,
+	launchBellProjectile,
+	resetBellPhysicsRound,
+} from "../bell-clash-physics";
 import { BaseArenaEngine } from "./base-arena.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
@@ -58,6 +64,8 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 		this.startArenaRoom(room, state, (snapshot) => {
 			this.resetRound(snapshot, room.players.length);
 		});
+		room.physicsState = createBellPhysicsState(room.matchId);
+		resetBellPhysicsRound(room.physicsState, state.powerupsEnabled);
 	}
 
 	handleInput(
@@ -67,11 +75,23 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 	): MatchRoom | null {
 		if (input.action === "release")
 			return this.applyRelease(room, userId, input.payload ?? {});
-		if (input.action === "bell:hit")
-			return this.applyBellHit(room, userId, input.payload ?? {});
-		if (input.action === "round:score")
-			return this.applyRoundScore(room, userId, input.payload ?? {});
-		return room;
+		return null;
+	}
+
+	advanceSimulation(room: MatchRoom, deltaMs: number): boolean {
+		if (
+			room.status !== "active" ||
+			!room.physicsState ||
+			room.state.gameId !== "bell-clash"
+		)
+			return false;
+		const state = room.state as BellClashSnapshot;
+		const result = advanceBellPhysics(room.physicsState, state, deltaMs);
+		if (!result.changed) return false;
+		this.syncPhysicsEntities(state, room);
+		if (result.scoreChanged) this.bumpRoomState(room);
+		this.tryCompleteRound(room, state);
+		return true;
 	}
 
 	abandon(room: MatchRoom, abandonedPlayer: RoomPlayer): number | null {
@@ -91,83 +111,67 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 		if (state.roundScores[player.side] !== null) return null;
 		if ((state.shotCounts[player.side] ?? 0) >= state.shotsPerRound)
 			return null;
+		if (
+			room.physicsState?.entities.some(
+				(entity) => entity.ownerSide === player.side && !entity.stopped,
+			)
+		)
+			return null;
 
 		const roundNumber = Math.floor(Number(payload.roundNumber));
-		const x = Number(payload.x);
-		const y = Number(payload.y);
 		const vx = Number(payload.vx);
 		const vy = Number(payload.vy);
 		if (roundNumber !== state.roundNumber) return null;
 		if (
-			!Number.isFinite(x) ||
-			!Number.isFinite(y) ||
 			!Number.isFinite(vx) ||
 			!Number.isFinite(vy)
+		)
+			return null;
+		if (
+			Math.hypot(vx, vy) > 5_000
 		)
 			return null;
 
 		state.shotCounts[player.side] =
 			(state.shotCounts[player.side] ?? 0) + 1;
 		const power = this.consumeArenaPower(state, player.side, payload.power);
-		initializeArenaReplayBall(
-			state,
+		room.physicsState ??= createBellPhysicsState(room.matchId);
+		const previous = room.physicsState.entities.find(
+			(entity) => entity.ownerSide === player.side && entity.primary,
+		);
+		const spawnAngle =
+			-Math.PI / 2 +
+			(player.side / Math.max(1, room.players.length)) * Math.PI * 2;
+		const origin = previous
+			? { x: previous.x, y: previous.y }
+			: { x: Math.cos(spawnAngle) * 320, y: Math.sin(spawnAngle) * 320 };
+		ensureBellPhysicsPickup(room.physicsState, state.powerupsEnabled);
+		launchBellProjectile(
+			room.physicsState,
 			player.side,
+			state.shotCounts[player.side],
+			origin.x,
+			origin.y,
 			vx,
 			vy,
-			{ x, y },
 			power,
 		);
+		this.syncPhysicsEntities(state, room);
 		this.bumpRoomState(room);
 		return room;
 	}
 
-	private applyBellHit(
+	private tryCompleteRound(
 		room: MatchRoom,
-		userId: number,
-		payload: Record<string, unknown>,
-	): MatchRoom | null {
-		const state = room.state as BellClashSnapshot;
-		const player = this.findRoomPlayer(room, userId);
-		if (!player || room.status !== "active" || state.phase !== "active")
-			return null;
-		if (state.roundScores[player.side] !== null) return null;
-
-		const roundNumber = Math.floor(Number(payload.roundNumber));
-		const points = Math.max(
-			0,
-			Math.min(10_000, Math.floor(Number(payload.points))),
-		);
-		if (roundNumber !== state.roundNumber || !Number.isFinite(points))
-			return null;
-		if ((state.shotCounts[player.side] ?? 0) <= 0) return null;
-
-		state.liveRoundScores[player.side] =
-			(state.liveRoundScores[player.side] ?? 0) + points;
+		state: BellClashSnapshot,
+	): void {
+		if (
+			state.shotCounts.some((count) => count < state.shotsPerRound) ||
+			room.physicsState?.entities.some((entity) => !entity.stopped)
+		)
+			return;
+		state.roundScores = state.liveRoundScores.map((score) => score ?? 0);
 		this.bumpRoomState(room);
-		return room;
-	}
-
-	private applyRoundScore(
-		room: MatchRoom,
-		userId: number,
-		payload: Record<string, unknown>,
-	): MatchRoom | null {
-		const state = room.state as BellClashSnapshot;
-		const player = this.findRoomPlayer(room, userId);
-		if (!player || room.status !== "active" || state.phase !== "active")
-			return null;
-
-		const roundNumber = Math.floor(Number(payload.roundNumber));
-		if (roundNumber !== state.roundNumber) return null;
-		if ((state.shotCounts[player.side] ?? 0) < state.shotsPerRound)
-			return null;
-		if (state.roundScores[player.side] !== null) return null;
-
-		state.roundScores[player.side] = state.liveRoundScores[player.side] ?? 0;
-		this.bumpRoomState(room);
-
-		if (state.roundScores.some((value) => value === null)) return room;
-
 		for (let side = 0; side < state.roundScores.length; side++) {
 			state.score[side] += state.roundScores[side] ?? 0;
 		}
@@ -177,14 +181,65 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 			state.phase = "finished";
 			state.winnerSide = this.getWinnerSide(state.score);
 			this.bumpRoomState(room);
-			return room;
+			return;
 		}
 
 		state.roundNumber += 1;
 		this.resetRound(state, room.players.length);
 		resetArenaReplayBalls(state, { clearEntities: true });
+		if (room.physicsState)
+			resetBellPhysicsRound(room.physicsState, state.powerupsEnabled);
 		this.bumpRoomState(room);
-		return room;
+	}
+
+	private syncPhysicsEntities(
+		state: BellClashSnapshot,
+		room: MatchRoom,
+	): void {
+		const physics = room.physicsState;
+		if (!physics) return;
+		state.entities = physics.entities.map((entity) => ({
+			id: entity.id,
+			type: "projectile",
+			side: entity.ownerSide,
+			ownerSide: entity.ownerSide,
+			x: entity.x / 705,
+			y: entity.y / 491,
+			vx: entity.vx,
+			vy: entity.vy,
+			rotation: entity.rotation,
+			angularVelocity: entity.angularVelocity,
+			r: entity.radius,
+			power: entity.power,
+			scale: entity.radius / 52,
+			visible: true,
+			alpha: entity.alpha,
+			spriteKey: "bell-clash-shell",
+			stateFlags: [entity.stopped ? "settled" : "sliding"],
+			createdAt: physics.serverTime,
+			updatedAt: physics.serverTime,
+			stopped: entity.stopped,
+		}));
+		state.balls = state.players
+			.map((player) =>
+				state.entities.find(
+					(entity) =>
+						entity.ownerSide === player.side &&
+						physics.entities.find(
+							(candidate) => candidate.id === entity.id,
+						)?.primary,
+				),
+			)
+			.filter((entity): entity is BellClashSnapshot["balls"][number] =>
+				Boolean(entity),
+			);
+		state.activeBallIdBySide = state.players.map(
+			(player) =>
+				physics.entities.find(
+					(entity) => entity.ownerSide === player.side && entity.primary,
+				)?.id ?? null,
+		);
+		state.nextBallId = physics.nextEntityId;
 	}
 
 	private resetRound(state: BellClashSnapshot, playerCount: number): void {

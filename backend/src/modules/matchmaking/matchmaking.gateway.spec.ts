@@ -84,7 +84,6 @@ const makeSocket = (overrides: Partial<{ id: string; data: Record<string, unknow
 
 describe("MatchmakingGateway", () => {
 	let gateway: MatchmakingGateway;
-	let arenaSimulation: ArenaSimulationService;
 	let presence: ReturnType<typeof makePresenceMock>;
 	let usersService: ReturnType<typeof makeUsersServiceMock>;
 	let rooms: {
@@ -102,7 +101,11 @@ describe("MatchmakingGateway", () => {
 		getLobbyByPin: jest.Mock;
 		getStartedMatchByPin: jest.Mock;
 	};
-	let sessions: { startIfReady: jest.Mock; advanceSimulation: jest.Mock };
+	let sessions: {
+		startIfReady: jest.Mock;
+		advanceSimulation: jest.Mock;
+		handleInput: jest.Mock;
+	};
 	let replays: { captureFrame: jest.Mock };
 	let chatService: {
 		sendMessage: jest.Mock;
@@ -136,7 +139,11 @@ describe("MatchmakingGateway", () => {
 			getLobbyByPin: jest.fn().mockReturnValue(null),
 			getStartedMatchByPin: jest.fn().mockReturnValue(null),
 		};
-		sessions = { startIfReady: jest.fn(), advanceSimulation: jest.fn() };
+		sessions = {
+			startIfReady: jest.fn(),
+			advanceSimulation: jest.fn(),
+			handleInput: jest.fn(),
+		};
 		replays = { captureFrame: jest.fn() };
 		chatService = {
 			sendMessage: jest.fn(),
@@ -175,30 +182,92 @@ describe("MatchmakingGateway", () => {
 		}).compile();
 
 		gateway = module.get(MatchmakingGateway);
-		arenaSimulation = module.get(ArenaSimulationService);
 	});
 
 	describe("arena simulation broadcasts", () => {
-		it("captures and broadcasts a server simulation snapshot every 100 ms", () => {
-			const room = makeRoom({ status: "active" });
+		it("broadcasts physics separately and does not repeat lifecycle state", () => {
+			const room = makeRoom({
+				status: "active",
+				state: { seq: 4 } as MatchRoom["state"],
+				physicsState: {
+					matchId: "match-1",
+					physicsSeq: 7,
+					serverTime: 100,
+					entities: [],
+					pickups: [],
+					scoreEvents: [],
+					nextEntityId: 1,
+					nextPickupId: 1,
+					nextScoreEventId: 1,
+					bellCooldownMs: [],
+				},
+			});
 			const emit = jest.fn();
-			rooms.getActiveRooms.mockReturnValue([room]);
 			rooms.getRoom.mockReturnValue(room);
-			sessions.advanceSimulation.mockReturnValue(true);
 			gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
 
-			// Same broadcast callback the gateway wires in afterInit().
-			const broadcast = (matchId: string) =>
+			const emitPhysics = () =>
 				(
-					gateway as unknown as { emitState: (id: string) => void }
-				).emitState(matchId);
-			arenaSimulation.tick(broadcast);
-			arenaSimulation.tick(broadcast);
-			arenaSimulation.tick(broadcast);
+					gateway as unknown as { emitPhysicsState: (id: string) => void }
+				).emitPhysicsState(room.matchId);
+			emitPhysics();
+			emitPhysics();
 
-			expect(replays.captureFrame).toHaveBeenCalledWith(room);
+			expect(replays.captureFrame).toHaveBeenCalledWith(room, true);
 			expect(gateway.server.to).toHaveBeenCalledWith(room.matchId);
-			expect(emit).toHaveBeenCalledWith("game:state", room.state);
+			expect(emit).toHaveBeenCalledWith(
+				"game:physics-state",
+				expect.objectContaining({ matchId: room.matchId, physicsSeq: 7 }),
+			);
+			expect(emit.mock.calls.filter(([event]) => event === "game:state")).toHaveLength(1);
+		});
+	});
+
+	describe("Bell Clash launch projection", () => {
+		it("publishes the authoritative physics state immediately after release", async () => {
+			const room = makeRoom({
+				gameId: "bell-clash",
+				state: {
+					seq: 4,
+					roundNumber: 1,
+					shotCounts: [1, 0],
+				} as MatchRoom["state"],
+				physicsState: {
+					matchId: "match-1",
+					physicsSeq: 8,
+					serverTime: 200,
+					entities: [],
+					pickups: [],
+					scoreEvents: [],
+					nextEntityId: 1,
+					nextPickupId: 1,
+					nextScoreEventId: 1,
+					bellCooldownMs: [],
+				},
+			});
+			const emit = jest.fn();
+			gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
+			sessions.handleInput.mockReturnValue(room);
+			rooms.getRoom.mockReturnValue(room);
+
+			const ack = await gateway.onGameInput(
+				makeSocket({ data: { user: makePlayer(1).user } }),
+				{
+					matchId: room.matchId,
+					action: "release",
+					payload: { roundNumber: 1, vx: 100, vy: 0 },
+				},
+			);
+
+			expect(ack).toEqual({ accepted: true });
+			expect(emit.mock.calls[0]).toEqual([
+				"game:physics-state",
+				expect.objectContaining({ physicsSeq: 8 }),
+			]);
+			expect(emit).not.toHaveBeenCalledWith(
+			"game:bell-throw",
+			expect.anything(),
+		);
 		});
 	});
 	// ── syncRoomPresence (private — invoked via cast, no public seam) ──────────

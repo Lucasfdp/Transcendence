@@ -14,6 +14,7 @@ import {
 import { ALL_POWERS } from "../shared/mechanics/power-system";
 import {
 	getGameSocket,
+	type BellClashPhysicsState,
 	type GameSnapshot,
 	type OnlineMatchContext,
 } from "../services/network/gameSocket";
@@ -44,6 +45,7 @@ interface MatchStatusPayload {
 	side?: number;
 	reconnectExpiresAt?: number | null;
 	snapshot?: GameSnapshot;
+	physicsState?: BellClashPhysicsState;
 }
 
 const GAME_SCENES: Record<string, GameSceneConfig> = {
@@ -261,6 +263,7 @@ function PowerupMatchmakingPanel({
 			side: number;
 			gameId: string;
 			snapshot?: GameSnapshot;
+			physicsState?: BellClashPhysicsState;
 		}) => {
 			if (payload.gameId !== gameId || !payload.snapshot) return;
 			setPrivateLobby(null);
@@ -274,6 +277,7 @@ function PowerupMatchmakingPanel({
 					matchId: payload.matchId,
 					side: payload.side,
 					snapshot: payload.snapshot,
+					physicsState: payload.physicsState,
 				} satisfies OnlineMatchContext,
 			});
 		};
@@ -281,6 +285,7 @@ function PowerupMatchmakingPanel({
 			matchId: string;
 			gameId: string;
 			snapshot: GameSnapshot;
+			physicsState?: BellClashPhysicsState;
 		}) => {
 			if (payload.gameId !== gameId) return;
 			setPrivateLobby(null);
@@ -294,6 +299,7 @@ function PowerupMatchmakingPanel({
 					side: -1,
 					spectator: true,
 					snapshot: payload.snapshot,
+					physicsState: payload.physicsState,
 				} satisfies OnlineMatchContext,
 			});
 		};
@@ -485,6 +491,7 @@ function PowerupMatchmakingPanel({
 				matchId: activeMatchStatus.matchId,
 				side: activeMatchStatus.side,
 				snapshot: activeMatchStatus.snapshot,
+				physicsState: activeMatchStatus.physicsState,
 			},
 		});
 	};

@@ -274,12 +274,19 @@ Requirement breakdown:
 Evidence:
 - `matchmaking.gateway.ts`, `room.service.ts`, `gameSocket.ts`
 - Rejoin, away, abandon, and reconnect timeout implemented.
+- Bell Clash online matches now use a dedicated server-authoritative physics
+  stream: fixed-step source-space simulation, immediate launch plus 30 Hz
+  physics projections, backend collisions/powers/scoring, velocity-aware
+  snapshot interpolation, explicit reconnect/spectator projection, and
+  authoritative replay frames. Two-player plus spectator Firefox headless
+  validation covered simultaneous shots, second-shot rearming, round transition,
+  rejoin, and responsive relayout on 2026-07-13.
 
 Missing for completion:
-- Complete the manual two-client validation matrix for Kame Knock, Bell Clash,
-  Bamboo Bash, and Shell Curl after the 2026-07-12 recovery from the partial
-  server-authoritative experiment. It must cover launch input, full-screen
-  resize, settlement, reconnect, spectator entry, and replay capture.
+- Complete the remaining Bell Clash power-enabled and full-match replay matrix.
+- Complete the manual two-client validation matrix for Kame Knock, Bamboo Bash,
+  and Shell Curl. Those games retain their previous client-simulation models and
+  are not server-authoritative.
 
 ### Major: Multiplayer game with more than two players
 Status: `In progress`
