@@ -41,6 +41,7 @@ function makeEngines(): Harness {
 		tournamentId: TOURNAMENT_ID,
 		participantIds: PARTICIPANT_IDS,
 		settings,
+		seed: "seed-a",
 		bus,
 		clock,
 	});
@@ -156,6 +157,99 @@ describe("createTournamentEngines — F2 Reward→Inventory/Economy integration"
 		expect(engines.leaderboard.getPosition(30)).toBe(1);
 	});
 
+	it("wires the Board so a Tile Action (teleport) can drive it through services", () => {
+		const { engines } = makeEngines();
+		// A teleport Tile Action run through the real engine relocates the player
+		// on the wired Board (services.board), proving the F3 seam is live.
+		const action = engines.actionFactory.create({
+			type: "teleport",
+			parameters: { tileId: "tile-4" },
+		});
+		expect(action).not.toBeNull();
+		const result = engines.actionEngine.execute(
+			action!,
+			engines.makeActionContext({ playerId: 10 }),
+		);
+		expect(result.status).toBe("success");
+		expect(engines.board.getPosition(10)).toBe("tile-4");
+	});
+
+	it("wires Random Events so a randomEvent tile action runs an event end-to-end", () => {
+		const { engines, events } = makeEngines();
+		const action = engines.actionFactory.create({ type: "randomEvent" });
+		expect(action).not.toBeNull();
+		const result = engines.actionEngine.execute(
+			action!,
+			engines.makeActionContext({ playerId: 10 }),
+		);
+		expect(result.status).toBe("success");
+		expect(events.some((e) => e.name === "RandomEventSelected")).toBe(true);
+		const finished = events.find((e) => e.name === "RandomEventFinished");
+		expect(finished).toBeDefined();
+		expect(
+			(finished!.payload as { actionStatuses: readonly string[] }).actionStatuses.every(
+				(s) => s === "success",
+			),
+		).toBe(true);
+	});
+
+	it("wires steal so an attemptSteal action moves points between real players via Economy", () => {
+		const { engines, events } = makeEngines();
+		const before = engines.economy.getBalance(10) ?? 0;
+		const action = engines.actionFactory.create({
+			type: "attemptSteal",
+			parameters: { amount: 25 },
+		});
+		const result = engines.actionEngine.execute(
+			action!,
+			engines.makeActionContext({ playerId: 10 }),
+		);
+		expect(result.status).toBe("success");
+		// The thief gained the stolen amount (a real victim lost it).
+		expect(engines.economy.getBalance(10)).toBe(before + 25);
+		expect(events.some((e) => e.name === "StealSucceeded")).toBe(true);
+		expect(events.some((e) => e.name === "PointsTransferred")).toBe(true);
+	});
+
+	it("wires the Dice so rolls are reproducible from the tournament seed", () => {
+		const a = makeEngines();
+		const b = makeEngines();
+		const seqA = Array.from({ length: 10 }, () => a.engines.dice.roll({ playerId: 10 }).value);
+		const seqB = Array.from({ length: 10 }, () => b.engines.dice.roll({ playerId: 10 }).value);
+		expect(seqA).toEqual(seqB);
+		expect(seqA.every((v) => v >= 1 && v <= 6)).toBe(true);
+	});
+
+	it("simulates a full round of board turns end-to-end (F3 checkpoint)", () => {
+		const { engines, events } = makeEngines();
+		// Each player takes exactly one turn: start → roll → (server rolls, Board
+		// moves, tile resolves) → finish. The Runtime is the sequencer here.
+		for (const playerId of PARTICIPANT_IDS) {
+			expect(engines.turnSystem.startTurn(playerId).status).toBe("ok");
+			expect(engines.turnSystem.requestRoll(playerId).status).toBe("ok");
+			// The turn clears itself, so the next player can start (one active turn).
+			expect(engines.turnSystem.activePlayerId).toBeNull();
+		}
+
+		// Every player took one turn and moved once on the Board (normal die ≥ 1).
+		expect(events.filter((e) => e.name === "PlayerTurnStarted")).toHaveLength(
+			PARTICIPANT_IDS.length,
+		);
+		expect(events.filter((e) => e.name === "PlayerTurnFinished")).toHaveLength(
+			PARTICIPANT_IDS.length,
+		);
+		expect(events.filter((e) => e.name === "PlayerMoved")).toHaveLength(
+			PARTICIPANT_IDS.length,
+		);
+		// Every player ended on a real board tile, and DiceRolled fired per turn.
+		for (const playerId of PARTICIPANT_IDS) {
+			expect(engines.board.getPosition(playerId)).toBeDefined();
+		}
+		expect(events.filter((e) => e.name === "DiceRolled")).toHaveLength(
+			PARTICIPANT_IDS.length,
+		);
+	});
+
 	it("serialize() produces a JSON-safe snapshot of every engine", () => {
 		const { engines } = makeEngines();
 		engines.rewards.grant(
@@ -170,6 +264,10 @@ describe("createTournamentEngines — F2 Reward→Inventory/Economy integration"
 		expect(roundTripped.leaderboard).toBeDefined();
 		expect(roundTripped.inventory).toBeDefined();
 		expect(roundTripped.rewards).toBeDefined();
+		expect(roundTripped.board).toBeDefined();
+		expect(roundTripped.dice).toBeDefined();
+		expect(roundTripped.randomEvents).toBeDefined();
+		expect(roundTripped.rng).toBeDefined();
 	});
 
 	it("a full inventory rejects the item but still resolves the reward (no throw)", () => {

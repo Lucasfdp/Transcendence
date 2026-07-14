@@ -30,6 +30,7 @@ import {
 	ActionContext,
 	ActionServices,
 	ExecutionResult,
+	StealServices,
 	skippedResult,
 } from "../actions/action.interface";
 import { ActionEngine } from "../actions/action-engine";
@@ -42,6 +43,24 @@ import {
 	registerBaseActionsAndConditions,
 	registerInventoryActions,
 } from "../actions/base-actions";
+import { registerTileActions } from "../actions/tile-actions";
+import {
+	BoardDefinition,
+	BoardSnapshot,
+	TileActionRunner,
+} from "../board/board.types";
+import { V1_BOARD_ID, createBoardRegistry } from "../board/board-registry";
+import { TournamentBoard } from "../board/tournament-board";
+import { DiceSnapshot, DiceValueModifier } from "../dice/dice.types";
+import { createDiceRegistry } from "../dice/dice-registry";
+import { TournamentDice } from "../dice/tournament-dice";
+import { TournamentTurnSystem } from "../turn/tournament-turn-system";
+import { TurnSnapshot } from "../turn/turn.types";
+import { TournamentRandomEvents } from "../random-events/tournament-random-events";
+import {
+	RandomEventActionRunner,
+	RandomEventsSnapshot,
+} from "../random-events/random-event.types";
 import { TournamentSettings } from "../config/settings.catalog";
 import {
 	EconomySnapshot,
@@ -51,6 +70,7 @@ import {
 import { TournamentEventBus } from "../events/tournament-event-bus";
 import { TournamentClock } from "../infra/clock";
 import { TournamentLogger } from "../infra/tournament-logger";
+import { TournamentRng, TournamentRngSnapshot } from "../infra/tournament-rng";
 import {
 	InventorySnapshot,
 	ItemDefinition,
@@ -81,6 +101,8 @@ export interface TournamentEnginesOptions {
 	readonly participantIds: readonly number[];
 	/** Validated settings resolved by configId (SPEC-024/025). */
 	readonly settings: TournamentSettings;
+	/** Tournament seed (SPEC-000): the Dice System rolls reproducibly from it. */
+	readonly seed: string;
 	/** Shared per-tournament bus (SPEC-004: one bus per tournament). */
 	readonly bus: TournamentEventBus;
 	readonly clock: TournamentClock;
@@ -91,6 +113,10 @@ export interface TournamentEnginesOptions {
 	readonly itemRegistry?: Registry<ItemDefinition>;
 	/** Reward content registry (defaults to an empty registry). */
 	readonly rewardRegistry?: Registry<RewardDefinition>;
+	/** Board content registry (defaults to the seeded v1 placeholder board). */
+	readonly boardRegistry?: Registry<BoardDefinition>;
+	/** Which board to load (defaults to the v1 placeholder board id). */
+	readonly boardId?: string;
 }
 
 /** JSON-safe snapshot of every engine, embedded in the Runtime snapshot. */
@@ -100,6 +126,11 @@ export interface TournamentEnginesSnapshot {
 	readonly leaderboard: LeaderboardSerialized;
 	readonly inventory: InventorySnapshot;
 	readonly rewards: RewardResolverSnapshot;
+	readonly board: BoardSnapshot;
+	readonly dice: DiceSnapshot;
+	readonly turn: TurnSnapshot;
+	readonly randomEvents: RandomEventsSnapshot;
+	readonly rng: TournamentRngSnapshot;
 }
 
 /** Input for building an `ActionContext` bound to this bundle's services. */
@@ -117,6 +148,10 @@ export interface TournamentEngines {
 	readonly leaderboard: TournamentLeaderboard;
 	readonly inventory: TournamentInventory;
 	readonly rewards: TournamentRewardResolver;
+	readonly board: TournamentBoard;
+	readonly dice: TournamentDice;
+	readonly turnSystem: TournamentTurnSystem;
+	readonly randomEvents: TournamentRandomEvents;
 	readonly actionEngine: ActionEngine;
 	readonly actionFactory: ActionFactory;
 	/** The capability bundle every Action runs against (SPEC-008 "Context"). */
@@ -141,11 +176,14 @@ export function createTournamentEngines(
 		tournamentId,
 		participantIds,
 		settings,
+		seed,
 		bus,
 		clock,
 		logger,
 		itemRegistry,
 		rewardRegistry,
+		boardRegistry,
+		boardId,
 	} = options;
 	const getRound = options.getRound ?? ((): number => 0);
 
@@ -195,6 +233,7 @@ export function createTournamentEngines(
 	const conditionRegistry = new ConditionRegistry();
 	registerBaseActionsAndConditions(actionRegistry, conditionRegistry);
 	registerInventoryActions(actionRegistry);
+	registerTileActions(actionRegistry);
 
 	const actionEngine = new ActionEngine({ clock, logger });
 	const actionFactory = new ActionFactory(actionRegistry, conditionRegistry, {
@@ -242,13 +281,118 @@ export function createTournamentEngines(
 		getRound,
 	});
 
-	// 5. The capability bundle Actions run against (SPEC-008 "Context"): the
-	//    concrete engines satisfy the ports structurally.
-	const services: ActionServices = {
-		economy,
-		rules,
-		inventory,
+	// 5. Dice ← Rule Engine value-modifier seam (SPEC-010 "Rule Engine"): the
+	//    rolled value passes through the Rule Engine's DiceModifier composition.
+	const diceValueModifier: DiceValueModifier = {
+		apply: ({ playerId, round, baseValue }) =>
+			rules.queryDiceModifier(
+				{ tournamentId, round, playerId, eventBus: bus },
+				baseValue,
+			),
 	};
+	const dice = new TournamentDice({
+		tournamentId,
+		seed,
+		registry: createDiceRegistry({ seed: true }),
+		bus,
+		clock,
+		logger,
+		valueModifier: diceValueModifier,
+		getRound,
+	});
+
+	// 6. The capability bundle Actions run against (SPEC-008 "Context"). Declared
+	//    with `let` because the Board's context factory closes over it and the
+	//    Board is itself a member (`services.board`) — a benign construction cycle
+	//    resolved by re-binding `services` once the Board exists.
+	let services: ActionServices = { economy, rules, inventory };
+
+	// 7. Board (SPEC-002): resolves tiles through the SAME runner; its Actions run
+	//    against `services` (which by roll time includes the Board itself, so
+	//    Teleport/MovePlayer Actions can drive it).
+	const resolvedBoardRegistry =
+		boardRegistry ?? createBoardRegistry({ seed: true });
+	const boardDefinition = resolvedBoardRegistry.get(boardId ?? V1_BOARD_ID);
+	if (!boardDefinition) {
+		throw new Error(
+			`[createTournamentEngines] unknown board "${boardId ?? V1_BOARD_ID}"`,
+		);
+	}
+	const board = new TournamentBoard({
+		tournamentId,
+		definition: boardDefinition as BoardDefinition,
+		participantIds,
+		bus,
+		clock,
+		logger,
+		actionRunner: actionRunner as TileActionRunner,
+		makeContext: (input) => ({
+			tournamentId,
+			playerId: input.playerId,
+			round: getRound(),
+			tileId: input.tileId,
+			eventBus: bus,
+			services,
+			clock,
+		}),
+		getRound,
+	});
+
+	// Random Events (SPEC-019): a per-tournament system that runs event Actions
+	// through the SAME runner; the `randomEvent` tile Action triggers it.
+	const randomEvents = new TournamentRandomEvents({
+		tournamentId,
+		seed,
+		bus,
+		clock,
+		logger,
+		actionRunner: actionRunner as RandomEventActionRunner,
+		makeContext: (input) => ({
+			tournamentId,
+			playerId: input.playerId,
+			round: input.round,
+			eventBus: bus,
+			services,
+			clock,
+		}),
+		getRound,
+	});
+
+	// Steal (SPEC-006 AttemptStealAction): a per-tournament serializable seeded RNG
+	// stream + the primitives the steal Action needs (eligible victims from the
+	// roster ∩ Economy balances, a seeded pick, the StealPrevention Rule query).
+	const rng = new TournamentRng(seed);
+	const stealServices: StealServices = {
+		candidates: (thiefId) =>
+			participantIds.filter(
+				(id) => id !== thiefId && (economy.getBalance(id) ?? 0) > 0,
+			),
+		pickIndex: (count) => rng.pickIndex(count),
+		isProtected: (victimId) =>
+			rules.isStealPrevented({
+				tournamentId,
+				round: getRound(),
+				playerId: victimId,
+				eventBus: bus,
+			}),
+	};
+
+	// Re-bind so every context (Board tiles + `makeActionContext`) exposes the
+	// Board (SPEC-006), Random Events (SPEC-019) and steal (SPEC-006) capabilities.
+	services = { economy, rules, inventory, board, randomEvents, steal: stealServices };
+
+	// 8. Turn System (SPEC-005): drives one turn at a time through the Dice + Board
+	//    commands; the Runtime sequences players.
+	const turnSystem = new TournamentTurnSystem({
+		tournamentId,
+		bus,
+		clock,
+		dice,
+		board,
+		turnTimeoutMs: settings.timeouts.turnSeconds * 1000,
+		logger,
+		getRound,
+	});
 
 	return {
 		economy,
@@ -256,6 +400,10 @@ export function createTournamentEngines(
 		leaderboard,
 		inventory,
 		rewards,
+		board,
+		dice,
+		turnSystem,
+		randomEvents,
 		actionEngine,
 		actionFactory,
 		services,
@@ -266,6 +414,7 @@ export function createTournamentEngines(
 			tileId: input.tileId,
 			eventBus: bus,
 			services,
+			clock,
 			metadata: input.metadata,
 		}),
 		serialize: () => ({
@@ -274,6 +423,11 @@ export function createTournamentEngines(
 			leaderboard: leaderboard.serialize(),
 			inventory: inventory.serialize(),
 			rewards: rewards.serialize(),
+			board: board.serialize(),
+			dice: dice.serialize(),
+			turn: turnSystem.serialize(),
+			randomEvents: randomEvents.serialize(),
+			rng: rng.serialize(),
 		}),
 	};
 }

@@ -19,6 +19,7 @@
  */
 
 import { TournamentEventBus } from "../events/tournament-event-bus";
+import { TournamentClock } from "../infra/clock";
 import {
 	EconomyResult,
 	EconomySource,
@@ -175,10 +176,54 @@ export interface InventoryCommands {
 	): { readonly status: "added" | "rejected"; readonly reason?: string };
 }
 export type InventoryPort = InventoryCommands;
-/** TODO SPEC-006/013 (Board): movePlayer/teleportPlayer land with the Board. */
-export type BoardPort = unknown;
+/**
+ * Board capability port (SPEC-002) — the subset of `TournamentBoard` an Action
+ * may drive (SPEC-006 TeleportAction/MovePlayerAction). Narrowed now that the
+ * Board exists (F3): declared here and satisfied STRUCTURALLY by the concrete
+ * `TournamentBoard` (whose commands return a richer `MovementResult` assignable
+ * to this looser shape), so action files never import the Board. Only the
+ * discriminant the Action needs is exposed.
+ */
+export interface BoardCommands {
+	movePlayer(
+		playerId: number,
+		steps: number,
+	): { readonly status: "moved" | "rejected" };
+	teleportPlayer(
+		playerId: number,
+		tileId: string,
+	): { readonly status: "moved" | "rejected" };
+}
+export type BoardPort = BoardCommands;
 /** TODO SPEC-013 (Reward Resolver): reward-granting port lands later. */
 export type RewardsPort = unknown;
+
+/**
+ * Random Events capability port (SPEC-019) — the command a `RandomEventAction`
+ * issues to trigger a seeded random event for a player. Satisfied structurally
+ * by `TournamentRandomEvents.trigger`; the system owns selection + execution, so
+ * the Action stays a thin request (no clock, no RNG in the Action).
+ */
+export interface RandomEventCommands {
+	trigger(playerId: number, round: number): void;
+}
+
+/**
+ * Steal capability port (SPEC-006 "AttemptStealAction") — the primitives the
+ * steal Action needs that it must not own itself: the eligible victims (the
+ * roster ∩ players with points > 0, minus the thief), a seeded deterministic
+ * pick, and the StealPrevention Rule query (SPEC-009). The composition provides
+ * the adapter (roster + Economy balances + seeded RNG + Rule Engine); the Action
+ * sequences them, calls `economy.transfer`, and emits the Steal* facts.
+ */
+export interface StealServices {
+	/** Eligible victims for `thiefId` (other players with points > 0). */
+	candidates(thiefId: number): readonly number[];
+	/** Deterministic index in [0, count) from the tournament seed (advances). */
+	pickIndex(count: number): number;
+	/** True when `victimId` is protected by a StealPrevention Rule (SPEC-009). */
+	isProtected(victimId: number): boolean;
+}
 
 /**
  * The capability bundle exposed to every Action (SPEC-008 "Context": Services
@@ -192,6 +237,8 @@ export interface ActionServices {
 	readonly inventory?: InventoryPort;
 	readonly board?: BoardPort;
 	readonly rewards?: RewardsPort;
+	readonly randomEvents?: RandomEventCommands;
+	readonly steal?: StealServices;
 }
 
 // ── Context (SPEC-008 "Context") ────────────────────────────────────────────
@@ -210,6 +257,14 @@ export interface ActionContext {
 	readonly tileId?: string;
 	readonly eventBus: TournamentEventBus;
 	readonly services: ActionServices;
+	/**
+	 * Deterministic time source for Actions that emit their OWN facts (SPEC-006:
+	 * StealStarted, *Requested, presentation events). Optional and backward-
+	 * compatible: Actions that only drive owner systems never need it (the owner
+	 * emits with its clock). The engine composition always provides it; a bare
+	 * context may omit it, so emitting Actions must tolerate its absence.
+	 */
+	readonly clock?: TournamentClock;
 	readonly metadata?: Readonly<Record<string, unknown>>;
 }
 

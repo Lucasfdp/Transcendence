@@ -154,6 +154,7 @@ export class TournamentRuntime {
 			tournamentId: this.tournamentId,
 			participantIds: this.participantIds,
 			settings: this.settings,
+			seed: this.seed,
 			bus: this.bus,
 			clock: this.clock,
 			logger: this.logger,

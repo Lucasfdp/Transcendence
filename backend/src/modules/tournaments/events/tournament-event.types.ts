@@ -436,6 +436,190 @@ export interface CompositeRewardFinishedPayload {
 	readonly resolvedCount: number;
 }
 
+// ── Payloads — owner: Board System (SPEC-002) ──────────────────────────────────
+
+/**
+ * Terminal status of one Tile Action run during Tile resolution — mirrors the
+ * Action Engine's `ExecutionStatus` (SPEC-008), declared locally so the catalog
+ * never depends on `actions/`.
+ */
+export type TileActionStatus = "success" | "skipped" | "failed";
+
+/**
+ * A player moved to a new tile (SPEC-002 "Eventos": PlayerMoved). The affected
+ * player is the envelope `playerId`. `steps` is the number of tiles traversed
+ * (0 for a teleport). `forced` is true for a teleport / forced relocation
+ * (TeleportAction / MovePlayerAction), false for a normal dice move — it lets
+ * consumers apply the anti-loop rule (SPEC-002 "Teleports y relocalizaciones").
+ */
+export interface PlayerMovedPayload {
+	readonly fromTileId: string;
+	readonly toTileId: string;
+	readonly steps: number;
+	readonly forced: boolean;
+}
+
+/** A player entered a tile, before its Actions run (SPEC-002 "Eventos": TileEntered). */
+export interface TileEnteredPayload {
+	readonly tileId: string;
+}
+
+/**
+ * A tile's Actions finished running (SPEC-002 "Tile Resolution" → SPEC-006).
+ * `actionStatuses` are the per-Action results in execution order; the Board only
+ * delegates and reports — it never interprets them.
+ */
+export interface TileResolvedPayload {
+	readonly tileId: string;
+	readonly actionStatuses: readonly TileActionStatus[];
+}
+
+/**
+ * The player's movement (including destination resolution) is fully complete
+ * (SPEC-002 "Eventos": MovementFinished). `tileId` is the final resting tile.
+ */
+export interface MovementFinishedPayload {
+	readonly tileId: string;
+}
+
+// ── Payloads — owner: Dice System (SPEC-010) ───────────────────────────────────
+
+/**
+ * A die was rolled (SPEC-010 "Resultado": DiceRollResult). The server-generated
+ * `value` is the FINAL movement value after any Rule modifiers; `seed` is the
+ * tournament seed used, so the roll is reproducible (SPEC-010 "Generación").
+ * `timestamp` lives on the envelope. The affected player is the envelope
+ * `playerId`.
+ */
+export interface DiceRolledPayload {
+	readonly diceId: string;
+	readonly value: number;
+	readonly seed: string;
+}
+
+/**
+ * A Rule modified a roll (SPEC-010 "Rule Engine" / "Eventos": DiceModified).
+ * `baseValue` is the raw face chosen by the seed; `finalValue` is the value
+ * after DiceModifier value-modifiers (SPEC-009). `diceId` is the die actually
+ * rolled (already reflecting any die-override Rule).
+ */
+export interface DiceModifiedPayload {
+	readonly diceId: string;
+	readonly baseValue: number;
+	readonly finalValue: number;
+}
+
+// ── Payloads — owner: Turn System (SPEC-005) ───────────────────────────────────
+
+/**
+ * A player's turn began (SPEC-005 "Inicio del turno": PlayerTurnStarted). Only
+ * the active player's controls unlock; everyone else is a spectator. The active
+ * player is the envelope `playerId`. `deadlineAt` is the epoch-ms time the roll
+ * timeout expires (SPEC-005 "Timeout").
+ */
+export interface PlayerTurnStartedPayload {
+	readonly deadlineAt: number;
+}
+
+/**
+ * The server asked the active player to roll (SPEC-005 "Eventos":
+ * DiceRollRequested). The player decides WHEN to roll; the server generates the
+ * result (SPEC-005 "Lanzamiento del dado"). `deadlineAt` mirrors the turn
+ * timeout, after which the server auto-rolls.
+ */
+export interface DiceRollRequestedPayload {
+	readonly deadlineAt: number;
+}
+
+/**
+ * A player's turn ended (SPEC-005 "Finalización" / "Eventos":
+ * PlayerTurnFinished). `finalTileId` is where the player came to rest,
+ * `diceValue` the (final) rolled value, and `autoResolved` true when the turn
+ * was resolved by the server (timeout or disconnection) rather than by the
+ * player (SPEC-005 "Timeout"/"Desconexión").
+ */
+export interface PlayerTurnFinishedPayload {
+	readonly finalTileId: string;
+	readonly diceValue: number;
+	readonly autoResolved: boolean;
+}
+
+// ── Payloads — owner: AttemptStealAction (SPEC-006) ────────────────────────────
+
+/**
+ * A steal attempt began (SPEC-006 "AttemptStealAction": StealStarted). The thief
+ * is the envelope `playerId`; `amount` is the configured steal amount (v1 fixed,
+ * SPEC-024 stealAmount).
+ */
+export interface StealStartedPayload {
+	readonly amount: number;
+}
+
+/**
+ * A steal attempt failed (SPEC-006: StealFailed) — no eligible victim, or the
+ * victim was protected by a StealPrevention Rule (SPEC-009). The thief is the
+ * envelope `playerId`.
+ */
+export interface StealFailedPayload {
+	readonly reason: "no_victim" | "prevented" | "rejected";
+	readonly victimId?: number;
+}
+
+/**
+ * A steal attempt succeeded (SPEC-006: StealSucceeded). The Economy already
+ * emitted PointsTransferred (the owner fact); this is the steal-level fact. The
+ * thief is the envelope `playerId`.
+ */
+export interface StealSucceededPayload {
+	readonly victimId: number;
+	readonly amount: number;
+}
+
+// ── Payloads — owner: Random Events System (SPEC-019) ──────────────────────────
+
+/** Terminal status of one Random Event Action (mirrors SPEC-008 status). */
+export type RandomEventActionStatus = "success" | "skipped" | "failed";
+
+/**
+ * A tile requested a random event (SPEC-019 "Eventos": RandomEventRequested).
+ * The affected player is the envelope `playerId`; `candidateCount` is how many
+ * events were available to choose from.
+ */
+export interface RandomEventRequestedPayload {
+	readonly candidateCount: number;
+}
+
+/**
+ * The server picked an event with the seed (SPEC-019 "Selección" / "Eventos":
+ * RandomEventSelected). Selection is deterministic (SPEC-000).
+ */
+export interface RandomEventSelectedPayload {
+	readonly eventId: string;
+	readonly name: string;
+}
+
+/** The selected event began running its Actions (SPEC-019: RandomEventStarted). */
+export interface RandomEventStartedPayload {
+	readonly eventId: string;
+}
+
+/**
+ * The event finished (SPEC-019 "Eventos": RandomEventFinished). `actionStatuses`
+ * are the per-Action results in execution order.
+ */
+export interface RandomEventFinishedPayload {
+	readonly eventId: string;
+	readonly actionStatuses: readonly RandomEventActionStatus[];
+}
+
+/**
+ * No event ran (SPEC-019 "Eventos": RandomEventCancelled) — e.g. the catalog was
+ * empty or no event was selectable. `reason` explains why.
+ */
+export interface RandomEventCancelledPayload {
+	readonly reason: string;
+}
+
 // ── Event map ──────────────────────────────────────────────────────────────────
 
 /**
@@ -486,6 +670,28 @@ export interface TournamentEventPayloadMap {
 	RewardResolved: RewardResolvedPayload;
 	CompositeRewardStarted: CompositeRewardStartedPayload;
 	CompositeRewardFinished: CompositeRewardFinishedPayload;
+	// Owner: Board System (SPEC-002)
+	PlayerMoved: PlayerMovedPayload;
+	TileEntered: TileEnteredPayload;
+	TileResolved: TileResolvedPayload;
+	MovementFinished: MovementFinishedPayload;
+	// Owner: Dice System (SPEC-010)
+	DiceRolled: DiceRolledPayload;
+	DiceModified: DiceModifiedPayload;
+	// Owner: Turn System (SPEC-005)
+	PlayerTurnStarted: PlayerTurnStartedPayload;
+	DiceRollRequested: DiceRollRequestedPayload;
+	PlayerTurnFinished: PlayerTurnFinishedPayload;
+	// Owner: AttemptStealAction (SPEC-006)
+	StealStarted: StealStartedPayload;
+	StealFailed: StealFailedPayload;
+	StealSucceeded: StealSucceededPayload;
+	// Owner: Random Events System (SPEC-019)
+	RandomEventRequested: RandomEventRequestedPayload;
+	RandomEventSelected: RandomEventSelectedPayload;
+	RandomEventStarted: RandomEventStartedPayload;
+	RandomEventFinished: RandomEventFinishedPayload;
+	RandomEventCancelled: RandomEventCancelledPayload;
 }
 
 export type TournamentEventName = keyof TournamentEventPayloadMap;
