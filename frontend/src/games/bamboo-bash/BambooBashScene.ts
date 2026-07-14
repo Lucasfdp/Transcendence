@@ -597,8 +597,12 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			if (this.localParticipants.length > 0) this.updateHudText();
 			this.powerSidePanel?.refresh();
 		}
-		if (!this.isLocalVersus() && this.timeLeftMs <= 0) {
+		if (!this.online.isActive && !this.isLocalVersus() && this.timeLeftMs <= 0) {
 			notifyGameRuleRoundComplete(this.buildGameRuleHooks());
+			return;
+		}
+		if (this.online.isActive) {
+			this.online.update(delta);
 			return;
 		}
 

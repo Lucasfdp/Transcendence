@@ -7,7 +7,7 @@ Analysis only — no code was changed.
 
 ---
 
-## Implementation status (2026-07-13)
+## Implementation status (2026-07-14)
 
 Bell Clash now has a complete server-authoritative online simulation path:
 
@@ -29,9 +29,14 @@ Bell Clash now has a complete server-authoritative online simulation path:
 - Authoritative physics is included in replay frames, including pickups and
   score events.
 
-This implementation currently applies only to Bell Clash. Bamboo Bash retains
-owner transform reports, while Kame Knock and Shell Curl retain their previous
-client-simulation models. They must not be described as server-authoritative.
+Bamboo Bash now has an equivalent server-authoritative path for its continuous
+round model. The backend keeps a stopped primary entity for every player between
+launches, then simulates source-space movement, wall and shell collisions, bamboo
+growth and hits, pickups, scoring, and timed round transitions. The client renders
+the buffered projection only; client transform, hit, pickup, and round-score
+reports are rejected. Initial two-client checks, including powers, currently show
+matching positions and outcomes. Kame Knock and Shell Curl retain their previous
+client-simulation models and must not be described as server-authoritative.
 
 Headless Firefox validation used two registered players and a guest spectator.
 It covered private matchmaking, simultaneous launches, identical transforms and
@@ -218,9 +223,25 @@ its own validation gates.
 6. Moved Bell Clash wall/bell collision, projectile collision, active powers,
    pickups, hit detection, zone multiplier, score, settlement, and round
    completion into the backend tick. Client scoring actions are rejected.
-7. Next, generalise the proven projection event and rule hooks to Bamboo Bash, then
-   Kame Knock. Keep Shell Curl separate: its persistent, turn-based stone
-   model needs its own server-authoritative design.
+7. Applied the projection event to Bamboo Bash with game-specific server rules.
+   Idle player shells are authoritative physics entities, so the first launch can
+   collide with the opponent and round resets do not remove either turtle.
+
+### Next-session work order
+
+1. Finish the Bamboo Bash validation matrix: two players, powers and pickups,
+   scoring, full three-round match, reconnect, spectator entry, and responsive
+   relayout. Preserve the current branch as the rollback point until this passes.
+2. Make the online score presentation consistent without changing physics:
+   Bell Clash should display the server-authoritative hit value rather than the
+   literal `SERVER`; Bamboo Bash should append authoritative `scoreEvents` to its
+   score log. Confirm the HUD, side panel, and log agree on live-round and total
+   values.
+3. Capture a stable Bamboo Bash checkpoint after the score presentation pass.
+4. Only then begin Kame Knock. Reuse the separated projection transport, but write
+   Kame-specific backend target, turn, and power rules before changing its client.
+   Keep Shell Curl as a separate future design because its persistent turn-based
+   stones have different authority and settlement requirements.
 
 ### Non-negotiable constraints
 

@@ -281,12 +281,22 @@ Evidence:
   authoritative replay frames. Two-player plus spectator Firefox headless
   validation covered simultaneous shots, second-shot rearming, round transition,
   rejoin, and responsive relayout on 2026-07-13.
+- Bamboo Bash now uses the same separated authoritative projection channel:
+  fixed-step source-space projectile movement, bamboo growth/spawning, pickup
+  collection, collisions, scoring, and timed round completion are server-owned.
+  Browser inputs are limited to bounded launches; transform, bamboo-hit, pickup,
+  and round-score reports are rejected. Client rendering uses buffered physics
+  projections rather than locally stepping the match. Automated backend and
+  frontend build validation passed; initial two-client and power-up checks are
+  positive, while the full validation matrix remains pending.
 
 Missing for completion:
 - Complete the remaining Bell Clash power-enabled and full-match replay matrix.
-- Complete the manual two-client validation matrix for Kame Knock, Bamboo Bash,
-  and Shell Curl. Those games retain their previous client-simulation models and
-  are not server-authoritative.
+- Complete the manual two-client validation matrix for Bamboo Bash, including
+  powers, scoring, timers, reconnection, spectator entry, and responsive relayout.
+- Complete the manual two-client validation matrix for Kame Knock and Shell Curl.
+  Those games retain their previous client-simulation models and are not
+  server-authoritative.
 
 ### Major: Multiplayer game with more than two players
 Status: `In progress`

@@ -232,6 +232,31 @@ export interface BellClashSnapshot {
 	winnerSide: number | null;
 }
 
+export interface ArenaPhysicsEntity {
+	id: number;
+	ownerSide: number;
+	primary: boolean;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	radius: number;
+	power: string;
+	stopped: boolean;
+	alpha: number;
+}
+
+export interface BambooBashPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: ArenaPhysicsEntity[];
+	pickups: Array<{ id: number; type: string; x: number; y: number; radius: number }>;
+	scoreEvents: Array<{ id: number; side: number; points: number; bambooId: number }>;
+	bamboos: BambooBashSnapshot["bamboos"];
+	liveRoundScores: number[];
+}
+
 export type GameSnapshot =
 	| CurlingSnapshot
 	| BambooBashSnapshot
@@ -326,7 +351,7 @@ export interface OnlineMatchContext {
 	side: number;
 	spectator?: boolean;
 	snapshot?: GameSnapshot;
-	physicsState?: BellClashPhysicsState;
+	physicsState?: BellClashPhysicsState | BambooBashPhysicsState;
 }
 
 let socket: Socket | null = null;

@@ -348,6 +348,29 @@ export interface BellClashPhysicsState {
 	bellCooldownMs: number[];
 }
 
+export interface BambooBashPhysicsEntity extends BellClashPhysicsEntity {}
+
+export interface BambooBashPhysicsPickup extends BellClashPhysicsPickup {}
+
+export interface BambooBashScoreEvent {
+	id: number;
+	side: number;
+	points: number;
+	bambooId: number;
+}
+
+export interface BambooBashPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: BambooBashPhysicsEntity[];
+	pickups: BambooBashPhysicsPickup[];
+	scoreEvents: BambooBashScoreEvent[];
+	nextEntityId: number;
+	nextPickupId: number;
+	nextScoreEventId: number;
+}
+
 export type GameSnapshot =
 	| CurlingSnapshot
 	| BambooBashSnapshot
@@ -374,7 +397,7 @@ export interface MatchRoom {
 	spectators: Map<string, SocketUser>;
 	seq: number;
 	state: GameSnapshot;
-	physicsState?: BellClashPhysicsState;
+	physicsState?: BellClashPhysicsState | BambooBashPhysicsState;
 	rewardsGranted?: boolean;
 	rematchReadyUserIds?: Set<number>;
 	rematchLeftUserIds?: Set<number>;

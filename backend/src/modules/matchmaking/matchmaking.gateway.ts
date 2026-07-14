@@ -611,12 +611,11 @@ export class MatchmakingGateway
 
 		if (
 			payload.action === "release" &&
-			room.gameId === "bell-clash" &&
-			"roundNumber" in room.state &&
-			"shotCounts" in room.state
+			(room.gameId === "bell-clash" || room.gameId === "bamboo-bash") &&
+			"roundNumber" in room.state
 		) {
-			// Bell Clash clients render only this authoritative projection. Sending it
-			// now prevents the short local prediction window from crossing the bell.
+			// Authoritative arena clients render this projection rather than predicting
+			// a flight locally, including the first frame after launch.
 			this.emitPhysicsState(room.matchId);
 			this.emitState(room.matchId);
 			return { accepted: true };
@@ -1117,7 +1116,7 @@ export class MatchmakingGateway
 	private publicPhysicsState(room: MatchRoom): Record<string, unknown> {
 		const physics = room.physicsState;
 		if (!physics) return {};
-		return {
+		const projection: Record<string, unknown> = {
 			matchId: physics.matchId,
 			physicsSeq: physics.physicsSeq,
 			serverTime: physics.serverTime,
@@ -1125,6 +1124,12 @@ export class MatchmakingGateway
 			pickups: physics.pickups,
 			scoreEvents: physics.scoreEvents,
 		};
+		if (room.state.gameId === "bamboo-bash") {
+			const state = room.state as BambooBashSnapshot;
+			projection.bamboos = state.bamboos;
+			projection.liveRoundScores = state.liveRoundScores;
+		}
+		return projection;
 	}
 
 	/** Emit an event to every connected socket of a user (all tabs/devices). */

@@ -207,7 +207,8 @@ export class BellClashOnlineController {
 		socket.on("game:end", this.handleState);
 		socket.on("game:physics-state", this.handlePhysicsState);
 		this.updateStatus("Connected to Bell Clash match.");
-		if (this.match.physicsState) this.applyPhysicsState(this.match.physicsState);
+		if (this.match.physicsState)
+			this.applyPhysicsState(this.match.physicsState as BellClashPhysicsState);
 		socket.emit(
 			"game:physics-request",
 			{ matchId: this.match.matchId },

@@ -86,7 +86,11 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 		)
 			return false;
 		const state = room.state as BellClashSnapshot;
-		const result = advanceBellPhysics(room.physicsState, state, deltaMs);
+		const result = advanceBellPhysics(
+			room.physicsState as ReturnType<typeof createBellPhysicsState>,
+			state,
+			deltaMs,
+		);
 		if (!result.changed) return false;
 		this.syncPhysicsEntities(state, room);
 		if (result.scoreChanged) this.bumpRoomState(room);
@@ -145,9 +149,12 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 		const origin = previous
 			? { x: previous.x, y: previous.y }
 			: { x: Math.cos(spawnAngle) * 320, y: Math.sin(spawnAngle) * 320 };
-		ensureBellPhysicsPickup(room.physicsState, state.powerupsEnabled);
+		ensureBellPhysicsPickup(
+			room.physicsState as ReturnType<typeof createBellPhysicsState>,
+			state.powerupsEnabled,
+		);
 		launchBellProjectile(
-			room.physicsState,
+			room.physicsState as ReturnType<typeof createBellPhysicsState>,
 			player.side,
 			state.shotCounts[player.side],
 			origin.x,
@@ -188,7 +195,10 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 		this.resetRound(state, room.players.length);
 		resetArenaReplayBalls(state, { clearEntities: true });
 		if (room.physicsState)
-			resetBellPhysicsRound(room.physicsState, state.powerupsEnabled);
+			resetBellPhysicsRound(
+				room.physicsState as ReturnType<typeof createBellPhysicsState>,
+				state.powerupsEnabled,
+			);
 		this.bumpRoomState(room);
 	}
 
