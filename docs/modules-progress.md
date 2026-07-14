@@ -312,7 +312,7 @@ Missing for completion:
 - Nothing essential to claim the module.
 
 ### Minor: Tournament system
-Status: `Not done`
+Status: `In progress`
 
 Requirement breakdown:
 - Brackets.
@@ -320,10 +320,14 @@ Requirement breakdown:
 - Registration and participant management.
 
 Evidence:
-- No visible tournament implementation.
+- Full architecture specified and frozen in `SPEC/` (SPEC-000 → SPEC-040); board mode ("The Parrot's Shell") adopted as the tournament interpretation with participant registration and visible play order (D6, SPEC-040/SPEC-038).
+- Implementation roadmap in `docs/tournament-implementation-roadmap.md`; platform seams audit in `docs/tournament-platform-seams-audit.md`.
+- Phase 0 (Grounding) COMPLETE: backend module `backend/src/modules/tournaments/` with entities (`tournaments`, `tournament_participants`, `tournament_matches`), manual migration, boot reconciliation; frozen WS/REST contracts (`tournaments.contracts.ts` + frontend mirror + `scripts/check-tournament-contracts.sh`); full SPEC-038 entry/lobby REST flow (create/invite/join/join-pin/leave/start) with DB-backed lobby, PIN join, friend invitations (`tournament_invite` notification type), deterministic seed-derived turn order (`turn-order.util.ts`) — registration, participant management and visible matchup order are implemented at lobby level.
+- Phase 1 (Core) COMPLETE: determinism + orchestration foundation — per-tournament typed Event Bus (SPEC-004), 15-phase declarative State Machine (SPEC-003), generic `Registry<T>` (SPEC-025), validated settings catalog (SPEC-024), injectable clock (SPEC-028, no `Date.now`/`setTimeout` outside `SystemClock`), and the empty-gameplay `TournamentRuntime` (SPEC-001) driven by `TournamentRuntimeService` into the Match Lifecycle (SPEC-023): snapshot-per-transition persistence into `tournaments.state.runtime`, phase→status mapping, lobby `start()` handoff, and pessimistic-lock concurrency hardening on lobby join/start. Runtime touches no TypeORM.
+- Phase 2 (Engines) COMPLETE: the six per-tournament engines, each built as a standalone deterministic unit (injected bus + clock, `serialize()`-able, no TypeORM/`Date.now`/`Math.random`) and reviewed against its SPEC — Economy (SPEC-011, wallets + Award/Remove/Transfer + integrity replay + `RewardRuleApplier` seam), Rule Engine (SPEC-009, 5 fixed query points, exclusive-vs-value composition, expiry hooks), Leaderboard (SPEC-018, competition ranking off `WalletUpdated`), Action Engine (SPEC-008, single engine + `ActionRegistry`/`ActionFactory` + base actions, never-throws pipeline), Inventory + Item Framework (SPEC-014/007, no-stacking unique instances, consume delegates effects via `ItemEffectRunner`), Reward Resolver (SPEC-013, translates a `Reward` data object → `ActionConfig[]` run via `RewardActionRunner`). Composition root `runtime/tournament-engines.ts` constructs all six per-tournament and wires the deferred seams (Rule→Economy `RewardRuleApplier` adapter; `ActionServices` {economy, rules, inventory} bundle; one Action-Engine-backed runner satisfying both `ItemEffectRunner` and `RewardActionRunner`; `GrantItemAction` narrowing `InventoryPort`); the `TournamentRuntime` holds the bundle and serializes it in its snapshot; `inventoryCapacity` added to the settings catalog. Integration checkpoint green: a composite Reward (points+item) credits the wallet AND fills the inventory end-to-end through the one Action Engine (`runtime/tournament-engines.spec.ts`). Full backend suite 1085 green; `tsc` clean; contracts drift check green.
 
 Missing for completion:
-- Entire module.
+- Roadmap phases 3–8: board gameplay (board+tiles, dice, turn system), minigame/gambling integration, endgame, content, frontend, quality (see `docs/tournament-implementation-roadmap.md`).
 
 ### Minor: Game customisation options
 Status: `In progress`
