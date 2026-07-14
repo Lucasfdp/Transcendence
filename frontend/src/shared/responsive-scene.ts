@@ -40,6 +40,7 @@ export abstract class ResponsiveScene extends Phaser.Scene {
 
 	private _resizeTimer: ReturnType<typeof setTimeout> | null = null;
 	private _responsiveOn = false;
+	private _hasTeardown = false;
 
 	/**
 	 * Recompute the scene's layout from the current `this.scale.width/height`.
@@ -58,8 +59,10 @@ export abstract class ResponsiveScene extends Phaser.Scene {
 	protected enableResponsive(): void {
 		if (this._responsiveOn) return;
 		this._responsiveOn = true;
+		this._hasTeardown = false;
 		this.scale.on(Phaser.Scale.Events.RESIZE, this._onResizeEvent, this);
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, this._teardown, this);
+		this.events.once(Phaser.Scenes.Events.DESTROY, this._teardown, this);
 	}
 
 	private _onResizeEvent(): void {
@@ -82,11 +85,15 @@ export abstract class ResponsiveScene extends Phaser.Scene {
 	}
 
 	private _teardown(): void {
+		if (this._hasTeardown) return;
+		this._hasTeardown = true;
 		if (this._resizeTimer !== null) {
 			clearTimeout(this._resizeTimer);
 			this._resizeTimer = null;
 		}
 		this.scale.off(Phaser.Scale.Events.RESIZE, this._onResizeEvent, this);
+		this.events.off(Phaser.Scenes.Events.SHUTDOWN, this._teardown, this);
+		this.events.off(Phaser.Scenes.Events.DESTROY, this._teardown, this);
 		this._responsiveOn = false;
 		this.onShutdown();
 	}

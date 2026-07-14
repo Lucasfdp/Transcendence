@@ -296,10 +296,13 @@ Evidence:
    a live trajectory. A re-entry with moving entities resumes immediately, and
    physics projections continue rendering during any remaining UI countdown;
    it also requests projections briefly until a newer physics sequence confirms
-   stream continuity. Manual verification remains pending. Automated backend
-   (58 suites / 820 tests), frontend
-   (47 files / 287 tests), and build validation passed; initial two-client and
-   power-up checks are positive, while the full validation matrix remains pending.
+   stream continuity. Phaser scene teardown now removes the projection listener
+   on both shutdown and game destruction, preventing a stale re-entry scene from
+   throwing before its replacement receives the stream. Two-client manual tests
+   confirmed leave/re-entry during live play and subsequent launches in Bamboo
+   Bash and Bell Clash on 2026-07-14. Automated backend (58 suites / 820 tests),
+   frontend (48 files / 289 tests), and build validation passed; initial two-client
+   and power-up checks are positive, while the full validation matrix remains pending.
 
 Missing for completion:
 - Complete the remaining Bell Clash power-enabled and full-match replay matrix.

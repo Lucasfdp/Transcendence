@@ -53,8 +53,12 @@ Re-entry from the lobby now waits for the server's fresh `game:state` and a
 prevents a rejoining client from booting with a stale projection while another
 player remains in flight. Bamboo Bash also renders projections during its UI
 countdown and skips that countdown when the re-entry projection is moving; the
-lobby re-entry flow retries the physics request until it observes a newer sequence,
-then still requires manual validation.
+lobby re-entry flow retries the physics request until it observes a newer sequence.
+Scene cleanup runs for both Phaser shutdown and game destruction, so stale socket
+listeners cannot throw on destroyed display lists and interrupt the new scene's
+projection stream. Two-client manual testing confirmed this leave/re-entry flow in
+Bamboo Bash and Bell Clash on 2026-07-14; the remaining game matrices still require
+validation.
 
 Headless Firefox validation used two registered players and a guest spectator.
 It covered private matchmaking, simultaneous launches, identical transforms and
@@ -248,19 +252,20 @@ its own validation gates.
 
 ### Next-session work order
 
-1. Finish the Bamboo Bash validation matrix: two players, powers and pickups,
-   scoring, full three-round match, reconnect, spectator entry, and responsive
-   relayout. Preserve the current branch as the rollback point until this passes.
-2. The online score presentation is consistent as of 2026-07-14 without changing
-   physics: Bell Clash displays the server-authoritative hit value instead of the
-   literal `SERVER`, and Bamboo Bash appends authoritative `scoreEvents` to its
-   score log. The shared monotonic event identifier prevents duplicated log entries
-   after projections, reconnects, or spectator state requests.
-3. Capture a stable Bamboo Bash checkpoint after completing the remaining validation.
-4. Only then begin Kame Knock. Reuse the separated projection transport, but write
-   Kame-specific backend target, turn, and power rules before changing its client.
-   Keep Shell Curl as a separate future design because its persistent turn-based
-   stones have different authority and settlement requirements.
+1. Preserve the current stable checkpoint. Two-client manual testing now confirms
+   Bamboo Bash and Bell Clash leave/re-entry during a live trajectory, subsequent
+   launches, and the following round reset.
+2. Finish the Bamboo Bash validation matrix: powers and pickups, scoring, a full
+   three-round match, reconnect, spectator entry, and responsive relayout.
+3. Complete Bell Clash's remaining power-enabled and full-match replay matrix.
+   The online score presentation is already consistent: Bell Clash displays the
+   authoritative hit value and Bamboo Bash appends authoritative `scoreEvents`;
+   their monotonic identifiers prevent duplicate entries after projections,
+   reconnects, or spectator state requests.
+4. Only after both matrices pass, begin Kame Knock. Reuse the separated projection
+   transport, but write Kame-specific backend target, turn, and power rules before
+   changing its client. Keep Shell Curl as a separate future design because its
+   persistent turn-based stones have different authority and settlement requirements.
 
 ### Non-negotiable constraints
 
