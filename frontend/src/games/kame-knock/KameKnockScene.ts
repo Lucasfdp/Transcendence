@@ -66,6 +66,7 @@ import {
 } from "../../shared/mechanics/arena-power-runtime";
 import {
 	drawIngamePlayerTexture,
+	hideIngamePlayerTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
 import {
@@ -502,6 +503,10 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	}
 
 	private updateKameKnock(delta: number): void {
+		if (this.online.isActive) {
+			this.online.update(delta);
+			return;
+		}
 		if (!this.running) return;
 		if (!this.online.isActive) this.localReplay.addElapsed(delta);
 
@@ -582,8 +587,6 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			this.online.emitRelease({
 				roundNumber: this.online.snapshotRoundNumber,
 				turnNumber: this.online.snapshotTurnNumber,
-				x: (this.ball.x - this.arena.cx) / this.arena.rx,
-				y: (this.ball.y - this.arena.cy) / this.arena.ry,
 				vx: sourceVx,
 				vy: sourceVy,
 				power,
@@ -621,16 +624,6 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		const ball = this.activeBall();
 		const bx = ball.x;
 		const by = ball.y;
-		if (this.online.isActive) {
-			this.targets = this.targets.filter((t) => {
-				if (!t.breakable) return true;
-				const pos = timedTargetPosition(t, this.arena);
-				const hit = Math.hypot(pos.x - bx, pos.y - by) < blastR;
-				if (hit) this.online.reportTargetHit(t, 1, false);
-				return !hit;
-			});
-			return;
-		}
 		this.targets = this.targets.filter((t) => {
 			if (!t.breakable) return true;
 			const pos = timedTargetPosition(t, this.arena);
@@ -643,16 +636,6 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		const ball = this.activeBall();
 		const bx = ball.x;
 		const by = ball.y;
-		if (this.online.isActive) {
-			this.targets = this.targets.filter((t) => {
-				if (!t.breakable) return true;
-				const pos = timedTargetPosition(t, this.arena);
-				const hit = Math.hypot(pos.x - bx, pos.y - by) < repelR;
-				if (hit) this.online.reportTargetHit(t, 1, false);
-				return !hit;
-			});
-			return;
-		}
 		this.targets = this.targets.filter((t) => {
 			if (!t.breakable) return true;
 			const pos = timedTargetPosition(t, this.arena);
@@ -773,20 +756,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 				ball.x,
 				ball.y,
 			);
-		const perfect = accuracy <= PERFECT_ACCURACY;
-		if (this.online.isActive) {
-			this.online.reportTargetHit(target, this.combo, perfect);
-				this.targets.splice(i, 1);
-				popKameKnockScore(
-					this,
-					pos.x,
-					pos.y,
-					target.points * this.combo + (perfect ? PERFECT_BONUS : 0),
-					this.combo,
-					perfect,
-				);
-				continue;
-			}
+			const perfect = accuracy <= PERFECT_ACCURACY;
 			const gained =
 				target.points * this.combo + (perfect ? PERFECT_BONUS : 0);
 			const playerIndex = this.currentPlayerIndex();
@@ -1007,11 +977,6 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	}
 
 	private finishBallRound(): void {
-		if (this.online.isActive) {
-			this.online.onLocalBallSettled(this.activeBall());
-			return;
-		}
-
 		this.archiveLocalTrail();
 		this.launchedThisBall = false;
 		this.combo = 0;
@@ -1073,6 +1038,11 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	}
 
 	private spawnPowerPickup(): void {
+		if (this.online.isActive) {
+			// Online pickup positions and types belong to the server projection.
+			this.powerPickups?.clear();
+			return;
+		}
 		const powerupsEnabled = this.online.isActive
 			? this.online.snapshot?.powerupsEnabled === true
 			: this.registry.get("localPowerupsEnabled") !== false;
@@ -1090,6 +1060,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	}
 
 	private collectPowerPickup(ball: BallState): void {
+		if (this.online.isActive) return;
 		if (!this.powerPickups) return;
 		const pickup = this.powerPickups.collect(ball.x, ball.y, ball.r);
 		if (!pickup) return;
@@ -1118,6 +1089,30 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 
 	private resolvePowerBallCollisions(): void {
 		this.powerBalls.resolveCollisions([this.activeBall()]);
+	}
+
+	syncOnlinePowerPickups(
+		pickups: ReadonlyArray<{
+			id: number;
+			type: string;
+			x: number;
+			y: number;
+			radius: number;
+		}>,
+	): void {
+		this.powerPickups?.setPickups(
+			pickups
+				.filter((pickup) =>
+					(Object.values(PowerType) as string[]).includes(pickup.type),
+				)
+				.map((pickup) => ({
+					id: pickup.id,
+					type: pickup.type as PowerType,
+					x: this.arena.cx + pickup.x * this.arena.scale,
+					y: this.arena.cy + pickup.y * this.arena.scale,
+					r: pickup.radius * this.arena.scale,
+				})),
+		);
 	}
 
 	private powerPickupBlockers(): PowerPickupBlocker[] {
@@ -1308,7 +1303,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		return rows;
 	}
 
-	private addScoreEvent(label: string, value: string): void {
+	addScoreEvent(label: string, value: string): void {
 		this.scoreEvents.unshift(`${label}\t${value}`);
 		this.scoreEvents = this.scoreEvents.slice(0, SCORE_LOG_LIMIT);
 		this.updateSidePanels();
@@ -1436,7 +1431,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	private activeBall(): BallState {
 		if (!this.online.isActive) return this.ball;
 		const side = this.launchedThisBall
-			? (this.online.replaySide ?? this.online.visibleSide)
+			? this.online.visibleSide
 			: this.online.currentTurn;
 		return this.online.ballForOnlineSide(side);
 	}
@@ -1472,9 +1467,13 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		}
 
 		const side = this.launchedThisBall
-			? (this.online.replaySide ?? this.online.visibleSide)
+			? this.online.visibleSide
 			: this.online.currentTurn;
 		const ball = this.online.ballForOnlineSide(side);
+		for (const player of this.online.snapshot?.players ?? []) {
+			if (player.side !== side)
+				hideIngamePlayerTexture(this, `kame-knock-player-${player.side}`);
+		}
 		const onlineBall = ball as OnlineBallState;
 		const colour =
 			PLAYER_COLOUR_VALUES[side % PLAYER_COLOUR_VALUES.length] ??
@@ -1552,7 +1551,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		);
 	}
 
-	private drawBallTrails(): void {
+	drawBallTrails(): void {
 		const playersById = new Map<number | string, number>([
 			["local", this.currentPlayerIndex()],
 		]);
@@ -1765,6 +1764,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			resizeBall(this.ball);
 		}
 		for (const entry of this.powerBalls) resizeBall(entry.ball);
+		if (this.online.isActive) this.online.reprojectPhysicsState();
 		this.recreatePowerPickups();
 		if (previousPickups.length > 0) {
 			this.powerPickups?.setPickups(

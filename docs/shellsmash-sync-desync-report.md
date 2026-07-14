@@ -44,7 +44,7 @@ does not broadcast the legacy client throw event. Direct physics tests cover idl
 shell collision, bamboo scoring, pickup application, derived projectile identities,
 and projection synchronisation; gateway tests cover the public Bamboo projection.
 Score and pickup pop-ups are presentation-only reactions to those authoritative
-events. Each client establishes its event cursor from the first projection, so a
+   events. Each client establishes its event cursor from the first projection, so a
 reconnect does not replay historical visual effects. Two-client manual validation
 confirmed both feedback paths on 2026-07-14.
 
@@ -58,7 +58,18 @@ Scene cleanup runs for both Phaser shutdown and game destruction, so stale socke
 listeners cannot throw on destroyed display lists and interrupt the new scene's
 projection stream. Two-client manual testing confirmed this leave/re-entry flow in
 Bamboo Bash and Bell Clash on 2026-07-14; the remaining game matrices still require
-validation.
+   validation.
+
+Temple Curling now also has a game-specific server-authoritative path. Its
+backend fixed-step simulation owns persistent stones in source-space, wall and
+bumper rebounds, shell collisions, selected one-use powers, settlement, end
+scoring, and match completion. The client sends only bounded launch intent,
+renders timestamped physics projections, and rejects the former client-owned
+`settled` contract. Rejoining clients request a current projection; the same
+authoritative frames remain replay-compatible. Pickups, sweeping, hammer rules,
+and replay renderer work deliberately remain outside this rollout. Automated
+backend physics, engine, gateway, and full-suite checks passed on 2026-07-15;
+the multiplayer, spectator, and responsive-relayout manual matrix is pending.
 
 Headless Firefox validation used two registered players and a guest spectator.
 It covered private matchmaking, simultaneous launches, identical transforms and
@@ -262,10 +273,19 @@ its own validation gates.
    authoritative hit value and Bamboo Bash appends authoritative `scoreEvents`;
    their monotonic identifiers prevent duplicate entries after projections,
    reconnects, or spectator state requests.
-4. Only after both matrices pass, begin Kame Knock. Reuse the separated projection
+4. Bell Clash and Bamboo Bash manual matrices have now passed, excluding replay
+   checks owned by a separate branch. Begin Kame Knock by reusing the separated projection
    transport, but write Kame-specific backend target, turn, and power rules before
    changing its client. Keep Shell Curl as a separate future design because its
    persistent turn-based stones have different authority and settlement requirements.
+
+Kame Knock now has the separated authoritative projection path. Its initial
+two-client visual correction pass was manually confirmed on 2026-07-14: the
+idle opponent shell appears before launch, settled turn textures are removed,
+and pickups are projected from the server. Power-up, scoring, live re-entry,
+full-match, results, history, and reward validation also passed on 2026-07-14.
+The remaining manual gate is spectator entry during live play and responsive
+relayout; replay work remains excluded while handled on its separate branch.
 
 ### Non-negotiable constraints
 

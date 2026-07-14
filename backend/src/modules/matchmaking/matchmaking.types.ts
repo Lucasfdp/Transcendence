@@ -104,6 +104,7 @@ export interface CurlingSnapshot {
 	totalEnds: number;
 	score: number[];
 	endScores: Array<Array<number | null>>;
+	usedPowersBySide?: string[][];
 	map: GameMap;
 	players: SnapshotPlayer[];
 	objects: Array<{
@@ -132,6 +133,43 @@ export interface CurlingSnapshot {
 	entities: ReplayFrameSnapshotEntity[];
 	activeBallId: number | null;
 	winnerSide: number | null;
+}
+
+export interface ShellCurlPhysicsEntity {
+	id: number;
+	shotNumber: number;
+	primary: boolean;
+	ownerSide: number;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	radius: number;
+	rotation: number;
+	angularVelocity: number;
+	power: string;
+	stopped: boolean;
+	alpha: number;
+	ghostCollisionAvailable: boolean;
+	frozen?: boolean;
+	ghostAvailable?: boolean;
+	phantomHidden?: boolean;
+	stopPowerApplied?: boolean;
+	boomerangTravel?: number;
+	boomerangLimit?: number;
+	boomerangFlipped?: boolean;
+	trail?: Array<{ x: number; y: number }>;
+}
+
+export interface ShellCurlPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: ShellCurlPhysicsEntity[];
+	pickups: [];
+	scoreEvents: [];
+	pickupEvents: [];
+	nextEntityId: number;
 }
 
 export interface BallSnapshotData {
@@ -383,6 +421,36 @@ export interface BambooBashPhysicsState {
 	nextPickupEventId?: number;
 }
 
+export interface KameKnockPhysicsEntity extends BellClashPhysicsEntity {
+	turnNumber?: number;
+}
+
+export interface KameKnockPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: KameKnockPhysicsEntity[];
+	pickups: BellClashPhysicsPickup[];
+	scoreEvents: Array<{
+		id: number;
+		side: number;
+		targetId: number;
+		targetKind: "daruma" | "crate" | "drum";
+		points: number;
+		combo: number;
+		perfect: boolean;
+		x: number;
+		y: number;
+	}>;
+	pickupEvents?: ArenaPhysicsPickupEvent[];
+	nextEntityId: number;
+	nextPickupId: number;
+	nextScoreEventId: number;
+	nextPickupEventId?: number;
+	combo: number;
+	settledProjectionPending: boolean;
+}
+
 export type GameSnapshot =
 	| CurlingSnapshot
 	| BambooBashSnapshot
@@ -409,7 +477,7 @@ export interface MatchRoom {
 	spectators: Map<string, SocketUser>;
 	seq: number;
 	state: GameSnapshot;
-	physicsState?: BellClashPhysicsState | BambooBashPhysicsState;
+	physicsState?: BellClashPhysicsState | BambooBashPhysicsState | KameKnockPhysicsState | ShellCurlPhysicsState;
 	rewardsGranted?: boolean;
 	rematchReadyUserIds?: Set<number>;
 	rematchLeftUserIds?: Set<number>;

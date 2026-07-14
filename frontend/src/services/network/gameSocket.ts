@@ -24,6 +24,7 @@ export interface CurlingSnapshot {
 	totalEnds: number;
 	score: number[];
 	endScores: Array<Array<number | null>>;
+	usedPowersBySide?: string[][];
 	map: GameMap;
 	players: Array<{
 		side: number;
@@ -185,6 +186,7 @@ export interface KameKnockSnapshot {
 	activeTurnNumber: number | null;
 	score: number[];
 	roundScores: number[];
+	usedPowersBySide: string[][];
 	targets: Array<{
 		id: number;
 		kind: "daruma" | "crate" | "drum";
@@ -256,6 +258,32 @@ export interface BambooBashPhysicsState {
 	pickupEvents?: Array<{ id: number; side: number; type: string; x: number; y: number }>;
 	bamboos: BambooBashSnapshot["bamboos"];
 	liveRoundScores: number[];
+}
+
+export interface KameKnockPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: Array<ArenaPhysicsEntity & { turnNumber: number }>;
+	pickups: Array<{ id: number; type: string; x: number; y: number; radius: number }>;
+	scoreEvents: Array<{
+		id: number;
+		side: number;
+		targetId: number;
+		targetKind: "daruma" | "crate" | "drum";
+		points: number;
+		combo: number;
+		perfect: boolean;
+		x: number;
+		y: number;
+	}>;
+	pickupEvents?: Array<{ id: number; side: number; type: string; x: number; y: number }>;
+	targets?: KameKnockSnapshot["targets"];
+	score?: number[];
+	roundScores?: number[];
+	currentTurn?: number;
+	turnNumber?: number;
+	roundNumber?: number;
 }
 
 export type GameSnapshot =
@@ -348,13 +376,40 @@ export interface BellClashPhysicsState {
 	pickupEvents?: Array<{ id: number; side: number; type: string; x: number; y: number }>;
 }
 
+export interface ShellCurlPhysicsEntity {
+	id: number;
+	shotNumber: number;
+	primary: boolean;
+	ownerSide: number;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	radius: number;
+	rotation: number;
+	angularVelocity: number;
+	power: string;
+	stopped: boolean;
+	alpha: number;
+}
+
+export interface ShellCurlPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: ShellCurlPhysicsEntity[];
+	pickups: [];
+	scoreEvents: [];
+	pickupEvents: [];
+}
+
 export interface OnlineMatchContext {
 	matchId: string;
 	side: number;
 	spectator?: boolean;
 	rejoining?: boolean;
 	snapshot?: GameSnapshot;
-	physicsState?: BellClashPhysicsState | BambooBashPhysicsState;
+	physicsState?: BellClashPhysicsState | BambooBashPhysicsState | KameKnockPhysicsState | ShellCurlPhysicsState;
 }
 
 let socket: Socket | null = null;

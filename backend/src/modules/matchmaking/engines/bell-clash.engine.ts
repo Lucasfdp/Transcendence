@@ -206,7 +206,7 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 		state: BellClashSnapshot,
 		room: MatchRoom,
 	): void {
-		const physics = room.physicsState;
+		const physics = room.physicsState as ReturnType<typeof createBellPhysicsState> | undefined;
 		if (!physics) return;
 		state.entities = physics.entities.map((entity) => ({
 			id: entity.id,

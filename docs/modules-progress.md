@@ -300,17 +300,35 @@ Evidence:
    on both shutdown and game destruction, preventing a stale re-entry scene from
    throwing before its replacement receives the stream. Two-client manual tests
    confirmed leave/re-entry during live play and subsequent launches in Bamboo
-   Bash and Bell Clash on 2026-07-14. Automated backend (58 suites / 820 tests),
+   Bash and Bell Clash on 2026-07-14. Automated backend (59 suites / 827 tests),
    frontend (48 files / 289 tests), and build validation passed; initial two-client
    and power-up checks are positive, while the full validation matrix remains pending.
 
 Missing for completion:
-- Complete the remaining Bell Clash power-enabled and full-match replay matrix.
-- Complete the manual two-client validation matrix for Bamboo Bash, including
-  powers, scoring, timers, reconnection, spectator entry, and responsive relayout.
-- Complete the manual two-client validation matrix for Kame Knock and Shell Curl.
-  Those games retain their previous client-simulation models and are not
-  server-authoritative.
+- Bell Clash and Bamboo Bash manual multiplayer validation, including live
+  re-entry, has completed successfully. Replay-specific checks are maintained
+  separately while replay work proceeds on another branch.
+- The initial Kame Knock visual pass, including the idle opponent shell, turn
+  cleanup, and server-projected pickups, was manually validated successfully on
+  2026-07-14. The power-up, scoring, live re-entry, full-match, results,
+  history, and reward paths were also manually validated successfully. Kame
+  Knock relies exclusively on the server for projectile movement, collisions,
+  pickups, scoring, and turn settlement; its dedicated physics and engine tests
+   cover those authority boundaries.
+- Temple Curling now uses the separated server-authoritative projection channel:
+  fixed-step source-space stones, walls, bumpers, shell collisions, the eight
+  active selected powers, settlement, turns, ends, and house scoring are owned
+  by the backend. The browser sends only bounded launch intent and renders
+  interpolated `game:physics-state` projections; client `settled` reports are
+  rejected. Rejoin uses a fresh physics request, while the projection frames
+  remain compatible with replay capture. Backend physics/engine/gateway tests,
+  the complete backend suite (60 suites / 833 tests), frontend suite (48 files
+  / 289 tests), and frontend/backend builds passed on 2026-07-15.
+- Complete Kame Knock spectator entry during live play and responsive relayout
+  validation before claiming its rollout complete.
+- Complete the manual two-client Temple Curling matrix, including the eight
+  powers, full matches, re-entry, spectators, responsive relayout, and 3–5
+  player matches, before claiming its rollout complete.
 
 ### Major: Multiplayer game with more than two players
 Status: `In progress`

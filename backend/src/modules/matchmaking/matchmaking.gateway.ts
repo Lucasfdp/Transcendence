@@ -31,6 +31,7 @@ import {
 	CurlingThrowEvent,
 	GameInputPayload,
 	KameKnockThrowEvent,
+	KameKnockSnapshot,
 	MatchRoom,
 	QueueJoinPayload,
 	RoomPlayer,
@@ -489,9 +490,10 @@ export class MatchmakingGateway
 					"game:throw",
 					throwEvent as unknown as Record<string, unknown>,
 				);
-				this.server.to(room.matchId).emit("game:throw", throwEvent);
 			}
-			this.emitState(room.matchId);
+			// Temple Curling clients render the authoritative launch projection;
+			// the throw record remains replay-only.
+			this.emitPhysicsState(room.matchId);
 			return { accepted: true };
 		}
 
@@ -591,20 +593,10 @@ export class MatchmakingGateway
 					"game:kame-throw",
 					throwEvent as unknown as Record<string, unknown>,
 				);
-				this.server
-					.to(room.matchId)
-					.emit("game:kame-throw", throwEvent);
-				if (power !== "none") {
-					this.server.to(room.matchId).emit("game:kame-power-pickup", {
-						matchId: room.matchId,
-						roundNumber: room.state.roundNumber,
-						turnNumber: room.state.turnNumber,
-						side: player.side,
-						power,
-					});
-				}
 			}
-			this.emitState(room.matchId);
+			// Kame Knock clients render the authoritative launch projection; throw
+			// events are retained only in the replay log.
+			this.emitPhysicsState(room.matchId);
 			return { accepted: true };
 		}
 
@@ -1128,6 +1120,15 @@ export class MatchmakingGateway
 			const state = room.state as BambooBashSnapshot;
 			projection.bamboos = state.bamboos;
 			projection.liveRoundScores = state.liveRoundScores;
+		}
+		if (room.state.gameId === "kame-knock") {
+			const state = room.state as KameKnockSnapshot;
+			projection.targets = state.targets;
+			projection.score = state.score;
+			projection.roundScores = state.roundScores;
+			projection.currentTurn = state.currentTurn;
+			projection.turnNumber = state.turnNumber;
+			projection.roundNumber = state.roundNumber;
 		}
 		return projection;
 	}
