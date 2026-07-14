@@ -335,6 +335,14 @@ export interface BellClashScoreEvent {
 	zoneKind: "red" | "yellow" | "green" | "neutral";
 }
 
+export interface ArenaPhysicsPickupEvent {
+	id: number;
+	side: number;
+	type: string;
+	x: number;
+	y: number;
+}
+
 export interface BellClashPhysicsState {
 	matchId: string;
 	physicsSeq: number;
@@ -342,9 +350,11 @@ export interface BellClashPhysicsState {
 	entities: BellClashPhysicsEntity[];
 	pickups: BellClashPhysicsPickup[];
 	scoreEvents: BellClashScoreEvent[];
+	pickupEvents?: ArenaPhysicsPickupEvent[];
 	nextEntityId: number;
 	nextPickupId: number;
 	nextScoreEventId: number;
+	nextPickupEventId?: number;
 	bellCooldownMs: number[];
 }
 
@@ -366,9 +376,11 @@ export interface BambooBashPhysicsState {
 	entities: BambooBashPhysicsEntity[];
 	pickups: BambooBashPhysicsPickup[];
 	scoreEvents: BambooBashScoreEvent[];
+	pickupEvents?: ArenaPhysicsPickupEvent[];
 	nextEntityId: number;
 	nextPickupId: number;
 	nextScoreEventId: number;
+	nextPickupEventId?: number;
 }
 
 export type GameSnapshot =

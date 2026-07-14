@@ -524,11 +524,10 @@ export class MatchmakingGateway
 					"game:bamboo-throw",
 					throwEvent as unknown as Record<string, unknown>,
 				);
-				this.server
-					.to(room.matchId)
-					.emit("game:bamboo-throw", throwEvent);
 			}
-			this.emitState(room.matchId);
+			// Bamboo Bash clients render the authoritative launch projection directly;
+			// the lifecycle snapshot is reserved for round and match transitions.
+			this.emitPhysicsState(room.matchId);
 			return { accepted: true };
 		}
 
@@ -1123,6 +1122,7 @@ export class MatchmakingGateway
 			entities: physics.entities,
 			pickups: physics.pickups,
 			scoreEvents: physics.scoreEvents,
+			pickupEvents: physics.pickupEvents ?? [],
 		};
 		if (room.state.gameId === "bamboo-bash") {
 			const state = room.state as BambooBashSnapshot;

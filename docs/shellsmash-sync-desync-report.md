@@ -38,13 +38,32 @@ reports are rejected. Initial two-client checks, including powers, currently sho
 matching positions and outcomes. Kame Knock and Shell Curl retain their previous
 client-simulation models and must not be described as server-authoritative.
 
+The Bamboo Bash gateway emits the authoritative projection immediately after an
+accepted launch, while retaining the launch event only in the replay record. It
+does not broadcast the legacy client throw event. Direct physics tests cover idle
+shell collision, bamboo scoring, pickup application, derived projectile identities,
+and projection synchronisation; gateway tests cover the public Bamboo projection.
+Score and pickup pop-ups are presentation-only reactions to those authoritative
+events. Each client establishes its event cursor from the first projection, so a
+reconnect does not replay historical visual effects. Two-client manual validation
+confirmed both feedback paths on 2026-07-14.
+
+Re-entry from the lobby now waits for the server's fresh `game:state` and a
+`game:physics-request` acknowledgement before starting the game scene. This
+prevents a rejoining client from booting with a stale projection while another
+player remains in flight. Bamboo Bash also renders projections during its UI
+countdown and skips that countdown when the re-entry projection is moving; the
+lobby re-entry flow retries the physics request until it observes a newer sequence,
+then still requires manual validation.
+
 Headless Firefox validation used two registered players and a guest spectator.
 It covered private matchmaking, simultaneous launches, identical transforms and
 score events, second-shot rearming, transition into round two, reconnect,
 spectator entry, and responsive relayout. The backend suite remains green at
-57 suites and 808 tests; focused authoritative tests cover fixed-step pacing,
+58 suites and 820 tests; focused authoritative tests cover fixed-step pacing,
 physics sequence, server scoring, derived identities, round completion, and
-initial/immediate/final projection delivery.
+initial/immediate/final projection delivery. Frontend tests are green at 47 files
+and 287 tests.
 
 ---
 
@@ -232,12 +251,12 @@ its own validation gates.
 1. Finish the Bamboo Bash validation matrix: two players, powers and pickups,
    scoring, full three-round match, reconnect, spectator entry, and responsive
    relayout. Preserve the current branch as the rollback point until this passes.
-2. Make the online score presentation consistent without changing physics:
-   Bell Clash should display the server-authoritative hit value rather than the
-   literal `SERVER`; Bamboo Bash should append authoritative `scoreEvents` to its
-   score log. Confirm the HUD, side panel, and log agree on live-round and total
-   values.
-3. Capture a stable Bamboo Bash checkpoint after the score presentation pass.
+2. The online score presentation is consistent as of 2026-07-14 without changing
+   physics: Bell Clash displays the server-authoritative hit value instead of the
+   literal `SERVER`, and Bamboo Bash appends authoritative `scoreEvents` to its
+   score log. The shared monotonic event identifier prevents duplicated log entries
+   after projections, reconnects, or spectator state requests.
+3. Capture a stable Bamboo Bash checkpoint after completing the remaining validation.
 4. Only then begin Kame Knock. Reuse the separated projection transport, but write
    Kame-specific backend target, turn, and power rules before changing its client.
    Keep Shell Curl as a separate future design because its persistent turn-based

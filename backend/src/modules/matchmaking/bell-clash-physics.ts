@@ -41,9 +41,11 @@ export function createBellPhysicsState(matchId: string): BellClashPhysicsState {
 		entities: [],
 		pickups: [],
 		scoreEvents: [],
+		pickupEvents: [],
 		nextEntityId: 1,
 		nextPickupId: 1,
 		nextScoreEventId: 1,
+		nextPickupEventId: 1,
 		bellCooldownMs: [],
 	};
 }
@@ -55,6 +57,7 @@ export function resetBellPhysicsRound(
 	physics.entities = [];
 	physics.pickups = powerupsEnabled ? [createPickup(physics)] : [];
 	physics.scoreEvents = [];
+	physics.pickupEvents = [];
 	physics.bellCooldownMs = [];
 	bumpPhysics(physics);
 }
@@ -376,6 +379,16 @@ function collectPickups(physics: BellClashPhysicsState): void {
 		physics.pickups = physics.pickups.filter(
 			(candidate) => candidate.id !== pickup.id,
 		);
+		physics.pickupEvents ??= [];
+		physics.pickupEvents.push({
+			id: physics.nextPickupEventId ?? 1,
+			side: entity.ownerSide,
+			type: pickup.type,
+			x: pickup.x,
+			y: pickup.y,
+		});
+		physics.nextPickupEventId = (physics.nextPickupEventId ?? 1) + 1;
+		physics.pickupEvents = physics.pickupEvents.slice(-16);
 		entity.power = pickup.type;
 		entity.alpha = pickup.type === "phantom" ? 0.52 : 1;
 		applyPower(physics, entity, pickup.type);

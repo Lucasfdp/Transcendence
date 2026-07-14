@@ -1005,7 +1005,7 @@ export class BellClashScene
 		return bellBlocker ? [bellBlocker] : [];
 	}
 
-	private showPowerPickupNotice(type: PowerType, x: number, y: number): void {
+	public showPowerPickupNotice(type: PowerType, x: number, y: number): void {
 		const label = this.add
 			.text(
 				x,

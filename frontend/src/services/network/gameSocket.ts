@@ -253,6 +253,7 @@ export interface BambooBashPhysicsState {
 	entities: ArenaPhysicsEntity[];
 	pickups: Array<{ id: number; type: string; x: number; y: number; radius: number }>;
 	scoreEvents: Array<{ id: number; side: number; points: number; bambooId: number }>;
+	pickupEvents?: Array<{ id: number; side: number; type: string; x: number; y: number }>;
 	bamboos: BambooBashSnapshot["bamboos"];
 	liveRoundScores: number[];
 }
@@ -344,12 +345,14 @@ export interface BellClashPhysicsState {
 		points: number;
 		zoneKind: "red" | "yellow" | "green" | "neutral";
 	}>;
+	pickupEvents?: Array<{ id: number; side: number; type: string; x: number; y: number }>;
 }
 
 export interface OnlineMatchContext {
 	matchId: string;
 	side: number;
 	spectator?: boolean;
+	rejoining?: boolean;
 	snapshot?: GameSnapshot;
 	physicsState?: BellClashPhysicsState | BambooBashPhysicsState;
 }

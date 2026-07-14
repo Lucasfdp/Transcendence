@@ -37,9 +37,11 @@ export function createBambooPhysicsState(matchId: string): BambooBashPhysicsStat
 		entities: [],
 		pickups: [],
 		scoreEvents: [],
+		pickupEvents: [],
 		nextEntityId: 1,
 		nextPickupId: 1,
 		nextScoreEventId: 1,
+		nextPickupEventId: 1,
 	};
 }
 
@@ -50,6 +52,7 @@ export function resetBambooPhysicsRound(
 	physics.entities = [];
 	physics.pickups = [];
 	physics.scoreEvents = [];
+	physics.pickupEvents = [];
 	state.bamboos = [];
 	state.nextBambooId = 1;
 	state.spawnAccMs = 0;
@@ -240,6 +243,10 @@ function collectPickups(physics: BambooBashPhysicsState, state: BambooBashSnapsh
 	const pickup = physics.pickups.find((candidate) => Math.hypot(entity.x - candidate.x, entity.y - candidate.y) < entity.radius + candidate.radius);
 	if (!pickup) return;
 	physics.pickups = physics.pickups.filter((candidate) => candidate.id !== pickup.id);
+	physics.pickupEvents ??= [];
+	physics.pickupEvents.push({ id: physics.nextPickupEventId ?? 1, side: entity.ownerSide, type: pickup.type, x: pickup.x, y: pickup.y });
+	physics.nextPickupEventId = (physics.nextPickupEventId ?? 1) + 1;
+	physics.pickupEvents = physics.pickupEvents.slice(-16);
 	entity.power = pickup.type; entity.alpha = pickup.type === "phantom" ? 0.52 : 1; applyPower(physics, entity, pickup.type);
 	state.lastPowerBySide[entity.ownerSide] = pickup.type;
 }

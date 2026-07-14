@@ -90,4 +90,18 @@ describe("Bell Clash authoritative physics", () => {
 		expect(Number.isFinite(physics.pickups[0].x)).toBe(true);
 		expect(Number.isFinite(physics.pickups[0].y)).toBe(true);
 	});
+
+	it("emits a pickup event when the server applies a power", () => {
+		const physics = createBellPhysicsState("bell-physics");
+		const state = snapshot();
+		physics.pickups = [{ id: 6, type: "rocket", x: 0, y: 0, radius: 20 }];
+		launchBellProjectile(physics, 0, 1, 0, 0, 100, 0, "none");
+
+		advanceBellPhysics(physics, state, 0);
+
+		expect(physics.pickups).toEqual([]);
+		expect(physics.pickupEvents).toEqual([
+			expect.objectContaining({ id: 1, side: 0, type: "rocket", x: 0, y: 0 }),
+		]);
+	});
 });

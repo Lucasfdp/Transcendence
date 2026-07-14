@@ -29,7 +29,9 @@ import { THEME } from "../../shared/theme";
 import {
 	clearBellClashPowerBalls,
 	drawBellClashZones,
+	popBellClashScore,
 	type ScoreZone,
+	ZONE_DEFS,
 } from "./BellClashView";
 import {
 	interpolateBellPhysics,
@@ -92,6 +94,7 @@ export interface BellClashOnlineScene {
 	resetBallPosition(ball: BallState, index: number, total: number): void;
 	showOnlineEndScreen(snapshot: BellClashSnapshot): void;
 	showPowerPanel(): void;
+	showPowerPickupNotice(type: PowerType, x: number, y: number): void;
 	updateScoreTexts(): void;
 	updateSidePanels(): void;
 	syncOnlinePowerPickups(state: BellClashPhysicsState): void;
@@ -113,10 +116,13 @@ export class BellClashOnlineController {
 	private appliedRound = 0;
 	private lastPhysicsSeq = -1;
 	private lastScoreEventId = 0;
+	private lastPickupEventId = 0;
+	private hasPhysicsProjection = false;
 	private readonly projectedEntities = new Map<number, OnlineBallState>();
 	private localPhysicsMoving = false;
 	private serverClockOffsetMs = 0;
 	private latestPhysicsState: BellClashPhysicsState | null = null;
+	private rejoinPhysicsTimer: ReturnType<typeof setInterval> | null = null;
 
 	constructor(scene: Phaser.Scene & BellClashOnlineScene) {
 		this.scene = scene;
@@ -173,6 +179,7 @@ export class BellClashOnlineController {
 	}
 
 	bindFromRegistry(): boolean {
+		this.stopRejoinPhysicsPolling();
 		const registryMatch = this.scene.registry.get("onlineMatch") as
 			| OnlineMatchContext
 			| undefined;
@@ -190,6 +197,8 @@ export class BellClashOnlineController {
 		this.appliedRound = 0;
 		this.lastPhysicsSeq = -1;
 		this.lastScoreEventId = 0;
+		this.lastPickupEventId = 0;
+		this.hasPhysicsProjection = false;
 		this.projectedEntities.clear();
 		this.localPhysicsMoving = false;
 		this.serverClockOffsetMs = 0;
@@ -209,13 +218,15 @@ export class BellClashOnlineController {
 		this.updateStatus("Connected to Bell Clash match.");
 		if (this.match.physicsState)
 			this.applyPhysicsState(this.match.physicsState as BellClashPhysicsState);
-		socket.emit(
+		const requestPhysics = () => socket.emit(
 			"game:physics-request",
-			{ matchId: this.match.matchId },
+			{ matchId: this.match!.matchId },
 			(state: BellClashPhysicsState | null) => {
 				if (state) this.applyPhysicsState(state);
 			},
 		);
+		requestPhysics();
+		if (this.match.rejoining) this.startRejoinPhysicsPolling(requestPhysics);
 	}
 
 	shutdown(): void {
@@ -225,6 +236,24 @@ export class BellClashOnlineController {
 		socket.off("game:physics-state", this.handlePhysicsState);
 		this.statusText?.destroy();
 		this.statusText = null;
+		this.stopRejoinPhysicsPolling();
+	}
+
+	private startRejoinPhysicsPolling(requestPhysics: () => void): void {
+		const baselineSeq = this.lastPhysicsSeq;
+		let attempts = 0;
+		this.rejoinPhysicsTimer = setInterval(() => {
+			if (++attempts > 20 || this.lastPhysicsSeq > baselineSeq) {
+				this.stopRejoinPhysicsPolling();
+				return;
+			}
+			requestPhysics();
+		}, 150);
+	}
+
+	private stopRejoinPhysicsPolling(): void {
+		if (this.rejoinPhysicsTimer) clearInterval(this.rejoinPhysicsTimer);
+		this.rejoinPhysicsTimer = null;
 	}
 
 	createStatusText(): void {
@@ -487,6 +516,8 @@ export class BellClashOnlineController {
 			? Math.min(this.serverClockOffsetMs, observedOffset)
 			: observedOffset;
 		this.latestPhysicsState = state;
+		const isInitialPhysicsProjection = !this.hasPhysicsProjection;
+		this.hasPhysicsProjection = true;
 		const activeIds = new Set(state.entities.map((entity) => entity.id));
 		for (const id of this.projectedEntities.keys()) {
 			if (!activeIds.has(id)) this.projectedEntities.delete(id);
@@ -558,11 +589,36 @@ export class BellClashOnlineController {
 		for (const event of state.scoreEvents) {
 			if (event.id <= this.lastScoreEventId) continue;
 			this.lastScoreEventId = event.id;
+			if (isInitialPhysicsProjection) continue;
 			this.scene.addScoreEvent(
-				`P${event.side + 1} ${event.zoneKind.toUpperCase()} +${event.points}`,
-				"SERVER",
+				`P${event.side + 1} ${event.zoneKind.toUpperCase()}`,
+				`+${event.points}`,
+			);
+			const zone = event.zoneKind === "neutral"
+				? null
+				: ZONE_DEFS[event.zoneKind];
+			popBellClashScore(
+				this.scene,
+				this.scene.arena.cx,
+				this.scene.arena.cy,
+				`+${event.points}  ${zone?.label ?? "NEUTRAL"}`,
+				zone ? `#${zone.color.toString(16).padStart(6, "0")}` : THEME.text,
 			);
 			this.scene.bellPulseMs = 180;
+		}
+		for (const event of state.pickupEvents ?? []) {
+			if (event.id <= this.lastPickupEventId) continue;
+			this.lastPickupEventId = event.id;
+			if (isInitialPhysicsProjection) continue;
+			const type = (Object.values(PowerType) as string[]).includes(event.type)
+				? (event.type as PowerType)
+				: PowerType.NONE;
+			if (type === PowerType.NONE) continue;
+			this.scene.showPowerPickupNotice(
+				type,
+				this.scene.arena.cx + event.x * this.scene.arena.scale,
+				this.scene.arena.cy + event.y * this.scene.arena.scale,
+			);
 		}
 
 		const localMoving = state.entities.some(

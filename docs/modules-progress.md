@@ -283,12 +283,23 @@ Evidence:
   rejoin, and responsive relayout on 2026-07-13.
 - Bamboo Bash now uses the same separated authoritative projection channel:
   fixed-step source-space projectile movement, bamboo growth/spawning, pickup
-  collection, collisions, scoring, and timed round completion are server-owned.
-  Browser inputs are limited to bounded launches; transform, bamboo-hit, pickup,
-  and round-score reports are rejected. Client rendering uses buffered physics
-  projections rather than locally stepping the match. Automated backend and
-  frontend build validation passed; initial two-client and power-up checks are
-  positive, while the full validation matrix remains pending.
+   collection, collisions, scoring, and timed round completion are server-owned.
+   Browser inputs are limited to bounded launches; transform, bamboo-hit, pickup,
+   and round-score reports are rejected. Client rendering uses buffered physics
+   projections rather than locally stepping the match. An accepted launch now
+   emits the authoritative physics projection immediately rather than the legacy
+   client throw event. Score and pickup pop-ups are driven by server-confirmed
+   events, with the initial projection used as a deduplication baseline after a
+   reconnect; two-client manual validation confirmed both feedback paths on
+   2026-07-14. Lobby re-entry now waits for a newly emitted snapshot and physics
+   projection before recreating the game scene, avoiding stale lobby state during
+   a live trajectory. A re-entry with moving entities resumes immediately, and
+   physics projections continue rendering during any remaining UI countdown;
+   it also requests projections briefly until a newer physics sequence confirms
+   stream continuity. Manual verification remains pending. Automated backend
+   (58 suites / 820 tests), frontend
+   (47 files / 287 tests), and build validation passed; initial two-client and
+   power-up checks are positive, while the full validation matrix remains pending.
 
 Missing for completion:
 - Complete the remaining Bell Clash power-enabled and full-match replay matrix.

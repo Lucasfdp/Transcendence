@@ -665,14 +665,29 @@ export class ShellPickerScene extends ResponsiveScene {
 			return;
 		const targetScene = ONLINE_SCENES[status.gameId];
 		if (!targetScene) return;
-		getGameSocket().emit("match:rejoin");
-		this.registry.set("onlineMatch", {
-			matchId: status.matchId,
-			side: status.side,
-			snapshot: status.snapshot,
-			physicsState: status.physicsState,
-		});
-		this.scene.start(targetScene);
+		const socket = getGameSocket();
+		const onRejoinedState = (snapshot: GameSnapshot) => {
+			if (snapshot.matchId !== status.matchId || snapshot.gameId !== status.gameId)
+				return;
+			socket.off("game:state", onRejoinedState);
+			socket.emit(
+				"game:physics-request",
+				{ matchId: status.matchId },
+				(physicsState: BellClashPhysicsState | null) => {
+					if (!this.scene.isActive()) return;
+					this.registry.set("onlineMatch", {
+						matchId: status.matchId,
+						side: status.side,
+						rejoining: true,
+						snapshot,
+						physicsState: physicsState ?? undefined,
+					});
+					this.scene.start(targetScene);
+				},
+			);
+		};
+		socket.on("game:state", onRejoinedState);
+		socket.emit("match:rejoin");
 	}
 
 	private abandonActiveMatch(): void {

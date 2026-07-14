@@ -481,19 +481,33 @@ function PowerupMatchmakingPanel({
 		if (!activeMatchStatus?.matchId || activeMatchStatus.side === undefined || !activeMatchStatus.snapshot) return;
 		const targetScene = GAME_SCENES[activeMatchStatus.gameId ?? ""]?.targetScene;
 		if (!targetScene) return;
-		getGameSocket().emit("match:rejoin");
-		onLaunch({
-			gameId: activeMatchStatus.gameId as GameId,
-			targetScene,
-			user: currentUser ?? undefined,
-			shellSelection: { player0: [], player1: [] },
-			onlineMatch: {
-				matchId: activeMatchStatus.matchId,
-				side: activeMatchStatus.side,
-				snapshot: activeMatchStatus.snapshot,
-				physicsState: activeMatchStatus.physicsState,
+		const socket = getGameSocket();
+		const { matchId, gameId: activeGameId, side } = activeMatchStatus;
+		const onRejoinedState = (snapshot: GameSnapshot) => {
+			if (snapshot.matchId !== matchId || snapshot.gameId !== activeGameId) return;
+			socket.off("game:state", onRejoinedState);
+			socket.emit(
+			"game:physics-request",
+			{ matchId },
+			(physicsState: OnlineMatchContext["physicsState"] | null) => {
+				onLaunch({
+					gameId: activeGameId as GameId,
+					targetScene,
+					user: currentUser ?? undefined,
+					shellSelection: { player0: [], player1: [] },
+					onlineMatch: {
+						matchId,
+						side,
+						rejoining: true,
+						snapshot,
+						physicsState: physicsState ?? undefined,
+					},
+				});
 			},
-		});
+		);
+		};
+		socket.on("game:state", onRejoinedState);
+		socket.emit("match:rejoin");
 	};
 
 	const abandonActiveMatch = () => {
