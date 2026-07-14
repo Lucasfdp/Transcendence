@@ -11,7 +11,7 @@ import {
 import { Match } from "./match.entity";
 import { MatchReplaySave } from "./match-replay-save.entity";
 
-export const REPLAY_CONTRACT_VERSION = 1;
+export const REPLAY_CONTRACT_VERSION = 2;
 
 export type ReplayContractVersion = typeof REPLAY_CONTRACT_VERSION;
 
@@ -66,23 +66,49 @@ export interface MatchReplaySnapshot {
 	[key: string]: unknown;
 }
 
+export interface ReplayMetadataV2 {
+	contractVersion: ReplayContractVersion;
+	origin: "local" | "online";
+	gameId: string;
+	mode: string;
+	participants: MatchReplayVisualPlayer[];
+	durationMs: number;
+	sampleHz: 20;
+	keyframeIntervalMs: 1000;
+	preRollMs: number;
+	statistics: Record<string, unknown>;
+	powerupsEnabled: false;
+}
+
+export interface ReplayEntityV2 {
+	id: string;
+	generation: number;
+	ownerSide: number | null;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	rotation: number;
+	visualState: Record<string, unknown>;
+	motionSegmentId: number;
+	interpolation: "linear" | "step";
+}
+
 export interface MatchReplayFrame {
-	replayVersion?: ReplayContractVersion;
 	seq: number;
-	recordedAt: string;
-	recordedAtMs?: number;
-	tickTs?: number;
-	deltaMs?: number;
-	snapshot: MatchReplaySnapshot;
+	tMs: number;
+	round: number;
+	state: "pending" | "active" | "finished" | "abandoned";
+	type: "keyframe" | "delta";
+	changes: Record<string, unknown>;
+	removals: string[];
 }
 
 export interface MatchReplayEvent {
-	replayVersion?: ReplayContractVersion;
-	type: string;
 	seq: number;
-	recordedAt: string;
-	recordedAtMs?: number;
-	tickTs?: number;
+	tMs: number;
+	round: number;
+	type: string;
 	payload: Record<string, unknown>;
 }
 
@@ -103,6 +129,15 @@ export class MatchReplay {
 
 	@Column()
 	mode: string;
+
+	@Column({ type: "smallint", default: REPLAY_CONTRACT_VERSION })
+	contractVersion: ReplayContractVersion;
+
+	@Column({ type: "jsonb" })
+	metadata: ReplayMetadataV2;
+
+	@Column({ type: "integer", default: 0 })
+	durationMs: number;
 
 	@Column({ type: "jsonb", default: () => "'[]'" })
 	frames: MatchReplayFrame[];

@@ -102,7 +102,11 @@ describe("MatchmakingGateway", () => {
 		getLobbyByPin: jest.Mock;
 		getStartedMatchByPin: jest.Mock;
 	};
-	let sessions: { startIfReady: jest.Mock; advanceSimulation: jest.Mock };
+	let sessions: {
+		startIfReady: jest.Mock;
+		advanceSimulation: jest.Mock;
+		captureReplayFrame: jest.Mock;
+	};
 	let replays: { captureFrame: jest.Mock };
 	let chatService: {
 		sendMessage: jest.Mock;
@@ -136,7 +140,11 @@ describe("MatchmakingGateway", () => {
 			getLobbyByPin: jest.fn().mockReturnValue(null),
 			getStartedMatchByPin: jest.fn().mockReturnValue(null),
 		};
-		sessions = { startIfReady: jest.fn(), advanceSimulation: jest.fn() };
+		sessions = {
+			startIfReady: jest.fn(),
+			advanceSimulation: jest.fn(),
+			captureReplayFrame: jest.fn(),
+		};
 		replays = { captureFrame: jest.fn() };
 		chatService = {
 			sendMessage: jest.fn(),
@@ -197,6 +205,7 @@ describe("MatchmakingGateway", () => {
 			arenaSimulation.tick(broadcast);
 
 			expect(replays.captureFrame).toHaveBeenCalledWith(room);
+			expect(sessions.captureReplayFrame).toHaveBeenCalledWith(room, 50);
 			expect(gateway.server.to).toHaveBeenCalledWith(room.matchId);
 			expect(emit).toHaveBeenCalledWith("game:state", room.state);
 		});

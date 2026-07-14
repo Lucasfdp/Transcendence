@@ -6,85 +6,57 @@ import {
 	replayBallToEntity,
 	resolveReplayWinnerSide,
 	SceneReplayRecorder,
+	trimReplayRoundPreRoll,
 } from "../localReplay";
+import { ReplayEncoder, reconstructReplayFrame } from "../replay/ReplayEncoder";
+
+function encodedFrames(count: number, stepMs = 100) {
+	const encoder = new ReplayEncoder();
+	return Array.from({ length: count }, (_value, index) =>
+		encoder.encode(index, index * stepMs, { phase: "active", index }, index === 0),
+	).filter((frame): frame is NonNullable<typeof frame> => frame !== null);
+}
 
 describe("localReplay", () => {
-	it("normalises imported frames to contract v1 timing", () => {
-		const frames = normalizeReplayImportFrames([
-			{
-				seq: 10,
-				recordedAt: "2026-07-04T10:00:00.000Z",
-				snapshot: { gameId: "bamboo-bash" },
-			},
-			{
-				seq: 20,
-				recordedAt: "2026-07-04T10:00:00.120Z",
-				snapshot: { gameId: "bamboo-bash" },
-			},
-		]);
-
-		expect(frames).toEqual([
-			expect.objectContaining({
-				replayVersion: 1,
-				seq: 0,
-				recordedAtMs: Date.UTC(2026, 6, 4, 10, 0, 0, 0),
-				tickTs: 0,
-			}),
-			expect.objectContaining({
-				replayVersion: 1,
-				seq: 1,
-				recordedAtMs: Date.UTC(2026, 6, 4, 10, 0, 0, 120),
-				tickTs: 120,
-				deltaMs: 120,
-			}),
+	it("normalises v2 sequence without changing monotonic time", () => {
+		const source = encodedFrames(2, 120).map((frame, index) => ({ ...frame, seq: index + 10 }));
+		const frames = normalizeReplayImportFrames(source);
+		expect(frames.map((frame) => ({ seq: frame.seq, tMs: frame.tMs }))).toEqual([
+			{ seq: 0, tMs: 0 },
+			{ seq: 1, tMs: 120 },
 		]);
 	});
 
 	it("keeps first and last frames when compacting imports", () => {
-		const frames = Array.from({ length: 5 }, (_value, index) => ({
-			seq: index,
-			recordedAt: new Date(Date.UTC(2026, 6, 4, 10, 0, 0, index * 100)).toISOString(),
-			snapshot: { index },
-		}));
+		const frames = encodedFrames(5);
 
 		const normalized = normalizeReplayImportFrames(frames, 3);
 
 		expect(normalized).toHaveLength(3);
-		expect(normalized[0].snapshot).toEqual({ index: 0 });
-		expect(normalized[2].snapshot).toEqual({ index: 4 });
+		expect(reconstructReplayFrame(normalized, 0)).toMatchObject({ index: 0 });
+		expect(reconstructReplayFrame(normalized, 2)).toMatchObject({ index: 4 });
+		expect(normalized[normalized.length - 1]?.tMs).toBe(400);
 		expect(normalized.map((frame) => frame.seq)).toEqual([0, 1, 2]);
 	});
 
-	it("preserves recorder deltaMs when compacting imported frames", () => {
-		const frames = [
-			{
-				seq: 0,
-				recordedAt: "2026-07-04T10:00:00.000Z",
-				deltaMs: 0,
-				snapshot: { index: 0 },
-			},
-			{
-				seq: 1,
-				recordedAt: "2026-07-04T10:00:00.000Z",
-				deltaMs: 120,
-				snapshot: { index: 1 },
-			},
-			{
-				seq: 2,
-				recordedAt: "2026-07-04T10:00:00.000Z",
-				deltaMs: 240,
-				snapshot: { index: 2 },
-			},
-		];
-
-		const normalized = normalizeReplayImportFrames(frames, 2);
-
+	it("preserves duration and reconstructability when compacting", () => {
+		const normalized = normalizeReplayImportFrames(encodedFrames(3, 120), 2);
 		expect(normalized).toHaveLength(2);
-		expect(normalized[1]).toMatchObject({
-			seq: 1,
-			deltaMs: 240,
-			snapshot: { index: 2 },
-		});
+		expect(normalized[1]).toMatchObject({ seq: 1, tMs: 240, type: "keyframe" });
+		expect(reconstructReplayFrame(normalized, 1)).toMatchObject({ index: 2 });
+	});
+
+	it("limits round pre-roll to three seconds without compressing later pauses", () => {
+		const frames = encodedFrames(3, 5000);
+		const timeline = trimReplayRoundPreRoll(frames, [
+			{ seq: 0, tMs: 5000, round: 0, type: "action:start", payload: {} },
+		]);
+		expect(timeline.events[0]?.tMs).toBe(3000);
+		expect(timeline.frames[timeline.frames.length - 1]?.tMs).toBe(8000);
+		expect(
+			(timeline.frames[timeline.frames.length - 1]?.tMs ?? 0) -
+				(timeline.events[0]?.tMs ?? 0),
+		).toBe(5000);
 	});
 
 	it("captures player visuals and visible power metadata", () => {
@@ -149,9 +121,13 @@ describe("localReplay", () => {
 		expect(recorder.getReplayId()).toMatch(/^local:bamboo-bash:/);
 		expect(recorder.getFrames()).toHaveLength(2);
 		expect(recorder.buildImportFrames()).toEqual([
-			expect.objectContaining({ seq: 0 }),
-			expect.objectContaining({ seq: 1, deltaMs: 120 }),
+			expect.objectContaining({ seq: 0, tMs: 0, type: "keyframe" }),
+			expect.objectContaining({ seq: 1, tMs: 100, type: "delta" }),
 		]);
+		recorder.addElapsed(80);
+		recorder.captureOnInterval(80, 100, () => ({ phase: "active", seq: recorder.nextSeq() }));
+		const capturedFrames = recorder.getFrames();
+		expect(capturedFrames[capturedFrames.length - 1]?.tMs).toBe(200);
 	});
 
 	it("builds replay import payloads with the finished status contract", () => {
@@ -164,15 +140,19 @@ describe("localReplay", () => {
 				winnerSide: 0,
 				playerUserIds: [7],
 				playerNames: ["Player 1"],
-				frames: [],
+			frames: encodedFrames(2, 2000),
 			}),
 		).toMatchObject({
 			gameId: "bell-clash",
 			mode: "singleplayer",
 			status: "finished",
 			winnerSide: 0,
-			playerUserIds: [7],
-			playerNames: ["Player 1"],
+			durationMs: 2000,
+			metadata: expect.objectContaining({
+				contractVersion: 2,
+				powerupsEnabled: false,
+				participants: [{ side: 0, userId: 7, username: "Player 1" }],
+			}),
 		});
 	});
 

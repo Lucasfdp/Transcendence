@@ -46,9 +46,12 @@ function makeRoom(playerCount = 2): MatchRoom {
 		state,
 		replayFrames: [],
 		replayEvents: [],
-		replayLastCapturedSeq: null,
+		replayEnabled: true,
+		replayDisabledReason: null,
 		replayStartedAt: null,
-		replayLastRecordedAt: null,
+		replayLastSampleAt: null,
+		replayLastKeyframeAt: null,
+		replayLastSnapshot: null,
 	};
 }
 

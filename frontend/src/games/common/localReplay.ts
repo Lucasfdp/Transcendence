@@ -4,23 +4,22 @@ import type {
 	ReplayFrameSnapshotEntity,
 	SnapshotPlayer,
 } from "../../services/network/gameSocket";
+import { ReplayEncoder, reconstructReplayFrame } from "./replay/ReplayEncoder";
+import {
+	REPLAY_CONTRACT_VERSION,
+	REPLAY_KEYFRAME_INTERVAL_MS,
+	type ReplayFrameV2,
+	type ReplayEventV2,
+} from "./replay/contracts";
 
 const DEFAULT_MAX_IMPORTED_REPLAY_FRAMES = 240;
-const REPLAY_CONTRACT_VERSION = 1;
 const POWER_SCALE: Record<string, number> = {
 	giant: 2,
 	tiny: 0.5,
 };
 const TRANSLUCENT_POWERS = new Set(["phantom", "ghost"]);
 
-export interface LocalReplayFrameDraft {
-	seq: number;
-	recordedAt: string;
-	recordedAtMs?: number;
-	tickTs?: number;
-	deltaMs?: number;
-	snapshot: Record<string, unknown>;
-}
+export type LocalReplayFrameDraft = ReplayFrameV2;
 
 export interface LocalReplayUser {
 	id?: number;
@@ -61,6 +60,8 @@ export class SceneReplayRecorder<TSnapshot extends object> {
 	private elapsedMs = 0;
 	private lastCaptureMs = 0;
 	private captureAccMs = 0;
+	private events: ReplayEventV2[] = [];
+	private readonly encoder = new ReplayEncoder();
 
 	reset(): void {
 		this.replayId = null;
@@ -69,6 +70,8 @@ export class SceneReplayRecorder<TSnapshot extends object> {
 		this.elapsedMs = 0;
 		this.lastCaptureMs = 0;
 		this.captureAccMs = 0;
+		this.events = [];
+		this.encoder.reset();
 	}
 
 	start(
@@ -81,6 +84,8 @@ export class SceneReplayRecorder<TSnapshot extends object> {
 		this.elapsedMs = 0;
 		this.lastCaptureMs = 0;
 		this.captureAccMs = 0;
+		this.events = [];
+		this.encoder.reset();
 		this.captureSnapshot(buildSnapshot, { force: true });
 	}
 
@@ -99,9 +104,11 @@ export class SceneReplayRecorder<TSnapshot extends object> {
 	): void {
 		if (!this.replayId) return;
 		this.captureAccMs += delta;
-		if (this.captureAccMs < stepMs) return;
-		this.captureAccMs = 0;
-		this.captureSnapshot(buildSnapshot);
+		while (this.captureAccMs >= stepMs) {
+			const sampleTimeMs = this.elapsedMs - this.captureAccMs + stepMs;
+			this.captureAccMs -= stepMs;
+			this.captureSnapshot(buildSnapshot, { tMs: sampleTimeMs });
+		}
 	}
 
 	captureSnapshot(
@@ -109,22 +116,20 @@ export class SceneReplayRecorder<TSnapshot extends object> {
 		options: {
 			force?: boolean;
 			phaseOverride?: string;
+			tMs?: number;
 		} = {},
 	): void {
 		if (!this.replayId) return;
-		const nowMs = Math.round(this.elapsedMs);
-		if (!options.force && nowMs === this.lastCaptureMs) return;
-		const deltaMs =
-			this.frames.length === 0
-				? undefined
-				: Math.max(0, nowMs - this.lastCaptureMs);
+		const nowMs = Math.round(options.tMs ?? this.elapsedMs);
+		if (!options.force && nowMs <= this.lastCaptureMs) return;
 		this.lastCaptureMs = nowMs;
-		this.frames.push({
-			seq: this.frames.length,
-			recordedAt: new Date().toISOString(),
-			...(deltaMs !== undefined ? { deltaMs } : {}),
-			snapshot: buildSnapshot(options.phaseOverride) as Record<string, unknown>,
-		});
+		const frame = this.encoder.encode(
+			this.frames.length,
+			nowMs,
+			buildSnapshot(options.phaseOverride) as Record<string, unknown>,
+			options.force,
+		);
+		if (frame) this.frames.push(frame);
 	}
 
 	getReplayId(): string | null {
@@ -143,11 +148,34 @@ export class SceneReplayRecorder<TSnapshot extends object> {
 		return this.frames.length > 0;
 	}
 
+	recordEvent(type: string, payload: Record<string, unknown> = {}): void {
+		if (!this.replayId) return;
+		this.events.push({
+			seq: this.events.length,
+			tMs: Math.max(0, Math.round(this.elapsedMs)),
+			round: this.frames[this.frames.length - 1]?.round ?? 0,
+			type,
+			payload: JSON.parse(JSON.stringify(payload)) as Record<
+				string,
+				unknown
+			>,
+		});
+	}
+
+	getEvents(): ReplayEventV2[] {
+		return this.events.map((event) => ({
+			...event,
+			payload: { ...event.payload },
+		}));
+	}
+
 	nextSeq(): number {
 		return this.frames.length;
 	}
 
-	buildImportFrames(maxFrames = DEFAULT_MAX_IMPORTED_REPLAY_FRAMES): ReplayImportRequest["frames"] {
+	buildImportFrames(
+		maxFrames = DEFAULT_MAX_IMPORTED_REPLAY_FRAMES,
+	): ReplayImportRequest["frames"] {
 		return normalizeReplayImportFrames(this.frames, maxFrames);
 	}
 }
@@ -157,26 +185,33 @@ export function buildLocalReplayPlayers(
 	playerCount: number,
 	visuals: LocalReplayPlayerVisuals = {},
 ): SnapshotPlayer[] {
-	return Array.from({ length: Math.max(1, playerCount) }, (_value, index) => ({
-		side: index,
-		userId: index === 0 ? (user?.id ?? null) : null,
-		username:
-			index === 0
-				? (user?.turtleName ?? user?.username ?? "Player 1")
-				: `Player ${index + 1}`,
-		turtleName: index === 0 ? (user?.turtleName ?? null) : null,
-		shellSkin:
-			visuals.shellSkins?.[`player${index}`] ??
-			(index === 0 ? (user?.shellSkin ?? "base") : "base"),
-		trailEffect:
-			visuals.trailEffects?.[`player${index}`] ??
-			(index === 0 ? (user?.trailEffect ?? "trail_classic") : "trail_classic"),
-		hubBackground: index === 0 ? (user?.hubBackground ?? "night_bg") : "night_bg",
-		hubBackgroundAlter: index === 0 ? (user?.hubBackgroundAlter ?? null) : null,
-		connected: true,
-		ready: true,
-		reconnectExpiresAt: null,
-	}));
+	return Array.from(
+		{ length: Math.max(1, playerCount) },
+		(_value, index) => ({
+			side: index,
+			userId: index === 0 ? (user?.id ?? null) : null,
+			username:
+				index === 0
+					? (user?.turtleName ?? user?.username ?? "Player 1")
+					: `Player ${index + 1}`,
+			turtleName: index === 0 ? (user?.turtleName ?? null) : null,
+			shellSkin:
+				visuals.shellSkins?.[`player${index}`] ??
+				(index === 0 ? (user?.shellSkin ?? "base") : "base"),
+			trailEffect:
+				visuals.trailEffects?.[`player${index}`] ??
+				(index === 0
+					? (user?.trailEffect ?? "trail_classic")
+					: "trail_classic"),
+			hubBackground:
+				index === 0 ? (user?.hubBackground ?? "night_bg") : "night_bg",
+			hubBackgroundAlter:
+				index === 0 ? (user?.hubBackgroundAlter ?? null) : null,
+			connected: true,
+			ready: true,
+			reconnectExpiresAt: null,
+		}),
+	);
 }
 
 export function buildLocalReplayPlayerUserIds(
@@ -206,8 +241,26 @@ export function buildLocalReplayImportRequest(
 		createdAt: options.createdAt,
 		finishedAt: options.finishedAt,
 		winnerSide: options.winnerSide,
-		playerUserIds: options.playerUserIds,
-		playerNames: options.playerNames,
+		metadata: {
+			contractVersion: REPLAY_CONTRACT_VERSION,
+			origin: "local",
+			gameId: options.gameId,
+			mode: options.mode,
+			participants: options.playerNames
+				.slice(0, 5)
+				.map((username, side) => ({
+					side,
+					userId: options.playerUserIds[side] ?? null,
+					username,
+				})),
+			durationMs: options.frames[options.frames.length - 1]?.tMs ?? 0,
+			sampleHz: 20,
+			keyframeIntervalMs: REPLAY_KEYFRAME_INTERVAL_MS,
+			preRollMs: 3000,
+			statistics: { winnerSide: options.winnerSide },
+			powerupsEnabled: false,
+		},
+		durationMs: options.frames[options.frames.length - 1]?.tMs ?? 0,
 		frames: options.frames,
 		events: options.events ?? [],
 	};
@@ -232,7 +285,7 @@ export function replayBallToEntity(
 		angularVelocity: ball.angularVelocity ?? 0,
 		scale: POWER_SCALE[power] ?? ball.scale ?? 1,
 		visible: ball.visible ?? true,
-		alpha: TRANSLUCENT_POWERS.has(power) ? 0.52 : ball.alpha ?? 1,
+		alpha: TRANSLUCENT_POWERS.has(power) ? 0.52 : (ball.alpha ?? 1),
 		spriteKey: ball.spriteKey ?? fallbackSpriteKey,
 		stateFlags: withPowerStateFlags(
 			ball.stateFlags ?? [stopped ? "settled" : "moving"],
@@ -242,7 +295,9 @@ export function replayBallToEntity(
 		updatedAt: 0,
 		stopped,
 		power,
-		...(ball.trail?.length ? { trail: ball.trail.map((point) => ({ ...point })) } : {}),
+		...(ball.trail?.length
+			? { trail: ball.trail.map((point) => ({ ...point })) }
+			: {}),
 	};
 }
 
@@ -283,7 +338,7 @@ export function replayCurlingBallToEntity(ball: {
 		angularVelocity: ball.angularVelocity ?? 0,
 		scale: POWER_SCALE[power] ?? ball.scale ?? 1,
 		visible: ball.visible ?? true,
-		alpha: TRANSLUCENT_POWERS.has(power) ? 0.52 : ball.alpha ?? 1,
+		alpha: TRANSLUCENT_POWERS.has(power) ? 0.52 : (ball.alpha ?? 1),
 		spriteKey: ball.spriteKey ?? "temple-curling-ball",
 		stateFlags: withPowerStateFlags(
 			ball.stateFlags ?? [stopped ? "settled" : "moving"],
@@ -293,7 +348,9 @@ export function replayCurlingBallToEntity(ball: {
 		updatedAt: ball.updatedAt ?? 0,
 		stopped,
 		power,
-		...(ball.trail?.length ? { trail: ball.trail.map((point) => ({ ...point })) } : {}),
+		...(ball.trail?.length
+			? { trail: ball.trail.map((point) => ({ ...point })) }
+			: {}),
 	};
 }
 
@@ -308,35 +365,17 @@ export function normalizeReplayImportFrames(
 	frames: LocalReplayFrameDraft[],
 	maxFrames = DEFAULT_MAX_IMPORTED_REPLAY_FRAMES,
 ): ReplayImportRequest["frames"] {
-	const firstFrameTime = parseFrameTime(frames[0]?.recordedAt);
-	const resolveWallClockDelta = (
-		frame: LocalReplayFrameDraft,
-		previousFrame: LocalReplayFrameDraft | undefined,
-	): number => {
-		const currentTime = parseFrameTime(frame.recordedAt) ?? 0;
-		const previousTime =
-			parseFrameTime(previousFrame?.recordedAt) ?? currentTime;
-		return Math.max(0, currentTime - previousTime);
-	};
-	const normalizedFrames: ReplayImportRequest["frames"] = frames.map((frame, index) => ({
-		replayVersion: REPLAY_CONTRACT_VERSION,
-		seq: index,
-		recordedAt: frame.recordedAt,
-		recordedAtMs: frame.recordedAtMs ?? parseFrameTime(frame.recordedAt) ?? 0,
-		tickTs:
-			frame.tickTs ??
-			resolveFrameTickTs(parseFrameTime(frame.recordedAt), firstFrameTime),
-		deltaMs:
-			index === 0
-				? frame.deltaMs
-				: frame.deltaMs ??
-					resolveWallClockDelta(frame, frames[index - 1]),
-		snapshot: frame.snapshot,
-	}));
+	const normalizedFrames: ReplayImportRequest["frames"] = frames.map(
+		(frame, index) => ({ ...frame, seq: index }),
+	);
 
 	if (normalizedFrames.length <= maxFrames) return normalizedFrames;
 
 	const keptIndices = new Set<number>([0, normalizedFrames.length - 1]);
+	for (let index = 0; index < normalizedFrames.length; index += 1) {
+		if (normalizedFrames[index]?.type === "keyframe")
+			keptIndices.add(index);
+	}
 	const interiorTarget = maxFrames - 2;
 	for (let slot = 0; slot < interiorTarget; slot += 1) {
 		const ratio = (slot + 1) / (interiorTarget + 1);
@@ -344,33 +383,68 @@ export function normalizeReplayImportFrames(
 		keptIndices.add(index);
 	}
 
-	const compactedFrames: ReplayImportRequest["frames"] = [...keptIndices]
+	const sourceIndices = [...keptIndices]
 		.sort((left, right) => left - right)
-		.map((sourceIndex, compactIndex, indices) => {
-			const frame = normalizedFrames[sourceIndex];
-			if (compactIndex === 0) return { ...frame, seq: 0 };
-			const previousFrame = normalizedFrames[indices[compactIndex - 1]];
-			return {
-				...frame,
-				seq: compactIndex,
-				deltaMs:
-					frame.deltaMs ??
-					resolveWallClockDelta(frame, previousFrame),
-			};
-		});
+		.slice(0, maxFrames - 1);
+	if (!sourceIndices.includes(normalizedFrames.length - 1))
+		sourceIndices.push(normalizedFrames.length - 1);
+	const encoder = new ReplayEncoder();
+	const compactedFrames: ReplayImportRequest["frames"] = [];
+	for (const sourceIndex of sourceIndices) {
+		const source = normalizedFrames[sourceIndex];
+		const encoded = encoder.encode(
+			compactedFrames.length,
+			source.tMs,
+			reconstructReplayFrame(normalizedFrames, sourceIndex),
+			source.type === "keyframe" ||
+				sourceIndex === normalizedFrames.length - 1,
+		);
+		if (encoded) compactedFrames.push(encoded);
+	}
 	return compactedFrames;
 }
 
-function parseFrameTime(value: string | undefined): number | null {
-	if (!value) return null;
-	const parsed = Date.parse(value);
-	return Number.isFinite(parsed) ? parsed : null;
-}
-
-function resolveFrameTickTs(
-	frameTime: number | null,
-	firstFrameTime: number | null,
-): number {
-	if (frameTime === null || firstFrameTime === null) return 0;
-	return Math.max(0, frameTime - firstFrameTime);
+export function trimReplayRoundPreRoll(
+	frames: ReplayImportRequest["frames"],
+	events: NonNullable<ReplayImportRequest["events"]>,
+	maximumPreRollMs = 3000,
+): {
+	frames: ReplayImportRequest["frames"];
+	events: NonNullable<ReplayImportRequest["events"]>;
+} {
+	const starts = new Map<number, number>();
+	for (const frame of frames)
+		starts.set(
+			frame.round,
+			Math.min(starts.get(frame.round) ?? frame.tMs, frame.tMs),
+		);
+	const cuts: Array<{ start: number; excess: number }> = [];
+	for (const event of events) {
+		if (event.type !== "action:start") continue;
+		const start = starts.get(event.round) ?? 0;
+		if (cuts.some((cut) => cut.start === start)) continue;
+		const excess = Math.max(0, event.tMs - start - maximumPreRollMs);
+		if (excess > 0) cuts.push({ start, excess });
+	}
+	cuts.sort((left, right) => left.start - right.start);
+	const transform = (tMs: number): number => {
+		let shifted = tMs;
+		for (const cut of cuts) {
+			if (tMs < cut.start) break;
+			shifted -= Math.min(cut.excess, Math.max(0, tMs - cut.start));
+		}
+		return Math.max(0, Math.round(shifted));
+	};
+	return {
+		frames: frames.map((frame, seq) => ({
+			...frame,
+			seq,
+			tMs: transform(frame.tMs),
+		})),
+		events: events.map((event, seq) => ({
+			...event,
+			seq,
+			tMs: transform(event.tMs),
+		})),
+	};
 }

@@ -402,7 +402,7 @@ Missing for completion:
 ## Modules of Choice
 
 ### Major: Replay mode
-Status: `Done`
+Status: `In progress`
 
 Requirement breakdown:
 - Must be substantial, relevant to the project, and justifiable as a major.
@@ -410,10 +410,40 @@ Requirement breakdown:
 Evidence:
 - Replay and event persistence in migrations and entities.
 - Replay API in `backend/src/modules/matchmaking/matches.controller.ts`
-- Visualization in `frontend/src/pages/HomePage.tsx`
+- Shared contract, encoder, capture runtime, controller, and viewer in
+  `frontend/src/games/common/replay/`.
+- Shared Phaser visualisation in `frontend/src/games/common/ReplayScene.ts`.
+- Replay contract v2 migration in
+  `backend/src/migrations/20260714000000-unify-replay-contract-v2.ts`.
+- Power-up matches are excluded at local capture, online capture, import,
+  persistence, and listing boundaries.
+- Automated replay tests cover accumulator remainder, keyframes, deltas,
+  reconstruction, temporal seeking, stable final state, pre-roll, and the
+  power-up import/capture restrictions.
+
+Validation completed on 14 July 2026:
+- Frontend production build passed.
+- Frontend Vitest suite passed: 47 files and 290 tests.
+- Backend production build passed.
+- Backend replay, matchmaking gateway, game-session, and private-lobby suites
+  passed: 68 tests.
+- The complete backend suite passed 787 tests in the sandbox; its five
+  loopback Redis health tests were rerun outside the restricted sandbox and
+  passed, giving 792 passing tests overall.
+- `make re` completed, the replay v2 database columns were verified, and all
+  services reported healthy through `make health`.
+- The continuous replay trail repair passed 38 targeted trail, replay, and
+  visual tests across 11 files, followed by a successful frontend production
+  build. The shared renderer now covers Shell Curl, Bamboo Bash, Kame Knock,
+  and Bell Clash with runtime-matched width, colour, and alpha progression.
+- The manual gameplay and frame-budget matrix remains outstanding, so Replay
+  Mode and Multiplayer 3+ remain `In progress`.
 
 Missing for completion:
-- Document final justification also in `README.md` for evaluation.
+- Complete and execute the replay v2 acceptance matrix in
+  `docs/replay-system-unification-plan.md`.
+- Complete the manual one-to-five-player and rendering-budget matrix before
+  changing this status to `Done`.
 
 ## Module Boundary Rule
 This document, together with `AGENTS.md`, defines the functional boundaries of the project. The agent must not propose, implement, or extend functionality outside these chosen modules except upon explicit user request.

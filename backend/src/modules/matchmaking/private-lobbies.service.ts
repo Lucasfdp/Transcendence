@@ -19,6 +19,8 @@ export interface PrivateLobby {
 	gameId: string;
 	playerCount: number;
 	powerupsEnabled: boolean;
+	replayEnabled: boolean;
+	replayDisabledReason: "powerups-enabled" | null;
 	shellSelection: string[];
 	participants: PrivateLobbyParticipant[];
 	createdAt: number;
@@ -49,7 +51,8 @@ const PIN_GAME_PREFIXES: Record<string, string> = {
 	"temple-curling": "2",
 	"bell-clash": "3",
 };
-export const PRIVATE_LOBBY_NOT_FOUND_MESSAGE = "No match found for this room code";
+export const PRIVATE_LOBBY_NOT_FOUND_MESSAGE =
+	"No match found for this room code";
 
 @Injectable()
 export class PrivateLobbiesService {
@@ -94,8 +97,12 @@ export class PrivateLobbiesService {
 			gameId,
 			playerCount: 2,
 			powerupsEnabled: false,
+			replayEnabled: true,
+			replayDisabledReason: null,
 			shellSelection,
-			participants: [{ socketId: hostSocketId, user: host, shellSelection }],
+			participants: [
+				{ socketId: hostSocketId, user: host, shellSelection },
+			],
 			createdAt: Date.now(),
 			pendingInviteeId: null,
 			expiryTimer,
@@ -138,8 +145,12 @@ export class PrivateLobbiesService {
 			gameId,
 			playerCount: normalizedPlayerCount,
 			powerupsEnabled,
+			replayEnabled: !powerupsEnabled,
+			replayDisabledReason: powerupsEnabled ? "powerups-enabled" : null,
 			shellSelection,
-			participants: [{ socketId: hostSocketId, user: host, shellSelection }],
+			participants: [
+				{ socketId: hostSocketId, user: host, shellSelection },
+			],
 			createdAt: Date.now(),
 			pendingInviteeId: null,
 			expiryTimer,
@@ -169,7 +180,9 @@ export class PrivateLobbiesService {
 		for (const lobby of this.lobbies.values()) {
 			if (
 				lobby.host.id === userId ||
-				lobby.participants.some((participant) => participant.user.id === userId)
+				lobby.participants.some(
+					(participant) => participant.user.id === userId,
+				)
 			)
 				return lobby;
 		}
@@ -194,7 +207,9 @@ export class PrivateLobbiesService {
 		const lobby = this.lobbies.get(lobbyId);
 		if (!lobby) return null;
 		if (lobby.kind !== "invite") {
-			throw new BadRequestException("Use the room PIN to join this lobby");
+			throw new BadRequestException(
+				"Use the room PIN to join this lobby",
+			);
 		}
 
 		// Prevent double-join
@@ -216,7 +231,11 @@ export class PrivateLobbiesService {
 		];
 
 		this.cancelLobby(lobbyId); // clears timer + removes from map
-		return this.createMatchRoom(lobby.gameId, players, lobby.powerupsEnabled);
+		return this.createMatchRoom(
+			lobby.gameId,
+			players,
+			lobby.powerupsEnabled,
+		);
 	}
 
 	async joinPinLobby(
@@ -240,7 +259,11 @@ export class PrivateLobbiesService {
 		if (this.roomService.hasActiveRoom(joiner.id)) {
 			throw new BadRequestException("You are already in an active match");
 		}
-		if (lobby.participants.some((participant) => participant.user.id === joiner.id)) {
+		if (
+			lobby.participants.some(
+				(participant) => participant.user.id === joiner.id,
+			)
+		) {
 			throw new BadRequestException("You are already in this lobby");
 		}
 		if (lobby.participants.length >= lobby.playerCount) {
@@ -309,7 +332,10 @@ export class PrivateLobbiesService {
 	private normalizePlayerCount(playerCount: number): number {
 		return Math.max(
 			MIN_PLAYERS,
-			Math.min(MAX_PLAYERS, Math.floor(Number(playerCount || MIN_PLAYERS))),
+			Math.min(
+				MAX_PLAYERS,
+				Math.floor(Number(playerCount || MIN_PLAYERS)),
+			),
 		);
 	}
 
@@ -323,9 +349,15 @@ export class PrivateLobbiesService {
 		const prefix = this.getGamePinPrefix(gameId);
 		let pin = "";
 		do {
-			pin = prefix + Array.from({ length: PIN_LENGTH - 1 }, () =>
-				PIN_ALPHABET[Math.floor(Math.random() * PIN_ALPHABET.length)],
-			).join("");
+			pin =
+				prefix +
+				Array.from(
+					{ length: PIN_LENGTH - 1 },
+					() =>
+						PIN_ALPHABET[
+							Math.floor(Math.random() * PIN_ALPHABET.length)
+						],
+				).join("");
 		} while (this.getLobbyByPin(pin));
 		return pin;
 	}

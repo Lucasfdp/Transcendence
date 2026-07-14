@@ -67,10 +67,7 @@ async function fetchCsrfToken(): Promise<string> {
 			res,
 			`${res.status} on /auth/csrf-token`,
 		);
-		if (
-			attempt === 0 &&
-			TRANSIENT_HTTP_STATUSES.has(res.status)
-		) {
+		if (attempt === 0 && TRANSIENT_HTTP_STATUSES.has(res.status)) {
 			await sleep(TRANSIENT_RETRY_DELAY_MS);
 			continue;
 		}
@@ -147,10 +144,7 @@ async function apiFetch<T>(
 
 	if (!res.ok) {
 		const message = await readErrorMessage(res, `${res.status} on ${path}`);
-		if (
-			TRANSIENT_HTTP_STATUSES.has(res.status) &&
-			retryableOnTransient
-		) {
+		if (TRANSIENT_HTTP_STATUSES.has(res.status) && retryableOnTransient) {
 			await sleep(TRANSIENT_RETRY_DELAY_MS);
 			try {
 				res = await runFetch();
@@ -165,8 +159,11 @@ async function apiFetch<T>(
 					await readErrorMessage(res, `${res.status} on ${path}`),
 				);
 			}
-		} else
-		if (isCsrfFailure(res, message) && method !== "GET" && method !== "HEAD") {
+		} else if (
+			isCsrfFailure(res, message) &&
+			method !== "GET" &&
+			method !== "HEAD"
+		) {
 			await fetchCsrfToken();
 			try {
 				res = await runFetch();
@@ -189,10 +186,7 @@ async function apiFetch<T>(
 	return res.json() as Promise<T>;
 }
 
-async function apiUploadFile<T>(
-	path: string,
-	formData: FormData,
-): Promise<T> {
+async function apiUploadFile<T>(path: string, formData: FormData): Promise<T> {
 	const headers = withCsrfHeader({}, "POST");
 	let res: Response;
 	try {
@@ -320,11 +314,7 @@ export interface ProgressionResult {
 // ── Shell Cards (collectible binder) ─────────────────────────────────────────
 
 export type CardRarity = "stone" | "bronze" | "jade" | "gold";
-export type CardFamily =
-	| "power_shell"
-	| "shrine"
-	| "shell_skin"
-	| "character";
+export type CardFamily = "power_shell" | "shrine" | "shell_skin" | "character";
 
 export interface CardView {
 	id: string;
@@ -790,7 +780,7 @@ export interface OverallLeaderboardEntry {
 	totalWins: number;
 }
 
-export type ReplayContractVersion = 1;
+export type ReplayContractVersion = 2;
 
 export interface ReplayVisualPlayer {
 	side: number;
@@ -844,29 +834,46 @@ export interface ReplayFrameSnapshot {
 }
 
 export interface ReplayFrame {
-	replayVersion?: ReplayContractVersion;
 	seq: number;
-	recordedAt: string;
-	recordedAtMs?: number;
-	tickTs?: number;
-	deltaMs?: number;
-	snapshot: ReplayFrameSnapshot;
+	tMs: number;
+	round: number;
+	state: "pending" | "active" | "finished" | "abandoned";
+	type: "keyframe" | "delta";
+	changes: Record<string, unknown>;
+	removals: string[];
+	/** Reconstructed by ReplayController; never persisted in contract v2. */
+	snapshot?: ReplayFrameSnapshot;
 }
 
 export interface ReplayEvent {
-	replayVersion?: ReplayContractVersion;
-	type: string;
 	seq: number;
-	recordedAt: string;
-	recordedAtMs?: number;
-	tickTs?: number;
+	tMs: number;
+	round: number;
+	type: string;
 	payload: Record<string, unknown>;
+}
+
+export interface ReplayMetadataV2 {
+	contractVersion: 2;
+	origin: "local" | "online";
+	gameId: string;
+	mode: string;
+	participants: ReplayVisualPlayer[];
+	durationMs: number;
+	sampleHz: 20;
+	keyframeIntervalMs: 1000;
+	preRollMs: number;
+	statistics: Record<string, unknown>;
+	powerupsEnabled: false;
 }
 
 export interface ReplaySummary {
 	id: string;
 	matchId: string;
-	replayVersion: ReplayContractVersion | null;
+	replayVersion: ReplayContractVersion;
+	contractVersion: ReplayContractVersion;
+	metadata: ReplayMetadataV2;
+	durationMs: number;
 	gameId: string;
 	mode: string;
 	status: string;
@@ -892,8 +899,8 @@ export interface ReplayImportRequest {
 	createdAt?: string;
 	finishedAt?: string | null;
 	winnerSide?: number | null;
-	playerNames?: string[];
-	playerUserIds?: Array<number | null>;
+	metadata: ReplayMetadataV2;
+	durationMs: number;
 	frames: ReplayFrame[];
 	events?: ReplayEvent[];
 }
@@ -1044,7 +1051,8 @@ export const api = {
 		}),
 
 	/** Fetch the Three-Shell Monte layout: risk tiers, RTP, bounds and balance. */
-	getMonte: (): Promise<MonteConfig> => apiFetch<MonteConfig>("/casino/monte"),
+	getMonte: (): Promise<MonteConfig> =>
+		apiFetch<MonteConfig>("/casino/monte"),
 
 	/** Start a committed Three-Shell Monte round. */
 	startMonteRound: (
@@ -1101,7 +1109,8 @@ export const api = {
 		}),
 
 	/** Fetch the Shell Drop layout: row tiers, paytables, bounds and balance. */
-	getPlinko: (): Promise<PlinkoView> => apiFetch<PlinkoView>("/casino/plinko"),
+	getPlinko: (): Promise<PlinkoView> =>
+		apiFetch<PlinkoView>("/casino/plinko"),
 
 	/** Pick a risk tier and stake coins. Returns the outcome and new balance. */
 	dropPlinko: (
@@ -1315,14 +1324,19 @@ export const api = {
 		conversationId: number,
 		body: string,
 	): Promise<ChatMessageView> =>
-		apiFetch<ChatMessageView>(`/chat/conversations/${conversationId}/messages`, {
-			method: "POST",
-			body: JSON.stringify({ body }),
-		}),
+		apiFetch<ChatMessageView>(
+			`/chat/conversations/${conversationId}/messages`,
+			{
+				method: "POST",
+				body: JSON.stringify({ body }),
+			},
+		),
 
 	/** Search gifs via the backend's Klipy proxy. An empty/blank query returns []. */
 	searchGifs: (query: string): Promise<GifSearchResult[]> =>
-		apiFetch<GifSearchResult[]>(`/chat/gifs/search?q=${encodeURIComponent(query)}`),
+		apiFetch<GifSearchResult[]>(
+			`/chat/gifs/search?q=${encodeURIComponent(query)}`,
+		),
 
 	/**
 	 * Send a gif message over REST. The live path is the `chat:send-gif`
@@ -1333,14 +1347,19 @@ export const api = {
 		conversationId: number,
 		slug: string,
 	): Promise<ChatMessageView> =>
-		apiFetch<ChatMessageView>(`/chat/conversations/${conversationId}/messages/gif`, {
-			method: "POST",
-			body: JSON.stringify({ slug }),
-		}),
+		apiFetch<ChatMessageView>(
+			`/chat/conversations/${conversationId}/messages/gif`,
+			{
+				method: "POST",
+				body: JSON.stringify({ slug }),
+			},
+		),
 
 	/** List a group's members (participant-only). Backs the member-list UI (Decision 2). */
 	getGroupMembers: (conversationId: number): Promise<GroupMemberView[]> =>
-		apiFetch<GroupMemberView[]>(`/chat/conversations/${conversationId}/members`),
+		apiFetch<GroupMemberView[]>(
+			`/chat/conversations/${conversationId}/members`,
+		),
 
 	/** Add a friend to an existing group. Caller must be a participant and a friend of userId. */
 	addGroupMember: (conversationId: number, userId: number): Promise<void> =>
@@ -1351,9 +1370,12 @@ export const api = {
 
 	/** Owner-only: remove a member from a group (Decision 1). */
 	kickGroupMember: (conversationId: number, userId: number): Promise<void> =>
-		apiFetch<void>(`/chat/conversations/${conversationId}/members/${userId}`, {
-			method: "DELETE",
-		}),
+		apiFetch<void>(
+			`/chat/conversations/${conversationId}/members/${userId}`,
+			{
+				method: "DELETE",
+			},
+		),
 
 	/** Owner-only: rename a group (Decision 1). */
 	renameGroupChat: (conversationId: number, name: string): Promise<void> =>
@@ -1420,13 +1442,17 @@ export const api = {
 	getOverallLeaderboard: (
 		scope: LeaderboardScope = "global",
 	): Promise<OverallLeaderboardEntry[]> =>
-		apiFetch<OverallLeaderboardEntry[]>(`/leaderboard/overall?scope=${scope}`),
+		apiFetch<OverallLeaderboardEntry[]>(
+			`/leaderboard/overall?scope=${scope}`,
+		),
 
 	getMyReplays: (): Promise<ReplaySummary[]> =>
 		apiFetch<ReplaySummary[]>("/matches/replays/me"),
 
 	getReplay: (matchId: string): Promise<ReplayDetail> =>
-		apiFetch<ReplayDetail>(`/matches/${encodeURIComponent(matchId)}/replay`),
+		apiFetch<ReplayDetail>(
+			`/matches/${encodeURIComponent(matchId)}/replay`,
+		),
 
 	importReplay: (payload: ReplayImportRequest): Promise<ReplaySummary> =>
 		apiFetch<ReplaySummary>("/matches/replays/import", {
@@ -1435,12 +1461,18 @@ export const api = {
 		}),
 
 	saveReplay: (matchId: string): Promise<ReplaySummary> =>
-		apiFetch<ReplaySummary>(`/matches/${encodeURIComponent(matchId)}/replay/save`, {
-			method: "POST",
-		}),
+		apiFetch<ReplaySummary>(
+			`/matches/${encodeURIComponent(matchId)}/replay/save`,
+			{
+				method: "POST",
+			},
+		),
 
 	unsaveReplay: (matchId: string): Promise<ReplaySummary> =>
-		apiFetch<ReplaySummary>(`/matches/${encodeURIComponent(matchId)}/replay/save`, {
-			method: "DELETE",
-		}),
+		apiFetch<ReplaySummary>(
+			`/matches/${encodeURIComponent(matchId)}/replay/save`,
+			{
+				method: "DELETE",
+			},
+		),
 };

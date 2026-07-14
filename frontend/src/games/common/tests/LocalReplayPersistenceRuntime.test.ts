@@ -31,8 +31,13 @@ describe("LocalReplayPersistenceRuntime", () => {
 			expect.objectContaining({
 				gameId: "bell-clash",
 				status: "finished",
-				playerUserIds: [7],
-				playerNames: ["player"],
+				metadata: expect.objectContaining({
+					contractVersion: 2,
+					powerupsEnabled: false,
+					participants: [
+						expect.objectContaining({ userId: 7, username: "player" }),
+					],
+				}),
 			}),
 		]);
 	});

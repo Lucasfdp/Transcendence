@@ -2,22 +2,18 @@ import { describe, expect, it } from "vitest";
 import type { ReplayDetail, ReplayFrame } from "../../../features/hub/api";
 import { ReplayController } from "../ReplayController";
 
-function makeFrame(index: number, deltaMs = 100): ReplayFrame {
-	const recordedAtMs = Date.UTC(2026, 6, 4, 10, 0, 0, index * deltaMs);
+function makeFrame(index: number): ReplayFrame {
 	return {
-		replayVersion: 1,
 		seq: index,
-		recordedAt: new Date(recordedAtMs).toISOString(),
-		recordedAtMs,
-		tickTs: index * deltaMs,
-		deltaMs,
-		snapshot: {
-			gameId: "kame-knock",
-			phase: index === 2 ? "finished" : "active",
-			players: [{ side: 0, userId: 1, username: "A" }],
-			score: [index],
-			entities: [],
-		},
+		tMs: index * 100,
+		round: 1,
+		state: index === 2 ? "finished" : "active",
+		type: index === 0 ? "keyframe" : "delta",
+		changes:
+			index === 0
+				? { gameId: "kame-knock", phase: "active", players: [{ side: 0, userId: 1, username: "A" }], score: [0], entities: [] }
+				: { phase: index === 2 ? "finished" : "active", score: [index] },
+		removals: [],
 	};
 }
 
@@ -25,7 +21,22 @@ function makeReplay(): ReplayDetail {
 	return {
 		id: "replay-1",
 		matchId: "match-1",
-		replayVersion: 1,
+		replayVersion: 2,
+		contractVersion: 2,
+		metadata: {
+			contractVersion: 2,
+			origin: "online",
+			gameId: "kame-knock",
+			mode: "casual",
+			participants: [{ side: 0, userId: 1, username: "A" }],
+			durationMs: 200,
+			sampleHz: 20,
+			keyframeIntervalMs: 1000,
+			preRollMs: 3000,
+			statistics: {},
+			powerupsEnabled: false,
+		},
+		durationMs: 200,
 		gameId: "kame-knock",
 		mode: "casual",
 		status: "finished",
@@ -38,59 +49,30 @@ function makeReplay(): ReplayDetail {
 		playerNames: ["A"],
 		isSavedByCurrentUser: false,
 		frames: [makeFrame(0), makeFrame(1), makeFrame(2)],
-		events: [
-			{
-				replayVersion: 1,
-				type: "fx",
-				seq: 1,
-				recordedAt: "2026-07-04T10:00:00.100Z",
-				recordedAtMs: Date.UTC(2026, 6, 4, 10, 0, 0, 100),
-				tickTs: 100,
-				payload: {},
-			},
-		],
+		events: [{ seq: 0, tMs: 100, round: 1, type: "action:start", payload: {} }],
 	};
 }
 
 describe("ReplayController", () => {
-	it("advances using recorded frame duration and stops at the last frame", () => {
+	it("advances on tMs and stops at the stable final frame", () => {
 		const controller = new ReplayController(makeReplay());
-
 		controller.setPlayback(0, 0, true);
 		controller.update(50);
-		expect(controller.getState()).toMatchObject({
-			frameIndex: 0,
-			progress: 0.5,
-			playing: true,
-		});
-
+		expect(controller.getState()).toMatchObject({ frameIndex: 0, progress: 0.5, playing: true, timeMs: 50 });
 		controller.update(150);
-		expect(controller.getState()).toMatchObject({
-			frameIndex: 2,
-			progress: 0,
-			playing: false,
-		});
+		expect(controller.getState()).toMatchObject({ frameIndex: 2, progress: 0, playing: false, timeMs: 200 });
 	});
 
-	it("clamps seek progress and exposes the interpolated playback time", () => {
+	it("seeks by time and reconstructs from the preceding keyframe", () => {
 		const controller = new ReplayController(makeReplay());
-
-		controller.seek(1, 2);
-
-		const state = controller.getState();
-		expect(state.frameIndex).toBe(1);
-		expect(state.progress).toBe(1);
-		expect(state.timeMs).toBe(Date.UTC(2026, 6, 4, 10, 0, 0, 200));
+		controller.seekTime(150);
+		expect(controller.getState()).toMatchObject({ frameIndex: 1, progress: 0.5, timeMs: 150 });
+		expect(controller.getState().frame?.snapshot.score).toEqual([1]);
 	});
 
-	it("filters events by playback time", () => {
+	it("delivers events against the same relative timeline", () => {
 		const controller = new ReplayController(makeReplay());
-
-		expect(
-			controller.getEventsUpTo(Date.UTC(2026, 6, 4, 10, 0, 0, 99)),
-		).toHaveLength(0);
-		expect(
-			controller.getEventsUpTo(Date.UTC(2026, 6, 4, 10, 0, 0, 100)),
-		).toHaveLength(1);
+		expect(controller.getEventsUpTo(99)).toHaveLength(0);
+		expect(controller.getEventsUpTo(100)).toHaveLength(1);
 	});
 });

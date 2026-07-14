@@ -102,7 +102,7 @@ import {
 	buildBellClashScoreZoneDescriptor,
 	buildCommonLocalReplayParticipantContext,
 	CommonGameSceneHost,
-	LocalReplayRuntime,
+	ReplayCaptureRuntime,
 	resolvePlayerTrailEffects,
 	SlingshotLaunchRuntime,
 	WorldMapRuntime,
@@ -240,13 +240,14 @@ export class BellClashScene
 	private playerTrailEffects: string[] = [];
 	private localTurnNumber = 0;
 	private localScores: number[] = [0];
-	private readonly localReplay = new LocalReplayRuntime<
+	private readonly localReplay = new ReplayCaptureRuntime<
 		BellClashSnapshot,
 		BellClashSnapshot["phase"]
 	>({
 		gameId: "bell-clash",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
-		shouldSkip: () => this.online.isActive,
+		shouldSkip: () =>
+			this.online.isActive || this.registry.get("replayEnabled") === false,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
@@ -1498,7 +1499,10 @@ export class BellClashScene
 			getScore: () => score,
 			getPhase: () => this.currentTurnPhase(),
 			onRelease: () => {
-				if (!this.online.isActive) this.localReplay.captureFrame(true);
+				if (!this.online.isActive) {
+					this.localReplay.recordEvent("action:start");
+					this.localReplay.captureFrame(true);
+				}
 			},
 			onProjectileSettled: () => this.finishShot(),
 			computeWinner: () => this.resolveLocalWinnerSide(),
