@@ -70,15 +70,15 @@ export class UsersService {
 		}
 	}
 
-	async findByGithubId(githubId: string): Promise<User | null> {
+	async findByGoogleId(googleId: string): Promise<User | null> {
 		try {
 			return await this.usersRepo.findOne({
-				where: { githubId },
+				where: { googleId },
 				relations: ["profile"],
 			});
 		} catch {
 			throw new InternalServerErrorException(
-				"Failed to find user by GitHub id",
+				"Failed to find user by Google id",
 			);
 		}
 	}
@@ -121,7 +121,7 @@ export class UsersService {
 
 	async create(data: {
 		fortyTwoId?: string | null;
-		githubId?: string | null;
+		googleId?: string | null;
 		username: string;
 		email?: string | null;
 		avatar?: string;

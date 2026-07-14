@@ -81,7 +81,7 @@ describe("UsersController — getUser public whitelist (Bug Audit H2)", () => {
 		username: "kame",
 		email: "secret@example.com",
 		fortyTwoId: "42-1234",
-		githubId: "gh-9",
+		googleId: "google-9",
 		passwordHash: "salt:hash",
 		coins: 999,
 		xp: 4200,
@@ -149,7 +149,7 @@ describe("UsersController — getUser public whitelist (Bug Audit H2)", () => {
 		for (const leaked of [
 			"email",
 			"fortyTwoId",
-			"githubId",
+			"googleId",
 			"passwordHash",
 			"coins",
 			"xp",

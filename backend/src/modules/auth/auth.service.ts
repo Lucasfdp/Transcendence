@@ -187,14 +187,14 @@ export class AuthService implements OnApplicationBootstrap {
 		}
 	}
 
-	async findOrCreateGithubUser(data: {
-		githubId: string;
+	async findOrCreateGoogleUser(data: {
+		googleId: string;
 		username: string;
 		email?: string | null;
 		avatar?: string | null;
 	}): Promise<User> {
 		try {
-			let user = await this.usersService.findByGithubId(data.githubId);
+			let user = await this.usersService.findByGoogleId(data.googleId);
 			if (user) return user;
 
 			const existingEmail = data.email
@@ -204,7 +204,7 @@ export class AuthService implements OnApplicationBootstrap {
 				data.username,
 			);
 			user = await this.usersService.create({
-				githubId: data.githubId,
+				googleId: data.googleId,
 				email: existingEmail ? null : (data.email ?? null),
 				username: uniqueUsername,
 				avatar: data.avatar ?? undefined,
@@ -212,7 +212,7 @@ export class AuthService implements OnApplicationBootstrap {
 			return user;
 		} catch {
 			throw new InternalServerErrorException(
-				"Failed to find or create GitHub user",
+				"Failed to find or create Google user",
 			);
 		}
 	}

@@ -65,7 +65,7 @@ export interface LeaderboardEntry {
 /**
  * Public-facing view returned by GET /api/users/:username — the hover/focus
  * profile card. Deliberately a *whitelist*: it must never include PII or
- * account-linkage fields (email, fortyTwoId, githubId, passwordHash) or
+ * account-linkage fields (email, fortyTwoId, googleId, passwordHash) or
  * balances (coins, xp) that the previous "strip only passwordHash and return
  * the whole entity" implementation leaked to any authenticated user, guests
  * included (Bug Audit H2). Add a field here only if a public profile card

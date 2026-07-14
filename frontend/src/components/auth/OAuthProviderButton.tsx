@@ -1,29 +1,23 @@
 interface OAuthProviderButtonProps {
 	label: string;
 	logo: JSX.Element;
-	variant?: "full" | "square";
 	tone?: string;
 	disabled?: boolean;
 	title?: string;
 	onClick?: () => void;
-	className?: string;
 }
 
 export function OAuthProviderButton({
 	label,
 	logo,
-	variant = "full",
 	tone,
 	disabled = false,
 	title,
 	onClick,
-	className,
 }: OAuthProviderButtonProps): JSX.Element {
 	const buttonClassName = [
 		"oauth-button",
-		variant === "square" ? "oauth-button--square" : "",
 		tone ? `oauth-button--${tone}` : "",
-		className ?? "",
 	]
 		.filter(Boolean)
 		.join(" ");

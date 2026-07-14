@@ -221,14 +221,14 @@ Missing for completion:
 Status: `Done`
 
 Requirement breakdown:
-- Remote OAuth with providers like Google, GitHub, or 42.
+- Remote OAuth with providers such as Google or 42.
 
 Evidence:
-- 42 and GitHub flows implemented in `backend/src/modules/auth/`
+- 42 and Google flows implemented in `backend/src/modules/auth/`
 - OAuth UI in `frontend/src/components/auth/OAuthButtons.tsx`
 
 Missing for completion:
-- Multiple frontend buttons do not imply functional backend; claiming this module requires real working providers, but avoid advertising unimplemented providers.
+- End-to-end validation still requires real credentials for both providers.
 
 ## Cybersecurity
 

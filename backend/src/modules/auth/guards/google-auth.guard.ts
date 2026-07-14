@@ -7,7 +7,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { Request } from "express";
 
 @Injectable()
-export class GithubAuthGuard extends AuthGuard("github") {
+export class GoogleAuthGuard extends AuthGuard("google") {
 	override getAuthenticateOptions(
 		context: ExecutionContext,
 	): Record<string, string> {
@@ -18,7 +18,7 @@ export class GithubAuthGuard extends AuthGuard("github") {
 			"https";
 		const host = req.headers.host ?? "localhost";
 		return {
-			callbackURL: `${proto}://${host}/api/auth/github/callback`,
+			callbackURL: `${proto}://${host}/api/auth/google/callback`,
 		};
 	}
 
@@ -32,7 +32,7 @@ export class GithubAuthGuard extends AuthGuard("github") {
 			const detail =
 				typeof info === "object" && info !== null && "message" in info
 					? String((info as { message?: string }).message)
-					: "GitHub OAuth authentication failed";
+					: "Google OAuth authentication failed";
 			throw new UnauthorizedException(detail);
 		}
 		return user as TUser;

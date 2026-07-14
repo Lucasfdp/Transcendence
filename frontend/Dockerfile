@@ -5,9 +5,7 @@ FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb836
 LABEL stage="builder"
 ARG FRONTEND_ENV=production
 ARG VITE_API_URL=/api
-ARG VITE_GITHUB_AUTH_URL=
 ENV VITE_API_URL=${VITE_API_URL}
-ENV VITE_GITHUB_AUTH_URL=${VITE_GITHUB_AUTH_URL}
 WORKDIR /app/frontend
 COPY frontend/package.json ./
 COPY frontend/package-lock.json* ./

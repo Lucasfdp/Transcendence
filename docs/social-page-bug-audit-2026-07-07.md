@@ -56,7 +56,7 @@ This looks like a lost merge/revert: the spec, the frontend, the service (`setSe
 ### H2. Profile hover card endpoint leaks PII to any authenticated user
 
 **Locations:**
-- `backend/src/modules/users/users.controller.ts:241-257` — `GET /api/users/:username` strips only `passwordHash` and returns the full `User` entity: **`email`, `fortyTwoId`, `githubId`**, `coins`, `xp`, `lastSeenAt`, `isGuest`, timestamps, and the full `profile` relation.
+- `backend/src/modules/users/users.controller.ts:241-257` — `GET /api/users/:username` strips only `passwordHash` and returns the full `User` entity: **`email`, `fortyTwoId`, `googleId`**, `coins`, `xp`, `lastSeenAt`, `isGuest`, timestamps, and the full `profile` relation.
 - Consumed by the social page's hover card: `HomePage.tsx:1774-1791` (`loadHoveredProfile` → `api.getUser`), which only needs `level`, `profile.totalWins/totalLosses/tag`, `mostPlayedGame` (`ProfileCard.tsx:7-18`).
 
 **Impact:** any logged-in user (including guests) can harvest email addresses and OAuth identifiers for every registered user by username. Blocking does not restrict it.

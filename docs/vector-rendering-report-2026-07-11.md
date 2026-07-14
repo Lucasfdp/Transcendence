@@ -25,7 +25,7 @@ Per-frame clear-and-redraw hot spots (the performance-relevant subset): `shared/
 ### React UI layer (mostly not vector)
 
 - Inline SVG in exactly **2 components**: `components/auth/OAuthButtons.tsx` and `components/casino/FortuneWheelModal.tsx` (the wheel).
-- **11 SVG assets**, all OAuth provider logos in `public/assets/oauth/`.
+- **1 SVG asset**, the Google OAuth provider logo in `public/assets/oauth/`; the 42 mark is rendered inline.
 - Everything else is CSS + ~111 PNG assets (7 TSX files use `<img>`).
 - One outlier: `components/casino/board-canvas.ts` draws the casino board programmatically on a 2D canvas (vector-style path drawing, not SVG).
 

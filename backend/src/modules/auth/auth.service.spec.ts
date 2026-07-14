@@ -12,7 +12,7 @@ import { User } from "../users/entities/user.entity";
 const mockUser: User = {
 	id: 1,
 	fortyTwoId: "dev-testuser",
-	githubId: null,
+	googleId: null,
 	username: "testuser",
 	email: "testuser@dev.local",
 	xp: 0,
@@ -52,7 +52,7 @@ describe("AuthService", () => {
 					provide: UsersService,
 					useValue: {
 						findByFortyTwoId: jest.fn(),
-						findByGithubId: jest.fn(),
+						findByGoogleId: jest.fn(),
 						findByEmail: jest.fn(),
 						findByUsername: jest.fn(),
 						create: jest.fn(),
@@ -147,6 +147,42 @@ describe("AuthService", () => {
 					email: "x@x",
 				}),
 			).rejects.toThrow(InternalServerErrorException);
+		});
+	});
+
+	describe("findOrCreateGoogleUser", () => {
+		it("returns an existing user when found by Google id", async () => {
+			usersService.findByGoogleId.mockResolvedValue(mockUser);
+
+			const result = await service.findOrCreateGoogleUser({
+				googleId: "google-123",
+				username: "testuser",
+				email: "testuser@example.com",
+			});
+
+			expect(result).toBe(mockUser);
+			expect(usersService.create).not.toHaveBeenCalled();
+		});
+
+		it("creates a user for a new Google account", async () => {
+			usersService.findByGoogleId.mockResolvedValue(null);
+			usersService.findByEmail.mockResolvedValue(null);
+			usersService.findByUsername.mockResolvedValue(null);
+			usersService.create.mockResolvedValue(mockUser);
+
+			await service.findOrCreateGoogleUser({
+				googleId: "google-456",
+				username: "googleuser",
+				email: "google@example.com",
+				avatar: "https://example.com/avatar.png",
+			});
+
+			expect(usersService.create).toHaveBeenCalledWith({
+				googleId: "google-456",
+				username: "googleuser",
+				email: "google@example.com",
+				avatar: "https://example.com/avatar.png",
+			});
 		});
 	});
 

@@ -84,20 +84,23 @@ A NestJS API server backed by TypeORM. It handles authentication, user data, and
 Root module. Wires up ConfigModule (global), TypeORM (async factory using ConfigService), and all feature modules. TypeORM `synchronize` is enabled in development so schema changes apply automatically — disabled in production.
 
 **AuthModule** (`backend/src/modules/auth/`)  
-Handles login and JWT issuance.
+Handles local, guest, 42, and Google authentication with JWTs stored in an
+HTTP-only cookie.
 
-- `AuthController` — two endpoints:
-    - `GET /api/auth/dev-login?username=<name>` — creates or finds a local user and returns a JWT. Double-gated: only works when `NODE_ENV !== 'production'` **and** `ENABLE_DEV_LOGIN=true`.
-    - `GET /api/auth/me` — returns the current user from the JWT (JWT-guarded).
-- `AuthService` — `findOrCreateUser()`, `issueJwt()`, `devLogin()`. All async calls are wrapped in try/catch with `InternalServerErrorException`.
-- `JwtStrategy` — validates Bearer tokens and loads the full user from the database.
-- `FortyTwoStrategy` — stub for 42 OAuth (disabled; see TODO #1 in the code).
+- `AuthController` — local registration/login, guest sessions, session logout,
+  current-user lookup, and the 42/Google OAuth routes and callbacks.
+- `AuthService` — account creation, credential validation, OAuth account
+  linking, and auth-cookie issuance.
+- `JwtStrategy` — validates the auth cookie and loads the current user.
+- `FortyTwoStrategy` and `GoogleStrategy` — the two supported remote OAuth
+  providers.
 
 **UsersModule** (`backend/src/modules/users/`)  
 CRUD over the `users` table.
 
 - `UsersController` — JWT-guarded routes: `GET /api/users`, `GET /api/users/:username`, `GET /api/users/me`.
-- `UsersService` — `findById`, `findByFortyTwoId`, `findByUsername` (throws `NotFoundException` when missing), `create` (also creates a linked Profile row), `findAll`.
+- `UsersService` — `findById`, `findByFortyTwoId`, `findByGoogleId`,
+  `findByUsername`, `create` (also creates a linked Profile row), and `findAll`.
 
 **ProfilesModule** (`backend/src/modules/profiles/`)  
 Manages the `profiles` table. Profiles are created automatically when a user is created — no separate endpoint yet.
@@ -278,7 +281,9 @@ JWT-protected request:
           → returns User entity
 ```
 
-42 OAuth is stubbed and ready to wire up. The strategy file (`forty-two.strategy.ts`) and guard (`ft-auth.guard.ts`) exist; the controller routes and module provider are behind `TODO(#1)` comments waiting for real client credentials.
+42 and Google OAuth are wired through Passport strategies, provider-specific
+guards, controller callbacks, and HTTP-only auth cookies. Real client
+credentials are supplied through Vault; see `docs/oauth-setup.md`.
 
 ---
 
@@ -396,7 +401,8 @@ All variables live in `.env` at the repo root. Key ones to know during developme
 | `JWT_SECRET`                | `changeme_jwt_secret`   | Signs all JWTs — use a strong random string in production       |
 | `POSTGRES_*`                | see `.env`              | Database credentials                                            |
 | `VITE_API_URL`              | `https://localhost/api` | API base URL injected into the Vite build                       |
-| `FORTYTWO_CLIENT_ID/SECRET` | empty                   | 42 OAuth credentials — leave empty until keys are obtained      |
+| `FORTYTWO_CLIENT_ID/SECRET` | Vault                   | 42 OAuth credentials                                             |
+| `GOOGLE_CLIENT_ID/SECRET`   | Vault                   | Google OAuth credentials                                         |
 | `DOMAIN_NAME`               | `localhost`             | Used by Nginx server_name in production                         |
 
 > **Never commit real secrets.** `.env` is listed in `.gitignore`. Use `.env.example` as the committed template.
