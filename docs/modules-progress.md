@@ -213,6 +213,7 @@ Evidence:
 - `backend/src/modules/leaderboard/`
 - `backend/src/modules/achievements/`
 - Replays and match history in `backend/src/modules/matchmaking/replay.service.ts`
+- 2026-07-15 rankings hardening pass (see `docs/old_docs/rankings-bug-audit-2026-07-15.md`): added the missing `user_ratings` migration and its unique constraint, closed the client-forgeable overall-leaderboard endpoint, fixed ranked draws never updating ratings, made match-finish reward persistence idempotent at the DB level, added stable tie-break ordering and dev-account exclusion to both leaderboard queries, and reworked the Rankings modal to show fetch errors, refetch on open, and the caller's own rank.
 
 Missing for completion:
 - Should review history coverage for all exposed games.

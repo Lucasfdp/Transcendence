@@ -5121,6 +5121,54 @@ img.power-card__orb {
 	white-space: nowrap;
 }
 
+/* Rankings Bug Audit M6: the full fetched list (up to 100 rows) now renders
+   instead of being sliced to 10, so it needs a bounded, scrollable box. */
+.hub-ranking-list--scrollable {
+	max-height: 18rem;
+	overflow-y: auto;
+	padding-right: 0.25rem;
+}
+
+.hub-ranking-list--scrollable li.hub-ranking-list__self {
+	background: rgba(241, 211, 145, 0.14);
+	border-radius: 0.4rem;
+	padding-left: 0.4rem;
+	padding-right: 0.4rem;
+}
+
+/* Pinned summary of the caller's own rank — always visible under the
+   scrollable list regardless of where their row falls (Bug Audit M6). */
+.hub-ranking-list__own-rank {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	gap: 0.55rem;
+	align-items: center;
+	margin-top: 0.5rem;
+	padding: 0.55rem 0.7rem;
+	border-top: 1px solid rgba(241, 211, 145, 0.28);
+	background: rgba(241, 211, 145, 0.08);
+	border-radius: 0.4rem;
+	font-size: 0.85rem;
+}
+
+.hub-ranking-list__own-rank span {
+	color: var(--muted);
+	font-size: 0.78rem;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+.hub-ranking-list__own-rank strong {
+	color: var(--accent);
+}
+
+.hub-modal__rankings-error {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.6rem;
+}
+
 /* ── Notification bell ───────────────────────────────────────────────────── */
 
 .hub-notif-bell {

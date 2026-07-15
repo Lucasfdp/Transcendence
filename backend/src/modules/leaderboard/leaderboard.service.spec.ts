@@ -18,6 +18,7 @@ const createQbMock = (rawRows: Record<string, unknown>[]) => ({
 	groupBy: jest.fn().mockReturnThis(),
 	addGroupBy: jest.fn().mockReturnThis(),
 	orderBy: jest.fn().mockReturnThis(),
+	addOrderBy: jest.fn().mockReturnThis(),
 	limit: jest.fn().mockReturnThis(),
 	getRawMany: jest.fn().mockResolvedValue(rawRows),
 });
@@ -103,7 +104,7 @@ describe("LeaderboardService", () => {
 		it("should return ranked entries with correct field types for global scope", async () => {
 			await buildModule([rawRatingRow()]);
 
-			const result = await service.getGameLeaderboard(1, "shell-curl", "global");
+			const result = await service.getGameLeaderboard(1, "temple-curling", "global");
 
 			expect(result).toHaveLength(1);
 			expect(result[0]).toMatchObject({
@@ -127,7 +128,7 @@ describe("LeaderboardService", () => {
 				rawRatingRow({ userId: "30", rating: "1100", username: "shell3" }),
 			]);
 
-			const result = await service.getGameLeaderboard(1, "shell-curl", "global");
+			const result = await service.getGameLeaderboard(1, "temple-curling", "global");
 
 			expect(result.map((e) => e.rank)).toEqual([1, 2, 3]);
 		});
@@ -154,7 +155,7 @@ describe("LeaderboardService", () => {
 			}).compile();
 
 			service = module.get(LeaderboardService);
-			const result = await service.getGameLeaderboard(1, "shell-curl", "friends");
+			const result = await service.getGameLeaderboard(1, "temple-curling", "friends");
 
 			expect(friendsService.getFriendIds).toHaveBeenCalledWith(1);
 			expect(result).toHaveLength(1);
@@ -175,8 +176,34 @@ describe("LeaderboardService", () => {
 			userRatingRepo.createQueryBuilder.mockReturnValue(qb);
 
 			await expect(
-				service.getGameLeaderboard(1, "shell-curl", "global"),
+				service.getGameLeaderboard(1, "temple-curling", "global"),
 			).rejects.toThrow(InternalServerErrorException);
+		});
+
+		// ── Rankings Bug Audit M5: stable tie-break ordering ──────────────────
+
+		it("should order by rating desc, then wins desc, then username asc", async () => {
+			await buildModule([rawRatingRow()]);
+			const qb = createQbMock([rawRatingRow()]);
+			userRatingRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getGameLeaderboard(1, "temple-curling", "global");
+
+			expect(qb.orderBy).toHaveBeenCalledWith("ur.rating", "DESC");
+			expect(qb.addOrderBy).toHaveBeenCalledWith("ur.wins", "DESC");
+			expect(qb.addOrderBy).toHaveBeenCalledWith("u.username", "ASC");
+		});
+
+		// ── Rankings Bug Audit L4: dev accounts excluded ───────────────────────
+
+		it("should exclude dev accounts from the query", async () => {
+			await buildModule([rawRatingRow()]);
+			const qb = createQbMock([rawRatingRow()]);
+			userRatingRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getGameLeaderboard(1, "temple-curling", "global");
+
+			expect(qb.andWhere).toHaveBeenCalledWith("u.isDevAccount = false");
 		});
 	});
 
@@ -229,6 +256,32 @@ describe("LeaderboardService", () => {
 			await expect(
 				service.getOverallLeaderboard(1, "global"),
 			).rejects.toThrow(InternalServerErrorException);
+		});
+
+		// ── Rankings Bug Audit M5: stable tie-break ordering ──────────────────
+
+		it("should order by totalWins desc, then level desc, then username asc", async () => {
+			await buildModule([], [rawStatsRow()]);
+			const qb = createQbMock([rawStatsRow()]);
+			userGameStatsRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getOverallLeaderboard(1, "global");
+
+			expect(qb.orderBy).toHaveBeenCalledWith('"totalWins"', "DESC");
+			expect(qb.addOrderBy).toHaveBeenCalledWith("u.level", "DESC");
+			expect(qb.addOrderBy).toHaveBeenCalledWith("u.username", "ASC");
+		});
+
+		// ── Rankings Bug Audit L4: dev accounts excluded ───────────────────────
+
+		it("should exclude dev accounts from the query", async () => {
+			await buildModule([], [rawStatsRow()]);
+			const qb = createQbMock([rawStatsRow()]);
+			userGameStatsRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getOverallLeaderboard(1, "global");
+
+			expect(qb.andWhere).toHaveBeenCalledWith("u.isDevAccount = false");
 		});
 	});
 });

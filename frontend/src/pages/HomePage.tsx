@@ -1,4 +1,5 @@
 import {
+	useCallback,
 	useEffect,
 	useId,
 	useLayoutEffect,
@@ -598,6 +599,10 @@ function HomeMenu(): JSX.Element {
 	const [gameLeaderboard, setGameLeaderboard] = useState<GameLeaderboardEntry[]>([]);
 	const [overallLeaderboard, setOverallLeaderboard] = useState<OverallLeaderboardEntry[]>([]);
 	const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+	// Rankings Bug Audit M2: distinct from "no rows returned" — a fetch
+	// failure (e.g. the backend 500ing under H1) must not render as the same
+	// "No rankings yet." empty state a healthy-but-empty board would show.
+	const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
 	const [notifications, setNotifications] = useState<NotificationView[]>([]);
 	const [isNotifDrawerOpen, setIsNotifDrawerOpen] = useState(false);
 	// Private lobby — host side
@@ -800,30 +805,70 @@ function HomeMenu(): JSX.Element {
 		};
 	}, []);
 
-	// Re-fetch leaderboard whenever the selected game or scope changes
-	useEffect(() => {
+	const loadLeaderboard = useCallback(async (): Promise<() => void> => {
 		let cancelled = false;
-
-		async function loadLeaderboard(): Promise<void> {
-			setLeaderboardLoading(true);
-			try {
-				if (leaderboardGame === "overall") {
-					const rows = await api.getOverallLeaderboard(leaderboardScope);
-					if (!cancelled) setOverallLeaderboard(rows.slice(0, 10));
-				} else {
-					const rows = await api.getGameLeaderboard(leaderboardGame, leaderboardScope);
-					if (!cancelled) setGameLeaderboard(rows.slice(0, 10));
-				}
-			} catch (err) {
-				console.warn("[HomeMenu] Failed to load leaderboard:", err);
-			} finally {
-				if (!cancelled) setLeaderboardLoading(false);
+		setLeaderboardLoading(true);
+		setLeaderboardError(null);
+		// Rankings Bug Audit M2: clear the previous game/scope's rows before
+		// fetching so a slow or failed request can't leave stale entries on
+		// screen mislabelled as the newly-selected tab.
+		if (leaderboardGame === "overall") setOverallLeaderboard([]);
+		else setGameLeaderboard([]);
+		try {
+			if (leaderboardGame === "overall") {
+				const rows = await api.getOverallLeaderboard(leaderboardScope);
+				if (!cancelled) setOverallLeaderboard(rows);
+			} else {
+				const rows = await api.getGameLeaderboard(leaderboardGame, leaderboardScope);
+				if (!cancelled) setGameLeaderboard(rows);
 			}
+		} catch (err) {
+			console.warn("[HomeMenu] Failed to load leaderboard:", err);
+			if (!cancelled) {
+				setLeaderboardError(
+					"Couldn't load rankings. Check your connection and try again.",
+				);
+			}
+		} finally {
+			if (!cancelled) setLeaderboardLoading(false);
 		}
-
-		void loadLeaderboard();
-		return () => { cancelled = true; };
+		return () => {
+			cancelled = true;
+		};
 	}, [leaderboardGame, leaderboardScope]);
+
+	// Re-fetch the leaderboard whenever the Rankings modal is open and the
+	// selected game or scope changes.
+	//
+	// Rankings Bug Audit L1: this used to run on every HomePage mount (and
+	// only on mount/game/scope change after that), so a player who kept the
+	// hub open saw standings frozen at mount time even after reopening the
+	// modal, and every player who never opened Rankings paid for a fetch
+	// they never used. Gating on `activeModal === "rankings"` fixes both:
+	// opening the modal always fetches fresh data, and nothing fires for
+	// players who never look at it.
+	useEffect(() => {
+		if (activeModal !== "rankings") return;
+		let cancel: (() => void) | undefined;
+		void loadLeaderboard().then((c) => {
+			cancel = c;
+		});
+		return () => cancel?.();
+	}, [activeModal, loadLeaderboard]);
+
+	// Rankings Bug Audit M6: up to 100 rows are fetched but only the top 10
+	// were ever rendered, so a player outside the top 10 had no way to see
+	// their own rank. The full fetched list is now rendered (scrollable);
+	// these track the caller's own row within it so it can be pinned in a
+	// summary bar regardless of scroll position.
+	const ownOverallRank = useMemo(
+		() => overallLeaderboard.find((entry) => entry.userId === player?.id) ?? null,
+		[overallLeaderboard, player],
+	);
+	const ownGameRank = useMemo(
+		() => gameLeaderboard.find((entry) => entry.userId === player?.id) ?? null,
+		[gameLeaderboard, player],
+	);
 
 	// Hydrate the notification inbox on every mount via REST (Bug Audit H1).
 	// The WS `notification:inbox` push below only fires once, at socket
@@ -3211,39 +3256,87 @@ function HomeMenu(): JSX.Element {
 
 						{leaderboardLoading ? (
 							<p className="hub-panel__muted">Loading…</p>
+						) : leaderboardError ? (
+							// Rankings Bug Audit M2: a fetch failure gets its own state,
+							// distinct from "the board is genuinely empty" below.
+							<div className="hub-modal__rankings-error">
+								<p className="hub-modal__error">{leaderboardError}</p>
+								<button
+									type="button"
+									className="hub-modal__retry-button"
+									onClick={() => void loadLeaderboard()}
+								>
+									Retry
+								</button>
+							</div>
 						) : leaderboardGame === "overall" ? (
 							overallLeaderboard.length > 0 ? (
-								<ol className="hub-ranking-list">
-									{overallLeaderboard.map((entry) => (
-										<li key={entry.userId}>
-											<span className="hub-ranking-list__rank">#{entry.rank}</span>
-											<strong className="hub-ranking-list__name">
-												{entry.turtleName ?? entry.username}
-											</strong>
-											<small className="hub-ranking-list__stat">
-												{entry.totalWins} wins
-											</small>
-										</li>
-									))}
-								</ol>
+								<>
+									<ol className="hub-ranking-list hub-ranking-list--scrollable">
+										{overallLeaderboard.map((entry) => (
+											<li
+												key={entry.userId}
+												className={
+													entry.userId === player?.id
+														? "hub-ranking-list__self"
+														: undefined
+												}
+											>
+												<span className="hub-ranking-list__rank">#{entry.rank}</span>
+												<strong className="hub-ranking-list__name">
+													{entry.turtleName ?? entry.username}
+												</strong>
+												<small className="hub-ranking-list__stat">
+													{entry.totalWins} wins
+												</small>
+											</li>
+										))}
+									</ol>
+									{ownOverallRank ? (
+										<div className="hub-ranking-list__own-rank">
+											<span>Your rank</span>
+											<strong>#{ownOverallRank.rank}</strong>
+											<small>{ownOverallRank.totalWins} wins</small>
+										</div>
+									) : null}
+								</>
 							) : (
 								<p className="hub-panel__muted">No rankings yet.</p>
 							)
 						) : (
 							gameLeaderboard.length > 0 ? (
-								<ol className="hub-ranking-list">
-									{gameLeaderboard.map((entry) => (
-										<li key={entry.userId}>
-											<span className="hub-ranking-list__rank">#{entry.rank}</span>
-											<strong className="hub-ranking-list__name">
-												{entry.turtleName ?? entry.username}
-											</strong>
-											<small className="hub-ranking-list__stat">
-												{entry.rating} ELO · {entry.wins}W/{entry.losses}L
+								<>
+									<ol className="hub-ranking-list hub-ranking-list--scrollable">
+										{gameLeaderboard.map((entry) => (
+											<li
+												key={entry.userId}
+												className={
+													entry.userId === player?.id
+														? "hub-ranking-list__self"
+														: undefined
+												}
+											>
+												<span className="hub-ranking-list__rank">#{entry.rank}</span>
+												<strong className="hub-ranking-list__name">
+													{entry.turtleName ?? entry.username}
+												</strong>
+												<small className="hub-ranking-list__stat">
+													{entry.rating} ELO · {entry.wins}W/{entry.losses}L
+												</small>
+											</li>
+										))}
+									</ol>
+									{ownGameRank ? (
+										<div className="hub-ranking-list__own-rank">
+											<span>Your rank</span>
+											<strong>#{ownGameRank.rank}</strong>
+											<small>
+												{ownGameRank.rating} ELO · {ownGameRank.wins}W/
+												{ownGameRank.losses}L
 											</small>
-										</li>
-									))}
-								</ol>
+										</div>
+									) : null}
+								</>
 							) : (
 								<p className="hub-panel__muted">No rankings yet.</p>
 							)
