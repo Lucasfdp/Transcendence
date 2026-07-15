@@ -2,7 +2,7 @@ import { io, Socket } from "socket.io-client";
 
 export type MatchMode = "casual" | "ranked";
 
-export type ReplayContractVersion = 1;
+export type ReplayContractVersion = 2;
 
 export type GameMap =
 	| { gameId: "temple-curling"; bumpers: Array<{ fx: number; fy: number }> }
@@ -410,6 +410,8 @@ export interface OnlineMatchContext {
 	rejoining?: boolean;
 	snapshot?: GameSnapshot;
 	physicsState?: BellClashPhysicsState | BambooBashPhysicsState | KameKnockPhysicsState | ShellCurlPhysicsState;
+	replayEnabled: boolean;
+	replayDisabledReason: "powerups-enabled" | null;
 }
 
 let socket: Socket | null = null;

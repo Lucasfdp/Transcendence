@@ -5,7 +5,7 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { AuthService } from "./auth.service";
 import { AuthController } from "./auth.controller";
 import { FortyTwoStrategy } from "./strategies/forty-two.strategy";
-import { GithubStrategy } from "./strategies/github.strategy";
+import { GoogleStrategy } from "./strategies/google.strategy";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { UsersModule } from "../users/users.module";
 import { RateLimiterService } from "./rate-limiter.service";
@@ -35,7 +35,7 @@ import { TokenDenyListService } from "./token-deny-list.service";
 		AuthService,
 		JwtStrategy,
 		FortyTwoStrategy,
-		GithubStrategy,
+		GoogleStrategy,
 		RateLimiterService,
 		RedisRateLimiterService,
 		GuestCleanupService,

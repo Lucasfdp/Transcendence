@@ -107,7 +107,7 @@ import {
 	buildCommonLocalReplayParticipantContext,
 	buildBambooBashLocalReplaySnapshot,
 	CommonGameSceneHost,
-	LocalReplayRuntime,
+	ReplayCaptureRuntime,
 	resolvePlayerTrailEffects,
 	SceneSocketChannel,
 	SlingshotLaunchRuntime,
@@ -251,13 +251,14 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 	private ballWasMoving = false;
 
 	ballTrails = new ArenaBallTrailRuntime();
-	private readonly localReplay = new LocalReplayRuntime<
+	private readonly localReplay = new ReplayCaptureRuntime<
 		BambooBashSnapshot,
 		BambooBashSnapshot["phase"]
 	>({
 		gameId: "bamboo-bash",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
-		shouldSkip: () => this.online.isActive,
+		shouldSkip: () =>
+			this.online.isActive || this.registry.get("replayEnabled") === false,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
@@ -750,6 +751,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 
 		participant.activePower = PowerType.NONE;
 		this.powerSidePanel?.hide();
+		this.localReplay.recordEvent("action:start");
 		this.localReplay.captureFrame(true);
 	}
 

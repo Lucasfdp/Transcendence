@@ -63,9 +63,12 @@ function makeRoom(overrides: Partial<MatchRoom> = {}): MatchRoom {
 		},
 		replayFrames: [],
 		replayEvents: [],
-		replayLastCapturedSeq: null,
+		replayEnabled: true,
+		replayDisabledReason: null,
 		replayStartedAt: null,
-		replayLastRecordedAt: null,
+		replayLastSampleAt: null,
+		replayLastKeyframeAt: null,
+		replayLastSnapshot: null,
 		...overrides,
 	};
 }

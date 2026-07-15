@@ -19,6 +19,20 @@ Players have:
 - A customisable turtle (`turtleName`, `shellSkin`)
 - A spot on the Dojo Rankings leaderboard
 
+## Replay mode
+
+Replay Mode is a substantial module because it records deterministic match
+timelines independently of the live game loop, persists them with match and
+participant metadata, and reconstructs all four games through a shared Phaser
+viewer with temporal seeking. Replay contract v2 uses monotonic time, 20 Hz
+sampling, periodic keyframes, delta frames, and bounded pre-roll so playback
+retains the original match duration without storing repeated static state.
+
+Replays are intentionally incompatible with power-ups. Power-ups introduce
+non-standard transient effects that are not part of the deterministic replay
+contract; a match created with power-ups therefore allocates no replay recorder,
+is not persisted as a replay, and never appears in the replay library.
+
 ## Stack
 
 - **Backend:** NestJS + TypeORM + PostgreSQL, 42 OAuth + JWT auth

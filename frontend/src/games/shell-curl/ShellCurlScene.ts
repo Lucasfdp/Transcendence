@@ -94,7 +94,7 @@ import {
 	buildCommonLocalReplayParticipantContext,
 	buildShellCurlLocalReplaySnapshot,
 	CommonGameSceneHost,
-	LocalReplayRuntime,
+	ReplayCaptureRuntime,
 	resolvePlayerTrailEffects,
 	SlingshotLaunchRuntime,
 	WorldRuntime,
@@ -284,13 +284,14 @@ export class ShellCurlScene
 	private localEndScores: Array<Array<number | null>> = [];
 	private localMode: "solo" | "versus" = "versus";
 
-	private readonly localReplay = new LocalReplayRuntime<
+	private readonly localReplay = new ReplayCaptureRuntime<
 		CurlingSnapshot,
 		CurlingSnapshot["phase"]
 	>({
 		gameId: "temple-curling",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
-		shouldSkip: () => this.online.isActive,
+		shouldSkip: () =>
+			this.online.isActive || this.registry.get("replayEnabled") === false,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
@@ -1234,7 +1235,10 @@ export class ShellCurlScene
 			hasHammer: () => state.hasHammer,
 			onRelease: () => {
 				this.scoreHud.update(this.buildScoreHudState());
-				if (!this.online.isActive) this.localReplay.captureFrame(true);
+				if (!this.online.isActive) {
+					this.localReplay.recordEvent("action:start");
+					this.localReplay.captureFrame(true);
+				}
 			},
 			onProjectileSettled: () => this.finishThrow(),
 			computeWinner: () => resolveReplayWinnerSide([...state.score]),

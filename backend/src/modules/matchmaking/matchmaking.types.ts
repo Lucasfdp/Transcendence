@@ -12,7 +12,7 @@ export interface SocketUser {
 	isGuest: boolean;
 }
 
-export type ReplayContractVersion = 1;
+export type ReplayContractVersion = 2;
 
 export interface QueueJoinPayload {
 	gameId: string;
@@ -478,29 +478,30 @@ export interface MatchRoom {
 	seq: number;
 	state: GameSnapshot;
 	physicsState?: BellClashPhysicsState | BambooBashPhysicsState | KameKnockPhysicsState | ShellCurlPhysicsState;
+	replayEnabled: boolean;
+	replayDisabledReason: "powerups-enabled" | null;
 	rewardsGranted?: boolean;
 	rematchReadyUserIds?: Set<number>;
 	rematchLeftUserIds?: Set<number>;
 	rematchStartedMatchId?: string;
 	replayFrames: Array<{
-		replayVersion?: ReplayContractVersion;
 		seq: number;
-		recordedAt: string;
-		recordedAtMs: number;
-		tickTs: number;
-		deltaMs: number;
-		snapshot: Record<string, unknown>;
+		tMs: number;
+		round: number;
+		state: "pending" | "active" | "finished" | "abandoned";
+		type: "keyframe" | "delta";
+		changes: Record<string, unknown>;
+		removals: string[];
 	}>;
 	replayEvents: Array<{
-		replayVersion?: ReplayContractVersion;
-		type: string;
 		seq: number;
-		recordedAt: string;
-		recordedAtMs: number;
-		tickTs: number;
+		tMs: number;
+		round: number;
+		type: string;
 		payload: Record<string, unknown>;
 	}>;
-	replayLastCapturedSeq: number | null;
 	replayStartedAt: number | null;
-	replayLastRecordedAt: number | null;
+	replayLastSampleAt: number | null;
+	replayLastKeyframeAt: number | null;
+	replayLastSnapshot: Record<string, unknown> | null;
 }

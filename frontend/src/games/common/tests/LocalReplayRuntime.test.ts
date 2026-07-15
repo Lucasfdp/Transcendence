@@ -38,10 +38,14 @@ describe("LocalReplayRuntime", () => {
 		expect(imported).toEqual([
 			expect.objectContaining({
 				gameId: "kame-knock",
-				playerUserIds: [4],
+				metadata: expect.objectContaining({
+					contractVersion: 2,
+					powerupsEnabled: false,
+					participants: [expect.objectContaining({ userId: 4 })],
+				}),
 				frames: expect.arrayContaining([
 					expect.objectContaining({
-						snapshot: expect.objectContaining({
+						changes: expect.objectContaining({
 							phase: "finished",
 						}),
 					}),

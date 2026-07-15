@@ -26,7 +26,7 @@ import { RateLimiterService } from "./rate-limiter.service";
 import { TokenDenyListService } from "./token-deny-list.service";
 import { User } from "../users/entities/user.entity";
 import { FortyTwoAuthGuard } from "./guards/ft-auth.guard";
-import { GithubAuthGuard } from "./guards/github-auth.guard";
+import { GoogleAuthGuard } from "./guards/google-auth.guard";
 
 // ── CSRF cookie name (NOT httpOnly — must be readable by JS) ─────────────────
 const CSRF_COOKIE = "csrf_token";
@@ -263,15 +263,15 @@ export class AuthController {
 		res.redirect("/");
 	}
 
-	@Get("github")
-	@UseGuards(GithubAuthGuard)
-	githubLogin(): void {
+	@Get("google")
+	@UseGuards(GoogleAuthGuard)
+	googleLogin(): void {
 		// Passport handles the redirect to the provider.
 	}
 
-	@Get("github/callback")
-	@UseGuards(GithubAuthGuard)
-	async githubCallback(
+	@Get("google/callback")
+	@UseGuards(GoogleAuthGuard)
+	async googleCallback(
 		@Req() req: Request & { user?: User },
 		@Res() res: Response,
 	): Promise<void> {

@@ -65,7 +65,15 @@ export class GameSessionService implements OnModuleInit {
 	}
 
 	advanceSimulation(room: MatchRoom, elapsedMs: number): boolean {
-		return this.engines.get(room.gameId).advanceSimulation?.(room, elapsedMs) ?? false;
+		return (
+			this.engines
+				.get(room.gameId)
+				.advanceSimulation?.(room, elapsedMs) ?? false
+		);
+	}
+
+	captureReplayFrame(room: MatchRoom, logicalStepMs: number): void {
+		this.replayService.captureFrame(room, false, logicalStepMs);
 	}
 
 	async startIfReady(matchId: string): Promise<MatchRoom | null> {
@@ -89,12 +97,15 @@ export class GameSessionService implements OnModuleInit {
 		if (room.status !== "finished" && room.status !== "abandoned") return;
 		const finished =
 			this.roomService.finish(
-			room.matchId,
-			room.state.winnerSide,
-			room.status === "abandoned",
-		) ?? room;
+				room.matchId,
+				room.state.winnerSide,
+				room.status === "abandoned",
+			) ?? room;
 		this.cleanupEngineRoomState(finished);
-		await this.persistFinishedRoom(finished, finished.status === "abandoned");
+		await this.persistFinishedRoom(
+			finished,
+			finished.status === "abandoned",
+		);
 	}
 
 	async abandon(
@@ -104,7 +115,11 @@ export class GameSessionService implements OnModuleInit {
 		const winnerSide = this.engines
 			.get(room.gameId)
 			.abandon(room, abandonedPlayer);
-		const finished = this.roomService.finish(room.matchId, winnerSide, true);
+		const finished = this.roomService.finish(
+			room.matchId,
+			winnerSide,
+			true,
+		);
 		if (finished) {
 			this.cleanupEngineRoomState(finished);
 			await this.persistFinishedRoom(finished, true);
@@ -125,8 +140,8 @@ export class GameSessionService implements OnModuleInit {
 		const winnerUserId =
 			winnerSide === null
 				? null
-				: room.players.find((player) => player.side === winnerSide)?.user.id ??
-					null;
+				: (room.players.find((player) => player.side === winnerSide)
+						?.user.id ?? null);
 
 		try {
 			await this.dataSource.transaction(async (manager) => {
@@ -165,7 +180,9 @@ export class GameSessionService implements OnModuleInit {
 					// XP/coins/card drop (Bug Audit M6). Abandon-driven forfeits are
 					// handled separately via `abandon()` with `abandoned = true`.
 					for (const player of room.players) {
-						const user = await this.usersService.findById(player.user.id);
+						const user = await this.usersService.findById(
+							player.user.id,
+						);
 						if (!user || user.isGuest) continue;
 						await this.gameResultsService.submitResult(user, {
 							gameId: room.gameId,
@@ -241,7 +258,8 @@ export class GameSessionService implements OnModuleInit {
 				opponentRatings.length;
 
 			const expected =
-				1 / (1 + Math.pow(10, (opponentRating - playerRating) / ELO_SCALE));
+				1 /
+				(1 + Math.pow(10, (opponentRating - playerRating) / ELO_SCALE));
 			const delta = Math.round(ELO_K * (score - expected));
 			rating.rating = Math.max(0, playerRating + delta);
 

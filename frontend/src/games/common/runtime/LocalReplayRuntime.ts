@@ -53,6 +53,11 @@ export class LocalReplayRuntime<
 		this.capture.captureFrame(force, phaseOverride);
 	}
 
+	recordEvent(type: string, payload: Record<string, unknown> = {}): void {
+		this.capture.captureFrame(true);
+		this.recorder.recordEvent(type, payload);
+	}
+
 	resetCaptureAccumulator(): void {
 		this.recorder.resetCaptureAccumulator();
 	}
@@ -75,6 +80,7 @@ export class LocalReplayRuntime<
 		return this.persistence.start({
 			...options,
 			recorder: this.recorder,
+			events: options.events ?? this.recorder.getEvents(),
 		});
 	}
 

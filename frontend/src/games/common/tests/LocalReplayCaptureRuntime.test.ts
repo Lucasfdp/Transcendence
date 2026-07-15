@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { LocalReplayCaptureRuntime } from "../runtime/LocalReplayCaptureRuntime";
 import { SceneReplayRecorder } from "../localReplay";
+import { reconstructReplayFrame } from "../replay/ReplayEncoder";
 
 describe("LocalReplayCaptureRuntime", () => {
 	it("starts and captures replay snapshots through the common capture runtime", () => {
@@ -21,7 +22,7 @@ describe("LocalReplayCaptureRuntime", () => {
 		runtime.captureTick(120);
 		runtime.captureFrame(true, "finished");
 
-		expect(recorder.getFrames().map((frame) => frame.snapshot)).toEqual([
+		expect(recorder.getFrames().map((_frame, index, frames) => reconstructReplayFrame(frames, index))).toEqual([
 			{ phase: "active", seq: 0 },
 			{ phase: "active", seq: 1 },
 			{ phase: "finished", seq: 2 },
@@ -43,6 +44,6 @@ describe("LocalReplayCaptureRuntime", () => {
 		runtime.captureTick(120);
 		runtime.captureFrame(true);
 
-		expect(recorder.getFrames()).toHaveLength(1);
+		expect(recorder.getFrames()).toHaveLength(0);
 	});
 });

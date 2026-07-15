@@ -17,9 +17,22 @@ function makeRoom(playerCount = 2, selections: string[][] = []): MatchRoom {
 		players: players.map((player) => ({ socketId: player.socketId, user: player.user, shellSelection: player.shellSelection })),
 	}, players);
 	return {
-		matchId: "match-curl", gameId: "temple-curling", mode: "casual", status: "pending", players,
-		spectators: new Map(), seq: 0, state, replayFrames: [], replayEvents: [],
-		replayLastCapturedSeq: null, replayStartedAt: null, replayLastRecordedAt: null,
+		matchId: "match-curl",
+		gameId: "temple-curling",
+		mode: "casual",
+		status: "pending",
+		players,
+		spectators: new Map(),
+		seq: 0,
+		state,
+		replayFrames: [],
+		replayEvents: [],
+		replayEnabled: true,
+		replayDisabledReason: null,
+		replayStartedAt: null,
+		replayLastSampleAt: null,
+		replayLastKeyframeAt: null,
+		replayLastSnapshot: null,
 	};
 }
 

@@ -2,6 +2,7 @@ import type { ReplayImportRequest } from "../../../features/hub/api";
 import {
 	buildLocalReplayImportRequest,
 	buildLocalReplayPlayerUserIds,
+	trimReplayRoundPreRoll,
 	type LocalReplayUser,
 	type SceneReplayRecorder,
 } from "../localReplay";
@@ -47,10 +48,15 @@ export class LocalReplayPersistenceRuntime {
 export async function persistLocalReplayImport<TSnapshot extends object>(
 	options: LocalReplayPersistenceOptions<TSnapshot>,
 ): Promise<void> {
-	if (!options.recorder.getReplayId() || !options.recorder.hasFrames()) return;
+	if (!options.recorder.getReplayId() || !options.recorder.hasFrames())
+		return;
 	if (options.user?.isGuest) return;
 
 	const finishedAt = new Date().toISOString();
+	const timeline = trimReplayRoundPreRoll(
+		options.frames ?? options.recorder.buildImportFrames(),
+		options.events ?? options.recorder.getEvents(),
+	);
 	const importPayload = buildLocalReplayImportRequest({
 		gameId: options.gameId,
 		mode: options.mode,
@@ -62,13 +68,14 @@ export async function persistLocalReplayImport<TSnapshot extends object>(
 			options.playerCount,
 		),
 		playerNames: options.playerNames,
-		frames: options.frames ?? options.recorder.buildImportFrames(),
-		events: options.events,
+		frames: timeline.frames,
+		events: timeline.events,
 	});
 
 	try {
 		await options.importReplay(importPayload);
-		if (options.logLabel) console.info(`[${options.logLabel}] replay persisted`);
+		if (options.logLabel)
+			console.info(`[${options.logLabel}] replay persisted`);
 	} catch (err: unknown) {
 		if (options.logLabel) {
 			console.warn(

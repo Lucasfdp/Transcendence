@@ -104,7 +104,7 @@ import {
 	buildCommonLocalReplayParticipantContext,
 	buildKameKnockLocalReplaySnapshot,
 	CommonGameSceneHost,
-	LocalReplayRuntime,
+	ReplayCaptureRuntime,
 	resolvePlayerTrailEffects,
 	SlingshotLaunchRuntime,
 	WorldMapRuntime,
@@ -292,13 +292,14 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	ballTrails = new ArenaBallTrailRuntime();
 	private completedTrailPlayers = new Map<number | string, number>();
 	private localMode: "solo" | "versus" = "solo";
-	private readonly localReplay = new LocalReplayRuntime<
+	private readonly localReplay = new ReplayCaptureRuntime<
 		KameKnockSnapshot,
 		KameKnockSnapshot["phase"]
 	>({
 		gameId: "kame-knock",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
-		shouldSkip: () => this.online.isActive,
+		shouldSkip: () =>
+			this.online.isActive || this.registry.get("replayEnabled") === false,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
@@ -1330,7 +1331,10 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			getPhase: () => this.currentTurnPhase(),
 			onRelease: () => {
 				this.updateScoreHud();
-				if (!this.online.isActive) this.localReplay.captureFrame(true);
+				if (!this.online.isActive) {
+					this.localReplay.recordEvent("action:start");
+					this.localReplay.captureFrame(true);
+				}
 			},
 			onProjectileSettled: () => this.finishBallRound(),
 			computeWinner: () => this.resolveLocalWinnerSide(),

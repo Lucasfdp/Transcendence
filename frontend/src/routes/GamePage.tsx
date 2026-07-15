@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+	Navigate,
+	useLocation,
+	useNavigate,
+	useParams,
+} from "react-router-dom";
 import { api, type User } from "../features/hub/api";
 import { RETURN_TO_HUB_EVENT } from "../features/hub/ReturnToHubScene";
 import type { ShellSmashStartData } from "../lib/createShellSmashGame";
@@ -12,6 +17,10 @@ import {
 	type GameId,
 } from "../shared/mechanics/game-powers";
 import { ALL_POWERS } from "../shared/mechanics/power-system";
+import {
+	replayAvailability,
+	REPLAY_DISABLED_MESSAGE,
+} from "../games/common/replay/contracts";
 import {
 	getGameSocket,
 	type BellClashPhysicsState,
@@ -80,11 +89,15 @@ export default function GamePage(): JSX.Element {
 	const navigate = useNavigate();
 	const { gameId } = useParams();
 	const [hubBackground, setHubBackground] = useState<string | null>(null);
-	const [hubBackgroundAlter, setHubBackgroundAlter] = useState<string | null>(null);
+	const [hubBackgroundAlter, setHubBackgroundAlter] = useState<string | null>(
+		null,
+	);
 	const [shellSkin, setShellSkin] = useState("base");
 	const [trailEffect, setTrailEffect] = useState("trail_classic");
 	const [currentUser, setCurrentUser] = useState<User | null>(null);
-	const [launchData, setLaunchData] = useState<ShellSmashStartData | null>(null);
+	const [launchData, setLaunchData] = useState<ShellSmashStartData | null>(
+		null,
+	);
 
 	const sceneData = useMemo(() => {
 		if (!gameId) return null;
@@ -114,7 +127,8 @@ export default function GamePage(): JSX.Element {
 				}
 			})
 			.catch((err: unknown) => {
-				if (!cancelled) console.warn("[GamePage] Failed to load user:", err);
+				if (!cancelled)
+					console.warn("[GamePage] Failed to load user:", err);
 			});
 
 		return () => {
@@ -199,15 +213,20 @@ function PowerupMatchmakingPanel({
 		(location.state as { autoJoinMatch?: boolean } | null)?.autoJoinMatch,
 	);
 	const hasAutoJoinedRef = useRef(false);
-	const [message, setMessage] = useState("Power-ups are off by default. Enable them for extra chaos.");
-	const [messageTone, setMessageTone] = useState<"muted" | "gold" | "error">("muted");
+	const [message, setMessage] = useState(
+		"Power-ups are off by default. Enable them for extra chaos.",
+	);
+	const [messageTone, setMessageTone] = useState<"muted" | "gold" | "error">(
+		"muted",
+	);
 	const [soloPowerupsEnabled, setSoloPowerupsEnabled] = useState(false);
 	const [localVsPlayerCount, setLocalVsPlayerCount] = useState(2);
 	const [localVsPowerupsEnabled, setLocalVsPowerupsEnabled] = useState(false);
 	const [onlinePlayerCount, setOnlinePlayerCount] = useState(2);
 	const [onlinePowerupsEnabled, setOnlinePowerupsEnabled] = useState(false);
 	const [privateOnlinePlayerCount, setPrivateOnlinePlayerCount] = useState(2);
-	const [privateOnlinePowerupsEnabled, setPrivateOnlinePowerupsEnabled] = useState(false);
+	const [privateOnlinePowerupsEnabled, setPrivateOnlinePowerupsEnabled] =
+		useState(false);
 	const [privateRoomPin, setPrivateRoomPin] = useState("");
 	const [privateLobby, setPrivateLobby] = useState<{
 		lobbyId: string;
@@ -218,8 +237,21 @@ function PowerupMatchmakingPanel({
 		expiresAt: number;
 	} | null>(null);
 	const [isSearchingOnline, setIsSearchingOnline] = useState(false);
-	const [activeMatchStatus, setActiveMatchStatus] = useState<MatchStatusPayload | null>(null);
+	const [activeMatchStatus, setActiveMatchStatus] =
+		useState<MatchStatusPayload | null>(null);
 	const isSearchingOnlineRef = useRef(false);
+	const togglePowerups = (
+		setEnabled: (updater: (enabled: boolean) => boolean) => void,
+	) => {
+		setEnabled((enabled) => {
+			const next = !enabled;
+			if (next) {
+				setMessage(REPLAY_DISABLED_MESSAGE);
+				setMessageTone("muted");
+			}
+			return next;
+		});
+	};
 
 	useEffect(() => {
 		isSearchingOnlineRef.current = isSearchingOnline;
@@ -241,7 +273,9 @@ function PowerupMatchmakingPanel({
 		}) => {
 			setPrivateLobby(payload);
 			setPrivateRoomPin(payload.pin);
-			setMessage(`Private room ${payload.pin} created. Waiting for ${payload.joinedCount}/${payload.playerCount} players.`);
+			setMessage(
+				`Private room ${payload.pin} created. Waiting for ${payload.joinedCount}/${payload.playerCount} players.`,
+			);
 			setMessageTone("gold");
 		};
 		const handleLobbyWaiting = (payload: {
@@ -255,7 +289,9 @@ function PowerupMatchmakingPanel({
 			if (payload.gameId !== gameId) return;
 			setPrivateLobby(payload);
 			setPrivateRoomPin(payload.pin);
-			setMessage(`Private room ${payload.pin}: ${payload.joinedCount}/${payload.playerCount} players joined.`);
+			setMessage(
+				`Private room ${payload.pin}: ${payload.joinedCount}/${payload.playerCount} players joined.`,
+			);
 			setMessageTone("gold");
 		};
 		const handleLobbyMatched = (payload: {
@@ -272,12 +308,16 @@ function PowerupMatchmakingPanel({
 				gameId,
 				targetScene: sceneData.targetScene,
 				user: currentUser ?? undefined,
-				shellSelection: buildEmptyShellSelection(payload.snapshot.players.length),
+				shellSelection: buildEmptyShellSelection(
+					payload.snapshot.players.length,
+				),
+				...replayAvailability(payload.snapshot.powerupsEnabled),
 				onlineMatch: {
 					matchId: payload.matchId,
 					side: payload.side,
 					snapshot: payload.snapshot,
 					physicsState: payload.physicsState,
+					...replayAvailability(payload.snapshot.powerupsEnabled),
 				} satisfies OnlineMatchContext,
 			});
 		};
@@ -293,21 +333,29 @@ function PowerupMatchmakingPanel({
 				gameId,
 				targetScene: sceneData.targetScene,
 				user: currentUser ?? undefined,
-				shellSelection: buildEmptyShellSelection(payload.snapshot.players.length),
+				shellSelection: buildEmptyShellSelection(
+					payload.snapshot.players.length,
+				),
+				...replayAvailability(payload.snapshot.powerupsEnabled),
 				onlineMatch: {
 					matchId: payload.matchId,
 					side: -1,
 					spectator: true,
 					snapshot: payload.snapshot,
 					physicsState: payload.physicsState,
+					...replayAvailability(payload.snapshot.powerupsEnabled),
 				} satisfies OnlineMatchContext,
 			});
 		};
 		const handleLobbyClosed = (payload: { lobbyId: string }) => {
 			setPrivateLobby((current) =>
-				!current || current.lobbyId !== payload.lobbyId ? current : null,
+				!current || current.lobbyId !== payload.lobbyId
+					? current
+					: null,
 			);
-			setMessage("Private room closed. You can create or join another one.");
+			setMessage(
+				"Private room closed. You can create or join another one.",
+			);
 			setMessageTone("muted");
 		};
 		const handleLobbyError = (payload: { message?: string }) => {
@@ -354,7 +402,12 @@ function PowerupMatchmakingPanel({
 		DISPLAYED_POWERUP_COUNT,
 	);
 	const activeReconnectSeconds = activeMatchStatus?.reconnectExpiresAt
-		? Math.max(0, Math.ceil((activeMatchStatus.reconnectExpiresAt - Date.now()) / 1000))
+		? Math.max(
+				0,
+				Math.ceil(
+					(activeMatchStatus.reconnectExpiresAt - Date.now()) / 1000,
+				),
+			)
 		: 45;
 
 	const renderPlayerPicker = (
@@ -373,13 +426,19 @@ function PowerupMatchmakingPanel({
 					onClick={() => onSelect(count)}
 				>
 					{count}
-					<span className="power-picker-page__shell-icon" aria-hidden="true" />
+					<span
+						className="power-picker-page__shell-icon"
+						aria-hidden="true"
+					/>
 				</button>
 			))}
 		</div>
 	);
 
-	const launchLocalGame = (localMode: LocalGameMode, localPowerupsEnabled: boolean) => {
+	const launchLocalGame = (
+		localMode: LocalGameMode,
+		localPowerupsEnabled: boolean,
+	) => {
 		if (!sceneData.localModes[localMode]) {
 			setMessage(
 				localMode === "solo"
@@ -395,7 +454,9 @@ function PowerupMatchmakingPanel({
 				`player${index}`,
 				index === 0
 					? shellSkin
-					: LOCAL_TEST_SHELL_SKINS[(index - 1) % LOCAL_TEST_SHELL_SKINS.length],
+					: LOCAL_TEST_SHELL_SKINS[
+							(index - 1) % LOCAL_TEST_SHELL_SKINS.length
+						],
 			]),
 		) as Record<string, string>;
 		const trailEffects = Object.fromEntries(
@@ -417,6 +478,7 @@ function PowerupMatchmakingPanel({
 			localMode,
 			localPlayerCount: playerCount,
 			localPowerupsEnabled,
+			...replayAvailability(localPowerupsEnabled),
 			shellSkins,
 			trailEffects,
 		});
@@ -424,7 +486,9 @@ function PowerupMatchmakingPanel({
 
 	const createPrivateRoom = () => {
 		if (activeMatchStatus) {
-			setMessage("Finish or abandon your active match before creating a private room.");
+			setMessage(
+				"Finish or abandon your active match before creating a private room.",
+			);
 			setMessageTone("error");
 			return;
 		}
@@ -445,7 +509,11 @@ function PowerupMatchmakingPanel({
 			setMessageTone("error");
 			return;
 		}
-		getGameSocket().emit("lobby:join-pin", { pin, gameId, shellSelection: [] });
+		getGameSocket().emit("lobby:join-pin", {
+			pin,
+			gameId,
+			shellSelection: [],
+		});
 		setMessage(`Joining private room ${pin}...`);
 		setMessageTone("gold");
 	};
@@ -473,13 +541,21 @@ function PowerupMatchmakingPanel({
 	const cancelOnlineSearch = () => {
 		getGameSocket().emit("queue:leave");
 		setIsSearchingOnline(false);
-		setMessage("Search cancelled. You can start a new search whenever you are ready.");
+		setMessage(
+			"Search cancelled. You can start a new search whenever you are ready.",
+		);
 		setMessageTone("muted");
 	};
 
 	const rejoinActiveMatch = () => {
-		if (!activeMatchStatus?.matchId || activeMatchStatus.side === undefined || !activeMatchStatus.snapshot) return;
-		const targetScene = GAME_SCENES[activeMatchStatus.gameId ?? ""]?.targetScene;
+		if (
+			!activeMatchStatus?.matchId ||
+			activeMatchStatus.side === undefined ||
+			!activeMatchStatus.snapshot
+		)
+			return;
+		const targetScene =
+			GAME_SCENES[activeMatchStatus.gameId ?? ""]?.targetScene;
 		if (!targetScene) return;
 		const socket = getGameSocket();
 		const { matchId, gameId: activeGameId, side } = activeMatchStatus;
@@ -492,17 +568,19 @@ function PowerupMatchmakingPanel({
 			(physicsState: OnlineMatchContext["physicsState"] | null) => {
 				onLaunch({
 					gameId: activeGameId as GameId,
-					targetScene,
-					user: currentUser ?? undefined,
-					shellSelection: { player0: [], player1: [] },
-					onlineMatch: {
+						targetScene,
+						user: currentUser ?? undefined,
+						shellSelection: { player0: [], player1: [] },
+						...replayAvailability(snapshot.powerupsEnabled),
+						onlineMatch: {
 						matchId,
 						side,
 						rejoining: true,
-						snapshot,
-						physicsState: physicsState ?? undefined,
-					},
-				});
+							snapshot,
+							physicsState: physicsState ?? undefined,
+							...replayAvailability(snapshot.powerupsEnabled),
+						},
+					});
 			},
 		);
 		};
@@ -558,14 +636,23 @@ function PowerupMatchmakingPanel({
 		socket.off("game:state");
 		socket.off("queue:error");
 		socket.off("queue:left");
-		socket.on("match:found", (payload: { matchId: string; side: number }) => {
-			matchId = payload.matchId;
-			side = payload.side;
-			setIsSearchingOnline(false);
-			socket.emit("room:ready", { matchId: payload.matchId });
-		});
+		socket.on(
+			"match:found",
+			(payload: { matchId: string; side: number }) => {
+				matchId = payload.matchId;
+				side = payload.side;
+				setIsSearchingOnline(false);
+				socket.emit("room:ready", { matchId: payload.matchId });
+			},
+		);
 		const onState = (snapshot: GameSnapshot) => {
-			if (!matchId || snapshot.matchId !== matchId || snapshot.phase !== "active" || snapshot.gameId !== gameId) return;
+			if (
+				!matchId ||
+				snapshot.matchId !== matchId ||
+				snapshot.phase !== "active" ||
+				snapshot.gameId !== gameId
+			)
+				return;
 			socket.off("game:state", onState);
 			setIsSearchingOnline(false);
 			onLaunch({
@@ -573,7 +660,13 @@ function PowerupMatchmakingPanel({
 				targetScene: sceneData.targetScene,
 				user: currentUser ?? undefined,
 				shellSelection: { player0: [], player1: [] },
-				onlineMatch: { matchId: snapshot.matchId, side, snapshot } satisfies OnlineMatchContext,
+				...replayAvailability(snapshot.powerupsEnabled),
+				onlineMatch: {
+					matchId: snapshot.matchId,
+					side,
+					snapshot,
+					...replayAvailability(snapshot.powerupsEnabled),
+				} satisfies OnlineMatchContext,
 			});
 		};
 		socket.on("game:state", onState);
@@ -596,13 +689,22 @@ function PowerupMatchmakingPanel({
 		<main className={`power-picker-page game-host ${backgroundClass}`}>
 			<section className="power-picker-page__panel">
 				<header className="power-picker-page__header">
-					<button type="button" className="power-picker-page__back" onClick={onBack}>Back</button>
+					<button
+						type="button"
+						className="power-picker-page__back"
+						onClick={onBack}
+					>
+						Back
+					</button>
 					<div className="power-picker-page__title-card">
 						<h1>{gameTitle}</h1>
 					</div>
 				</header>
 
-				<section className="power-picker-page__powerups" aria-label="Power-ups available in this match">
+				<section
+					className="power-picker-page__powerups"
+					aria-label="Power-ups available in this match"
+				>
 					<h2>Power-Ups in This Match</h2>
 					<div className="power-picker-page__grid">
 						{displayedPowerups.map((type) => {
@@ -613,11 +715,22 @@ function PowerupMatchmakingPanel({
 								<article
 									key={type}
 									className="power-card"
-									style={{ "--power-accent": toHex(def.accentColour) } as CSSProperties}
+									style={
+										{
+											"--power-accent": toHex(
+												def.accentColour,
+											),
+										} as CSSProperties
+									}
 									title={def.description}
 								>
 									{imageSrc ? (
-										<img className="power-card__orb" src={imageSrc} alt="" aria-hidden="true" />
+										<img
+											className="power-card__orb"
+											src={imageSrc}
+											alt=""
+											aria-hidden="true"
+										/>
 									) : (
 										<span className="power-card__orb" />
 									)}
@@ -626,26 +739,42 @@ function PowerupMatchmakingPanel({
 							);
 						})}
 					</div>
-					<p className={`power-picker-page__message power-picker-page__message--${messageTone}`}>{message}</p>
+					<p
+						className={`power-picker-page__message power-picker-page__message--${messageTone}`}
+					>
+						{message}
+					</p>
 				</section>
 
 				<footer className="power-picker-page__actions">
 					<section className="power-picker-page__mode-card">
 						<h2>Local Solo</h2>
-						<p>Train alone and tune the chaos before facing other turtles.</p>
+						<p>
+							Train alone and tune the chaos before facing other
+							turtles.
+						</p>
 						<button
 							type="button"
 							className={`power-picker-page__toggle ${soloPowerupsEnabled ? "is-selected" : ""}`}
 							aria-pressed={soloPowerupsEnabled}
-							onClick={() => setSoloPowerupsEnabled((enabled) => !enabled)}
+							onClick={() =>
+								togglePowerups(setSoloPowerupsEnabled)
+							}
 						>
 							Power-ups {soloPowerupsEnabled ? "On" : "Off"}
 						</button>
+						{soloPowerupsEnabled ? (
+							<p className="power-picker-page__replay-warning">
+								{REPLAY_DISABLED_MESSAGE}
+							</p>
+						) : null}
 						<button
 							type="button"
 							className="power-picker-page__primary"
 							disabled={!sceneData.localModes.solo}
-							onClick={() => launchLocalGame("solo", soloPowerupsEnabled)}
+							onClick={() =>
+								launchLocalGame("solo", soloPowerupsEnabled)
+							}
 						>
 							Play Solo
 						</button>
@@ -654,42 +783,86 @@ function PowerupMatchmakingPanel({
 					<section className="power-picker-page__mode-card">
 						<h2>Local VS</h2>
 						<p>Couch battle setup for a bigger local showdown.</p>
-						{renderPlayerPicker(localVsPlayerCount, setLocalVsPlayerCount, "Local VS player count", !sceneData.localModes.versus)}
+						{renderPlayerPicker(
+							localVsPlayerCount,
+							setLocalVsPlayerCount,
+							"Local VS player count",
+							!sceneData.localModes.versus,
+						)}
 						<button
 							type="button"
 							className={`power-picker-page__toggle ${localVsPowerupsEnabled ? "is-selected" : ""}`}
 							aria-pressed={localVsPowerupsEnabled}
-							onClick={() => setLocalVsPowerupsEnabled((enabled) => !enabled)}
+							onClick={() =>
+								togglePowerups(setLocalVsPowerupsEnabled)
+							}
 						>
 							Power-ups {localVsPowerupsEnabled ? "On" : "Off"}
 						</button>
+						{localVsPowerupsEnabled ? (
+							<p className="power-picker-page__replay-warning">
+								{REPLAY_DISABLED_MESSAGE}
+							</p>
+						) : null}
 						<button
 							type="button"
 							className="power-picker-page__primary"
 							disabled={!sceneData.localModes.versus}
-							onClick={() => launchLocalGame("versus", localVsPowerupsEnabled)}
+							onClick={() =>
+								launchLocalGame(
+									"versus",
+									localVsPowerupsEnabled,
+								)
+							}
 						>
 							Start Local VS
 						</button>
-						<p className="power-picker-page__mode-note">Players selected: {localVsPlayerCount}</p>
+						<p className="power-picker-page__mode-note">
+							Players selected: {localVsPlayerCount}
+						</p>
 					</section>
 
 					{isOnlineGame ? (
 						<section className="power-picker-page__mode-card power-picker-page__mode-card--online">
 							<h2>Multiplayer Online</h2>
-							<p>Jump into matchmaking against online opponents.</p>
-							{renderPlayerPicker(onlinePlayerCount, setOnlinePlayerCount, "Online player count", Boolean(activeMatchStatus))}
+							<p>
+								Jump into matchmaking against online opponents.
+							</p>
+							{renderPlayerPicker(
+								onlinePlayerCount,
+								setOnlinePlayerCount,
+								"Online player count",
+								Boolean(activeMatchStatus),
+							)}
 							<button
 								type="button"
 								className={`power-picker-page__toggle ${onlinePowerupsEnabled ? "is-selected" : ""}`}
 								aria-pressed={onlinePowerupsEnabled}
-								disabled={isSearchingOnline || Boolean(activeMatchStatus)}
-								onClick={() => setOnlinePowerupsEnabled((enabled) => !enabled)}
+								disabled={
+									isSearchingOnline ||
+									Boolean(activeMatchStatus)
+								}
+								onClick={() =>
+									togglePowerups(setOnlinePowerupsEnabled)
+								}
 							>
 								Power-ups {onlinePowerupsEnabled ? "On" : "Off"}
 							</button>
-							<button type="button" className="power-picker-page__online-button" onClick={() => void findOnlineMatch()}>
-								{activeMatchStatus ? "Rejoin Match" : isSearchingOnline ? "Cancel Search" : "Find Online Match"}
+							{onlinePowerupsEnabled ? (
+								<p className="power-picker-page__replay-warning">
+									{REPLAY_DISABLED_MESSAGE}
+								</p>
+							) : null}
+							<button
+								type="button"
+								className="power-picker-page__online-button"
+								onClick={() => void findOnlineMatch()}
+							>
+								{activeMatchStatus
+									? "Rejoin Match"
+									: isSearchingOnline
+										? "Cancel Search"
+										: "Find Online Match"}
 							</button>
 							<p className="power-picker-page__online-status">
 								{activeMatchStatus
@@ -698,47 +871,99 @@ function PowerupMatchmakingPanel({
 										? "Searching for opponents..."
 										: `Players selected: ${onlinePlayerCount}`}
 							</p>
-							{activeMatchStatus ? <button type="button" className="power-picker-page__danger" onClick={abandonActiveMatch}>Abandon Match</button> : null}
+							{activeMatchStatus ? (
+								<button
+									type="button"
+									className="power-picker-page__danger"
+									onClick={abandonActiveMatch}
+								>
+									Abandon Match
+								</button>
+							) : null}
 						</section>
 					) : null}
 
 					<section className="power-picker-page__mode-card power-picker-page__mode-card--private">
 						<h2>Private Online</h2>
-						<p>Create a room or prepare to enter a friend's <span className="power-picker-page__pin-word">PIN</span>.</p>
-						{renderPlayerPicker(privateOnlinePlayerCount, setPrivateOnlinePlayerCount, "Private online player count")}
+						<p>
+							Create a room or prepare to enter a friend's{" "}
+							<span className="power-picker-page__pin-word">
+								PIN
+							</span>
+							.
+						</p>
+						{renderPlayerPicker(
+							privateOnlinePlayerCount,
+							setPrivateOnlinePlayerCount,
+							"Private online player count",
+						)}
 						<button
 							type="button"
 							className={`power-picker-page__toggle ${privateOnlinePowerupsEnabled ? "is-selected" : ""}`}
 							aria-pressed={privateOnlinePowerupsEnabled}
-							onClick={() => setPrivateOnlinePowerupsEnabled((enabled) => !enabled)}
+							onClick={() =>
+								togglePowerups(setPrivateOnlinePowerupsEnabled)
+							}
 						>
-							Power-ups {privateOnlinePowerupsEnabled ? "On" : "Off"}
+							Power-ups{" "}
+							{privateOnlinePowerupsEnabled ? "On" : "Off"}
 						</button>
+						{privateOnlinePowerupsEnabled ? (
+							<p className="power-picker-page__replay-warning">
+								{REPLAY_DISABLED_MESSAGE}
+							</p>
+						) : null}
 						<div className="power-picker-page__pin-row">
 							<input
 								className="power-picker-page__pin-input"
 								value={privateRoomPin}
-								onChange={(event) => setPrivateRoomPin(event.target.value.replace(/[^a-z0-9]/gi, "").toUpperCase())}
+								onChange={(event) =>
+									setPrivateRoomPin(
+										event.target.value
+											.replace(/[^a-z0-9]/gi, "")
+											.toUpperCase(),
+									)
+								}
 								placeholder="PIN"
 								maxLength={6}
 								aria-label="Private room PIN"
 							/>
-							<button type="button" className="power-picker-page__primary" onClick={joinPrivateRoom}>
+							<button
+								type="button"
+								className="power-picker-page__primary"
+								onClick={joinPrivateRoom}
+							>
 								Join
 							</button>
-							<button type="button" className="power-picker-page__online-button" onClick={createPrivateRoom}>
+							<button
+								type="button"
+								className="power-picker-page__online-button"
+								onClick={createPrivateRoom}
+							>
 								Create
 							</button>
-							<button type="button" className="power-picker-page__online-button" onClick={spectatePrivateRoom}>
+							<button
+								type="button"
+								className="power-picker-page__online-button"
+								onClick={spectatePrivateRoom}
+							>
 								Watch
 							</button>
 						</div>
 						{privateLobby ? (
 							<>
 								<p className="power-picker-page__mode-note">
-									PIN {privateLobby.pin} · {privateLobby.joinedCount}/{privateLobby.playerCount} players
+									PIN {privateLobby.pin} ·{" "}
+									{privateLobby.joinedCount}/
+									{privateLobby.playerCount} players
 								</p>
-								<button type="button" className="power-picker-page__danger" onClick={cancelPrivateRoom}>Cancel Private Room</button>
+								<button
+									type="button"
+									className="power-picker-page__danger"
+									onClick={cancelPrivateRoom}
+								>
+									Cancel Private Room
+								</button>
 							</>
 						) : null}
 					</section>
@@ -748,9 +973,14 @@ function PowerupMatchmakingPanel({
 	);
 }
 
-function buildEmptyShellSelection(playerCount: number): Record<string, string[]> {
+function buildEmptyShellSelection(
+	playerCount: number,
+): Record<string, string[]> {
 	return Object.fromEntries(
-		Array.from({ length: playerCount }, (_value, index) => [`player${index}`, []]),
+		Array.from({ length: playerCount }, (_value, index) => [
+			`player${index}`,
+			[],
+		]),
 	) as Record<string, string[]>;
 }
 

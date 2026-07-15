@@ -112,6 +112,7 @@ describe("MatchmakingGateway", () => {
 		startIfReady: jest.Mock;
 		advanceSimulation: jest.Mock;
 		handleInput: jest.Mock;
+		captureReplayFrame: jest.Mock;
 	};
 	let replays: { captureFrame: jest.Mock; recordEvent: jest.Mock };
 	let chatService: {
@@ -152,6 +153,7 @@ describe("MatchmakingGateway", () => {
 			startIfReady: jest.fn(),
 			advanceSimulation: jest.fn(),
 			handleInput: jest.fn(),
+			captureReplayFrame: jest.fn(),
 		};
 		replays = { captureFrame: jest.fn(), recordEvent: jest.fn() };
 		chatService = {
@@ -358,6 +360,11 @@ describe("MatchmakingGateway", () => {
 			"game:bell-throw",
 			expect.anything(),
 		);
+			expect(replays.recordEvent).toHaveBeenCalledWith(
+				room,
+				"game:bell-throw",
+				expect.objectContaining({ matchId: room.matchId }),
+			);
 		});
 	});
 

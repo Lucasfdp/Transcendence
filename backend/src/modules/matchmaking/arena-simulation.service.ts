@@ -5,6 +5,7 @@ import { RoomService } from "./room.service";
 const ARENA_SIMULATION_TICK_MS = 1_000 / 30;
 const ARENA_STATE_BROADCAST_MS = ARENA_SIMULATION_TICK_MS;
 const MAX_CATCH_UP_STEPS = 5;
+const REPLAY_SAMPLE_MS = 50;
 
 /**
  * Fixed-rate server physics loop for the arena games.
@@ -23,6 +24,7 @@ export class ArenaSimulationService implements OnModuleDestroy {
 	private readonly broadcastElapsedMs = new Map<string, number>();
 	private accumulatorMs = 0;
 	private lastTickAt = 0;
+	private readonly replayElapsedMs = new Map<string, number>();
 
 	constructor(
 		private readonly rooms: RoomService,
@@ -45,6 +47,7 @@ export class ArenaSimulationService implements OnModuleDestroy {
 		this.broadcastElapsedMs.clear();
 		this.accumulatorMs = 0;
 		this.lastTickAt = 0;
+		this.replayElapsedMs.clear();
 	}
 
 	onModuleDestroy(): void {
@@ -63,6 +66,18 @@ export class ArenaSimulationService implements OnModuleDestroy {
 				}
 				continue;
 			}
+			const replayElapsed =
+				(this.replayElapsedMs.get(room.matchId) ?? 0) +
+				ARENA_SIMULATION_TICK_MS;
+			if (replayElapsed >= REPLAY_SAMPLE_MS) {
+				this.replayElapsedMs.set(
+					room.matchId,
+					replayElapsed - REPLAY_SAMPLE_MS,
+				);
+				this.sessions.captureReplayFrame(room, REPLAY_SAMPLE_MS);
+			} else {
+				this.replayElapsedMs.set(room.matchId, replayElapsed);
+			}
 			const elapsed =
 				(this.broadcastElapsedMs.get(room.matchId) ?? 0) +
 				ARENA_SIMULATION_TICK_MS;
@@ -73,11 +88,19 @@ export class ArenaSimulationService implements OnModuleDestroy {
 				this.broadcastElapsedMs.set(room.matchId, elapsed);
 				continue;
 			}
-			this.broadcastElapsedMs.set(room.matchId, settled ? 0 : elapsed - ARENA_STATE_BROADCAST_MS);
+			this.broadcastElapsedMs.set(
+				room.matchId,
+				settled ? 0 : elapsed - ARENA_STATE_BROADCAST_MS,
+			);
 			broadcast(room.matchId);
 		}
 		for (const matchId of this.broadcastElapsedMs.keys()) {
-			if (!activeMatchIds.has(matchId)) this.broadcastElapsedMs.delete(matchId);
+			if (!activeMatchIds.has(matchId))
+				this.broadcastElapsedMs.delete(matchId);
+		}
+		for (const matchId of this.replayElapsedMs.keys()) {
+			if (!activeMatchIds.has(matchId))
+				this.replayElapsedMs.delete(matchId);
 		}
 	}
 

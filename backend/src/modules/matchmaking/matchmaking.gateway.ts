@@ -26,6 +26,7 @@ import {
 	type PrivateLobby,
 } from "./private-lobbies.service";
 import {
+	BellClashThrowEvent,
 	BambooBashThrowEvent,
 	BambooBashSnapshot,
 	CurlingThrowEvent,
@@ -73,7 +74,9 @@ function parseCookie(
 @WebSocketGateway({
 	path: "/ws/",
 	cors: {
-		origin: process.env.ALLOWED_ORIGINS?.split(",") ?? ["https://localhost"],
+		origin: process.env.ALLOWED_ORIGINS?.split(",") ?? [
+			"https://localhost",
+		],
 		credentials: true,
 	},
 })
@@ -125,11 +128,15 @@ export class MatchmakingGateway
 			const gameId = this.presence.getGameId(userId);
 			const friendIds = await this.friendsService.getFriendIds(userId);
 			for (const friendId of friendIds) {
-				this.notificationsService.pushLiveEvent("presence:changed", friendId, {
-					userId,
-					status,
-					gameId,
-				});
+				this.notificationsService.pushLiveEvent(
+					"presence:changed",
+					friendId,
+					{
+						userId,
+						status,
+						gameId,
+					},
+				);
 			}
 		} catch {
 			// Non-fatal — see doc comment.
@@ -243,7 +250,9 @@ export class MatchmakingGateway
 
 	async handleDisconnect(socket: Socket): Promise<void> {
 		if (socket.data.guestTimer !== undefined) {
-			clearTimeout(socket.data.guestTimer as ReturnType<typeof setTimeout>);
+			clearTimeout(
+				socket.data.guestTimer as ReturnType<typeof setTimeout>,
+			);
 			socket.data.guestTimer = undefined;
 		}
 		this.matchmaking.removeSocket(socket.id);
@@ -259,11 +268,17 @@ export class MatchmakingGateway
 		// Cancel any open lobby the disconnecting user was hosting
 		const user = socket.data.user as SocketUser | undefined;
 		if (user) {
-			const cancelledLobby = this.privateLobbies.removeLobbyForUser(user.id);
+			const cancelledLobby = this.privateLobbies.removeLobbyForUser(
+				user.id,
+			);
 			if (cancelledLobby?.pendingInviteeId) {
-				this.emitToUser(cancelledLobby.pendingInviteeId, "lobby:cancelled", {
-					lobbyId: cancelledLobby.lobbyId,
-				});
+				this.emitToUser(
+					cancelledLobby.pendingInviteeId,
+					"lobby:cancelled",
+					{
+						lobbyId: cancelledLobby.lobbyId,
+					},
+				);
 			}
 		}
 
@@ -279,7 +294,10 @@ export class MatchmakingGateway
 				.markSeen(disconnectedUser.id)
 				.catch(() => undefined);
 			// Last socket gone → tell online friends they went offline (Decision 3).
-			void this.broadcastPresence(disconnectedUser.id, disconnectedUser.isGuest);
+			void this.broadcastPresence(
+				disconnectedUser.id,
+				disconnectedUser.isGuest,
+			);
 		}
 	}
 
@@ -318,6 +336,8 @@ export class MatchmakingGateway
 					opponents: room.players
 						.filter((candidate) => candidate.side !== player.side)
 						.map((candidate) => candidate.user.username),
+					replayEnabled: room.replayEnabled,
+					replayDisabledReason: room.replayDisabledReason,
 				});
 			}
 			this.emitState(room.matchId);
@@ -509,7 +529,9 @@ export class MatchmakingGateway
 				const state = room.state as BambooBashSnapshot;
 				const ball =
 					"balls" in room.state
-						? room.state.balls.find((candidate) => candidate.side === player.side)
+						? room.state.balls.find(
+								(candidate) => candidate.side === player.side,
+							)
 						: null;
 				const throwEvent: BambooBashThrowEvent = {
 					matchId: room.matchId,
@@ -574,7 +596,9 @@ export class MatchmakingGateway
 			if (player) {
 				const ball =
 					"balls" in room.state
-						? room.state.balls.find((candidate) => candidate.side === player.side)
+						? room.state.balls.find(
+								(candidate) => candidate.side === player.side,
+							)
 						: null;
 				const power = ball?.power ?? "none";
 				const throwEvent: KameKnockThrowEvent = {
@@ -602,13 +626,35 @@ export class MatchmakingGateway
 
 		if (
 			payload.action === "release" &&
-			(room.gameId === "bell-clash" || room.gameId === "bamboo-bash") &&
-			"roundNumber" in room.state
+			room.gameId === "bell-clash" &&
+			"roundNumber" in room.state &&
+			"shotCounts" in room.state
 		) {
+			const player = room.players.find(
+				(candidate) => candidate.user.id === user.id,
+			);
+			if (player) {
+				const ball =
+					"balls" in room.state
+						? room.state.balls.find(
+								(candidate) => candidate.side === player.side,
+							)
+						: null;
+				this.replays.recordEvent(room, "game:bell-throw", {
+					matchId: room.matchId,
+					roundNumber: room.state.roundNumber,
+					shotNumber: room.state.shotCounts[player.side] ?? 0,
+					side: player.side,
+					x: ball?.x ?? 0,
+					y: ball?.y ?? 0,
+					vx: Number(payload.payload?.vx ?? 0),
+					vy: Number(payload.payload?.vy ?? 0),
+					power: ball?.power ?? "none",
+				} satisfies BellClashThrowEvent);
+			}
 			// Authoritative arena clients render this projection rather than predicting
 			// a flight locally, including the first frame after launch.
 			this.emitPhysicsState(room.matchId);
-			this.emitState(room.matchId);
 			return { accepted: true };
 		}
 
@@ -670,7 +716,9 @@ export class MatchmakingGateway
 	): Promise<void> {
 		const user = socket.data.user as SocketUser;
 		if (user.isGuest) {
-			socket.emit("lobby:error", { message: "Guests cannot create lobbies" });
+			socket.emit("lobby:error", {
+				message: "Guests cannot create lobbies",
+			});
 			return;
 		}
 		try {
@@ -688,7 +736,10 @@ export class MatchmakingGateway
 			});
 		} catch (err) {
 			socket.emit("lobby:error", {
-				message: err instanceof Error ? err.message : "Failed to create lobby",
+				message:
+					err instanceof Error
+						? err.message
+						: "Failed to create lobby",
 			});
 		}
 	}
@@ -706,7 +757,9 @@ export class MatchmakingGateway
 	): Promise<void> {
 		const user = socket.data.user as SocketUser;
 		if (user.isGuest) {
-			socket.emit("lobby:error", { message: "Guests cannot create lobbies" });
+			socket.emit("lobby:error", {
+				message: "Guests cannot create lobbies",
+			});
 			return;
 		}
 		try {
@@ -727,11 +780,16 @@ export class MatchmakingGateway
 				playerCount: lobby.playerCount,
 				joinedCount: lobby.participants.length,
 				expiresAt,
+				replayEnabled: lobby.replayEnabled,
+				replayDisabledReason: lobby.replayDisabledReason,
 			});
 			this.emitPinLobbyWaiting(lobby);
 		} catch (err) {
 			socket.emit("lobby:error", {
-				message: err instanceof Error ? err.message : "Failed to create lobby",
+				message:
+					err instanceof Error
+						? err.message
+						: "Failed to create lobby",
 			});
 		}
 	}
@@ -753,7 +811,9 @@ export class MatchmakingGateway
 			return;
 		}
 		if (this.rooms.hasActiveRoom(payload.inviteeUserId)) {
-			socket.emit("lobby:error", { message: "That player is already in a match" });
+			socket.emit("lobby:error", {
+				message: "That player is already in a match",
+			});
 			return;
 		}
 		if (!this.presence.isOnline(payload.inviteeUserId)) {
@@ -764,7 +824,9 @@ export class MatchmakingGateway
 			.areFriends(user.id, payload.inviteeUserId)
 			.catch(() => false);
 		if (!areFriends) {
-			socket.emit("lobby:error", { message: "You can only invite friends" });
+			socket.emit("lobby:error", {
+				message: "You can only invite friends",
+			});
 			return;
 		}
 
@@ -778,7 +840,9 @@ export class MatchmakingGateway
 			gameId: lobby.gameId,
 			expiresAt,
 		});
-		socket.emit("lobby:invite-sent", { inviteeUserId: payload.inviteeUserId });
+		socket.emit("lobby:invite-sent", {
+			inviteeUserId: payload.inviteeUserId,
+		});
 	}
 
 	/**
@@ -799,14 +863,17 @@ export class MatchmakingGateway
 				payload.shellSelection ?? [],
 			);
 			if (!result) {
-				socket.emit("lobby:error", { message: "Lobby no longer exists" });
+				socket.emit("lobby:error", {
+					message: "Lobby no longer exists",
+				});
 				return;
 			}
 
 			await this.launchPrivateMatch(result);
 		} catch (err) {
 			socket.emit("lobby:error", {
-				message: err instanceof Error ? err.message : "Failed to join lobby",
+				message:
+					err instanceof Error ? err.message : "Failed to join lobby",
 			});
 		}
 	}
@@ -814,7 +881,8 @@ export class MatchmakingGateway
 	@SubscribeMessage("lobby:join-pin")
 	async onLobbyJoinPin(
 		@ConnectedSocket() socket: Socket,
-		@MessageBody() payload: { pin: string; gameId: string; shellSelection?: string[] },
+		@MessageBody()
+		payload: { pin: string; gameId: string; shellSelection?: string[] },
 	): Promise<void> {
 		const user = socket.data.user as SocketUser;
 		try {
@@ -826,7 +894,9 @@ export class MatchmakingGateway
 				payload.shellSelection ?? [],
 			);
 			if (!result) {
-				socket.emit("lobby:error", { message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE });
+				socket.emit("lobby:error", {
+					message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE,
+				});
 				return;
 			}
 			if (result.matched === false) {
@@ -836,7 +906,10 @@ export class MatchmakingGateway
 			await this.launchPrivateMatch(result);
 		} catch (err) {
 			socket.emit("lobby:error", {
-				message: err instanceof Error ? err.message : "Failed to join private room",
+				message:
+					err instanceof Error
+						? err.message
+						: "Failed to join private room",
 			});
 		}
 	}
@@ -849,16 +922,22 @@ export class MatchmakingGateway
 		const lobby = this.privateLobbies.getLobbyByPin(payload.pin);
 		if (lobby) {
 			if (lobby.gameId !== payload.gameId) {
-				socket.emit("lobby:error", { message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE });
+				socket.emit("lobby:error", {
+					message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE,
+				});
 				return;
 			}
-			socket.emit("lobby:error", { message: "Private match has not started yet" });
+			socket.emit("lobby:error", {
+				message: "Private match has not started yet",
+			});
 			return;
 		}
 
 		const started = this.privateLobbies.getStartedMatchByPin(payload.pin);
 		if (started && started.gameId !== payload.gameId) {
-			socket.emit("lobby:error", { message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE });
+			socket.emit("lobby:error", {
+				message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE,
+			});
 			return;
 		}
 		const user = socket.data.user as SocketUser;
@@ -866,7 +945,9 @@ export class MatchmakingGateway
 			? this.rooms.addSpectator(started.matchId, socket.id, user)
 			: null;
 		if (!started || !room) {
-			socket.emit("lobby:error", { message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE });
+			socket.emit("lobby:error", {
+				message: PRIVATE_LOBBY_NOT_FOUND_MESSAGE,
+			});
 			return;
 		}
 
@@ -927,7 +1008,9 @@ export class MatchmakingGateway
 		@ConnectedSocket() socket: Socket,
 		@MessageBody() data: { notificationId?: number },
 	): Promise<void> {
-		const user = socket.data.user as { id: number; isGuest: boolean } | undefined;
+		const user = socket.data.user as
+			| { id: number; isGuest: boolean }
+			| undefined;
 		if (!user || user.isGuest) return;
 		// Bug Audit M2: TypeORM 0.3 silently drops `undefined` where-values, so
 		// an unvalidated `{}` payload would otherwise match the caller's first
@@ -941,10 +1024,16 @@ export class MatchmakingGateway
 
 	/** Mark all unread notifications as read for the authenticated user. */
 	@SubscribeMessage("notification:read-all")
-	async onNotificationReadAll(@ConnectedSocket() socket: Socket): Promise<void> {
-		const user = socket.data.user as { id: number; isGuest: boolean } | undefined;
+	async onNotificationReadAll(
+		@ConnectedSocket() socket: Socket,
+	): Promise<void> {
+		const user = socket.data.user as
+			| { id: number; isGuest: boolean }
+			| undefined;
 		if (!user || user.isGuest) return;
-		await this.notificationsService.markAllRead(user.id).catch(() => undefined);
+		await this.notificationsService
+			.markAllRead(user.id)
+			.catch(() => undefined);
 	}
 
 	// ── Chat handlers ─────────────────────────────────────────────────────────
@@ -982,7 +1071,9 @@ export class MatchmakingGateway
 		} catch (err) {
 			socket.emit("chat:error", {
 				message:
-					err instanceof Error ? err.message : "Failed to send message",
+					err instanceof Error
+						? err.message
+						: "Failed to send message",
 			});
 		}
 	}
@@ -1039,7 +1130,8 @@ export class MatchmakingGateway
 	 */
 	private async joinChatRooms(socket: Socket, userId: number): Promise<void> {
 		try {
-			const conversations = await this.chatService.listConversations(userId);
+			const conversations =
+				await this.chatService.listConversations(userId);
 			for (const conversation of conversations) {
 				socket.join(chatRoomName(conversation.id));
 			}
@@ -1160,6 +1252,8 @@ export class MatchmakingGateway
 			playerCount: lobby.playerCount,
 			joinedCount: lobby.participants.length,
 			expiresAt: lobby.createdAt + 2 * 60 * 1_000,
+			replayEnabled: lobby.replayEnabled,
+			replayDisabledReason: lobby.replayDisabledReason,
 		};
 		for (const participant of lobby.participants) {
 			this.emitToUser(participant.user.id, "lobby:waiting", payload);
@@ -1207,19 +1301,24 @@ export class MatchmakingGateway
 				physicsState: activeRoom.physicsState
 					? this.publicPhysicsState(activeRoom)
 					: undefined,
+				replayEnabled: activeRoom.replayEnabled,
+				replayDisabledReason: activeRoom.replayDisabledReason,
 			});
 		}
 		return activeRoom;
 	}
 
 	private emitRematchStatus(room: MatchRoom): void {
-		const readyUserIds = [...(room.rematchReadyUserIds ?? new Set<number>())];
+		const readyUserIds = [
+			...(room.rematchReadyUserIds ?? new Set<number>()),
+		];
 		const leftUserIds = [...(room.rematchLeftUserIds ?? new Set<number>())];
 		const waitingUserIds = room.players
 			.map((player) => player.user.id)
 			.filter(
 				(userId) =>
-					!readyUserIds.includes(userId) && !leftUserIds.includes(userId),
+					!readyUserIds.includes(userId) &&
+					!leftUserIds.includes(userId),
 			);
 		this.server.to(room.matchId).emit("match:rematch-status", {
 			matchId: room.matchId,
