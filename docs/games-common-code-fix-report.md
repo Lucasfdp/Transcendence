@@ -99,7 +99,7 @@ Consequences: settled auxiliary balls stay in `powerBalls` forever, so (a) `onSe
 
 `advanceReplaySimulation` / `markReplaySimulation` (`replay-state.helpers.ts:646-669`) are exported but **never called anywhere in the backend**, and the server never emits `game:state-delta` (zero occurrences in `backend/src`). Meanwhile `BambooBashScene` registers `socket.on("game:state-delta", this.applyOnlineDelta)` (`BambooBashScene.ts:959`) for an event that can never arrive, and comments in the scene describe server-echoed ball state that does not exist.
 
-On top of that, the dormant implementation has a real bug: `advanceSnapshot` (`replay-state.helpers.ts:607-625`) uses `Array.prototype.some(...)` to step entities. `.some()` short-circuits on the first entity that returns `true`, so with two or more moving balls/stones **only the first one would ever be simulated per tick** — the rest would freeze mid-air. Same problem in the curling branch.
+On top of that, the dormant implementation has a real bug: `advanceSnapshot` (`replay-state.helpers.ts:607-625`) uses `Array.prototype.some(...)` to step entities. `.some()` short-circuits on the first entity that returns `true`, so with two or more moving balls **only the first one would ever be simulated per tick** — the rest would freeze mid-air. The same problem exists in the curling branch.
 
 Consequences today: between `release` and the next client sync, server-side snapshots (and therefore recorded online replays and spectator state) show balls frozen at their launch position with a nonzero velocity.
 
@@ -126,7 +126,7 @@ Leaving it half-wired invites someone to enable it and ship the `.some()` freeze
 
 - **Bell Clash** (`bell-clash.engine.ts:112-137`): any connected player with `shotCounts > 0` can emit unlimited `bell:hit` inputs; each accepts up to 10 000 points. There is no per-shot hit budget and no plausibility check — a script can post millions of points per round.
 - **Kame Knock** (`kame-knock.engine.ts:123-165`): `combo` (≤99) and `perfect` are taken from the client. One legitimate target hit can be reported as `points × 99 + 500`.
-- **Shell Curl** (`shell-curl.engine.ts:126-174` + `replay-state.helpers.ts:431-495`): `applySettled` replaces the entire server object list with whatever the client sends — positions decide end scoring, so a client can teleport its stones onto the button. There is also **no cap on `payload.objects` length**, so a hostile client can send tens of thousands of objects and inflate server memory/CPU (each is mirrored into `entities`).
+- **Shell Curl** (`shell-curl.engine.ts:126-174` + `replay-state.helpers.ts:431-495`): `applySettled` replaces the entire server object list with whatever the client sends — positions decide end scoring, so a client can teleport its balls onto the button. There is also **no cap on `payload.objects` length**, so a hostile client can send tens of thousands of objects and inflate server memory/CPU (each is mirrored into `entities`).
 - **Bamboo Bash** is the healthiest (server owns bamboo state and points), which is the model to generalise.
 
 **Fixes:**
@@ -164,7 +164,7 @@ Leaving it half-wired invites someone to enable it and ship the `.some()` freeze
 
 **Severity: Medium (edge case corrupts match state).**
 
-`applyRelease` guards against duplicates (`objects.some(o => o.id === turnNumber)`), but `applySettled` (`shell-curl.engine.ts:126-174`) validates only `player.side === state.currentTurn`. Edge case: when an end completes, `nextTurn()` returns `0` (`throwsInEnd === 0`), so if player 0 threw the last stone of the end, they are immediately the current turn again — a duplicated or late `settled` packet from them is accepted a second time, advancing `turnNumber`/`throwsInEnd` and re-syncing (possibly empty) objects. Kame-knock already solves this by echoing and checking `turnNumber`; shell-curl should do the same.
+`applyRelease` guards against duplicates (`objects.some(o => o.id === turnNumber)`), but `applySettled` (`shell-curl.engine.ts:126-174`) validates only `player.side === state.currentTurn`. Edge case: when an end completes, `nextTurn()` returns `0` (`throwsInEnd === 0`), so if player 0 threw the last ball of the end, they are immediately the current turn again — a duplicated or late `settled` packet from them is accepted a second time, advancing `turnNumber`/`throwsInEnd` and re-syncing (possibly empty) objects. Kame Knock already solves this by echoing and checking `turnNumber`; Shell Curl should do the same.
 
 **Fix:** include `turnNumber` in the settled payload and reject mismatches (client already knows it).
 
@@ -297,4 +297,3 @@ With the above fixed, `ObstacleDescriptor` (phase 4) and `GameRuleHooks` (phase 
 # Module Status
 
 `docs/modules-progress.md` was reviewed. This report documents defects and fixes without changing the functional completion status of any module, so no update to that file is required.
-

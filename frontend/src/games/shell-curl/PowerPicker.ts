@@ -37,7 +37,7 @@ interface TokenRecord {
 	y: number;
 }
 
-const POWER_DESC: Record<PowerType, string> = {
+const POWER_DESC: Partial<Record<PowerType, string>> = {
 	[PowerType.NONE]: "Standard delivery",
 	[PowerType.HEAVY]: "More knockback on contact",
 	[PowerType.BOMB]: "Explodes on first hit",
@@ -370,7 +370,7 @@ export class PowerPicker {
 		this.hideTooltip();
 
 		const def = this.registry.get(type);
-		const desc = POWER_DESC[type];
+		const desc = POWER_DESC[type] ?? def.description;
 		const depth = this.container.depth + 10;
 
 		// Centre tooltip above the token; clamp to canvas bounds

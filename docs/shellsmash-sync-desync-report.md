@@ -61,7 +61,7 @@ Bamboo Bash and Bell Clash on 2026-07-14; the remaining game matrices still requ
    validation.
 
 Temple Curling now also has a game-specific server-authoritative path. Its
-backend fixed-step simulation owns persistent stones in source-space, wall and
+backend fixed-step simulation owns persistent balls in source-space, wall and
 bumper rebounds, shell collisions, selected one-use powers, settlement, end
 scoring, and match completion. The client sends only bounded launch intent,
 renders timestamped physics projections, and rejects the former client-owned
@@ -277,7 +277,7 @@ its own validation gates.
    checks owned by a separate branch. Begin Kame Knock by reusing the separated projection
    transport, but write Kame-specific backend target, turn, and power rules before
    changing its client. Keep Shell Curl as a separate future design because its
-   persistent turn-based stones have different authority and settlement requirements.
+   persistent turn-based balls have different authority and settlement requirements.
 
 Kame Knock now has the separated authoritative projection path. Its initial
 two-client visual correction pass was manually confirmed on 2026-07-14: the

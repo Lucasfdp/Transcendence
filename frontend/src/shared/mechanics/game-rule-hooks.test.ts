@@ -23,7 +23,7 @@ describe("game-rule-hooks", () => {
 		).toEqual({
 			currentTeam: 1,
 			currentEnd: 3,
-			stonesLeft: [0, 1],
+			ballsLeft: [0, 1],
 			score: [120, 160],
 			phase: "aiming",
 			hasHammer: false,
@@ -34,7 +34,7 @@ describe("game-rule-hooks", () => {
 		const hudState: TurnState = {
 			currentTeam: 0,
 			currentEnd: 2,
-			stonesLeft: [1],
+			ballsLeft: [1],
 			score: [500],
 			phase: "scoring",
 			hasHammer: true,

@@ -756,7 +756,7 @@ export class ShellCurlScene
 		// ballsLeft still reflects pre-throw counts. After consuming this throw,
 		// total remaining is the sum across all local players minus this throw.
 		const totalRemaining =
-			state.stonesLeft.reduce((total, left) => total + left, 0) - 1;
+			state.ballsLeft.reduce((total, left) => total + left, 0) - 1;
 
 		if (totalRemaining > 0) {
 			this.turnManager.nextThrow();
@@ -1229,7 +1229,7 @@ export class ShellCurlScene
 			getPlayerCount: () => Math.max(1, state.score.length),
 			getCurrentPlayer: () => state.currentTeam,
 			getCurrentRound: () => state.currentEnd,
-			getRemainingTurns: () => state.stonesLeft,
+			getRemainingTurns: () => state.ballsLeft,
 			getScore: () => state.score,
 			getPhase: () => state.phase,
 			hasHammer: () => state.hasHammer,

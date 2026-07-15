@@ -48,7 +48,7 @@ The target size for each scene is **300-600 lines**, depending on how much custo
 ## Non-Goals
 
 - Do not remove game identity. Bamboo growth, Kame target timing, Bell angular scoring, and Shell Curl house scoring remain game-specific.
-- Do not force all physics into one implementation. Ball and stone physics may stay separate behind a shared launchable contract.
+- Do not force all physics into one implementation. Elliptical-arena and curling ball physics may stay separate behind a shared launchable contract.
 - Do not hide rules behind opaque inheritance. Prefer explicit descriptors and small rule hooks over a deep class hierarchy.
 - Do not rewrite all four games in one unsafe commit. This must land in phases with tests and playable checkpoints.
 
@@ -181,7 +181,7 @@ It should define:
 
 ### `LaunchableDescriptor`
 
-Common contract for balls and stones.
+Common contract for all balls.
 
 It should define:
 
@@ -195,7 +195,7 @@ It should define:
 - settle detection;
 - power mutation hooks.
 
-Ball and stone implementations can remain separate internally, but scenes should not know the difference beyond descriptor selection.
+Ball implementations can remain specialised internally, but scenes should not know the difference beyond descriptor selection.
 
 ### `WorldRuntime`
 
@@ -213,7 +213,7 @@ It should manage:
 - entity cleanup;
 - normalised coordinate conversion.
 
-The scene should not keep separate ad hoc arrays such as `targets`, `bamboos`, `zones`, `powerBalls`, `onlineBalls`, and `allStones` unless those are internal to the runtime or game-specific descriptor state.
+The scene should not keep separate ad hoc arrays such as `targets`, `bamboos`, `zones`, `powerBalls`, `onlineBalls`, and `allBalls` unless those are internal to the runtime or game-specific descriptor state.
 
 ### `ObstacleDescriptor`
 
@@ -441,7 +441,7 @@ Extract:
 - slingshot creation and recreation;
 - launch preparation;
 - velocity normalisation;
-- ball or stone reset;
+- ball reset;
 - active local player selection;
 - local versus launch routing;
 - moving and settled detection;
@@ -457,7 +457,7 @@ Keep game-specific:
 Acceptance criteria:
 
 - Bamboo, Kame, and Bell no longer implement separate launch handlers for the common path.
-- Shell Curl uses the same launch lifecycle with a stone descriptor.
+- Shell Curl uses the same launch lifecycle with a curling ball descriptor.
 - Scenes do not directly own the common slingshot lifecycle.
 
 ## Phase 3 - Extract World Runtime
@@ -485,7 +485,7 @@ Keep game-specific:
 
 Acceptance criteria:
 
-- Scenes no longer own arrays such as `powerBalls`, `onlineBalls`, `targets`, `bamboos`, `zones`, `allStones`, or equivalent common runtime state.
+- Scenes no longer own arrays such as `powerBalls`, `onlineBalls`, `targets`, `bamboos`, `zones`, `allBalls`, or equivalent common runtime state.
 - Runtime exposes serialisable world state for replay and online sync.
 - The same relayout path preserves entities for all games.
 
@@ -508,7 +508,7 @@ Game descriptors should define:
 - Bamboo Bash: bamboo growth, stage points, spawn limit.
 - Kame Knock: target kinds, lifetime, combo and perfect-hit rules.
 - Bell Clash: bell body, angular zones, hit cooldown and score values.
-- Shell Curl: bumpers, house scoring, stone scoring order.
+- Shell Curl: bumpers, house scoring, and ball scoring order.
 
 Acceptance criteria:
 
@@ -673,7 +673,7 @@ Recommended per-phase split:
 2. Bamboo Bash worker: apply the contract to bamboo growth, scoring, pickups, replay, or flow.
 3. Kame Knock worker: apply the contract to timed targets, combo scoring, pickups, replay, or turn flow.
 4. Bell Clash worker: apply the contract to zones, bell hits, pickups, replay, or shot flow.
-5. Shell Curl worker: apply the contract to stones, bumpers, house scoring, pickups, replay, or end flow.
+5. Shell Curl worker: apply the contract to balls, bumpers, house scoring, pickups, replay, or end flow.
 
 Integration rule:
 

@@ -36,7 +36,7 @@ src/
       arena01.ts          ← ARENA_01 definition (sumo ring)
       curl-sheet.ts       ← CURL_SHEET definition (ice sheet)
     mechanics/
-      ball.ts             ← BallState/StoneState, projectile physics and rendering
+      ball.ts             ← BallState/CurlingBallState, projectile physics and rendering
       slingshot.ts        ← Slingshot drag-to-launch controller
       turn-manager.ts     ← TurnManager turn-based state machine
       score-hud.ts        ← ScoreHud top-bar widget
@@ -205,20 +205,20 @@ Serialisable turn-based state machine for 2-team games. `TurnState` is a readonl
 |---|---|---|
 | `currentTeam` | `0 \| 1` | Which team is throwing this turn. |
 | `currentEnd` | `number` | 0-indexed end number. |
-| `stonesLeft` | `[number, number]` | Stones remaining this end per team. |
+| `ballsLeft` | `[number, number]` | Balls remaining this end per team. |
 | `score` | `[number, number]` | Cumulative score `[team0, team1]`. |
 | `phase` | `TurnPhase` | `aiming \| sweeping \| settling \| scoring \| gameover` |
-| `hasHammer` | `boolean` | True when the current team has last-stone advantage. |
+| `hasHammer` | `boolean` | True when the current team has the last-ball advantage. |
 
 **Key methods:**
 
 | Method | Description |
 |---|---|
-| `new TurnManager({ totalEnds, stonesPerTeam })` | Constructor. |
+| `new TurnManager({ totalEnds, ballsPerTeam })` | Constructor. |
 | `.state` | Read-only snapshot of current state. |
 | `.setPhase(phase)` | Transition to a new `TurnPhase` without changing other state. |
-| `.endEnd(team, pts)` | Award `pts` to `team` (or `null` for blank end), advance to next end, reset `stonesLeft`. |
-| `.advanceTurn()` | Move to next throw within the end (swaps `currentTeam`, decrements `stonesLeft`). |
+| `.endEnd(team, pts)` | Award `pts` to `team` (or `null` for a blank end), advance to the next end, and reset `ballsLeft`. |
+| `.nextThrow()` | Move to the next throw within the end (swaps `currentTeam` and decrements `ballsLeft`). |
 
 ---
 
@@ -245,13 +245,13 @@ this.scoreHud.rebuild();
 
 ### 3.5 `SweepController` — `shared/mechanics/sweep-controller.ts`
 
-Lets players reduce friction on a moving stone by tapping/clicking during the sweeping phase.
+Lets players reduce friction on a moving ball by tapping or clicking during the sweeping phase.
 
 | Export | Description |
 |---|---|
 | `SWEEP_THRESHOLD` | Minimum tap rate (taps/s) required for the friction bonus. |
 | `SWEEP_FRICTION_MULT` | Per-frame friction multiplier while sweeping is active (`< 1` = less friction). |
-| `new SweepController(scene, stone)` | Attach to one stone per turn. Listens for pointer events. |
+| `new SweepController(scene, ball)` | Attach to one ball per turn. Listens for pointer events. |
 | `.destroy()` | Remove listeners. Call at end of sweeping phase. |
 
 ---
@@ -267,13 +267,13 @@ elliptical arena ball helpers and the rectangular sheet curling-shell helpers.
 | `stepBall(ball, delta, arena)` | Advance physics one frame. Returns `true` if ball is still moving. |
 | `isBallMoving(ball)` | `true` when speed exceeds `MIN_SPEED`. |
 | `drawShellBall(gfx, ball)` | Draw the decorative shell-pattern ball onto a `Graphics` object. |
-| `StoneState` | Curling-shell state used by Shell Curl and replay rendering. |
-| `stepStone(stone, delta, arena)` | Advance physics one frame. Enforces frozen-stone invariant. Returns `true` while moving. |
-| `resolveStoneCollision(a, b)` | Elastic collision. Treats frozen stones as infinite-mass walls. |
-| `isStoneOutOfBounds(stone, arena)` | `true` when stone has left the sheet (always `false` for enclosed horizontal sheets). |
+| `CurlingBallState` | Extended ball state used by Shell Curl and replay rendering. |
+| `stepCurlingBall(ball, delta, arena)` | Advance physics by one frame. Enforces the frozen-ball invariant. Returns `true` while moving. |
+| `resolveCurlingBallCollision(a, b)` | Elastic collision. Treats frozen balls as infinite-mass walls. |
+| `isBallOutOfBounds(ball, arena)` | `true` when a ball has left the sheet (always `false` for enclosed horizontal sheets). |
 | `FRICTION_ICE = 0.990` | Default per-frame friction multiplier at 60 fps. |
 | `BOUNCE_DAMP = 0.55` | Speed retention after wall bounce. |
-| `DEFAULT_CURL_BIAS = 0` | Curl applied to plain stones. Override per-stone for spin effects. |
+| `DEFAULT_CURL_BIAS = 0` | Curl applied to plain balls. Override per ball for spin effects. |
 
 ---
 
@@ -309,16 +309,16 @@ Used by Shell Curl. Describes a rectangular playing field with configurable orie
 | `RectArenaPixels` | Canvas-pixel geometry. Includes `houseFarCX/Y`, `houseNearCX/Y`, `houseRadii[4]`, `deliveryX/Y`, `hogX/Y`, `scale`. |
 | `rectArenaToScreen(def, w, h)` | Letterbox-fit the rect arena def. Call in `create()` and every `onResize()`. |
 | `drawIceSheet(gfx, arena)` | Draw ice fill, pebble texture, house rings, hog lines, and hack mark. |
-| `isStoneInHouse(stone, arena)` | `true` when stone is within the outermost house ring at the scoring end. |
-| `distanceToHouseButton(stone, arena)` | Distance to house button (use for scoring tie-breaks). |
-| `isStoneOutOfBounds(stone, arena)` | Horizontal sheets always `false` (enclosed). Vertical sheets check walls. |
+| `isBallInHouse(ball, arena)` | `true` when the ball is within the outermost house ring at the scoring end. |
+| `distanceFromBallToHouseButton(ball, arena)` | Distance to the house button (use for scoring tie-breaks). |
+| `isBallOutOfBounds(ball, arena)` | Horizontal sheets always return `false` (enclosed). Vertical sheets check the walls. |
 
 **Orientation options:**
 
 | Value | Behaviour |
 |---|---|
-| `'horizontal'` | Stone travels left → right. Right end is the scoring house. All four walls bounce. Used by Shell Curl. |
-| `'vertical'` | Stone travels top → bottom. Bottom is the scoring house. Left/right walls bounce; far end removes stones. |
+| `'horizontal'` | The ball travels left → right. The right end is the scoring house. All four walls bounce. Used by Shell Curl. |
+| `'vertical'` | The ball travels top → bottom. The bottom is the scoring house. The left and right walls bounce; the far end removes balls. |
 
 **Pre-built definition:**
 
@@ -395,32 +395,32 @@ this.add.text(x, y, 'SCORE  0', {
 
 ### 6.1 Overview
 
-The power system lets each game offer a subset of the 11 built-in powers without re-implementing any physics. Each power is a `PowerDef` object — a collection of hooks called at the right points in the stone lifecycle.
+The power system lets each game offer a subset of the built-in powers without re-implementing any physics. Each power is a `PowerDef` object — a collection of hooks called at the right points in the ball lifecycle.
 
 ### 6.2 `PowerType` enum
 
 | Value | Effect |
 |---|---|
-| `PowerType.NONE` | Standard stone — no effect. |
-| `PowerType.HEAVY` | Larger stone, harder to deflect. |
-| `PowerType.BOMB` | Explodes on rest, pushing nearby stones outward. |
-| `PowerType.SPLITTER` | Splits into 3 child stones when its pickup is collected. |
-| `PowerType.GHOST` | Passes through other stones without collision. |
-| `PowerType.MAGNET` | Attracts nearby enemy stones while in motion. |
+| `PowerType.NONE` | Standard ball — no effect. |
+| `PowerType.HEAVY` | Larger ball, harder to deflect. |
+| `PowerType.BOMB` | Explodes on rest, pushing nearby balls outwards. |
+| `PowerType.SPLITTER` | Splits into 3 child balls when its pickup is collected. |
+| `PowerType.GHOST` | Passes through other balls without collision. |
+| `PowerType.MAGNET` | Attracts nearby enemy balls while in motion. |
 | `PowerType.SPINNING` | Strong curl bias — arcs dramatically across the sheet. |
 | `PowerType.BOUNCER` | No speed loss on wall bounce (full elastic). |
-| `PowerType.SHIELD` | If stone rests inside the house, becomes very hard to dislodge. |
-| `PowerType.FREEZE` | Freezes any stone it collides with in place. |
+| `PowerType.SHIELD` | If the ball rests inside the house, it becomes very hard to dislodge. |
+| `PowerType.FREEZE` | Freezes any ball it collides with in place. |
 | `PowerType.SLICK` | Near-frictionless — travels much further. |
 
 ### 6.3 `PowerDef` hooks
 
 | Hook | Required | Description |
 |---|---|---|
-| `onApply(stone, arena)` | Yes | Called immediately on launch. Mutate stone properties (`r`, `frictionOverride`, `curlBias`, etc.). |
-| `onUpdate?(stone, dt, arena)` | No | Called every frame while the stone is moving. Use for continuous effects (magnet pull, etc.). |
-| `onCollide?(stone, other, arena)` | No | Called on first contact with another stone (before resolution). Use for Freeze, Ghost, and other collision-triggered powers. |
-| `onStop?(stone, arena, all)` | No | Called once when the stone comes to rest. Use for Bomb explosion, Shield activation. |
+| `onApply(ball, arena)` | Yes | Called immediately on launch. Mutate ball properties (`r`, `frictionOverride`, `curlBias`, etc.). |
+| `onUpdate?(ball, dt, arena)` | No | Called every frame while the ball is moving. Use for continuous effects (magnet pull, etc.). |
+| `onCollide?(ball, other, arena)` | No | Called on first contact with another ball (before resolution). Use for Freeze, Ghost, and other collision-triggered powers. |
+| `onStop?(ball, arena, all)` | No | Called once when the ball comes to rest. Use for Bomb explosion or Shield activation. |
 
 ### 6.4 Using powers in your game
 
@@ -438,16 +438,16 @@ const registry = new PowerRegistry([
 const def = registry.get(selectedType);
 
 // On launch:
-def.onApply(stone, arena);
+def.onApply(ball, arena);
 
 // In update():
-def.onUpdate?.(stone, delta, arena);
+def.onUpdate?.(ball, delta, arena);
 
 // After collision check:
-def.onCollide?.(stone, other, arena);
+def.onCollide?.(ball, other, arena);
 
-// When stone stops:
-def.onStop?.(stone, arena, allStones);
+// When the ball stops:
+def.onStop?.(ball, arena, allBalls);
 ```
 
 ---
@@ -461,7 +461,7 @@ Phaser draws objects from lowest depth to highest. Follow this layer stack:
 | 0 | Background | Scene background, tatami/ice fill, static decorations. |
 | 1 | Arena | Ring/sheet markings. |
 | 2 | Aim gfx | Slingshot aim line (`depth` param in `SlingshotConfig`). |
-| 3 | Gameplay | Balls, stones, bamboo, obstacles. |
+| 3 | Gameplay | Balls, bamboo, obstacles. |
 | 4 | FX | Score pop-ups, hit flashes, particle effects. |
 | 10 | Power UI | Power picker, turn indicator. |
 | 20 | HUD | Score HUD bar, timer, return button. |

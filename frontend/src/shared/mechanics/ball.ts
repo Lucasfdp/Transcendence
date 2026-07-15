@@ -217,8 +217,8 @@ export function drawShellBallTexture(
 	ensureShellBallTexture(scene);
 	const imageName = `${name}-fallback`;
 	const existing = scene.children.getByName(imageName);
-	const image = existing instanceof Phaser.GameObjects.Image
-		? existing
+	const image = existing?.type === "Image"
+		? (existing as Phaser.GameObjects.Image)
 		: scene.add.image(b.x, b.y, SHELL_BALL_TEXTURE_KEY).setName(imageName);
 	image
 		.setVisible(true)

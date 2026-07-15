@@ -12,18 +12,18 @@
 
 export type TurnPhase =
 	| "aiming" // player is selecting power and dragging aim
-	| "sweeping" // stone is in flight; player can sweep
-	| "settling" // all stones decelerating; no input allowed
+	| "sweeping" // ball is in flight; player can sweep
+	| "settling" // all balls decelerating; no input allowed
 	| "scoring" // end finished; score overlay shown
 	| "gameover"; // all ends played
 
 export interface TurnState {
 	readonly currentTeam: number;
 	readonly currentEnd: number; // 0-indexed
-	readonly stonesLeft: readonly number[]; // remaining this end by player
+	readonly ballsLeft: readonly number[]; // remaining this end by player
 	readonly score: readonly number[]; // cumulative score by player
 	readonly phase: TurnPhase;
-	/** True when the current team has the last-stone advantage this end. */
+	/** True when the current team has the last-ball advantage this end. */
 	readonly hasHammer: boolean;
 }
 
@@ -33,27 +33,27 @@ export class TurnManager {
 	private _state: TurnState;
 
 	private readonly totalEnds: number;
-	private readonly stonesPerTeam: number;
+	private readonly ballsPerTeam: number;
 	private readonly playerCount: number;
 
-	/** Which team holds the hammer (last-stone advantage) for the current end. */
+	/** Which team holds the hammer (last-ball advantage) for the current end. */
 	private hammerTeam = 0;
 
 	constructor(opts: {
 		totalEnds: number;
-		stonesPerTeam: number;
+		ballsPerTeam: number;
 		playerCount?: number;
 	}) {
 		this.totalEnds = opts.totalEnds;
-		this.stonesPerTeam = opts.stonesPerTeam;
+		this.ballsPerTeam = opts.ballsPerTeam;
 		this.playerCount = Math.max(1, opts.playerCount ?? 2);
 
 		this._state = {
 			currentTeam: 0,
 			currentEnd: 0,
-			stonesLeft: Array.from(
+			ballsLeft: Array.from(
 				{ length: this.playerCount },
-				() => opts.stonesPerTeam,
+				() => opts.ballsPerTeam,
 			),
 			score: Array.from({ length: this.playerCount }, () => 0),
 			phase: "aiming",
@@ -72,14 +72,14 @@ export class TurnManager {
 
 	/**
 	 * Record points scored by `scoringTeam` this end, advance to the next end,
-	 * and reset stonesLeft. The team that did NOT score gets the hammer next end
-	 * (last-stone advantage). If both scored 0 (blank end), hammer does not change.
+	 * and reset ballsLeft. The team that did NOT score gets the hammer next end
+	 * (last-ball advantage). If both scored 0 (blank end), hammer does not change.
 	 */
 	endEnd(scoringTeam: number | null, points: number): void {
 		const score = [...this._state.score];
 		if (scoringTeam !== null) {
 			score[scoringTeam] += points;
-			// TODO(#hammer): last-stone advantage: non-scoring team gets hammer next end
+			// TODO(#hammer): last-ball advantage: non-scoring team gets hammer next end
 			this.hammerTeam = (scoringTeam + 1) % this.playerCount;
 		}
 		// else blank end — hammer unchanged
@@ -92,9 +92,9 @@ export class TurnManager {
 		this._state = {
 			...this._state,
 			currentEnd: nextEnd,
-			stonesLeft: Array.from(
+			ballsLeft: Array.from(
 				{ length: this.playerCount },
-				() => this.stonesPerTeam,
+				() => this.ballsPerTeam,
 			),
 			score,
 			currentTeam: firstTeam, // hammer throws last in the circular order
@@ -104,18 +104,18 @@ export class TurnManager {
 	}
 
 	/**
-	 * Advance to the next throw. Alternates between teams, consuming one stone
-	 * from the current team's stonesLeft. The team with the hammer always throws last.
+	 * Advance to the next throw. Alternates between teams, consuming one ball
+	 * from the current team's ballsLeft. The team with the hammer always throws last.
 	 */
 	nextThrow(): void {
 		const s = this._state;
-		const stones = [...s.stonesLeft];
-		stones[s.currentTeam] = Math.max(0, stones[s.currentTeam] - 1);
+		const balls = [...s.ballsLeft];
+		balls[s.currentTeam] = Math.max(0, balls[s.currentTeam] - 1);
 
-		const next = this.upNext(stones);
+		const next = this.upNext(balls);
 		this._state = {
 			...s,
-			stonesLeft: stones,
+			ballsLeft: balls,
 			currentTeam: next,
 			phase: "aiming",
 			hasHammer: next === this.hammerTeam,
@@ -127,13 +127,13 @@ export class TurnManager {
 		return this._state.phase === "gameover";
 	}
 
-	/** Who throws next given a stones-remaining tuple? Handles hammer ordering. */
-	upNext(stonesLeft?: number[]): number {
-		const sl = stonesLeft ?? [...this._state.stonesLeft];
+	/** Who throws next given a balls-remaining tuple? Handles hammer ordering. */
+	upNext(ballsLeft?: number[]): number {
+		const remaining = ballsLeft ?? [...this._state.ballsLeft];
 		for (let offset = 1; offset <= this.playerCount; offset++) {
 			const candidate =
 				(this._state.currentTeam + offset) % this.playerCount;
-			if (sl[candidate] > 0) return candidate;
+			if (remaining[candidate] > 0) return candidate;
 		}
 		return this._state.currentTeam;
 	}

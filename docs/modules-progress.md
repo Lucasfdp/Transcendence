@@ -316,14 +316,17 @@ Missing for completion:
   pickups, scoring, and turn settlement; its dedicated physics and engine tests
    cover those authority boundaries.
 - Temple Curling now uses the separated server-authoritative projection channel:
-  fixed-step source-space stones, walls, bumpers, shell collisions, the eight
+  fixed-step source-space balls, walls, bumpers, shell collisions, the eight
   active selected powers, settlement, turns, ends, and house scoring are owned
   by the backend. The browser sends only bounded launch intent and renders
   interpolated `game:physics-state` projections; client `settled` reports are
   rejected. Rejoin uses a fresh physics request, while the projection frames
-  remain compatible with replay capture. Backend physics/engine/gateway tests,
-  the complete backend suite (60 suites / 833 tests), frontend suite (48 files
-  / 289 tests), and frontend/backend builds passed on 2026-07-15.
+  remain compatible with replay capture. Curling now uses the same ball
+  vocabulary as the other games across turn state, HUD state, physics, powers,
+  replay, and online projection code. Backend physics/engine/gateway tests and
+  the complete backend suite (60 suites / 833 tests) passed previously; the
+  frontend suite (51 files / 298 tests) and production build passed on
+  2026-07-15.
 - Complete Kame Knock spectator entry during live play and responsive relayout
   validation before claiming its rollout complete.
 - Complete the manual two-client Temple Curling matrix, including the eight

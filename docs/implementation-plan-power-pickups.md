@@ -1,172 +1,197 @@
-# Plan de Implementacion: Power Pickups en Kame Knock, Bell Clash y Shell Curl
+# Implementation Plan: Power Pickups in Kame Knock, Bell Clash, and Shell Curl
 
-## Resumen
+## Summary
 
-Anadir power pickups con soporte online a los tres juegos que ya tienen la infraestructura frontend local pero carecen de backend online:
-- **Bamboo Bash** ya funciona completo (referencia).
-- **Kame Knock** — frontend local OK, falta backend + online wiring.
-- **Bell Clash** — frontend local OK, falta backend + online wiring.
-- **Shell Curl** — frontend local OK, falta backend + online wiring.
+Add online power-pickup support to the three games that already have local
+frontend infrastructure but do not yet have the corresponding online backend
+wiring:
+
+- **Bamboo Bash** is already complete and acts as the reference.
+- **Kame Knock** has a working local frontend but needs backend and online wiring.
+- **Bell Clash** has a working local frontend but needs backend and online wiring.
+- **Shell Curl** has a working local frontend but needs backend and online wiring.
 
 ---
 
-## Fase 1: Helper compartido backend
+## Phase 1: Shared Backend Helper
 
-**Archivo:** `backend/src/modules/matchmaking/power-pickup.helper.ts`
+**File:** `backend/src/modules/matchmaking/power-pickup.helper.ts`
 
-Extraer logica comun de Bamboo Bash a un helper puro (sin dependencias de clase):
+Extract the common Bamboo Bash logic into a pure helper with no class
+dependencies:
 
-| Funcion | Proposito |
+| Function | Purpose |
 |---|---|
-| `initPowerPickups(playerCount, powerupsEnabled, spawnCount)` | Estado inicial con N pickups esparcidos |
-| `tickPowerPickups(pickups, nextId, accMs, deltaMs, intervalMs)` | Acumular tiempo y spawnear cada `intervalMs` ms |
-| `tryConsumePowerPickup(pickups, side, pickupId, usedPowersBySide, lastPowerBySide, lastPowerPickupIdBySide)` | Validar y consumir un pickup; devuelve `string \| null` |
-| `resetPowerPickups(playerCount)` | Resetear todo el estado de pickups por ronda |
-| `randomPowerPickupType()` | Tipo aleatorio del pool |
-| `randomPowerPickupSpot(existing, blockers?)` | Posicion normalizada 2D con separacion |
+| `initPowerPickups(playerCount, powerupsEnabled, spawnCount)` | Build the initial state with N distributed pickups. |
+| `tickPowerPickups(pickups, nextId, accMs, deltaMs, intervalMs)` | Accumulate time and spawn a pickup every `intervalMs` milliseconds. |
+| `tryConsumePowerPickup(pickups, side, pickupId, usedPowersBySide, lastPowerBySide, lastPowerPickupIdBySide)` | Validate and consume a pickup; return `string \| null`. |
+| `resetPowerPickups(playerCount)` | Reset all pickup state for a round. |
+| `randomPowerPickupType()` | Select a random type from the power pool. |
+| `randomPowerPickupSpot(existing, blockers?)` | Select a separated random normalised 2D position. |
 
 ---
 
-## Fase 2: Tipos compartidos
+## Phase 2: Shared Types
 
-**Archivo:** `backend/src/modules/matchmaking/matchmaking.types.ts`
+**File:** `backend/src/modules/matchmaking/matchmaking.types.ts`
 
-1. Extraer `PowerPickupEntry` a interface compartida (ya existe inline en `BambooBashSnapshot`).
-2. Anadir a **`KameKnockSnapshot`**, **`BellClashSnapshot`** y **`CurlingSnapshot`**:
+1. Extract `PowerPickupEntry` into a shared interface. It already exists inline
+   in `BambooBashSnapshot`.
+2. Add the following fields to **`KameKnockSnapshot`**,
+   **`BellClashSnapshot`**, and **`CurlingSnapshot`**:
    - `usedPowersBySide: string[][]`
    - `lastPowerBySide: string[]`
    - `lastPowerPickupIdBySide: Array<number | null>`
    - `powerPickups: PowerPickupEntry[]`
    - `nextPowerPickupId: number`
-   - `powerPickupAccMs: number` (excepto Curling si no usa ticking)
+   - `powerPickupAccMs: number`, except in Curling if it does not tick pickups
    - `lastPowerPickupUpdateAt: number | null`
-3. Anadir `"power-pickup"` al union type `GameInputPayload["action"]` (si no existe ya).
+3. Add `"power-pickup"` to the `GameInputPayload["action"]` union if it is not
+   already present.
 
 ---
 
-## Fase 3: Backend Engine — Kame Knock
+## Phase 3: Backend Engine — Kame Knock
 
-**Archivo:** `backend/src/modules/matchmaking/engines/kame-knock.engine.ts`
+**File:** `backend/src/modules/matchmaking/engines/kame-knock.engine.ts`
 
-- `createInitialState()`: llamar `initPowerPickups()` y esparcir resultado en el snapshot.
-- `handleInput()`: rutear `"power-pickup"` a `applyPowerPickup()`.
-- `applyPowerPickup()`: validar turno, llamar `tickPowerPickups()`, `tryConsumePowerPickup()`, refrescar.
-- `tickPowerPickups(state)`: wrapper que llama al helper con delta = `Date.now() - state.lastPowerPickupUpdateAt`.
-- Llamar `tickPowerPickups(state)` en `applyRelease()` y `applyTargetHit()` y `applySettled()`.
-- `resetRound()`: llamar `resetPowerPickups()`.
-
----
-
-## Fase 4: Backend Engine — Bell Clash
-
-**Archivo:** `backend/src/modules/matchmaking/engines/bell-clash.engine.ts`
-
-Mismo patron que Kame Knock:
-
-- `createInitialState()` + `initPowerPickups()`.
-- `handleInput()`: rutear `"power-pickup"`.
-- `applyPowerPickup()`: validar que el jugador no haya puntuado ya en la ronda, tick, consumir.
-- `tickPowerPickups()`: igual que Kame Knock.
-- Llamar `tickPowerPickups()` en `applyBellHit()` y `applyRoundScore()`.
-- `resetRound()`: `resetPowerPickups()`.
+- Call `initPowerPickups()` from `createInitialState()` and spread the result
+  into the snapshot.
+- Route `"power-pickup"` to `applyPowerPickup()` from `handleInput()`.
+- In `applyPowerPickup()`, validate the turn, tick the pickup state, call
+  `tryConsumePowerPickup()`, and refresh the state.
+- Add a `tickPowerPickups(state)` wrapper that uses
+  `Date.now() - state.lastPowerPickupUpdateAt` as its delta.
+- Call `tickPowerPickups(state)` from `applyRelease()`, `applyTargetHit()`, and
+  `applySettled()`.
+- Call `resetPowerPickups()` from `resetRound()`.
 
 ---
 
-## Fase 5: Backend Engine — Shell Curl
+## Phase 4: Backend Engine — Bell Clash
 
-**Archivo:** `backend/src/modules/matchmaking/engines/shell-curl.engine.ts`
+**File:** `backend/src/modules/matchmaking/engines/bell-clash.engine.ts`
 
-Particularidad de Curling: los pickups existen en el hielo y la stone los recoge al pasar. Flujo:
+Follow the Kame Knock pattern:
 
-- `createInitialState()` + `initPowerPickups()`.
-- `handleInput()`: rutear `"power-pickup"`.
-- `applyPowerPickup()`: validar turno, tick, consumir, refrescar.
-- Llamar `tickPowerPickups()` en `applyRelease()` y `applySettled()`.
-- `resetEnd()` (en el bloque `state.throwsInEnd >= ...`): `resetPowerPickups()`.
+- Initialise the snapshot with `initPowerPickups()`.
+- Route `"power-pickup"` from `handleInput()`.
+- In `applyPowerPickup()`, confirm that the player has not already scored in
+  the round, tick the state, and consume the pickup.
+- Implement `tickPowerPickups()` in the same way as Kame Knock.
+- Call `tickPowerPickups()` from `applyBellHit()` and `applyRoundScore()`.
+- Call `resetPowerPickups()` from `resetRound()`.
 
 ---
 
-## Fase 6: Gateway — broadcast events
+## Phase 5: Backend Engine — Shell Curl
 
-**Archivo:** `backend/src/modules/matchmaking/matchmaking.gateway.ts`
+**File:** `backend/src/modules/matchmaking/engines/shell-curl.engine.ts`
 
-Anadir tres bloques `if` en el handler de `game:input`, justo antes del `this.emitState()` final, siguiendo el patron de `bamboo:power-pickup` (lineas 451-478):
+In Shell Curl, pickups exist on the ice and a moving ball collects them:
+
+- Initialise the snapshot with `initPowerPickups()`.
+- Route `"power-pickup"` from `handleInput()`.
+- In `applyPowerPickup()`, validate the turn, tick the state, consume the
+  pickup, and refresh the snapshot.
+- Call `tickPowerPickups()` from `applyRelease()` and `applySettled()`.
+- Call `resetPowerPickups()` from the `resetEnd()` path when
+  `state.throwsInEnd` reaches its limit.
+
+---
+
+## Phase 6: Gateway Broadcast Events
+
+**File:** `backend/src/modules/matchmaking/matchmaking.gateway.ts`
+
+Add three conditional blocks to the `game:input` handler immediately before
+the final `this.emitState()`, following the `bamboo:power-pickup` pattern:
 
 ```typescript
 // Kame Knock
 if (payload.action === "power-pickup" && room.gameId === "kame-knock" && ...) {
-    // verificar lastPowerPickupIdBySide, emitir "game:kame-power-pickup"
+    // Verify lastPowerPickupIdBySide and emit "game:kame-power-pickup".
 }
 
 // Bell Clash
 if (payload.action === "power-pickup" && room.gameId === "bell-clash" && ...) {
-    // emitir "game:bell-power-pickup"
+    // Emit "game:bell-power-pickup".
 }
 
 // Shell Curl
 if (payload.action === "power-pickup" && room.gameId === "temple-curling" && ...) {
-    // emitir "game:curl-power-pickup"
+    // Emit "game:curl-power-pickup".
 }
 ```
 
-Cada evento incluye: `matchId`, `roundNumber`/`turnNumber`, `side`, posicion normalizada `(nx, ny)`, velocidad `(vx, vy)`, `power`.
+Each event includes `matchId`, `roundNumber` or `turnNumber`, `side`, the
+normalised position `(nx, ny)`, velocity `(vx, vy)`, and `power`.
 
 ---
 
-## Fase 7: Frontend online — Kame Knock
+## Phase 7: Online Frontend — Kame Knock
 
-**Archivo:** `frontend/src/games/kame-knock/KameKnockScene.ts`
+**File:** `frontend/src/games/kame-knock/KameKnockScene.ts`
 
-1. **`spawnPowerPickup()`** — cuando `onlineMatch` existe, leer `snapshot.powerPickups` y llamar `this.powerPickups.setPickups()` (como hace Bamboo Bash).
-2. **`collectPowerPickup()`** — tras recoger un pickup online, emitir `game:input` con `action: "power-pickup"`, incluyendo `pickupId` y estado del ball.
-3. **Listener `game:kame-power-pickup`** — registrarlo en `initOnlineMatch()`. Handler: actualizar posicion del ball del rival y aplicar el power.
-4. **`recreatePowerPickups()`** — similar a Bamboo Bash, adaptar para que funcione con `setPickups()` en online.
-
----
-
-## Fase 8: Frontend online — Bell Clash
-
-**Archivo:** `frontend/src/games/bell-clash/BellClashScene.ts`
-
-Mismo patron que Kame Knock:
-
-1. `spawnPowerPickup()` online -> `setPickups()`.
-2. `collectPowerPickup()` -> emitir `"power-pickup"`.
-3. Listener `game:bell-power-pickup`.
-4. `recreatePowerPickups()`.
+1. In `spawnPowerPickup()`, when `onlineMatch` exists, read
+   `snapshot.powerPickups` and call `this.powerPickups.setPickups()`, following
+   Bamboo Bash.
+2. After an online pickup is collected in `collectPowerPickup()`, emit a
+   `game:input` event with `action: "power-pickup"`, including `pickupId` and
+   the ball state.
+3. Register a `game:kame-power-pickup` listener in `initOnlineMatch()`. Its
+   handler updates the opponent's ball position and applies the power.
+4. Adapt `recreatePowerPickups()` to use `setPickups()` online.
 
 ---
 
-## Fase 9: Frontend online — Shell Curl
+## Phase 8: Online Frontend — Bell Clash
 
-**Archivo:** `frontend/src/games/shell-curl/ShellCurlScene.ts`
+**File:** `frontend/src/games/bell-clash/BellClashScene.ts`
 
-Mismo patron, pero la recogida ocurre cuando la stone pasa sobre el pickup (en lugar del ball):
+Follow the Kame Knock pattern:
 
-1. `spawnPowerPickup()` online -> `setPickups()`.
-2. `collectPowerPickup()` (llamado desde el update loop de la stone) -> emitir `"power-pickup"`.
-3. Listener `game:curl-power-pickup`.
-4. `recreatePowerPickups()`.
-
----
-
-## Fase 10: Validacion
-
-- `git status` limpio, sin cambios residuales.
-- `cd backend && npm run build` sin errores de tipos.
-- `cd frontend && npx tsc --noEmit` sin errores de tipos.
-- Verificar manualmente en local con `make dev`: iniciar partida online de cada juego, confirmar que los pickups aparecen, se pueden recoger y el rival los ve.
+1. Use `setPickups()` from the online `spawnPowerPickup()` path.
+2. Emit `"power-pickup"` from `collectPowerPickup()`.
+3. Register a `game:bell-power-pickup` listener.
+4. Update `recreatePowerPickups()`.
 
 ---
 
-## Orden de ejecucion sugerido
+## Phase 9: Online Frontend — Shell Curl
 
-1. Helper + tipos (Fase 1-2)
-2. Engine Bell Clash (Fase 4)
-3. Engine Kame Knock (Fase 3)
-4. Engine Shell Curl (Fase 5)
-5. Gateway (Fase 6)
-6. Frontend Bell Clash (Fase 8)
-7. Frontend Kame Knock (Fase 7)
-8. Frontend Shell Curl (Fase 9)
-9. Build + validacion (Fase 10)
+**File:** `frontend/src/games/shell-curl/ShellCurlScene.ts`
+
+Follow the same pattern, with collection occurring when the ball crosses a
+pickup:
+
+1. Use `setPickups()` from the online `spawnPowerPickup()` path.
+2. Emit `"power-pickup"` from `collectPowerPickup()`, which is called from the
+   ball update loop.
+3. Register a `game:curl-power-pickup` listener.
+4. Update `recreatePowerPickups()`.
+
+---
+
+## Phase 10: Validation
+
+- Confirm that `git status` contains no unintended residual changes.
+- Run `cd backend && npm run build` with no type errors.
+- Run `cd frontend && npx tsc --noEmit` with no type errors.
+- Validate each game manually with `make dev`: start an online match, confirm
+  that pickups appear and can be collected, and confirm that the opponent sees
+  the resulting state.
+
+---
+
+## Suggested Execution Order
+
+1. Helper and types (Phases 1–2)
+2. Bell Clash engine (Phase 4)
+3. Kame Knock engine (Phase 3)
+4. Shell Curl engine (Phase 5)
+5. Gateway (Phase 6)
+6. Bell Clash frontend (Phase 8)
+7. Kame Knock frontend (Phase 7)
+8. Shell Curl frontend (Phase 9)
+9. Build and validation (Phase 10)
