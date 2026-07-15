@@ -919,7 +919,6 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 
 		api.submitGameResult("kame-knock", "completed")
 			.then((result) => {
-				console.info("[KameKnock] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
 				showCardDropPopup(this, result.cardDrop);
 			})

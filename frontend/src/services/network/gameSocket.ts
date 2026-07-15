@@ -398,9 +398,21 @@ export interface ShellCurlPhysicsState {
 	physicsSeq: number;
 	serverTime: number;
 	entities: ShellCurlPhysicsEntity[];
-	pickups: [];
+	pickups: Array<{
+		id: number;
+		type: string;
+		x: number;
+		y: number;
+		radius: number;
+	}>;
 	scoreEvents: [];
-	pickupEvents: [];
+	pickupEvents: Array<{
+		id: number;
+		side: number;
+		type: string;
+		x: number;
+		y: number;
+	}>;
 }
 
 export interface OnlineMatchContext {

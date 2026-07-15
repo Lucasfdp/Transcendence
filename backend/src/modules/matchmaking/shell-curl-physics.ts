@@ -16,6 +16,11 @@ const BUMPER_BOOST = 1.1;
 const DELIVERY_X = 90;
 const DELIVERY_Y = SHEET_H / 2;
 const MAX_TRAIL_POINTS = 40;
+const PICKUP_RADIUS = 18;
+const PICKUP_COUNT = 3;
+const ACTIVE_POWERS = [
+	"heavy", "splitter", "spinning", "rocket", "giant", "tiny", "mirror", "phantom",
+] as const;
 
 export function createShellCurlPhysicsState(matchId: string): ShellCurlPhysicsState {
 	return {
@@ -27,6 +32,8 @@ export function createShellCurlPhysicsState(matchId: string): ShellCurlPhysicsSt
 		scoreEvents: [],
 		pickupEvents: [],
 		nextEntityId: 1,
+		nextPickupId: 1,
+		nextPickupEventId: 1,
 	};
 }
 
@@ -47,8 +54,13 @@ export function launchShellCurlProjectile(
 
 export function resetShellCurlPhysicsEnd(
 	physics: ShellCurlPhysicsState,
+	powerupsEnabled = false,
 ): void {
 	physics.entities = [];
+	physics.pickups = powerupsEnabled
+		? Array.from({ length: PICKUP_COUNT }, () => createPickup(physics))
+		: [];
+	physics.pickupEvents = [];
 	bump(physics);
 }
 
@@ -69,6 +81,7 @@ export function advanceShellCurlPhysics(
 			resolveBumpers(entity, snapshot);
 		}
 		resolveEntityCollisions(physics.entities);
+		collectPickups(physics, snapshot);
 		applyStoppedPowers(physics);
 	}
 	bump(physics, deltaMs);
@@ -130,6 +143,38 @@ function applyPower(physics: ShellCurlPhysicsState, entity: ShellCurlPhysicsEnti
 		case "splitter": splitEntity(physics, entity); break;
 		case "mirror": physics.entities.push(createEntity(physics, entity.ownerSide, entity.x, SHEET_H - entity.y, entity.vx, -entity.vy, "none")); break;
 	}
+}
+
+function collectPickups(physics: ShellCurlPhysicsState, snapshot: CurlingSnapshot): void {
+	for (const entity of [...physics.entities]) {
+		if (entity.stopped || entity.power !== "none") continue;
+		const pickup = physics.pickups.find((candidate) =>
+			Math.hypot(entity.x - candidate.x, entity.y - candidate.y) <= entity.radius + candidate.radius,
+		);
+		if (!pickup) continue;
+		physics.pickups = physics.pickups.filter((candidate) => candidate.id !== pickup.id);
+		entity.power = pickup.type;
+		entity.alpha = pickup.type === "phantom" ? 0.52 : 1;
+		applyPower(physics, entity);
+		const used = (snapshot.usedPowersBySide[entity.ownerSide] ??= []);
+		if (!used.includes(pickup.type)) used.push(pickup.type);
+		physics.pickupEvents.push({
+			id: physics.nextPickupEventId++, side: entity.ownerSide, type: pickup.type, x: pickup.x, y: pickup.y,
+		});
+		physics.pickupEvents = physics.pickupEvents.slice(-16);
+	}
+}
+
+function createPickup(physics: ShellCurlPhysicsState) {
+	const id = physics.nextPickupId++;
+	const slot = (id - 1) % PICKUP_COUNT;
+	return {
+		id,
+		type: ACTIVE_POWERS[(id - 1) % ACTIVE_POWERS.length],
+		x: SHEET_W * (0.62 + slot * 0.04),
+		y: SHEET_H * (0.25 + slot * 0.25),
+		radius: PICKUP_RADIUS,
+	};
 }
 
 function splitEntity(physics: ShellCurlPhysicsState, entity: ShellCurlPhysicsEntity): void {

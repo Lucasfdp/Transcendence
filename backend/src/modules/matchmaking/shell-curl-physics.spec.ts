@@ -44,6 +44,25 @@ describe("Temple Curling authoritative physics", () => {
 		expect(new Set(physics.entities.map((entity) => entity.id)).size).toBe(3);
 	});
 
+	it("collects and applies server-owned power pickups", () => {
+		const physics = createShellCurlPhysicsState("curl-physics");
+		const state = snapshot();
+		physics.pickups = [
+			{ id: 1, type: "heavy", x: 100, y: 440, radius: 18 },
+		];
+		launchShellCurlProjectile(physics, 0, 300, 0, "none");
+
+		advanceShellCurlPhysics(physics, state, 1000 / 30);
+
+		expect(physics.pickups).toEqual([]);
+		expect(physics.entities[0]).toMatchObject({ power: "heavy" });
+		expect(physics.pickupEvents[0]).toMatchObject({
+			side: 0,
+			type: "heavy",
+		});
+		expect(state.usedPowersBySide[0]).toContain("heavy");
+	});
+
 	it("publishes a newer empty projection when an end resets", () => {
 		const physics = createShellCurlPhysicsState("curl-physics");
 		launchShellCurlProjectile(physics, 0, 300, 0, "none");

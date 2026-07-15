@@ -74,8 +74,6 @@ export async function persistLocalReplayImport<TSnapshot extends object>(
 
 	try {
 		await options.importReplay(importPayload);
-		if (options.logLabel)
-			console.info(`[${options.logLabel}] replay persisted`);
 	} catch (err: unknown) {
 		if (options.logLabel) {
 			console.warn(

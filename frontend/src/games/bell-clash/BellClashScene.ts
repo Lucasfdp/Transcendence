@@ -890,7 +890,6 @@ export class BellClashScene
 
 		api.submitGameResult("bell-clash", "completed")
 			.then((result) => {
-				console.info("[BellClash] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
 				showCardDropPopup(this, result.cardDrop);
 			})

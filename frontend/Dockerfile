@@ -9,6 +9,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 WORKDIR /app/frontend
 COPY frontend/package.json ./
 COPY frontend/package-lock.json* ./
+COPY frontend/scripts/apply-phaser-webgl-patch.mjs ./scripts/apply-phaser-webgl-patch.mjs
 # Keep `npm install` here instead of `npm ci`: Vite/Rollup's optional native
 # packages can differ by platform, and `npm install` re-resolves them inside the
 # target container environment. The build stage must keep devDependencies

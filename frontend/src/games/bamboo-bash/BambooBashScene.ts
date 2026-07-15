@@ -907,7 +907,6 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 
 		api.submitGameResult("bamboo-bash", "completed")
 			.then((result) => {
-				console.info("[BambooBash] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
 				showCardDropPopup(this, result.cardDrop);
 			})

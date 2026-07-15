@@ -163,6 +163,7 @@ const DEPTH_OVERLAY = 100;
 
 /** Pause in ms between end-of-throw and advancing to next turn. */
 const SETTLING_DELAY_MS = 800;
+const SCORING_DISTANCE_EPSILON_SRC = 0.001;
 
 const PLAYER_COLOURS = PLAYER_HEX_COLOURS;
 
@@ -291,7 +292,8 @@ export class ShellCurlScene
 		gameId: "temple-curling",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
 		shouldSkip: () =>
-			this.online.isActive || this.registry.get("replayEnabled") === false,
+			this.online.isActive ||
+			this.registry.get("replayEnabled") === false,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
@@ -551,14 +553,10 @@ export class ShellCurlScene
 					this.arena,
 				);
 
-				this.curlingPower.resolveCollisions(
-					this.allBalls,
-					this.arena,
-					{
-						activeBall: this.activeBall,
-						triggerActiveCollisionPower: true,
-					},
-				);
+				this.curlingPower.resolveCollisions(this.allBalls, this.arena, {
+					activeBall: this.activeBall,
+					triggerActiveCollisionPower: true,
+				});
 			}
 
 			// Bumper collisions for all moving balls
@@ -784,27 +782,41 @@ export class ShellCurlScene
 			return;
 		}
 
-		// Find closest ball to button
-		let bestDist = Infinity;
-		let scoringTeam = 0;
-		for (const s of inHouse) {
-			const d = distanceFromBallToHouseButton(s, this.arena);
-			if (d < bestDist) {
-				bestDist = d;
-				scoringTeam = s.teamId;
-			}
+		const ranked = inHouse
+			.map((ball) => ({
+				ball,
+				distance: distanceFromBallToHouseButton(ball, this.arena),
+			}))
+			.sort((a, b) => a.distance - b.distance);
+		const best = ranked[0];
+		const scoringTeam = best.ball.teamId;
+		const epsilon = SCORING_DISTANCE_EPSILON_SRC * this.arena.scale;
+		if (
+			ranked.some(
+				(entry) =>
+					entry.ball.teamId !== scoringTeam &&
+					Math.abs(entry.distance - best.distance) <= epsilon,
+			)
+		) {
+			this.localEndScores[this.turnManager.state.currentEnd] = Array.from(
+				{ length: this.turnManager.state.score.length },
+				() => 0,
+			);
+			this.turnManager.endEnd(null, 0);
+			this.updateSidePanels();
+			this.showEndScoreOverlay(null, 0);
+			return;
 		}
 
 		// Count scoring balls (all balls of scoring team closer than nearest opponent)
-		const opponentDist = inHouse
-			.filter((s) => s.teamId !== scoringTeam)
-			.map((s) => distanceFromBallToHouseButton(s, this.arena))
-			.reduce((min, d) => Math.min(min, d), Infinity);
+		const opponentDist = ranked
+			.filter((entry) => entry.ball.teamId !== scoringTeam)
+			.reduce((min, entry) => Math.min(min, entry.distance), Infinity);
 
-		const points = inHouse.filter(
-			(s) =>
-				s.teamId === scoringTeam &&
-				distanceFromBallToHouseButton(s, this.arena) < opponentDist,
+		const points = ranked.filter(
+			(entry) =>
+				entry.ball.teamId === scoringTeam &&
+				entry.distance < opponentDist - epsilon,
 		).length;
 
 		// Highlight scoring balls
@@ -889,8 +901,7 @@ export class ShellCurlScene
 		const pad = 18 * this.arena.scale;
 		const offset = slot * ball.r * 0.45;
 		ball.x = this.arena.sheetX + ball.r + pad + offset;
-		ball.y =
-			this.arena.sheetY + this.arena.sheetH - ball.r - pad - offset;
+		ball.y = this.arena.sheetY + this.arena.sheetH - ball.r - pad - offset;
 		ball.vx = 0;
 		ball.vy = 0;
 		ball.stopped = true;
@@ -1189,7 +1200,6 @@ export class ShellCurlScene
 
 		api.submitGameResult("temple-curling", "completed")
 			.then((result) => {
-				console.info("[ShellCurl] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
 				showCardDropPopup(this, result.cardDrop);
 			})
@@ -1806,10 +1816,33 @@ export class ShellCurlScene
 		return this.powerUsed[team];
 	}
 
-	public syncOnlineUsedPowers(usedPowersBySide: string[][] | undefined): void {
+	public syncOnlineUsedPowers(
+		usedPowersBySide: string[][] | undefined,
+	): void {
 		if (!usedPowersBySide) return;
 		this.powerUsed = usedPowersBySide.map(
 			(powers) => new Set(powers as PowerType[]),
+		);
+	}
+
+	public syncOnlinePowerPickups(
+		pickups: Array<{
+			id: number;
+			type: string;
+			x: number;
+			y: number;
+			radius: number;
+		}>,
+	): void {
+		if (!this.powerPickups) return;
+		this.powerPickups.setPickups(
+			pickups.map((pickup) => ({
+				id: pickup.id,
+				type: pickup.type as PowerType,
+				x: this.arena.sheetX + (pickup.x / 1570) * this.arena.sheetW,
+				y: this.arena.sheetY + (pickup.y / 880) * this.arena.sheetH,
+				r: (pickup.radius / 1570) * this.arena.sheetW,
+			})),
 		);
 	}
 }

@@ -39,6 +39,7 @@ export function createShellSmashGame(
 ): Phaser.Game {
 	const config: Phaser.Types.Core.GameConfig = {
 		type: Phaser.AUTO,
+		banner: false,
 		width: window.innerWidth,
 		height: window.innerHeight,
 		backgroundColor: "rgba(0,0,0,0)",

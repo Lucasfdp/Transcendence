@@ -333,9 +333,16 @@ Missing for completion:
   and both production builds passed on 2026-07-15.
 - Temple Curling also keeps the local aiming proxy separate from authoritative
   entities, prevents aiming while a release is pending, and restores the
-  selected power when a launch is rejected. Kame Knock avoids rebuilding
-  unchanged targets, pickups, HUD panels, and slingshot state for every
-  projection frame.
+  selected power when a launch is rejected. A follow-up on 2026-07-15 fixed the
+  late empty-projection race that removed the initial aiming shell, aligned its
+  empty-selection power handling with the active eight-power roster, and made
+  exactly tied closest shells produce a blank end in both online and local
+  scoring. Power-enabled ends now also expose three server-owned pickups whose
+  collection and effect are resolved by authoritative physics and projected to
+  every client. The shared rematch UI now replaces duplicate lifecycle
+  listeners and carries the initial authoritative physics state into every
+  game's rematch. Kame Knock avoids rebuilding unchanged targets, pickups, HUD
+  panels, and slingshot state for every projection frame.
 - Complete Kame Knock spectator entry during live play and responsive relayout
   validation before claiming its rollout complete.
 - Complete the manual two-client Temple Curling matrix, including the eight

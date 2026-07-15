@@ -28,8 +28,15 @@ const SHEET_W_SRC = 1570;
 const SHEET_H_SRC = 880;
 
 const MAX_LAUNCH_SPEED = 5_000;
+const SCORING_DISTANCE_EPSILON = 0.001;
 const ACTIVE_POWERS = new Set([
-	"heavy", "splitter", "spinning", "rocket", "giant", "tiny", "mirror",
+	"heavy",
+	"splitter",
+	"spinning",
+	"rocket",
+	"giant",
+	"tiny",
+	"mirror",
 	"phantom",
 ]);
 
@@ -78,6 +85,10 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		room.state.phase = "active";
 		room.state.seq = ++room.seq;
 		room.physicsState = createShellCurlPhysicsState(room.matchId);
+		resetShellCurlPhysicsEnd(
+			room.physicsState as ReturnType<typeof createShellCurlPhysicsState>,
+			(room.state as CurlingSnapshot).powerupsEnabled,
+		);
 		this.refreshSnapshotPlayers(room);
 	}
 
@@ -99,7 +110,9 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		)
 			return false;
 		const state = room.state as CurlingSnapshot;
-		const physics = room.physicsState as ReturnType<typeof createShellCurlPhysicsState>;
+		const physics = room.physicsState as ReturnType<
+			typeof createShellCurlPhysicsState
+		>;
 		if (!advanceShellCurlPhysics(physics, state, deltaMs)) return false;
 		syncShellCurlSnapshot(state, physics);
 		if (physics.entities.some((entity) => !entity.stopped)) {
@@ -130,7 +143,10 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
 		if (Math.hypot(vx, vy) > MAX_LAUNCH_SPEED) return null;
 		const power = this.consumePower(state, player, payload.power);
-		const physics = (room.physicsState ?? createShellCurlPhysicsState(room.matchId)) as ReturnType<typeof createShellCurlPhysicsState>;
+		const physics = (room.physicsState ??
+			createShellCurlPhysicsState(room.matchId)) as ReturnType<
+			typeof createShellCurlPhysicsState
+		>;
 		room.physicsState = physics;
 		launchShellCurlProjectile(physics, player.side, vx, vy, power);
 		syncShellCurlSnapshot(state, physics);
@@ -159,9 +175,10 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			state.endScores[state.currentEnd] = endScores;
 			state.currentEnd += 1;
 			state.throwsInEnd = 0;
-			resetShellCurlPhysicsEnd(physics);
+			resetShellCurlPhysicsEnd(physics, state.powerupsEnabled);
 			syncShellCurlSnapshot(state, physics);
-			if (state.currentEnd < state.totalEnds) state.map = createShellCurlMap();
+			if (state.currentEnd < state.totalEnds)
+				state.map = createShellCurlMap();
 		}
 
 		state.currentTurn = this.nextTurn(room);
@@ -173,7 +190,6 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		) {
 			this.finish(room, this.getWinnerSide(state.score));
 		}
-
 	}
 
 	private finish(
@@ -201,7 +217,11 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 	): string {
 		if (!state.powerupsEnabled) return "none";
 		const power = String(value ?? "none");
-		if (!ACTIVE_POWERS.has(power) || !player.shellSelection.includes(power))
+		if (
+			!ACTIVE_POWERS.has(power) ||
+			(player.shellSelection.length > 0 &&
+				!player.shellSelection.includes(power))
+		)
 			return "none";
 		const usedPowers = (state.usedPowersBySide ??= Array.from(
 			{ length: state.score.length },
@@ -225,24 +245,29 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		const inHouse = objects.filter((object) => this.isInHouse(object));
 		if (!inHouse.length) return { scoringSide: null, points: 0 };
 
-		let bestDist = Infinity;
-		let scoringSide = inHouse[0].side;
-		for (const object of inHouse) {
-			const d = this.distanceToButton(object);
-			if (d < bestDist) {
-				bestDist = d;
-				scoringSide = object.side;
-			}
-		}
+		const ranked = inHouse
+			.map((object) => ({
+				object,
+				distance: this.distanceToButton(object),
+			}))
+			.sort((a, b) => a.distance - b.distance);
+		const best = ranked[0];
+		const scoringSide = best.object.side;
+		const tiedOpponent = ranked.some(
+			(entry) =>
+				entry.object.side !== scoringSide &&
+				Math.abs(entry.distance - best.distance) <=
+					SCORING_DISTANCE_EPSILON,
+		);
+		if (tiedOpponent) return { scoringSide: null, points: 0 };
 
-		const opponentDist = inHouse
-			.filter((object) => object.side !== scoringSide)
-			.map((object) => this.distanceToButton(object))
-			.reduce((min, d) => Math.min(min, d), Infinity);
-		const points = inHouse.filter(
-			(object) =>
-				object.side === scoringSide &&
-				this.distanceToButton(object) < opponentDist,
+		const opponentDist = ranked
+			.filter((entry) => entry.object.side !== scoringSide)
+			.reduce((min, entry) => Math.min(min, entry.distance), Infinity);
+		const points = ranked.filter(
+			(entry) =>
+				entry.object.side === scoringSide &&
+				entry.distance < opponentDist - SCORING_DISTANCE_EPSILON,
 		).length;
 		return { scoringSide, points };
 	}
@@ -251,7 +276,9 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		return this.distanceToButton(object) <= HOUSE_R_SRC;
 	}
 
-	private distanceToButton(object: CurlingSnapshot["objects"][number]): number {
+	private distanceToButton(
+		object: CurlingSnapshot["objects"][number],
+	): number {
 		const dx = (object.x - HOUSE_CX) * SHEET_W_SRC;
 		const dy = (object.y - HOUSE_CY) * SHEET_H_SRC;
 		return Math.hypot(dx, dy);

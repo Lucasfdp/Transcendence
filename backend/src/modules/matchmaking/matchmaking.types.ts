@@ -161,15 +161,25 @@ export interface ShellCurlPhysicsEntity {
 	trail?: Array<{ x: number; y: number }>;
 }
 
+export interface ShellCurlPhysicsPickup {
+	id: number;
+	type: string;
+	x: number;
+	y: number;
+	radius: number;
+}
+
 export interface ShellCurlPhysicsState {
 	matchId: string;
 	physicsSeq: number;
 	serverTime: number;
 	entities: ShellCurlPhysicsEntity[];
-	pickups: [];
+	pickups: ShellCurlPhysicsPickup[];
 	scoreEvents: [];
-	pickupEvents: [];
+	pickupEvents: ArenaPhysicsPickupEvent[];
 	nextEntityId: number;
+	nextPickupId: number;
+	nextPickupEventId: number;
 }
 
 export interface BallSnapshotData {

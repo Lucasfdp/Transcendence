@@ -59,6 +59,7 @@ export function ReplayViewer({
 		});
 		const game = new Phaser.Game({
 			type: Phaser.AUTO,
+			banner: false,
 			width: host.clientWidth || 720,
 			height: host.clientHeight || 720,
 			backgroundColor: "rgba(0,0,0,0)",
