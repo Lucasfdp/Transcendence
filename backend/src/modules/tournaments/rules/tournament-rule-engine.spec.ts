@@ -16,7 +16,11 @@ import {
 } from "../events/tournament-event.types";
 import { createRule } from "./configured-rule";
 import { RuleContext } from "./rule.interface";
-import { createRuleDefinitionRegistry, createSeedRule } from "./rule-registry";
+import {
+	SEED_RULE_CONFIGS,
+	createRuleDefinitionRegistry,
+	createSeedRule,
+} from "./rule-registry";
 import { TournamentRuleEngine } from "./tournament-rule-engine";
 
 const TOURNAMENT_ID = "t-1";
@@ -244,6 +248,54 @@ describe("TournamentRuleEngine (SPEC-009 v1)", () => {
 			h.engine.registerAndActivate(createSeedRule("fog"));
 			expect(h.engine.getFlag(h.ctx, "fog")).toBe(true);
 			expect(h.engine.getFlag(h.ctx, "other")).toBe(false);
+		});
+	});
+
+	describe("player-scoped consultation + applyForPlayer (SPEC-009 'Player')", () => {
+		const ctxFor = (h: Harness, playerId: number): RuleContext => ({
+			...h.ctx,
+			playerId,
+		});
+
+		it("a global (untargeted) rule applies to every player", () => {
+			const h = makeHarness();
+			h.engine.registerAndActivate(createSeedRule("noSteal")); // no playerId
+			expect(h.engine.isStealPrevented(ctxFor(h, 10))).toBe(true);
+			expect(h.engine.isStealPrevented(ctxFor(h, 20))).toBe(true);
+		});
+
+		it("a personal steal rule (applyForPlayer) protects ONLY its holder", () => {
+			const h = makeHarness();
+			const activated = h.engine.applyForPlayer(SEED_RULE_CONFIGS.noSteal, 10);
+			expect(activated).toBe(true);
+			expect(h.engine.isStealPrevented(ctxFor(h, 10))).toBe(true);
+			expect(h.engine.isStealPrevented(ctxFor(h, 20))).toBe(false);
+		});
+
+		it("scopes a value modifier: only the holder's roll is overridden", () => {
+			const h = makeHarness();
+			h.engine.applyForPlayer(SEED_RULE_CONFIGS.loadedDice, 10); // exclusive set → 6
+			expect(h.engine.queryDiceModifier(ctxFor(h, 10), 3)).toBe(6);
+			expect(h.engine.queryDiceModifier(ctxFor(h, 20), 3)).toBe(3);
+		});
+
+		it("two players' personal rules coexist under per-player unique ids", () => {
+			const h = makeHarness();
+			expect(h.engine.applyForPlayer(SEED_RULE_CONFIGS.noSteal, 10)).toBe(true);
+			expect(h.engine.applyForPlayer(SEED_RULE_CONFIGS.noSteal, 20)).toBe(true);
+			expect(h.engine.has("no_steal:p10")).toBe(true);
+			expect(h.engine.has("no_steal:p20")).toBe(true);
+			expect(h.engine.isStealPrevented(ctxFor(h, 10))).toBe(true);
+			expect(h.engine.isStealPrevented(ctxFor(h, 20))).toBe(true);
+			expect(h.engine.isStealPrevented(ctxFor(h, 30))).toBe(false);
+		});
+
+		it("re-applying an active personal rule re-activates in place (no duplicate)", () => {
+			const h = makeHarness();
+			h.engine.applyForPlayer(SEED_RULE_CONFIGS.noSteal, 10);
+			// Second application must not throw or register a second instance.
+			expect(h.engine.applyForPlayer(SEED_RULE_CONFIGS.noSteal, 10)).toBe(true);
+			expect(h.engine.isStealPrevented(ctxFor(h, 10))).toBe(true);
 		});
 	});
 

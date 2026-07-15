@@ -4,6 +4,7 @@ import {
 	ForbiddenException,
 	Injectable,
 	NotFoundException,
+	Optional,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { randomBytes } from "crypto";
@@ -13,6 +14,7 @@ import { PresenceService } from "../presence/presence.service";
 import { User } from "../users/entities/user.entity";
 import { FriendsService } from "../friends/friends.service";
 import { TournamentRuntimeService } from "./runtime/tournament-runtime.service";
+import { TournamentSyncService } from "./tournament-sync.service";
 import { Tournament } from "./entities/tournament.entity";
 import { TournamentParticipant } from "./entities/tournament-participant.entity";
 import {
@@ -92,6 +94,7 @@ export class TournamentLobbyService {
 		private readonly presence: PresenceService,
 		private readonly dataSource: DataSource,
 		private readonly runtimeService: TournamentRuntimeService,
+		@Optional() private readonly sync?: TournamentSyncService,
 	) {}
 
 	// ── Public API (one method per SPEC-038 endpoint) ─────────────────────────
@@ -150,6 +153,38 @@ export class TournamentLobbyService {
 			throw new NotFoundException("Tournament not found");
 		}
 		return this.toLobbyState(tournament, record, participants);
+	}
+
+	/**
+	 * GET /tournaments/mine — the caller's current pending/active lobby, or null.
+	 *
+	 * One lobby per user (SPEC-038), so this returns at most one. Lets the entry
+	 * UI re-hydrate an existing lobby after a refresh / reopen instead of offering
+	 * create/join while the user is already committed. Stale pending lobbies past
+	 * their expiry are lazily cancelled here (same as the create/join guard), so a
+	 * dead lobby resolves to `null` rather than trapping the user.
+	 */
+	async getMyLobby(userId: number): Promise<TournamentLobbyState | null> {
+		const rows = await this.participantRepo.find({
+			where: {
+				userId,
+				tournament: { status: In(["pending", "active"]) },
+			},
+			relations: ["tournament"],
+		});
+		for (const row of rows) {
+			const tournament = row.tournament;
+			const record = tournament.state?.lobby as
+				| TournamentLobbyRecord
+				| undefined;
+			if (!record) continue;
+			if (await this.expireIfNeeded(tournament, record)) {
+				continue; // stale lobby, now cancelled — no longer blocks the user
+			}
+			const participants = await this.loadParticipants(tournament.id);
+			return this.toLobbyState(tournament, record, participants);
+		}
+		return null;
 	}
 
 	/**
@@ -381,6 +416,17 @@ export class TournamentLobbyService {
 		}
 
 		await this.runtimeService.startTournament(locked.id);
+
+		// Snapshot-first sync (SPEC-022): attach the broadcaster to the live
+		// Runtime so every authoritative change reaches the tournament room.
+		// Optional so lobby unit tests need no sync wiring; production always
+		// provides it via TournamentsModule.
+		if (this.sync) {
+			const runtime = this.runtimeService.getRuntime(locked.id);
+			if (runtime) {
+				await this.sync.attach(locked.id, runtime);
+			}
+		}
 
 		return state;
 	}

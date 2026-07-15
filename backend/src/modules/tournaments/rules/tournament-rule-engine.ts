@@ -27,6 +27,7 @@ import {
 } from "../events/tournament-event.types";
 import { TournamentClock } from "../infra/clock";
 import { TournamentLogger } from "../infra/tournament-logger";
+import { RuleConfig, createRule } from "./configured-rule";
 import { IRule, RuleContext, SerializedRule } from "./rule.interface";
 
 /** The four events the Rule Engine owns (SPEC-009 "Eventos"). */
@@ -132,6 +133,28 @@ export class TournamentRuleEngine {
 			rule.targetPlayerId(),
 		);
 		return true;
+	}
+
+	/**
+	 * Builds a PLAYER-SCOPED rule instance from a definition and activates it —
+	 * the seam a per-player effect Item needs (e.g. a shield: a StealPrevention
+	 * Rule that protects only its holder, now that consultation is player-scoped).
+	 * The instance is given a per-player unique id (`<configId>:p<playerId>`) so
+	 * two players' copies coexist, and its `targetPlayerId` is bound to the owner.
+	 * Re-applying while already active re-activates the existing instance (no
+	 * duplicate). Returns whether the rule is now active.
+	 */
+	applyForPlayer(
+		config: RuleConfig,
+		playerId: number,
+		ctx?: Partial<RuleContext>,
+	): boolean {
+		const instanceId = `${config.id}:p${playerId}`;
+		if (this.rules.has(instanceId)) {
+			return this.activate(instanceId, { ...ctx, playerId });
+		}
+		const rule = createRule({ ...config, id: instanceId, playerId });
+		return this.registerAndActivate(rule, { ...ctx, playerId });
 	}
 
 	/** Convenience: register a rule and immediately activate it. */
@@ -269,7 +292,7 @@ export class TournamentRuleEngine {
 		base: number,
 		ctx: RuleContext,
 	): number {
-		const rules = this.runningAt(point);
+		const rules = this.runningAt(point, ctx);
 		let current = base;
 
 		const exclusives = rules.filter(
@@ -297,7 +320,7 @@ export class TournamentRuleEngine {
 		ctx: RuleContext,
 		flag?: string,
 	): boolean {
-		const rules = this.runningAt(point).filter(
+		const rules = this.runningAt(point, ctx).filter(
 			(r) => flag === undefined || r.descriptor().flag === flag,
 		);
 		if (rules.length === 0) {
@@ -310,13 +333,27 @@ export class TournamentRuleEngine {
 		return winner.evaluateBoolean(ctx);
 	}
 
-	/** Running rules at a point (SPEC-009: only `Running` rules are consulted). */
-	private runningAt(point: RuleConsultationPoint): IRule[] {
+	/**
+	 * Running rules at a point (SPEC-009: only `Running` rules are consulted),
+	 * scoped to the context player. A rule with a `targetPlayerId` applies ONLY
+	 * when it matches `ctx.playerId` (SPEC-009 "Rule Context: Player" — a targeted
+	 * Rule such as a personal shield binds to its owner); an untargeted rule is
+	 * global and always applies. This is the same targeting the `targetPlayerId`
+	 * field already drives for Turns-duration ticking, now honoured at
+	 * consultation so per-player effects (e.g. a StealPrevention shield) protect
+	 * only their holder.
+	 */
+	private runningAt(point: RuleConsultationPoint, ctx: RuleContext): IRule[] {
 		const result: IRule[] = [];
 		for (const rule of this.rules.values()) {
-			if (rule.isActive() && rule.descriptor().point === point) {
-				result.push(rule);
+			if (!rule.isActive() || rule.descriptor().point !== point) {
+				continue;
 			}
+			const target = rule.targetPlayerId();
+			if (target !== null && target !== ctx.playerId) {
+				continue;
+			}
+			result.push(rule);
 		}
 		return result;
 	}

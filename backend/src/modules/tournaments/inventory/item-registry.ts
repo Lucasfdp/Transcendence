@@ -62,6 +62,10 @@ export const SEED_ITEM_IDS = {
 	luckyDice: "luckyDice",
 	/** Permanent — a passive badge kept across uses. */
 	goldenParrotBadge: "goldenParrotBadge",
+	/** Consumable — a PERSONAL StealPrevention shield (real, functional effect). */
+	shellShield: "shellShield",
+	/** Consumable — a PERSONAL dice value-override (next roll set to 6). */
+	loadedDie: "loadedDie",
 } as const;
 
 /**
@@ -110,8 +114,78 @@ const GOLDEN_PARROT_BADGE: ItemDefinition = {
 	],
 };
 
-/** The full v1 seed set (fixtures only). */
+/**
+ * CONSUMABLE, FUNCTIONAL (SPEC-007 + SPEC-009): the "Shell Shield" — a personal
+ * StealPrevention. Unlike the two fixtures above (whose effects use placeholder
+ * action strings), this item's single effect is a REAL registered Action:
+ * `activatePlayerRule` builds a steal-prevention Rule bound to the consumer, so
+ * — with player-scoped rule consultation — it protects ONLY its holder from
+ * `attemptSteal`, never the whole table. `UntilRemoved` so it persists until
+ * broken/cleared. `consumable: true` → the Item is spent when used.
+ */
+const SHELL_SHIELD: ItemDefinition = {
+	id: SEED_ITEM_IDS.shellShield,
+	name: "Shell Shield",
+	rarity: "uncommon",
+	icon: "🛡️",
+	description: "Blocks the next steal attempt against you until it breaks.",
+	consumable: true,
+	trigger: "OnUse",
+	effects: [
+		{
+			type: "activatePlayerRule",
+			parameters: {
+				rule: {
+					id: "shellShieldNoSteal",
+					priority: 20,
+					point: "steal",
+					composition: "exclusive",
+					duration: { kind: "UntilRemoved" },
+					boolean: true,
+				},
+			},
+		},
+	],
+};
+
+/**
+ * CONSUMABLE, FUNCTIONAL (SPEC-007 + SPEC-009/SPEC-010): the "Loaded Die" — a
+ * personal dice value-OVERRIDE. Its effect activates a player-scoped exclusive
+ * DiceModifier (`set` → 6) via `activatePlayerRule`; because consultation is
+ * player-scoped, only the consumer's own roll is forced to 6. `Turns: 1` (a
+ * player-bound Turns rule) so the override applies to the holder's next turn and
+ * then expires. This is the value-override die item (NOT a die-swap, which would
+ * need the Dice `ActiveDieResolver` seam and a separate ADR).
+ */
+const LOADED_DIE: ItemDefinition = {
+	id: SEED_ITEM_IDS.loadedDie,
+	name: "Loaded Die",
+	rarity: "rare",
+	icon: "🎯",
+	description: "Forces your next roll to a 6.",
+	consumable: true,
+	trigger: "OnDiceRoll",
+	effects: [
+		{
+			type: "activatePlayerRule",
+			parameters: {
+				rule: {
+					id: "loadedDieSet",
+					priority: 100,
+					point: "dice",
+					composition: "exclusive",
+					duration: { kind: "Turns", turns: 1 },
+					value: { kind: "set", value: 6 },
+				},
+			},
+		},
+	],
+};
+
+/** The full v1 seed set (fixtures + the first functional content items). */
 export const SEED_ITEM_DEFINITIONS: readonly ItemDefinition[] = [
 	LUCKY_DICE,
 	GOLDEN_PARROT_BADGE,
+	SHELL_SHIELD,
+	LOADED_DIE,
 ];

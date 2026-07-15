@@ -113,7 +113,9 @@ const ringTile = (index: number): Tile => {
 					},
 			  ]
 			: [{ type: "nothing", parameters: {} }],
-		metadata: { theme: "placeholder", index },
+		// `kind` is a PRESENTATION hint for the wire snapshot (SPEC-022) — the
+		// Board never interprets metadata (SPEC-002 "Restricciones").
+		metadata: { theme: "placeholder", index, kind: isBonus ? "bonus" : "empty" },
 	};
 };
 

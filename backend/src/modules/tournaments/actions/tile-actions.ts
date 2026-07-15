@@ -261,10 +261,32 @@ export class AttemptStealAction extends BaseAction {
 }
 
 /**
+ * OpenShopAction (SPEC-006 "OpenShopAction" / SPEC-012): requests the shop for
+ * the acting player via `ctx.services.shop.open` (the Shop opens the session and
+ * emits ShopRequested/ShopOpened; the turn waits for ShopClosed). The Action
+ * never opens the shop itself (SPEC-006: "Nunca abre la tienda."). Skips when no
+ * shop service is wired.
+ */
+export class OpenShopAction extends BaseAction {
+	constructor(build: ActionBuildContext) {
+		super(build);
+	}
+
+	execute(ctx: ActionContext): ExecutionResult {
+		const shop = ctx.services.shop;
+		if (!shop) {
+			return skippedResult("openShop: no shop service in context");
+		}
+		shop.open(ctx.playerId, ctx.round);
+		return successResult();
+	}
+}
+
+/**
  * Registers the Tile Actions (SPEC-006). Kept SEPARATE from the economy/rule
  * base set (`registerBaseActions`) and the inventory set: these are only
- * registered in the engine composition where the Board / Random Events / steal
- * services are wired into `ctx.services`.
+ * registered in the engine composition where the Board / Random Events / steal /
+ * shop services are wired into `ctx.services`.
  */
 export function registerTileActions(registry: ActionRegistry): void {
 	registry.register("nothing", (build) => new NothingAction(build));
@@ -272,4 +294,5 @@ export function registerTileActions(registry: ActionRegistry): void {
 	registry.register("movePlayer", (build) => new MovePlayerAction(build));
 	registry.register("randomEvent", (build) => new RandomEventAction(build));
 	registry.register("attemptSteal", (build) => new AttemptStealAction(build));
+	registry.register("openShop", (build) => new OpenShopAction(build));
 }

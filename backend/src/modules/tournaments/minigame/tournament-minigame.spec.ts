@@ -1,0 +1,321 @@
+/**
+ * tournament-minigame.spec.ts — Minigame Integration coordinator tests (SPEC-015).
+ *
+ * Covers: skip when <2 active / no candidate; deterministic seeded selection;
+ * the full pipeline (Selected→Loading→Started→Finished) with a lifecycle result;
+ * tie handling (no winner, Gambling-skippable); outcome points through the
+ * Reward Resolver; launch errors → cancelled; the reconciliation watchdog (found
+ * and not-found); abandoned-with-result; serialize; and no Date.now.
+ */
+
+import { Logger } from "@nestjs/common";
+
+import { AnyTournamentEvent } from "../events/tournament-event.types";
+import { TournamentEventBus } from "../events/tournament-event-bus";
+import { ManualClock } from "../infra/clock";
+import { Reward } from "../rewards/reward.types";
+import { ActionContext } from "../actions/action.interface";
+import { createMinigameCatalog } from "./minigame-catalog";
+import {
+	MinigameFinalResult,
+	MinigameLaunchResult,
+	MinigameLifecycleSignal,
+	MinigameOutcome,
+} from "./minigame.types";
+import { TournamentMinigame, TournamentMinigameOptions } from "./tournament-minigame";
+
+const TOURNAMENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+const WATCHDOG_MS = 600_000;
+
+/** Lets a test drive lifecycle signals to whatever subscribed. */
+class FakeLifecycle {
+	private readonly listeners = new Set<(s: MinigameLifecycleSignal) => void>();
+	subscribe(listener: (s: MinigameLifecycleSignal) => void): () => void {
+		this.listeners.add(listener);
+		return () => this.listeners.delete(listener);
+	}
+	emit(signal: MinigameLifecycleSignal): void {
+		for (const l of [...this.listeners]) l(signal);
+	}
+	get subscriberCount(): number {
+		return this.listeners.size;
+	}
+}
+
+class FakeLauncher {
+	result: MinigameLaunchResult = { status: "launched", matchId: "match-1" };
+	readonly launches: { minigameId: string; playerIds: readonly number[] }[] = [];
+	launch = async (req: {
+		minigameId: string;
+		playerIds: readonly number[];
+	}): Promise<MinigameLaunchResult> => {
+		this.launches.push({ minigameId: req.minigameId, playerIds: req.playerIds });
+		return this.result;
+	};
+}
+
+class FakeReconciler {
+	result: MinigameFinalResult | null = null;
+	readonly calls: string[] = [];
+	reconcile = async (matchId: string): Promise<MinigameFinalResult | null> => {
+		this.calls.push(matchId);
+		return this.result;
+	};
+}
+
+class FakeGranter {
+	readonly grants: { reward: Reward; playerId: number }[] = [];
+	grant(reward: Reward, context: ActionContext) {
+		this.grants.push({ reward, playerId: context.playerId });
+		return { status: "resolved" as const, rewardId: reward.id, results: [] };
+	}
+}
+
+interface Harness {
+	mg: TournamentMinigame;
+	bus: TournamentEventBus;
+	clock: ManualClock;
+	events: AnyTournamentEvent[];
+	launcher: FakeLauncher;
+	lifecycle: FakeLifecycle;
+	reconciler: FakeReconciler;
+	granter: FakeGranter;
+}
+
+function makeMinigame(overrides: Partial<TournamentMinigameOptions> = {}): Harness {
+	const bus = new TournamentEventBus();
+	const clock = new ManualClock(1_000);
+	const events: AnyTournamentEvent[] = [];
+	bus.onAny((e) => events.push(e));
+	const launcher = new FakeLauncher();
+	const lifecycle = new FakeLifecycle();
+	const reconciler = new FakeReconciler();
+	const granter = new FakeGranter();
+	const mg = new TournamentMinigame({
+		tournamentId: TOURNAMENT_ID,
+		seed: "seed-a",
+		bus,
+		clock,
+		reward: { winner: 100, participant: 25 },
+		watchdogMs: WATCHDOG_MS,
+		launcher,
+		lifecycle,
+		reconciler,
+		catalog: createMinigameCatalog([
+			{ gameId: "kame-knock", minPlayers: 2, maxPlayers: 4 },
+			{ gameId: "bell-clash", minPlayers: 2, maxPlayers: 4 },
+			{ gameId: "solo-only", minPlayers: 1, maxPlayers: 1 },
+		]),
+		rewardGranter: granter,
+		getRound: () => 2,
+		...overrides,
+	});
+	return { mg, bus, clock, events, launcher, lifecycle, reconciler, granter };
+}
+
+const names = (events: AnyTournamentEvent[]): string[] => events.map((e) => e.name);
+const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
+
+function outcomes(map: Record<number, MinigameOutcome>): ReadonlyMap<number, MinigameOutcome> {
+	return new Map(Object.entries(map).map(([k, v]) => [Number(k), v]));
+}
+
+describe("TournamentMinigame (SPEC-015)", () => {
+	beforeEach(() => {
+		jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "debug").mockImplementation(() => undefined);
+	});
+	afterEach(() => jest.restoreAllMocks());
+
+	it("skips with <2 active players (no selection, no launch)", async () => {
+		const { mg, events, launcher } = makeMinigame();
+		const result = await mg.run([10]);
+		expect(result).toEqual({ status: "skipped", reason: "insufficient_active_players" });
+		expect(launcher.launches).toHaveLength(0);
+		expect(names(events)).toEqual(["MinigameCancelled"]);
+	});
+
+	it("skips when no catalog minigame supports the active player count", async () => {
+		// 3 active players, but only a 1-player 'solo-only' fits none → wait, both
+		// kame/bell support up to 4; use a catalog where nothing fits 3.
+		const { mg, events } = makeMinigame({
+			catalog: createMinigameCatalog([{ gameId: "duo", minPlayers: 2, maxPlayers: 2 }]),
+		});
+		const result = await mg.run([10, 20, 30]);
+		expect(result).toEqual({ status: "skipped", reason: "no_candidate_minigame" });
+		const seen = names(events);
+		expect(seen).toContain("MinigameSelectionStarted");
+		expect(seen).toContain("MinigameCancelled");
+		expect(events[0].payload).toMatchObject({ activePlayers: [10, 20, 30], candidateCount: 0 });
+	});
+
+	it("runs the full pipeline and returns the single winner", async () => {
+		const { mg, events, launcher, lifecycle, granter } = makeMinigame();
+		const p = mg.run([10, 20]);
+		await tick(); // let launch resolve + subscription attach
+		expect(launcher.launches[0].playerIds).toEqual([10, 20]);
+		lifecycle.emit({ type: "started", matchId: "match-1" });
+		lifecycle.emit({
+			type: "finished",
+			matchId: "match-1",
+			result: {
+				matchId: "match-1",
+				winnerId: 10,
+				outcomes: outcomes({ 10: "win", 20: "loss" }),
+			},
+		});
+		const result = await p;
+
+		expect(result).toMatchObject({ status: "completed", winnerId: 10, tie: false });
+		expect(names(events)).toEqual([
+			"MinigameSelectionStarted",
+			"MinigameSelected",
+			"MinigameLoading",
+			"MinigameStarted",
+			// the two outcome-point grants flow as Points/Wallet events via the granter
+			// (faked here, so only the coordinator's own events appear), then Finished:
+			"MinigameFinished",
+		]);
+		// Winner gets 100, the other 25 — both through the Reward Resolver.
+		expect(granter.grants).toEqual([
+			expect.objectContaining({ playerId: 10 }),
+			expect.objectContaining({ playerId: 20 }),
+		]);
+		expect(granter.grants[0].reward.payload).toMatchObject({ amount: 100, source: "minigame" });
+		expect(granter.grants[1].reward.payload).toMatchObject({ amount: 25, source: "minigame" });
+	});
+
+	it("handles a tie: no winner, everyone gets participant points, Gambling-skippable", async () => {
+		const { mg, events, lifecycle, granter } = makeMinigame();
+		const p = mg.run([10, 20]);
+		await tick();
+		lifecycle.emit({
+			type: "finished",
+			matchId: "match-1",
+			result: {
+				matchId: "match-1",
+				winnerId: null,
+				outcomes: outcomes({ 10: "draw", 20: "draw" }),
+			},
+		});
+		const result = await p;
+
+		expect(result).toMatchObject({ status: "completed", winnerId: null, tie: true });
+		const finished = events.find((e) => e.name === "MinigameFinished");
+		expect(finished?.payload).toMatchObject({ winnerId: null, tie: true });
+		expect(granter.grants.map((g) => g.reward.payload)).toEqual([
+			expect.objectContaining({ amount: 25 }),
+			expect.objectContaining({ amount: 25 }),
+		]);
+	});
+
+	it("selects deterministically from the seed (same seed ⇒ same minigame)", async () => {
+		const a = makeMinigame();
+		const b = makeMinigame();
+		const pa = a.mg.run([10, 20]);
+		const pb = b.mg.run([10, 20]);
+		await tick();
+		a.lifecycle.emit({ type: "finished", matchId: "match-1", result: {
+			matchId: "match-1", winnerId: 10, outcomes: outcomes({ 10: "win", 20: "loss" }),
+		} });
+		b.lifecycle.emit({ type: "finished", matchId: "match-1", result: {
+			matchId: "match-1", winnerId: 10, outcomes: outcomes({ 10: "win", 20: "loss" }),
+		} });
+		await Promise.all([pa, pb]);
+		expect(a.launcher.launches[0].minigameId).toBe(b.launcher.launches[0].minigameId);
+	});
+
+	it("cancels the round on a launch error (no winner)", async () => {
+		const { mg, events, launcher } = makeMinigame();
+		launcher.result = { status: "error", reason: "no_socket" };
+		const result = await mg.run([10, 20]);
+		expect(result.status).toBe("cancelled");
+		expect((result as { reason: string }).reason).toContain("launch_error");
+		expect(names(events)).toContain("MinigameCancelled");
+	});
+
+	it("reconciles once via the watchdog when no lifecycle event arrives (found)", async () => {
+		const { mg, clock, reconciler } = makeMinigame();
+		reconciler.result = {
+			matchId: "match-1",
+			winnerId: 20,
+			outcomes: outcomes({ 10: "loss", 20: "win" }),
+		};
+		const p = mg.run([10, 20]);
+		await tick(); // reach the wait
+		clock.advance(WATCHDOG_MS); // fire the watchdog
+		const result = await p;
+		expect(reconciler.calls).toEqual(["match-1"]);
+		expect(result).toMatchObject({ status: "completed", winnerId: 20 });
+	});
+
+	it("cancels the round when the watchdog finds no durable result", async () => {
+		const { mg, clock, reconciler } = makeMinigame();
+		reconciler.result = null;
+		const p = mg.run([10, 20]);
+		await tick();
+		clock.advance(WATCHDOG_MS);
+		const result = await p;
+		expect(reconciler.calls).toEqual(["match-1"]);
+		expect(result).toEqual({ status: "cancelled", reason: "no_result" });
+	});
+
+	it("accepts an abandoned-with-result as the final result", async () => {
+		const { mg, lifecycle } = makeMinigame();
+		const p = mg.run([10, 20]);
+		await tick();
+		lifecycle.emit({
+			type: "abandoned",
+			matchId: "match-1",
+			result: {
+				matchId: "match-1",
+				winnerId: 10,
+				outcomes: outcomes({ 10: "win", 20: "abandoned" }),
+			},
+		});
+		const result = await p;
+		expect(result).toMatchObject({ status: "completed", winnerId: 10 });
+	});
+
+	it("unsubscribes from lifecycle and cancels the watchdog once settled", async () => {
+		const { mg, clock, lifecycle } = makeMinigame();
+		const p = mg.run([10, 20]);
+		await tick();
+		expect(lifecycle.subscriberCount).toBe(1);
+		lifecycle.emit({ type: "finished", matchId: "match-1", result: {
+			matchId: "match-1", winnerId: 10, outcomes: outcomes({ 10: "win", 20: "loss" }),
+		} });
+		await p;
+		expect(lifecycle.subscriberCount).toBe(0);
+		// A late watchdog must not re-settle (no throw, no extra reconcile).
+		clock.advance(WATCHDOG_MS);
+	});
+
+	it("serialize() round-trips and advances the selection counter", async () => {
+		const { mg, lifecycle } = makeMinigame();
+		const p = mg.run([10, 20]);
+		await tick();
+		lifecycle.emit({ type: "finished", matchId: "match-1", result: {
+			matchId: "match-1", winnerId: 10, outcomes: outcomes({ 10: "win", 20: "loss" }),
+		} });
+		await p;
+		const snapshot = mg.serialize();
+		expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+		expect(snapshot.selectionCount).toBe(1);
+		expect(snapshot.pendingMatchId).toBeNull();
+	});
+
+	it("never calls Date.now (uses the injected clock)", async () => {
+		const dateNowSpy = jest.spyOn(Date, "now");
+		const { mg, lifecycle } = makeMinigame();
+		const p = mg.run([10, 20]);
+		await tick();
+		lifecycle.emit({ type: "finished", matchId: "match-1", result: {
+			matchId: "match-1", winnerId: 10, outcomes: outcomes({ 10: "win", 20: "loss" }),
+		} });
+		await p;
+		expect(dateNowSpy).not.toHaveBeenCalled();
+	});
+});

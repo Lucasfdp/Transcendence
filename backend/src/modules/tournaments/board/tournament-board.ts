@@ -220,6 +220,11 @@ export class TournamentBoard {
 		return this.tiles.get(tileId);
 	}
 
+	/** The loaded board definition (read-only content) — wire snapshot builders. */
+	getDefinition(): BoardDefinition {
+		return this.definition;
+	}
+
 	/** JSON-safe snapshot for the Runtime snapshot (SPEC-002 "Persistencia"). */
 	serialize(): BoardSnapshot {
 		return {

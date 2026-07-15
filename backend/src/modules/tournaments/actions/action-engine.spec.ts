@@ -20,6 +20,7 @@ import {
 	EconomyResult,
 	EconomySource,
 } from "../economy/tournament-economy";
+import { RuleConfig } from "../rules/configured-rule";
 import { IRule, RuleContext } from "../rules/rule.interface";
 import { ActionEngine } from "./action-engine";
 import {
@@ -42,6 +43,7 @@ import {
 	AwardPointsAction,
 	registerBaseActions,
 	registerBaseActionsAndConditions,
+	registerKeyItemActions,
 } from "./base-actions";
 import { registerBaseConditions } from "./base-conditions";
 
@@ -109,11 +111,13 @@ class FakeEconomy implements EconomyCommands {
 class FakeRules implements RuleCommands {
 	registerCalls: IRule[] = [];
 	activateCalls: { id: string; ctx?: Partial<RuleContext> }[] = [];
+	applyForPlayerCalls: { config: RuleConfig; playerId: number }[] = [];
 	deactivateCalls: string[] = [];
 	removeCalls: string[] = [];
 
 	activateResult = true;
 	deactivateResult = true;
+	applyForPlayerResult = true;
 
 	register(rule: IRule): boolean {
 		this.registerCalls.push(rule);
@@ -122,6 +126,10 @@ class FakeRules implements RuleCommands {
 	activate(id: string, ctx?: Partial<RuleContext>): boolean {
 		this.activateCalls.push({ id, ctx });
 		return this.activateResult;
+	}
+	applyForPlayer(config: RuleConfig, playerId: number): boolean {
+		this.applyForPlayerCalls.push({ config, playerId });
+		return this.applyForPlayerResult;
 	}
 	deactivate(id: string): boolean {
 		this.deactivateCalls.push(id);
@@ -238,6 +246,7 @@ function makeFactory(engine?: ActionEngine): {
 	const actions = new ActionRegistry();
 	const conditions = new ConditionRegistry();
 	registerBaseActionsAndConditions(actions, conditions);
+	registerKeyItemActions(actions);
 	const factory = new ActionFactory(actions, conditions, { engine });
 	return { actions, conditions, factory };
 }
@@ -460,6 +469,61 @@ describe("Base actions drive the right port (SPEC-008/011/009)", () => {
 
 		rules.activateResult = false;
 		expect(engine.execute(action, ctx).status).toBe("failed");
+	});
+
+	it("activatePlayerRule → rules.applyForPlayer with the acting player + definition", () => {
+		const { engine, rules, ctx } = makeHarness();
+		const rule = {
+			id: "shield",
+			priority: 20,
+			point: "steal" as const,
+			composition: "exclusive" as const,
+			duration: { kind: "UntilRemoved" as const },
+			boolean: true,
+		};
+		const action = build(engine, {
+			type: "activatePlayerRule",
+			parameters: { rule },
+		});
+		expect(engine.execute(action, ctx).status).toBe("success");
+		expect(rules.applyForPlayerCalls).toEqual([{ config: rule, playerId: 1 }]);
+
+		rules.applyForPlayerResult = false;
+		expect(engine.execute(action, ctx).status).toBe("failed");
+	});
+
+	it("activatePlayerRule fails validation without a `rule` object (no port call)", () => {
+		const { engine, rules, ctx } = makeHarness();
+		const action = build(engine, { type: "activatePlayerRule", parameters: {} });
+		expect(engine.execute(action, ctx).status).toBe("failed");
+		expect(rules.applyForPlayerCalls).toHaveLength(0);
+	});
+
+	it("unlockKeyItem → keyItems.unlock(actingPlayer); rejection ⇒ failed; absent ⇒ skipped", () => {
+		const { engine, ctx } = makeHarness();
+		const calls: (number | null)[] = [];
+		let status: "unlocked" | "rejected" = "unlocked";
+		const keyCtx: ActionContext = {
+			...ctx,
+			services: {
+				...ctx.services,
+				keyItems: {
+					unlock: (by: number | null) => {
+						calls.push(by);
+						return { status };
+					},
+				},
+			},
+		};
+		const action = build(engine, { type: "unlockKeyItem" });
+		expect(engine.execute(action, keyCtx).status).toBe("success");
+		expect(calls).toEqual([1]); // the acting player is recorded as unlockedBy
+
+		status = "rejected";
+		expect(engine.execute(action, keyCtx).status).toBe("failed");
+
+		// No key-item service wired → benign skip, never a crash.
+		expect(engine.execute(action, ctx).status).toBe("skipped");
 	});
 
 	it("deactivateRule → rules.deactivate; a no-op is skipped, not failed", () => {

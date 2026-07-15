@@ -70,6 +70,17 @@ export class TournamentsController {
 		return this.lobbyService.joinByPin(req.user.id, body.pin);
 	}
 
+	/**
+	 * GET /api/tournaments/mine — the caller's current lobby, or null.
+	 * Declared before the `:id` route so "mine" never parses as an id.
+	 */
+	@Get("mine")
+	getMyTournament(
+		@Request() req: AuthedRequest,
+	): Promise<GetTournamentResponse | null> {
+		return this.lobbyService.getMyLobby(req.user.id);
+	}
+
 	/** GET /api/tournaments/:id — lobby hydration (members and invitees). */
 	@Get(":id")
 	getTournament(

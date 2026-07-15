@@ -42,6 +42,27 @@ export const TOURNAMENT_WS_EVENTS = {
 export type TournamentWsEventName =
 	(typeof TOURNAMENT_WS_EVENTS)[keyof typeof TOURNAMENT_WS_EVENTS];
 
+/**
+ * Client→server messages (SPEC-022 "Intents": clients only REQUEST). Handled
+ * by the TournamentGateway inside the tournaments module — never inside
+ * matchmaking.gateway.ts (SPEC-037).
+ */
+export const TOURNAMENT_WS_MESSAGES = {
+	/**
+	 * Enter the tournament room and receive the current snapshot envelope in
+	 * the ack — also the reconnection path (SPEC-022 "Reconexión": the
+	 * snapshot IS the state; no event replay).
+	 */
+	JOIN: "tournament:join",
+	/** Leave the tournament room (navigating away; not a gameplay abandon). */
+	LEAVE: "tournament:leave",
+	/** Request a gameplay action; ack = accepted/rejected, never state. */
+	INTENT: "tournament:intent",
+} as const;
+
+export type TournamentWsMessageName =
+	(typeof TOURNAMENT_WS_MESSAGES)[keyof typeof TOURNAMENT_WS_MESSAGES];
+
 // ── Canonical domain events (SPEC-004 catalog, owner: Entry & Lobby) ──────────
 
 /**
@@ -61,8 +82,8 @@ export type TournamentLobbyEventName =
 // ── Client intents (SPEC-022) ──────────────────────────────────────────────────
 
 /**
- * Client intent names — RESERVED for later gameplay phases.
- * Names only (SPEC-022 catalog); payloads are added phase by phase under
+ * Client intent names (SPEC-022 catalog). `RollDiceIntent` is live (Vertical
+ * Slice); the rest stay RESERVED — payloads are added phase by phase under
  * architect approval. Clients request actions, never send results.
  */
 export type TournamentIntentName =
@@ -72,6 +93,42 @@ export type TournamentIntentName =
 	| "StartGamblingIntent"
 	| "LeaveGamblingIntent"
 	| "EndTurnIntent";
+
+/** The one live intent (Vertical Slice): the active player asks to roll. */
+export interface RollDiceIntent {
+	name: "RollDiceIntent";
+}
+
+/** Union of the intents a client may send today; grows per phase. */
+export type TournamentIntent = RollDiceIntent;
+
+/** Payload of the `tournament:intent` message. */
+export interface TournamentIntentEnvelope {
+	tournamentId: string;
+	intent: TournamentIntent;
+}
+
+/**
+ * Ack of `tournament:intent` (SPEC-022 IntentAccepted / IntentRejected). A
+ * rejection NEVER carries state — the client learns outcomes only from the
+ * next snapshot.
+ */
+export type TournamentIntentAck =
+	| { accepted: true }
+	| { accepted: false; reason: string };
+
+/** Payload of the `tournament:join` message. */
+export interface TournamentJoinRequest {
+	tournamentId: string;
+}
+
+/**
+ * Ack of `tournament:join`: the current snapshot envelope on success (the
+ * reconnection path, SPEC-022), or a rejection reason.
+ */
+export type TournamentJoinAck =
+	| { ok: true; envelope: TournamentSnapshotEnvelope }
+	| { ok: false; reason: "not_found" | "not_participant" | "not_running" };
 
 // ── PIN (architect ruling #2, tournament-platform-seams-audit.md) ─────────────
 
@@ -134,15 +191,78 @@ export interface TournamentStartingPayload {
 }
 
 /**
- * Versioned gameplay snapshot — PLACEHOLDER (version 0).
- * Gameplay fields (board, wallets, inventories, progress, …) are added in
- * later phases under architect approval. Do NOT invent fields here.
+ * State-machine phase on the wire (mirror of state-machine/tournament-phase.ts;
+ * SPEC-003). The client only RENDERS it — branching on it never decides
+ * gameplay (SPEC-022 "El cliente nunca toma decisiones").
  */
-export interface TournamentSnapshotV0 {
-	version: 0;
+export type TournamentWirePhase =
+	| "CREATED"
+	| "WAITING_PLAYERS"
+	| "INITIALIZING"
+	| "ROUND_START"
+	| "PLAYER_TURNS"
+	| "MINIGAME"
+	| "GAMBLING_PHASE"
+	| "CHECK_KEY_ITEMS"
+	| "BOSS_EVENT"
+	| "FINAL_CHALLENGE"
+	| "VICTORY"
+	| "REWARDS"
+	| "FINISHED"
+	| "DEFEAT"
+	| "CANCELLED";
+
+/** One board tile as exposed to clients (schematic ring, SPEC-002 v1). */
+export interface TournamentTileSummary {
+	id: string;
+	/** Tile kind for provisional rendering (e.g. "start", "points", "shop"). */
+	kind: string;
+	/** Position around the ring, 0-based, in successor order. */
+	order: number;
+}
+
+/** One player's visible gameplay state (SPEC-022 "estado visible"). */
+export interface TournamentPlayerStateSummary {
+	userId: number;
+	username: string;
+	/** Fixed seat = position in the turn order (D13). */
+	seat: number;
+	/** Tournament points (Economy wallet), never persistent coins. */
+	points: number;
+	/** Current board tile; null before INITIALIZING placed the player. */
+	tileId: string | null;
+	/** Connected to the tournament room right now. */
+	connected: boolean;
+}
+
+/**
+ * Versioned gameplay snapshot (version 1, Vertical Slice): the COMPLETE
+ * visible state (SPEC-022 "Sincronización — Snapshot First") — board ring,
+ * player positions/points, phase/round/turn bookkeeping and the global Key
+ * Item progress. Fields are added per phase under architect approval; the
+ * client never derives state that is not here.
+ */
+export interface TournamentSnapshotV1 {
+	version: 1;
 	tournamentId: string;
 	status: TournamentStatus;
-	participants: TournamentParticipantSummary[];
+	phase: TournamentWirePhase;
+	round: number;
+	maxRound: number;
+	/** Fixed play order (userIds), derived from the seed (D13). */
+	turnOrder: number[];
+	/** Whose turn it is; null outside PLAYER_TURNS / between turns. */
+	activePlayerId: number | null;
+	/** ms-epoch deadline of the active turn (client countdown), else null. */
+	turnDeadlineAt: number | null;
+	board: {
+		tiles: TournamentTileSummary[];
+	};
+	players: TournamentPlayerStateSummary[];
+	keyItems: {
+		unlocked: number;
+		required: number;
+	};
 }
 
 /**
@@ -151,7 +271,7 @@ export interface TournamentSnapshotV0 {
  */
 export interface TournamentSnapshotEnvelope {
 	seq: number;
-	snapshot: TournamentSnapshotV0;
+	snapshot: TournamentSnapshotV1;
 }
 
 // ── REST request shapes (implemented by tournaments.dto.ts classes) ───────────

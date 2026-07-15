@@ -116,7 +116,7 @@ interface ApiFetchOptions extends RequestInit {
 	idempotent?: boolean;
 }
 
-async function apiFetch<T>(
+export async function apiFetch<T>(
 	path: string,
 	{ idempotent, ...options }: ApiFetchOptions = {},
 ): Promise<T> {

@@ -149,6 +149,10 @@ export class TournamentRuntimeService {
 			participantIds,
 			settings,
 			clock: this.clockFactory(),
+			// Production tournaments run interactively (Vertical Slice, SPEC-022):
+			// PLAYER_TURNS drives real board turns from client intents, with the
+			// Turn System's roll timeout keeping unattended games progressing.
+			interactiveTurns: true,
 			onSnapshot: (snapshot) => {
 				this.enqueueSnapshotWrite(tournamentId, () =>
 					this.applySnapshot(tournament, lobby, snapshot),
@@ -194,6 +198,14 @@ export class TournamentRuntimeService {
 	/** Whether a live Runtime instance exists for this tournament. */
 	hasRuntime(tournamentId: string): boolean {
 		return this.runtimes.has(tournamentId);
+	}
+
+	/**
+	 * The live Runtime for a tournament, if any (gateway/sync access: intents
+	 * are forwarded to it and snapshots are built from its engines, SPEC-022).
+	 */
+	getRuntime(tournamentId: string): TournamentRuntime | undefined {
+		return this.runtimes.get(tournamentId);
 	}
 
 	// ── Persistence port ─────────────────────────────────────────────────

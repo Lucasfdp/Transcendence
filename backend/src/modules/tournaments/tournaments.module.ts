@@ -12,7 +12,9 @@ import {
 	TOURNAMENT_RUNTIME_CLOCK_FACTORY,
 	TournamentRuntimeService,
 } from "./runtime/tournament-runtime.service";
+import { TournamentGateway } from "./tournament.gateway";
 import { TournamentLobbyService } from "./tournament-lobby.service";
+import { TournamentSyncService } from "./tournament-sync.service";
 import { TournamentsController } from "./tournaments.controller";
 import { TournamentsService } from "./tournaments.service";
 
@@ -35,6 +37,12 @@ import { TournamentsService } from "./tournaments.service";
  * on `start()`) — it never depends back on the lobby, so no DI cycle. The
  * clock factory defaults to SystemClock in production; tests override the
  * `TOURNAMENT_RUNTIME_CLOCK_FACTORY` token with a ManualClock factory.
+ *
+ * Networking (SPEC-022, Vertical Slice): TournamentGateway shares the
+ * platform's `/ws/` Socket.IO server (auth stays in the matchmaking
+ * gateway's connection handler); TournamentSyncService broadcasts the
+ * snapshot-first state to `tournament:<id>` rooms. The lobby attaches the
+ * sync on `start()` — one-directional again, no cycles.
  */
 @Module({
 	imports: [
@@ -53,6 +61,8 @@ import { TournamentsService } from "./tournaments.service";
 		TournamentsService,
 		TournamentLobbyService,
 		TournamentRuntimeService,
+		TournamentSyncService,
+		TournamentGateway,
 		{
 			provide: TOURNAMENT_RUNTIME_CLOCK_FACTORY,
 			useValue: () => new SystemClock(),

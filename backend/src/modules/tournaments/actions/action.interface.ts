@@ -24,6 +24,7 @@ import {
 	EconomyResult,
 	EconomySource,
 } from "../economy/tournament-economy";
+import { RuleConfig } from "../rules/configured-rule";
 import { IRule, RuleContext } from "../rules/rule.interface";
 
 // ── Execution result (SPEC-008 "Resultado") ────────────────────────────────
@@ -152,6 +153,17 @@ export interface EconomyCommands {
 export interface RuleCommands {
 	register(rule: IRule): boolean;
 	activate(id: string, ctx?: Partial<RuleContext>): boolean;
+	/**
+	 * Builds and activates a PLAYER-SCOPED rule from a definition (SPEC-009 "Rule
+	 * Context: Player") — the seam a per-player effect Item drives (e.g. a shield
+	 * that protects only its holder). The engine binds the instance to `playerId`
+	 * and gives it a per-player unique id.
+	 */
+	applyForPlayer(
+		config: RuleConfig,
+		playerId: number,
+		ctx?: Partial<RuleContext>,
+	): boolean;
 	deactivate(id: string): boolean;
 	remove(id: string): boolean;
 }
@@ -226,6 +238,40 @@ export interface StealServices {
 }
 
 /**
+ * Shop capability port (SPEC-012 "Protocolo": OpenShopAction emits ShopRequested
+ * / opens the session). The Action only REQUESTS the shop; the Shop System owns
+ * the session, so the Action needs no clock/catalog. Satisfied by the
+ * composition's adapter over `TournamentShop.open`.
+ */
+export interface ShopCommands {
+	open(playerId: number, round: number): void;
+}
+
+/**
+ * Key Item Progression capability port (SPEC-017 "Obtención": a Key Item unlocks
+ * ONLY through the Reward Resolver's `unlockKeyItem` Action). The Action just
+ * REQUESTS the next unlock; Key Item Progression owns ordering, the global state
+ * and the KeyItemUnlocked fact. `unlockedBy` is the player whose Reward triggered
+ * it (for UI/analytics only). A `rejected` result means progress was already
+ * complete — a case the callers (Gambling/Shop) prevent upstream. Satisfied by
+ * the composition's adapter over `TournamentKeyItems.unlock`.
+ */
+export interface KeyItemCommands {
+	unlock(unlockedBy: number | null): { readonly status: "unlocked" | "rejected" };
+}
+
+/**
+ * Shell match-state capability port (SPEC-013 "ShellReward" / SPEC-021
+ * "Recompensa": THE ONE Shell, granted exclusively through the Reward
+ * Resolver's `grantShell` Action). The Action only REQUESTS the grant; the
+ * Shell holder owns single-grant enforcement and the ShellGranted fact.
+ * Satisfied by the composition's adapter over `TournamentShell.grant`.
+ */
+export interface ShellCommands {
+	grant(winnerId: number): { readonly status: "granted" | "rejected" };
+}
+
+/**
  * The capability bundle exposed to every Action (SPEC-008 "Context": Services
  * exposes only the public contracts of the owner systems — Economy, Inventory,
  * Board, Rule Engine, Reward Resolver — never the Runtime/Board directly). Only
@@ -239,6 +285,9 @@ export interface ActionServices {
 	readonly rewards?: RewardsPort;
 	readonly randomEvents?: RandomEventCommands;
 	readonly steal?: StealServices;
+	readonly shop?: ShopCommands;
+	readonly keyItems?: KeyItemCommands;
+	readonly shell?: ShellCommands;
 }
 
 // ── Context (SPEC-008 "Context") ────────────────────────────────────────────

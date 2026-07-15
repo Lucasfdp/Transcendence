@@ -18,6 +18,11 @@ import { ManualClock } from "../infra/clock";
 import { TOURNAMENT_SETTINGS_V1, TournamentSettings } from "../config/settings.catalog";
 import { SEED_ITEM_IDS } from "../inventory/item-registry";
 import { Reward } from "../rewards/reward.types";
+import { createMinigameCatalog } from "../minigame/minigame-catalog";
+import {
+	MinigameLaunchResult,
+	MinigameLifecycleSignal,
+} from "../minigame/minigame.types";
 import { createTournamentEngines, TournamentEngines } from "./tournament-engines";
 
 const TOURNAMENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -211,6 +216,270 @@ describe("createTournamentEngines — F2 Reward→Inventory/Economy integration"
 		expect(events.some((e) => e.name === "PointsTransferred")).toBe(true);
 	});
 
+	it("wires the Shop so a purchase charges Economy and delivers via the Reward Resolver", () => {
+		const { engines, events } = makeEngines();
+		const before = engines.economy.getBalance(10) ?? 0;
+		engines.shop.open(10);
+		const result = engines.shop.buy(10, "pointsPack");
+		expect(result.status).toBe("purchased");
+		// pointsPack costs 40 and rewards +100 points → net +60.
+		expect(engines.economy.getBalance(10)).toBe(before - 40 + 100);
+		expect(events.some((e) => e.name === "ItemPurchased")).toBe(true);
+	});
+
+	it("wires the Shop so an item purchase lands in the buyer's inventory", () => {
+		const { engines } = makeEngines();
+		engines.shop.open(20);
+		const result = engines.shop.buy(20, "luckyDiceOffer");
+		expect(result.status).toBe("purchased");
+		expect(engines.inventory.getUsed(20)).toBe(1);
+	});
+
+	it("wires a shield item so consuming it protects ONLY its holder from steals", () => {
+		const { engines } = makeEngines();
+		const steal = engines.services.steal!;
+		expect(steal.isProtected(20)).toBe(false);
+
+		const add = engines.inventory.add(20, SEED_ITEM_IDS.shellShield);
+		expect(add.status).toBe("added");
+		const instanceId = add.status === "added" ? add.slot.instanceId : "";
+		const consume = engines.inventory.consume(
+			20,
+			instanceId,
+			engines.makeActionContext({ playerId: 20 }),
+		);
+		expect(consume.status).toBe("consumed");
+
+		// The personal StealPrevention rule protects the holder, nobody else.
+		expect(steal.isProtected(20)).toBe(true);
+		expect(steal.isProtected(30)).toBe(false);
+	});
+
+	it("wires Key Item Progression so a KeyItemReward unlocks the next Key Item", () => {
+		const { engines, events } = makeEngines();
+		expect(engines.keyItems.getUnlockedCount()).toBe(0);
+		engines.rewards.grant(
+			{ id: "kir", type: "keyItem", payload: {} },
+			engines.makeActionContext({ playerId: 10 }),
+		);
+		expect(engines.keyItems.getUnlockedCount()).toBe(1);
+		expect(events.some((e) => e.name === "KeyItemUnlocked")).toBe(true);
+	});
+
+	it("wires Key Item Progression so completing all Key Items unlocks the Final Challenge", () => {
+		const { engines, events } = makeEngines();
+		const required = engines.keyItems.getRequired();
+		for (let i = 0; i < required; i++) {
+			engines.rewards.grant(
+				{ id: `kir-${i}`, type: "keyItem", payload: {} },
+				engines.makeActionContext({ playerId: 10 }),
+			);
+		}
+		expect(engines.keyItems.isComplete()).toBe(true);
+		expect(events.some((e) => e.name === "AllKeyItemsUnlocked")).toBe(true);
+		expect(events.some((e) => e.name === "FinalChallengeUnlocked")).toBe(true);
+	});
+
+	it("wires Minigame Integration so a completed match awards outcome points via Economy", async () => {
+		const bus = new TournamentEventBus();
+		const clock = new ManualClock(1_000);
+		const settings = TOURNAMENT_SETTINGS_V1;
+		const listeners = new Set<(s: MinigameLifecycleSignal) => void>();
+		const engines = createTournamentEngines({
+			tournamentId: TOURNAMENT_ID,
+			participantIds: PARTICIPANT_IDS,
+			settings,
+			seed: "seed-a",
+			bus,
+			clock,
+			minigameLauncher: {
+				launch: async (): Promise<MinigameLaunchResult> => ({
+					status: "launched",
+					matchId: "match-x",
+				}),
+			},
+			minigameLifecycle: {
+				subscribe: (l) => {
+					listeners.add(l);
+					return () => listeners.delete(l);
+				},
+			},
+			minigameCatalog: createMinigameCatalog([
+				{ gameId: "kame-knock", minPlayers: 2, maxPlayers: 4 },
+			]),
+		});
+
+		const winnerBefore = engines.economy.getBalance(10) ?? 0;
+		const loserBefore = engines.economy.getBalance(20) ?? 0;
+		const run = engines.minigame.run([10, 20]);
+		await new Promise((r) => setImmediate(r)); // reach the wait
+		for (const l of [...listeners]) {
+			l({
+				type: "finished",
+				matchId: "match-x",
+				result: {
+					matchId: "match-x",
+					winnerId: 10,
+					outcomes: new Map([
+						[10, "win"],
+						[20, "loss"],
+					]),
+				},
+			});
+		}
+		const result = await run;
+
+		expect(result).toMatchObject({ status: "completed", winnerId: 10 });
+		// Outcome points reached the REAL Economy through the Reward Resolver.
+		expect(engines.economy.getBalance(10)).toBe(winnerBefore + settings.minigameReward.winner);
+		expect(engines.economy.getBalance(20)).toBe(
+			loserBefore + settings.minigameReward.participant,
+		);
+	});
+
+	it("wires Gambling so a winning bet charges points and unlocks a real Key Item", () => {
+		const bus = new TournamentEventBus();
+		const clock = new ManualClock(1_000);
+		const settings = TOURNAMENT_SETTINGS_V1;
+		const engines = createTournamentEngines({
+			tournamentId: TOURNAMENT_ID,
+			participantIds: PARTICIPANT_IDS,
+			settings,
+			seed: "seed-a",
+			bus,
+			clock,
+			// Deterministic fairness: roll 0 < any winChance ⇒ always win.
+			gamblingFairness: {
+				serverSeed: () => "srv",
+				commit: (s) => `h:${s}`,
+				roll: () => 0,
+			},
+		});
+
+		// Ensure the winner can afford the stake (initialPoints < cost by default).
+		engines.economy.award(10, settings.gambling.cost, "test:seed", "admin");
+		const before = engines.economy.getBalance(10) ?? 0;
+		expect(engines.keyItems.getUnlockedCount()).toBe(0);
+		expect(engines.gambling.open(10, 0.5).status).toBe("opened");
+		const result = engines.gambling.bet(10);
+
+		expect(result).toEqual({ status: "won" });
+		// Stake charged against tournament points (never coins).
+		expect(engines.economy.getBalance(10)).toBe(before - settings.gambling.cost);
+		// The win unlocked a real Key Item through the Reward Resolver → Progression.
+		expect(engines.keyItems.getUnlockedCount()).toBe(1);
+	});
+
+	it("wires the Boss so spawning activates real Rules through the Rule Engine", () => {
+		const { engines, events } = makeEngines();
+		// The Boss is gated on Key Item completion (SPEC-020 "Aparición").
+		expect(engines.boss.spawn().status).toBe("rejected");
+
+		for (let i = 0; i < TOURNAMENT_SETTINGS_V1.keyItemsRequired; i++) {
+			engines.keyItems.unlock(null);
+		}
+		const result = engines.boss.spawn();
+		expect(result).toEqual({ status: "spawned", finalChallengeId: "suddenDeath" });
+		expect(names(events)).toContain("BossIntroCompleted");
+
+		// The Boss Rules are live in the REAL Rule Engine: no_steal (GLOBAL,
+		// exclusive boolean) protects everyone from steals…
+		expect(engines.services.steal!.isProtected(20)).toBe(true);
+		// …and double_dice (value ×2) makes every roll even (d6 ×2 ∈ {2..12}).
+		expect(engines.dice.roll({ playerId: 10 }).value % 2).toBe(0);
+
+		// Finishing the Boss removes its Rules from the Rule Engine.
+		engines.boss.finish();
+		expect(engines.services.steal!.isProtected(20)).toBe(false);
+		expect(names(events).slice(-2)).toEqual(["BossRulesRemoved", "BossFinished"]);
+	});
+
+	it("wires the Final Challenge: sudden death → Shell via the Resolver → frozen ranking (F5 checkpoint)", async () => {
+		const bus = new TournamentEventBus();
+		const clock = new ManualClock(1_000);
+		const events: AnyTournamentEvent[] = [];
+		bus.onAny((e) => events.push(e));
+		const listeners = new Set<(s: MinigameLifecycleSignal) => void>();
+		const engines = createTournamentEngines({
+			tournamentId: TOURNAMENT_ID,
+			participantIds: PARTICIPANT_IDS,
+			settings: TOURNAMENT_SETTINGS_V1,
+			seed: "seed-a",
+			bus,
+			clock,
+			minigameLauncher: {
+				launch: async (): Promise<MinigameLaunchResult> => ({
+					status: "launched",
+					matchId: "final-x",
+				}),
+			},
+			minigameLifecycle: {
+				subscribe: (l) => {
+					listeners.add(l);
+					return () => listeners.delete(l);
+				},
+			},
+			minigameCatalog: createMinigameCatalog([
+				{ gameId: "kame-knock", minPlayers: 2, maxPlayers: 5 },
+			]),
+		});
+
+		// Reach the endgame: all Key Items unlocked → the Boss spawns and hands
+		// over its Final Challenge id → the challenge starts (Runtime's job later).
+		for (let i = 0; i < TOURNAMENT_SETTINGS_V1.keyItemsRequired; i++) {
+			engines.keyItems.unlock(null);
+		}
+		expect(engines.boss.spawn().status).toBe("spawned");
+
+		const run = engines.finalChallenge.start();
+		await new Promise((r) => setImmediate(r)); // let the pipeline reach its wait
+		for (const l of [...listeners]) {
+			l({
+				type: "finished",
+				matchId: "final-x",
+				result: {
+					matchId: "final-x",
+					winnerId: 30,
+					outcomes: new Map(PARTICIPANT_IDS.map((id) => [id, id === 30 ? "win" : "loss"])),
+				},
+			});
+		}
+		const result = await run;
+
+		expect(result).toEqual({ status: "finished", winnerId: 30, attempts: 1 });
+		// THE PARROT'S SHELL landed through the REAL Reward Resolver → `grantShell`
+		// Action → `services.shell` → the Shell holder, which emitted ShellGranted.
+		expect(engines.shell.getHolderId()).toBe(30);
+		expect(names(events)).toEqual(
+			expect.arrayContaining([
+				"FinalChallengeStarted",
+				"VictoryConditionReached",
+				"ShellGranted",
+				"FinalChallengeFinished",
+			]),
+		);
+		// The final ranking froze with the Shell holder first (SPEC-021).
+		expect(engines.leaderboard.serialize().frozen).toBe(true);
+		expect(engines.leaderboard.getEntries()[0].playerId).toBe(30);
+	});
+
+	it("wires a loaded-die item so consuming it forces ONLY the holder's roll to 6", () => {
+		const { engines } = makeEngines();
+		const add = engines.inventory.add(10, SEED_ITEM_IDS.loadedDie);
+		expect(add.status).toBe("added");
+		const instanceId = add.status === "added" ? add.slot.instanceId : "";
+		const consume = engines.inventory.consume(
+			10,
+			instanceId,
+			engines.makeActionContext({ playerId: 10 }),
+		);
+		expect(consume.status).toBe("consumed");
+
+		// Player 10's roll is overridden to 6 by the personal dice rule; another
+		// player's roll goes through the Dice engine unmodified by that rule.
+		expect(engines.dice.roll({ playerId: 10 }).value).toBe(6);
+	});
+
 	it("wires the Dice so rolls are reproducible from the tournament seed", () => {
 		const a = makeEngines();
 		const b = makeEngines();
@@ -268,6 +537,13 @@ describe("createTournamentEngines — F2 Reward→Inventory/Economy integration"
 		expect(roundTripped.dice).toBeDefined();
 		expect(roundTripped.randomEvents).toBeDefined();
 		expect(roundTripped.rng).toBeDefined();
+		expect(roundTripped.shop).toBeDefined();
+		expect(roundTripped.keyItems).toBeDefined();
+		expect(roundTripped.minigame).toBeDefined();
+		expect(roundTripped.gambling).toBeDefined();
+		expect(roundTripped.boss).toBeDefined();
+		expect(roundTripped.shell).toBeDefined();
+		expect(roundTripped.finalChallenge).toBeDefined();
 	});
 
 	it("a full inventory rejects the item but still resolves the reward (no throw)", () => {

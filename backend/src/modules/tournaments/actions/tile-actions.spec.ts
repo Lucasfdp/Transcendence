@@ -238,4 +238,29 @@ describe("Tile Actions (SPEC-006)", () => {
 		const action = factory.create({ type: "attemptSteal", parameters: { amount: 25 } });
 		expect(engine.execute(action!, ctxWith(undefined)).status).toBe("skipped");
 	});
+
+	// ── OpenShopAction (SPEC-006 / SPEC-012) ──────────────────────────────────
+
+	it("openShop triggers the Shop service for the acting player", () => {
+		const { engine, factory } = makeEngine();
+		const opens: { playerId: number; round: number }[] = [];
+		const ctx: ActionContext = {
+			tournamentId: TOURNAMENT_ID,
+			playerId: 10,
+			round: 3,
+			eventBus: new TournamentEventBus(),
+			services: {
+				shop: { open: (p: number, r: number) => opens.push({ playerId: p, round: r }) },
+			} as unknown as ActionServices,
+		};
+		const action = factory.create({ type: "openShop" });
+		expect(engine.execute(action!, ctx).status).toBe("success");
+		expect(opens).toEqual([{ playerId: 10, round: 3 }]);
+	});
+
+	it("openShop skips (benign) when no shop service is present", () => {
+		const { engine, factory } = makeEngine();
+		const action = factory.create({ type: "openShop" });
+		expect(engine.execute(action!, ctxWith(undefined)).status).toBe("skipped");
+	});
 });

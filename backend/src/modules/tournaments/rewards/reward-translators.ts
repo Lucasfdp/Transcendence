@@ -9,15 +9,14 @@
  * TARGET action `type` strings are the ones registered by `base-actions.ts`
  * (note: NO `Action` suffix — `awardPoints`, `activateRule`, `composite`, …).
  *
- * FORWARD SEAMS — some target actions are not registered yet. Per SPEC-008
+ * FORWARD SEAMS — target actions start as unregistered strings. Per SPEC-008
  * "Casos límite" (unknown action type → factory returns null → skipped), a
- * config for an unregistered action resolves/skips cleanly today and becomes
- * real when the owning system lands and the architect narrows the port:
- *   - `grantItem`     (item)    → Inventory grant (SPEC-014, narrowed at F2).
- *   - `unlockKeyItem` (keyItem) → Key Item Progression (SPEC-017, not built).
- *   - `grantShell`    (shell)   → Shell state system (not built).
- * These strings are RESERVED here; the concrete Actions are NOT invented in
- * this wave.
+ * config for an unregistered action resolves/skips cleanly and becomes real
+ * when the owning system lands and the architect narrows the port. All three
+ * seams are now REAL:
+ *   - `grantItem`     (item)    → Inventory grant (SPEC-014, landed at F2).
+ *   - `unlockKeyItem` (keyItem) → Key Item Progression (SPEC-017, landed at F4).
+ *   - `grantShell`    (shell)   → Shell match state (SPEC-021, landed at F5).
  *
  * Condition propagation (SPEC-013 "Validación": Condiciones cumplidas): a
  * Reward's own `conditions` are attached to EVERY generated leaf `ActionConfig`
@@ -109,8 +108,8 @@ const translateKeyItem: RewardTranslator = () => [
 
 /**
  * ShellReward → `grantShell` (SPEC-013 "ShellReward": the Shell as match state).
- * FORWARD SEAM: the Shell state system does not exist yet; reserved, resolves/
- * skips cleanly today.
+ * The winner is ALWAYS the context player (SPEC-021: the Final Challenge grants
+ * against the winner's context) — so NO target is put in parameters.
  */
 const translateShell: RewardTranslator = () => [
 	{ type: "grantShell", parameters: {} },

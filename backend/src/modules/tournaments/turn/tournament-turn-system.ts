@@ -201,12 +201,16 @@ export class TournamentTurnSystem {
 			this.board.getPosition(turn.playerId) ??
 			"";
 
+		// Clear BEFORE emitting: when PlayerTurnFinished reaches subscribers the
+		// turn is already over, so the Runtime's interactive sequencer can open
+		// the next player's turn synchronously from its handler (SPEC-005: one
+		// active turn — the fact must never observe a half-closed turn).
+		this.turn = null;
 		this.emit("PlayerTurnFinished", turn.playerId, turn.round, {
 			finalTileId,
 			diceValue: roll.value,
 			autoResolved: auto,
 		});
-		this.turn = null;
 	}
 
 	private ignore(playerId: number, reason: "no_active_turn" | "not_active_player" | "already_rolled"): TurnCommandResult {

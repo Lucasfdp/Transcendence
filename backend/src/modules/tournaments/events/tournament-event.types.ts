@@ -575,6 +575,72 @@ export interface StealSucceededPayload {
 	readonly amount: number;
 }
 
+// ── Payloads — owner: Shop System (SPEC-012) ───────────────────────────────────
+
+/** Why a purchase was rejected (SPEC-012 "Casos límite"). */
+export type PurchaseRejectionReason =
+	| "no_session"
+	| "unknown_offer"
+	| "out_of_stock"
+	| "requirements_unmet"
+	| "insufficient_points"
+	| "invalid_reward";
+
+/** How a shop session ended (SPEC-012 "Protocolo de interacción"). */
+export type ShopCloseOutcome = "purchased" | "cancelled" | "timeout" | "empty";
+
+/**
+ * A tile requested the shop (SPEC-012 "Protocolo": the Board emits ShopRequested
+ * via OpenShopAction). The player is the envelope `playerId`; `offerCount` is the
+ * catalog size at request time.
+ */
+export interface ShopRequestedPayload {
+	readonly offerCount: number;
+}
+
+/**
+ * A shop session opened (SPEC-012 "Protocolo": ShopOpened). `deadlineAt` is the
+ * interaction-window timeout (SPEC-024 shopInteractionSeconds).
+ */
+export interface ShopOpenedPayload {
+	readonly offerCount: number;
+	readonly deadlineAt: number;
+}
+
+/** The player highlighted an offer (SPEC-012 "Eventos": OfferSelected). */
+export interface OfferSelectedPayload {
+	readonly offerId: string;
+}
+
+/** The player asked to buy an offer (SPEC-012 "Eventos": PurchaseRequested). */
+export interface PurchaseRequestedPayload {
+	readonly offerId: string;
+}
+
+/**
+ * A purchase completed (SPEC-012 "Compra": ItemPurchased). Economy already
+ * emitted PointsRemoved and the Reward Resolver its own facts; this is the
+ * shop-level fact. `price` is the amount paid.
+ */
+export interface ItemPurchasedPayload {
+	readonly offerId: string;
+	readonly price: number;
+}
+
+/** A purchase was rejected (SPEC-012 "Casos límite": PurchaseRejected). */
+export interface PurchaseRejectedPayload {
+	readonly offerId: string;
+	readonly reason: PurchaseRejectionReason;
+}
+
+/**
+ * The shop session closed (SPEC-012 "Protocolo": ShopClosed is emitted ALWAYS,
+ * with any outcome — it is the event the Turn System waits for).
+ */
+export interface ShopClosedPayload {
+	readonly outcome: ShopCloseOutcome;
+}
+
 // ── Payloads — owner: Random Events System (SPEC-019) ──────────────────────────
 
 /** Terminal status of one Random Event Action (mirrors SPEC-008 status). */
@@ -618,6 +684,233 @@ export interface RandomEventFinishedPayload {
  */
 export interface RandomEventCancelledPayload {
 	readonly reason: string;
+}
+
+// ── Payloads — owner: Minigame Integration (SPEC-015) ──────────────────────────
+
+/**
+ * The round's minigame selection began (SPEC-015 "Eventos"). `activePlayers` are
+ * the connected, non-abandoned players eligible to play; `candidateCount` is how
+ * many catalog minigames support exactly that player count.
+ */
+export interface MinigameSelectionStartedPayload {
+	readonly activePlayers: readonly number[];
+	readonly candidateCount: number;
+}
+
+/** A minigame was chosen with the seed (SPEC-015 "Selección"): deterministic. */
+export interface MinigameSelectedPayload {
+	readonly minigameId: string;
+}
+
+/** The match was created and is loading (SPEC-015 "Pipeline": Wait MatchCreated). */
+export interface MinigameLoadingPayload {
+	readonly minigameId: string;
+	readonly matchId: string;
+}
+
+/** The match actually started (SPEC-015: MatchStarted). */
+export interface MinigameStartedPayload {
+	readonly minigameId: string;
+	readonly matchId: string;
+}
+
+/**
+ * The match finished and its result reached the Tournament (SPEC-015
+ * "Resultado"). `winnerId` is the single winner, or null on a tie (`tie: true`,
+ * SPEC-015 "Desempates": no round winner ⇒ Gambling is skipped).
+ */
+export interface MinigameFinishedPayload {
+	readonly minigameId: string;
+	readonly matchId: string;
+	readonly winnerId: number | null;
+	readonly tie: boolean;
+}
+
+/**
+ * No minigame ran this round (SPEC-015 "Selección"/"Errores"): fewer than two
+ * active players, no catalog minigame for the player count, a match-creation
+ * error, or a cancelled/result-less match. The round continues without a winner
+ * (Gambling skipped) — `reason` explains which.
+ */
+export interface MinigameCancelledPayload {
+	readonly reason: string;
+}
+
+// ── Payloads — owner: Gambling Integration (SPEC-016) ──────────────────────────
+
+/**
+ * The Gambling phase opened for the minigame winner (SPEC-016 "Apertura"). The
+ * winner is the envelope `playerId`. `canAfford` is false when they lack the
+ * points to bet (they may only abandon; SPEC-016 "Sin puntos suficientes").
+ * `deadlineAt` is the decision timeout (SPEC-024 gamblingDecisionSeconds).
+ */
+export interface GamblingOpenedPayload {
+	readonly cost: number;
+	readonly winChance: number;
+	readonly deadlineAt: number;
+	readonly canAfford: boolean;
+}
+
+/**
+ * The winner placed a bet; provably-fair resolution began (SPEC-016 "Flujo").
+ * `commitment` is the committed SHA-256 hash of the server seed, revealed after
+ * (SPEC-016 "Integración": verificable por el jugador).
+ */
+export interface GamblingStartedPayload {
+	readonly cost: number;
+	readonly commitment: string;
+}
+
+/** Shared provably-fair reveal so the player can recompute the roll (SPEC-016). */
+export interface GamblingReveal {
+	readonly roll: number;
+	readonly winChance: number;
+	readonly serverSeed: string;
+	readonly clientSeed: string;
+	readonly nonce: number;
+	readonly commitment: string;
+}
+
+/** The bet won — a Key Item unlock is requested via the Reward Resolver. */
+export interface GamblingWonPayload extends GamblingReveal {
+	readonly cost: number;
+}
+
+/** The bet lost — the staked points are gone, no progress (SPEC-016 "Derrota"). */
+export interface GamblingLostPayload extends GamblingReveal {
+	readonly cost: number;
+}
+
+/**
+ * The phase closed without a resolved bet (SPEC-016 "Timeout"/"Errores"):
+ * `abandoned` (player chose / could not afford), `timeout` (decision expired),
+ * or `error` (resolution failed). Never blocks the tournament.
+ */
+export interface GamblingCancelledPayload {
+	readonly reason: "abandoned" | "timeout" | "error" | "no_locked_key_items";
+}
+
+/** Outcome of the Gambling phase (SPEC-016 "Modelo de interacción"). */
+export type GamblingOutcome = "won" | "lost" | "abandoned" | "timeout" | "error";
+
+/**
+ * The Gambling phase closed (SPEC-016 "Eventos": GamblingFinished is emitted
+ * ALWAYS, with any outcome — it is the event the State Machine consumes). Won/
+ * Lost/Cancelled are UI/analytics detail events.
+ */
+export interface GamblingFinishedPayload {
+	readonly outcome: GamblingOutcome;
+}
+
+// ── Payloads — owner: Key Item Progression (SPEC-017) ──────────────────────────
+
+/**
+ * A Key Item was unlocked (SPEC-017 "Eventos": KeyItemUnlocked). Key Items are
+ * GLOBAL match progress — they never belong to a player — so the envelope
+ * `playerId` is null; `unlockedBy` records the player whose Reward triggered the
+ * unlock (a gambling winner or a shop buyer), for UI/analytics only.
+ */
+export interface KeyItemUnlockedPayload {
+	readonly keyItemId: string;
+	readonly order: number;
+	readonly unlockedCount: number;
+	readonly required: number;
+	readonly unlockedBy: number | null;
+}
+
+/** Global progress changed (SPEC-017 "Progreso" / "Sincronización"). */
+export interface KeyItemProgressUpdatedPayload {
+	readonly unlockedCount: number;
+	readonly required: number;
+	/** unlockedCount / required as a 0–1 fraction. */
+	readonly completion: number;
+}
+
+/** Every required Key Item is unlocked (SPEC-017 "Eventos": AllKeyItemsUnlocked). */
+export interface AllKeyItemsUnlockedPayload {
+	readonly required: number;
+}
+
+/**
+ * All Key Items unlocked ⇒ the Final Challenge is available (SPEC-017 "Final
+ * Challenge"). The State Machine consumes this to leave the round loop.
+ */
+export interface FinalChallengeUnlockedPayload {
+	readonly required: number;
+}
+
+// ── Payloads — owner: Boss System (SPEC-020) ───────────────────────────────────
+
+/** The Boss spawn was requested — all Key Items are unlocked (SPEC-020 "Aparición"). */
+export interface BossSpawnRequestedPayload {
+	readonly bossId: string;
+}
+
+/** The Boss appeared; its intro sequence begins (SPEC-020 "Inicio"). */
+export interface BossSpawnedPayload {
+	readonly bossId: string;
+	readonly name: string;
+}
+
+/** The Boss activated its Rules through the Rule Engine (SPEC-020 "Boss Rules"). */
+export interface BossRulesActivatedPayload {
+	readonly bossId: string;
+	readonly ruleIds: readonly string[];
+}
+
+/**
+ * The intro finished and the Boss Rules are active (SPEC-020 "Eventos"): the
+ * event the State Machine consumes to go BOSS_EVENT → FINAL_CHALLENGE. Carries
+ * the Final Challenge the Boss selected (SPEC-020 "Final Challenge").
+ */
+export interface BossIntroCompletedPayload {
+	readonly bossId: string;
+	readonly finalChallengeId: string;
+}
+
+/** The Boss Rules were removed when the match resolved (SPEC-020 "Finalización"). */
+export interface BossRulesRemovedPayload {
+	readonly bossId: string;
+	readonly ruleIds: readonly string[];
+}
+
+/** The Boss finished its participation (SPEC-020 "Finalización"). */
+export interface BossFinishedPayload {
+	readonly bossId: string;
+}
+
+// ── Payloads — owner: Final Challenge System (SPEC-021) ─────────────────────────
+
+/** The Final Challenge began (SPEC-021 "Inicio"), automatically after the Boss. */
+export interface FinalChallengeStartedPayload {
+	readonly challengeId: string;
+}
+
+/**
+ * A single player met the victory condition (SPEC-021 "Condiciones de victoria")
+ * — in v1 the unique winner of the sudden-death minigame. The winner is the
+ * envelope `playerId`; `attempts` counts how many minigames it took.
+ */
+export interface VictoryConditionReachedPayload {
+	readonly challengeId: string;
+	readonly winnerId: number;
+	readonly attempts: number;
+}
+
+/** THE PARROT'S SHELL was granted to the winner via the Reward Resolver (SPEC-021). */
+export interface ShellGrantedPayload {
+	readonly winnerId: number;
+}
+
+/**
+ * The Final Challenge closed with the winner determined (SPEC-021 "Eventos"): the
+ * event the State Machine consumes to transition to VICTORY. TournamentFinished
+ * is emitted by the Runtime, never this system.
+ */
+export interface FinalChallengeFinishedPayload {
+	readonly challengeId: string;
+	readonly winnerId: number;
 }
 
 // ── Event map ──────────────────────────────────────────────────────────────────
@@ -686,12 +979,51 @@ export interface TournamentEventPayloadMap {
 	StealStarted: StealStartedPayload;
 	StealFailed: StealFailedPayload;
 	StealSucceeded: StealSucceededPayload;
+	// Owner: Shop System (SPEC-012)
+	ShopRequested: ShopRequestedPayload;
+	ShopOpened: ShopOpenedPayload;
+	OfferSelected: OfferSelectedPayload;
+	PurchaseRequested: PurchaseRequestedPayload;
+	ItemPurchased: ItemPurchasedPayload;
+	PurchaseRejected: PurchaseRejectedPayload;
+	ShopClosed: ShopClosedPayload;
 	// Owner: Random Events System (SPEC-019)
 	RandomEventRequested: RandomEventRequestedPayload;
 	RandomEventSelected: RandomEventSelectedPayload;
 	RandomEventStarted: RandomEventStartedPayload;
 	RandomEventFinished: RandomEventFinishedPayload;
 	RandomEventCancelled: RandomEventCancelledPayload;
+	// Owner: Minigame Integration (SPEC-015)
+	MinigameSelectionStarted: MinigameSelectionStartedPayload;
+	MinigameSelected: MinigameSelectedPayload;
+	MinigameLoading: MinigameLoadingPayload;
+	MinigameStarted: MinigameStartedPayload;
+	MinigameFinished: MinigameFinishedPayload;
+	MinigameCancelled: MinigameCancelledPayload;
+	// Owner: Gambling Integration (SPEC-016)
+	GamblingOpened: GamblingOpenedPayload;
+	GamblingStarted: GamblingStartedPayload;
+	GamblingWon: GamblingWonPayload;
+	GamblingLost: GamblingLostPayload;
+	GamblingCancelled: GamblingCancelledPayload;
+	GamblingFinished: GamblingFinishedPayload;
+	// Owner: Key Item Progression (SPEC-017)
+	KeyItemUnlocked: KeyItemUnlockedPayload;
+	KeyItemProgressUpdated: KeyItemProgressUpdatedPayload;
+	AllKeyItemsUnlocked: AllKeyItemsUnlockedPayload;
+	FinalChallengeUnlocked: FinalChallengeUnlockedPayload;
+	// Owner: Boss System (SPEC-020)
+	BossSpawnRequested: BossSpawnRequestedPayload;
+	BossSpawned: BossSpawnedPayload;
+	BossRulesActivated: BossRulesActivatedPayload;
+	BossIntroCompleted: BossIntroCompletedPayload;
+	BossRulesRemoved: BossRulesRemovedPayload;
+	BossFinished: BossFinishedPayload;
+	// Owner: Final Challenge System (SPEC-021)
+	FinalChallengeStarted: FinalChallengeStartedPayload;
+	VictoryConditionReached: VictoryConditionReachedPayload;
+	ShellGranted: ShellGrantedPayload;
+	FinalChallengeFinished: FinalChallengeFinishedPayload;
 }
 
 export type TournamentEventName = keyof TournamentEventPayloadMap;

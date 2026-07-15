@@ -101,7 +101,31 @@ export interface TournamentRuntimeOptions {
 	/** Defaults to a fresh per-tournament bus (SPEC-004: one bus per tournament). */
 	readonly bus?: TournamentEventBus;
 	readonly logger?: TournamentLogger;
+	/**
+	 * Interactive mode (Vertical Slice, SPEC-022): PLAYER_TURNS drives REAL board
+	 * turns through the Turn System — one turn per player in TurnOrder, resolved
+	 * by a RollDiceIntent (`handleRollDice`) or the Turn System's own roll
+	 * timeout/disconnect auto-resolution — then the round continues MINIGAME
+	 * (Phase-1 skip) → CHECK_KEY_ITEMS → next round / DEFEAT automatically.
+	 * When false (default), the Runtime keeps the deterministic Phase-1
+	 * simulation API (`advancePhase`/`runToCompletion`) — the two modes are
+	 * mutually exclusive by construction.
+	 */
+	readonly interactiveTurns?: boolean;
 }
+
+/** Result of a RollDiceIntent forwarded to the Runtime (SPEC-022 validation). */
+export type RollDiceIntentResult =
+	| { readonly status: "ok" }
+	| {
+			readonly status: "rejected";
+			readonly reason:
+				| "not_in_player_turns"
+				| "no_active_turn"
+				| "not_active_player"
+				| "already_rolled"
+				| "turn_in_progress";
+	  };
 
 /** Safety bound for `runToCompletion` — see the method's doc comment. */
 const DEFAULT_MAX_RUN_STEPS = 1000;
@@ -123,6 +147,10 @@ export class TournamentRuntime {
 	private turnOrder: number[] = [];
 	/** Mirrors the machine's `round` bookkeeping field (0 before ROUND_START). */
 	private round = 0;
+	/** Interactive mode (Vertical Slice): PLAYER_TURNS drives real turns. */
+	private readonly interactive: boolean;
+	/** Index into `turnOrder` of the turn being played (interactive mode). */
+	private turnIndex = 0;
 
 	constructor(options: TournamentRuntimeOptions) {
 		this.tournamentId = options.tournamentId;
@@ -166,6 +194,17 @@ export class TournamentRuntime {
 		this.bus.on("TransitionCompleted", () => {
 			this.onSnapshot(this.buildSnapshot());
 		});
+
+		// Interactive turn sequencing (Vertical Slice): the Runtime is the sole
+		// sequencer (SPEC-005 "Solo el Runtime cambia de jugador") — every finished
+		// turn (intent, timeout or disconnect) hands the baton to the next player
+		// or closes the round. Subscribed once; inert unless interactive.
+		this.interactive = options.interactiveTurns ?? false;
+		if (this.interactive) {
+			this.bus.on("PlayerTurnFinished", () => {
+				this.onInteractiveTurnFinished();
+			});
+		}
 	}
 
 	// ── Read-only observation ────────────────────────────────────────────
@@ -187,6 +226,26 @@ export class TournamentRuntime {
 	 * inventory/rewards), for gameplay drivers and integration (F2). */
 	get gameEngines(): TournamentEngines {
 		return this.engines;
+	}
+
+	/** Live round number (0 before ROUND_START) — snapshot builders (SPEC-022). */
+	get currentRound(): number {
+		return this.round;
+	}
+
+	/** The fixed play order (D13); empty before INITIALIZING computed it. */
+	get playOrder(): readonly number[] {
+		return this.turnOrder;
+	}
+
+	/** Participant user ids (admission order) — populated from construction. */
+	get participants(): readonly number[] {
+		return this.participantIds;
+	}
+
+	/** `settings.maxRound` (SPEC-024) — exposed for the visible snapshot. */
+	get maxRound(): number {
+		return this.settings.maxRound;
 	}
 
 	// ── Lifecycle ─────────────────────────────────────────────────────────
@@ -219,6 +278,40 @@ export class TournamentRuntime {
 		});
 
 		this.enterRoundStart(1);
+
+		// Interactive mode enters PLAYER_TURNS immediately and opens the first
+		// real turn; simulation mode stops here and is driven by advancePhase().
+		if (this.interactive) {
+			this.beginPlayerTurns();
+		}
+	}
+
+	// ── Intents (SPEC-022: clients only REQUEST; the server validates) ────
+
+	/**
+	 * RollDiceIntent entry point (Vertical Slice, SPEC-022 "Validación"): the
+	 * ONLY gameplay action a client may request in this slice. Valid only in
+	 * interactive mode, during PLAYER_TURNS, for the active player who has not
+	 * rolled — everything else is a rejection that never touches the Runtime.
+	 * The Turn System owns the roll→move→resolve pipeline (SPEC-005).
+	 */
+	handleRollDice(playerId: number): RollDiceIntentResult {
+		if (!this.interactive || this.machine.currentPhase !== "PLAYER_TURNS") {
+			return { status: "rejected", reason: "not_in_player_turns" };
+		}
+		const result = this.engines.turnSystem.requestRoll(playerId);
+		return result.status === "ok"
+			? { status: "ok" }
+			: { status: "rejected", reason: result.reason };
+	}
+
+	/**
+	 * A participant disconnected (SPEC-005 "Desconexión" / SPEC-023): if it is
+	 * their turn, the Turn System auto-resolves it immediately; otherwise a
+	 * no-op. Synchronization concerns (rooms, snapshots) stay in the gateway.
+	 */
+	handlePlayerDisconnect(playerId: number): void {
+		this.engines.turnSystem.handleDisconnect(playerId);
 	}
 
 	/**
@@ -228,6 +321,12 @@ export class TournamentRuntime {
 	 * (CREATED/WAITING_PLAYERS/INITIALIZING — only `start()` walks those).
 	 */
 	advancePhase(): TournamentPhase {
+		if (this.interactive) {
+			// The interactive driver sequences phases itself; mixing the two
+			// modes would double-drive the machine (documented exclusivity).
+			this.logger.warn("advancePhase ignored: Runtime is in interactive mode");
+			return this.machine.currentPhase;
+		}
 		switch (this.machine.currentPhase) {
 			case "ROUND_START":
 				// Player turn resolution is later-phase scope: no turns exist yet.
@@ -305,11 +404,11 @@ export class TournamentRuntime {
 	 * FINISHED — mirrors SPEC-001's own "DEFEAT ... winnerUserId queda nulo
 	 * ↓ FINISHED" ordering.
 	 */
-	private resolveCheckKeyItems(): void {
+	private resolveCheckKeyItems(): boolean {
 		if (this.round < this.settings.maxRound) {
 			this.emitRuntimeEvent("RoundFinished", { round: this.round });
 			this.enterRoundStart(this.round + 1);
-			return;
+			return true;
 		}
 
 		// Anti-stall exit (D3, SPEC-040): max round reached without completing
@@ -317,6 +416,59 @@ export class TournamentRuntime {
 		this.machine.requestTransition("DEFEAT");
 		this.emitRuntimeEvent("TournamentFinished", { winnerUserId: null });
 		this.machine.requestTransition("FINISHED");
+		return false;
+	}
+
+	// ── Interactive turn loop (Vertical Slice) ────────────────────────────
+
+	/**
+	 * Enters PLAYER_TURNS and opens the first turn of the round (SPEC-005: the
+	 * Runtime sequences, the Turn System owns the single active turn — its roll
+	 * timeout auto-resolves an idle player, so an unattended tournament always
+	 * progresses to the D3 anti-stall exit).
+	 */
+	private beginPlayerTurns(): void {
+		this.machine.requestTransition("PLAYER_TURNS");
+		this.turnIndex = 0;
+		this.startTurnAt(0);
+	}
+
+	private startTurnAt(index: number): void {
+		const playerId = this.turnOrder[index];
+		if (playerId === undefined) {
+			this.finishInteractiveRound();
+			return;
+		}
+		this.machine.setActivePlayer(playerId);
+		this.engines.turnSystem.startTurn(playerId);
+	}
+
+	/** PlayerTurnFinished (intent, timeout or disconnect): next player or close. */
+	private onInteractiveTurnFinished(): void {
+		if (this.machine.currentPhase !== "PLAYER_TURNS") {
+			return;
+		}
+		this.turnIndex += 1;
+		if (this.turnIndex < this.turnOrder.length) {
+			this.startTurnAt(this.turnIndex);
+			return;
+		}
+		this.machine.setActivePlayer(null);
+		this.finishInteractiveRound();
+	}
+
+	/**
+	 * Closes the round after the last turn: MINIGAME stays the documented
+	 * Phase-1 "omitted" skip (the socket-bound minigame adapter is a later
+	 * integration), then CHECK_KEY_ITEMS loops the round or exits via DEFEAT.
+	 * A continuing round re-enters PLAYER_TURNS immediately.
+	 */
+	private finishInteractiveRound(): void {
+		this.machine.requestTransition("MINIGAME");
+		this.machine.requestTransition("CHECK_KEY_ITEMS");
+		if (this.resolveCheckKeyItems()) {
+			this.beginPlayerTurns();
+		}
 	}
 
 	/**

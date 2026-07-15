@@ -52,6 +52,7 @@ import {
 	successResult,
 } from "./action.interface";
 import { registerBaseConditions } from "./base-conditions";
+import { RuleConfig } from "../rules/configured-rule";
 
 // ── Param helpers ───────────────────────────────────────────────────────────
 
@@ -335,6 +336,69 @@ export class DeactivateRuleAction extends BaseAction {
 	}
 }
 
+/**
+ * ActivatePlayerRule (SPEC-009 "Rule Context: Player"). Builds and activates a
+ * PLAYER-SCOPED rule — bound to the acting player — from a rule definition
+ * carried inline in the config. This is the backing for per-player effect Items
+ * (SPEC-007), e.g. a shield whose effect is a StealPrevention Rule that protects
+ * ONLY its holder (rule consultation is player-scoped). The Rule Engine owns
+ * instance creation, the per-player unique id and the RuleActivated fact; the
+ * Action only forwards the definition. A rejected activation (malformed / failed
+ * validate) ⇒ `failed`.
+ *
+ * Config: `{ rule: RuleConfig, playerId?: number }` — `playerId` defaults to the
+ * acting player; the definition's own `id` is namespaced per player by the
+ * engine, so the same Item used by several players yields independent rules.
+ */
+export class ActivatePlayerRuleAction extends BaseAction {
+	private readonly rule?: RuleConfig;
+	private readonly explicitPlayerId?: number;
+
+	constructor(build: ActionBuildContext) {
+		super(build);
+		const candidate = build.parameters["rule"];
+		this.rule = isRuleConfig(candidate) ? candidate : undefined;
+		this.explicitPlayerId = readNumber(build.parameters, "playerId");
+	}
+
+	validate(): ExecutionOutcome {
+		if (this.rule === undefined) {
+			return failedResult("activatePlayerRule requires a `rule` definition object");
+		}
+		return successResult();
+	}
+
+	execute(ctx: ActionContext): ExecutionResult {
+		const rule = this.rule as RuleConfig;
+		const playerId = this.explicitPlayerId ?? ctx.playerId;
+		const activated = ctx.services.rules.applyForPlayer(rule, playerId, {
+			round: ctx.round,
+		});
+		return activated
+			? successResult({ ruleId: rule.id, playerId })
+			: failedResult(`player rule "${rule.id}" was not activated`, undefined, {
+					ruleId: rule.id,
+					playerId,
+			  });
+	}
+}
+
+/** Minimal structural check that a config param is a plausible RuleConfig. */
+const isRuleConfig = (value: unknown): value is RuleConfig => {
+	if (typeof value !== "object" || value === null) {
+		return false;
+	}
+	const candidate = value as Record<string, unknown>;
+	return (
+		typeof candidate.id === "string" &&
+		candidate.id.length > 0 &&
+		typeof candidate.point === "string" &&
+		typeof candidate.composition === "string" &&
+		typeof candidate.duration === "object" &&
+		candidate.duration !== null
+	);
+};
+
 // ── Inventory actions (SPEC-014 via ctx.services.inventory) ─────────────────
 
 /**
@@ -381,6 +445,64 @@ export class GrantItemAction extends BaseAction {
 					undefined,
 					{ itemId: this.itemId, reason: result.reason },
 			  );
+	}
+}
+
+/**
+ * UnlockKeyItem (SPEC-013 "KeyItemReward" → SPEC-017): requests the next locked
+ * Key Item unlock via `ctx.services.keyItems.unlock`. This is the real backing
+ * for the Reward Resolver's `unlockKeyItem` forward-seam config (previously a
+ * clean no-op). Key Item Progression owns ordering + the KeyItemUnlocked fact;
+ * the Action never picks which item (SPEC-017 "Duplicados"). The acting player is
+ * recorded as `unlockedBy` (UI/analytics only — Key Items are global). A rejected
+ * unlock (progress already complete) ⇒ `failed`; no Key Item service wired ⇒
+ * `skipped` (benign no-op), so a KeyItemReward in a context without the system
+ * can never crash the tournament.
+ *
+ * Config `type`: "unlockKeyItem" (no parameters — the target is never chosen).
+ */
+export class UnlockKeyItemAction extends BaseAction {
+	constructor(build: ActionBuildContext) {
+		super(build);
+	}
+
+	execute(ctx: ActionContext): ExecutionResult {
+		const keyItems = ctx.services.keyItems;
+		if (!keyItems) {
+			return skippedResult("unlockKeyItem: no key-item service in context");
+		}
+		const result = keyItems.unlock(ctx.playerId);
+		return result.status === "unlocked"
+			? successResult()
+			: failedResult("key-item progression rejected unlock (already complete)");
+	}
+}
+
+/**
+ * GrantShell (SPEC-013 "ShellReward" → SPEC-021): requests THE PARROT'S SHELL
+ * for the acting player via `ctx.services.shell.grant`. This is the real
+ * backing for the Reward Resolver's `grantShell` forward-seam config
+ * (previously a clean no-op). The Shell holder owns single-grant enforcement
+ * and the ShellGranted fact; the Action never decides the winner. A rejected
+ * grant (Shell already granted) ⇒ `failed`; no Shell service wired ⇒ `skipped`
+ * (benign no-op).
+ *
+ * Config `type`: "grantShell" (no parameters — the winner is the context player).
+ */
+export class GrantShellAction extends BaseAction {
+	constructor(build: ActionBuildContext) {
+		super(build);
+	}
+
+	execute(ctx: ActionContext): ExecutionResult {
+		const shell = ctx.services.shell;
+		if (!shell) {
+			return skippedResult("grantShell: no shell service in context");
+		}
+		const result = shell.grant(ctx.playerId);
+		return result.status === "granted"
+			? successResult({ winnerId: ctx.playerId })
+			: failedResult("shell holder rejected grant (already granted)");
 	}
 }
 
@@ -463,6 +585,10 @@ export function registerBaseActions(registry: ActionRegistry): void {
 	registry.register("removePoints", (build) => new RemovePointsAction(build));
 	registry.register("transferPoints", (build) => new TransferPointsAction(build));
 	registry.register("activateRule", (build) => new ActivateRuleAction(build));
+	registry.register(
+		"activatePlayerRule",
+		(build) => new ActivatePlayerRuleAction(build),
+	);
 	registry.register("deactivateRule", (build) => new DeactivateRuleAction(build));
 	registry.register("composite", (build) => new CompositeAction(build));
 }
@@ -476,6 +602,26 @@ export function registerBaseActions(registry: ActionRegistry): void {
  */
 export function registerInventoryActions(registry: ActionRegistry): void {
 	registry.register("grantItem", (build) => new GrantItemAction(build));
+}
+
+/**
+ * Registers the Key Item Progression Action (SPEC-017). Kept SEPARATE like the
+ * Inventory set: `unlockKeyItem` (the real backing for the Reward Resolver's
+ * KeyItemReward forward seam) is only registered where a Key Item service is
+ * wired into `ctx.services` (the F4 engine composition).
+ */
+export function registerKeyItemActions(registry: ActionRegistry): void {
+	registry.register("unlockKeyItem", (build) => new UnlockKeyItemAction(build));
+}
+
+/**
+ * Registers the Shell Action (SPEC-021). Kept SEPARATE like the Inventory and
+ * Key Item sets: `grantShell` (the real backing for the Reward Resolver's
+ * ShellReward forward seam) is only registered where a Shell holder is wired
+ * into `ctx.services` (the F5 engine composition).
+ */
+export function registerShellActions(registry: ActionRegistry): void {
+	registry.register("grantShell", (build) => new GrantShellAction(build));
 }
 
 /** Convenience: register every base Action AND base Condition in one call. */
