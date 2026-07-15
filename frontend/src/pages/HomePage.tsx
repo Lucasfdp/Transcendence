@@ -13,12 +13,12 @@ import { NineSliceButton } from "../components/common/NineSliceButton";
 import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { WorkInProgressNotice } from "../components/common/WorkInProgressNotice";
 import { ShellCardsModal } from "../components/cards/ShellCardsModal";
-import { FortuneWheelModal } from "../components/casino/FortuneWheelModal";
-import { KoiDiceModal } from "../components/casino/KoiDiceModal";
-import { ShellDropModal } from "../components/casino/ShellDropModal";
-import { ShellFlipModal } from "../components/casino/ShellFlipModal";
-import { ThreeShellMonteModal } from "../components/casino/ThreeShellMonteModal";
-import { ShrineSlotsModal } from "../components/casino/ShrineSlotsModal";
+import { FortuneWheelModal } from "../components/gambling/FortuneWheelModal";
+import { KoiDiceModal } from "../components/gambling/KoiDiceModal";
+import { ShellDropModal } from "../components/gambling/ShellDropModal";
+import { ShellFlipModal } from "../components/gambling/ShellFlipModal";
+import { ThreeShellMonteModal } from "../components/gambling/ThreeShellMonteModal";
+import { ShrineSlotsModal } from "../components/gambling/ShrineSlotsModal";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
 import { ReplayViewer } from "../games/common/replay/ReplayViewer";
 import {

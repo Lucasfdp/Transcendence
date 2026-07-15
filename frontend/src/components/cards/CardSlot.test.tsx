@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { CardSlot } from "./ShellCardsModal";
-import type { CardView } from "../../features/hub/api";
+import { CardSlot } from "./CardSlot";
+import type { CardView } from "../../features/cards";
 
 function makeCard(overrides: Partial<CardView> = {}): CardView {
 	return {

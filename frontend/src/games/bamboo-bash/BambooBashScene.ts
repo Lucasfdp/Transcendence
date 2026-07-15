@@ -32,7 +32,7 @@ import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
-import { showCardDropPopup } from "../../shared/card-drop-popup";
+import { showCardDropPopup } from "../../features/cards";
 import { THEME } from "../../shared/theme";
 import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import { api } from "../../features/hub/api";

@@ -17,17 +17,17 @@ Files using `Graphics`:
 | Area | Files |
 | --- | --- |
 | Game scenes | `games/bamboo-bash/BambooBashScene.ts`, `games/bell-clash/BellClashScene.ts`, `games/kame-knock/KameKnockScene.ts`, `games/shell-curl/ShellCurlScene.ts`, `games/shell-curl/PowerPicker.ts`, `games/shared/ReplayScene.ts`, `features/hub/ShellPickerScene.ts` |
-| Shared in-game UI | `shared/mechanics/score-hud.ts`, `round-overlay.ts`, `game-end-modal.ts`, `slingshot.ts`, `sweep-controller.ts`, `shared/ui/panels/side-panel.ts`, `shared/ui/panels/GameInfoSidePanel.ts`, `shared/achievement-popup.ts`, `shared/card-drop-popup.ts` |
+| Shared in-game UI | `shared/mechanics/score-hud.ts`, `round-overlay.ts`, `game-end-modal.ts`, `slingshot.ts`, `sweep-controller.ts`, `shared/ui/panels/side-panel.ts`, `shared/ui/panels/GameInfoSidePanel.ts`, `shared/achievement-popup.ts`, `features/cards/cardDropPopup.ts` (relocated out of `shared/` during the Cards modularisation — see `docs/frontend-cards-and-gambling-migration-phases.md` Phase 2) |
 | Backgrounds | `shared/drawBackground.ts` (mountains, mist, path, torii, lanterns, petals — all procedural) |
 
 Per-frame clear-and-redraw hot spots (the performance-relevant subset): `shared/mechanics/ball.ts`, `player-trails.ts`, `rect-arena.ts`, `power-pickups.ts`, `sweep-controller.ts`, `slingshot.ts`, the `*View.ts` files of all four games (`BambooBashView`, `BellClashView`, `KameKnockView`, `ShellCurlView`), `games/common/runtime/WorldRuntime.ts`, `ArenaBallTrailRuntime.ts`, and `ReplayScene.ts`.
 
 ### React UI layer (mostly not vector)
 
-- Inline SVG in exactly **2 components**: `components/auth/OAuthButtons.tsx` and `components/casino/FortuneWheelModal.tsx` (the wheel).
+- Inline SVG in exactly **2 components**: `components/auth/OAuthButtons.tsx` and `components/gambling/FortuneWheelModal.tsx` (the wheel).
 - **1 SVG asset**, the Google OAuth provider logo in `public/assets/oauth/`; the 42 mark is rendered inline.
 - Everything else is CSS + ~111 PNG assets (7 TSX files use `<img>`).
-- One outlier: `components/casino/board-canvas.ts` draws the casino board programmatically on a 2D canvas (vector-style path drawing, not SVG).
+- One outlier: `features/gambling/board-canvas.ts` draws the casino board programmatically on a 2D canvas (vector-style path drawing, not SVG). (Consolidated out of the modal directory in the Phase 4 Gambling-feature extraction; line numbers unchanged.)
 
 **Summary:** within game rendering code, runtime vector drawing is the dominant technique; codebase-wide it is a small slice (backend and most React UI don't draw at all). This report's options concern the Phaser layer only — the React/SVG usage is negligible and fine as-is.
 

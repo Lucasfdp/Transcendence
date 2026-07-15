@@ -25,7 +25,7 @@ Ordered: fixing top-to-bottom is a sensible plan. B1–B6 are user-visible.
 
 ### B1 (MEDIUM): Chat unread badge is lost after navigating hub → game → hub
 
-**Locations:** `frontend/src/pages/HomePage.tsx:665` (`unreadConversationIds` state, initialised empty), `:929-931` (only hydration source: the socket's connect-time `chat:unread-inbox` push), `frontend/src/features/hub/api.ts:681` (comment: "pushed live over the socket, never fetched via REST"), `backend/src/modules/chat/chat.controller.ts` (no unread endpoint exists).
+**Locations:** `frontend/src/pages/HomePage.tsx:665` (`unreadConversationIds` state, initialised empty), `:929-931` (only hydration source: the socket's connect-time `chat:unread-inbox` push), `frontend/src/features/hub/api.ts:507` (comment: "pushed live over the socket, never fetched via REST"; line shifted after the Phase 1 transport extraction — see `docs/frontend-cards-and-gambling-migration-phases.md`), `backend/src/modules/chat/chat.controller.ts` (no unread endpoint exists).
 
 **Why:** the game socket is a module-level singleton that stays connected across route changes, so `chat:unread-inbox` fires once per *connect*, not per HomePage mount. After hub → game → hub, the freshly-mounted component's unread set is empty until a new message arrives. This is the exact bug class already fixed for the notification bell — see the comment block at `HomePage.tsx:803-810` and the REST hydration effect at `:811-822`. Chat unread was never given the same treatment because no REST endpoint exists.
 
@@ -139,7 +139,7 @@ DTO/authz notes: all owner checks live in the service (controller stays thin, mi
 ### Decision 2: Group member list + add-member UI + system messages
 
 1. **Backend:** `GET /api/chat/conversations/:id/members` — participant-only; returns `PendingView`-shaped entries (`userId`, `username`, `turtleName`, `shellSkin`, `avatar`, `level`, `isOnline`) plus `joinedAt` and an `isOwner` flag.
-2. **Frontend:** in the open group thread header, a "Members (n)" toggle revealing the list; each row shows presence dot and, for the owner viewing, a Kick button (decision 1). Below the list, an "Add friend" affordance listing friends not already members (client-side diff of `friends` vs member ids), calling the existing-but-unused `api.addGroupMember` (`frontend/src/features/hub/api.ts:1236`), then refreshing the member list.
+2. **Frontend:** in the open group thread header, a "Members (n)" toggle revealing the list; each row shows presence dot and, for the owner viewing, a Kick button (decision 1). Below the list, an "Add friend" affordance listing friends not already members (client-side diff of `friends` vs member ids), calling the existing-but-unused `api.addGroupMember` (`frontend/src/features/hub/api.ts:1127`), then refreshing the member list.
 3. **System message on add** — covered by B4 fix 2.
 
 ### Decision 3: Live presence push to friends
