@@ -1307,6 +1307,7 @@ input {
 
 .hub-page__clock-wrap {
 	position: relative;
+	z-index: 20;
 	justify-self: center;
 	transform: translateY(-0.55rem);
 }
@@ -1553,6 +1554,17 @@ input {
 	isolation: isolate;
 }
 
+.hub-page__content:has(.hub-page__normal-view) {
+	grid-template-rows: minmax(min-content, 1fr) auto;
+	row-gap: 0;
+}
+
+.hub-page__stage:has(.hub-page__normal-view) {
+	grid-template-rows: auto minmax(min-content, 1fr);
+	align-self: stretch;
+	align-content: stretch;
+}
+
 .hub-page__mode-grid {
 	width: min(82rem, 100%);
 	grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1561,8 +1573,9 @@ input {
 
 .hub-page__normal-view {
 	display: grid;
+	grid-template-rows: auto minmax(4rem, 1fr);
 	justify-items: center;
-	gap: 1rem;
+	align-self: stretch;
 	width: min(48rem, 100%);
 }
 
@@ -1680,6 +1693,7 @@ input {
 }
 
 .hub-page__mode-back-button {
+	align-self: center;
 	padding: 0.6rem 1.35rem;
 	border: 1px solid rgba(123, 183, 111, 0.58);
 	border-radius: 0.86rem;
