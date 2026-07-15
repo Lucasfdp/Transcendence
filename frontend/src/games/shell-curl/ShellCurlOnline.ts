@@ -17,20 +17,19 @@ import {
 import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
 import { THEME } from "../../shared/theme";
 import { drawShellCurlBallTrails, drawShellCurlBumpers } from "./ShellCurlView";
+import { destroyIngamePlayerTexture } from "../../shared/mechanics/player-renderer";
 import {
-	interpolateBellPhysics,
-	ONLINE_PHYSICS_BUFFER_SIZE,
-	ONLINE_PHYSICS_DELAY_MS,
-	type BellPhysicsSample,
-} from "../bell-clash/bell-clash-interpolation";
+	appendAuthoritativeSample,
+	AuthoritativeProjectionTimeline,
+	type AuthoritativePhysicsSample,
+} from "../common/runtime/authoritative-projection";
 
 const DEPTH_BALLS = 2;
 const DEPTH_HUD = 20;
 const DEPTH_OVERLAY = 100;
-
 interface ProjectedCurlingBall extends CurlingBallState {
 	entityId: number;
-	syncSamples?: BellPhysicsSample[];
+	syncSamples?: AuthoritativePhysicsSample[];
 }
 
 interface GameInputAck {
@@ -90,7 +89,7 @@ export class ShellCurlOnlineController {
 	private match: OnlineMatchContext | null = null;
 	private lastSeq = -1;
 	private lastPhysicsSeq = -1;
-	private serverClockOffsetMs = 0;
+	private readonly projectionTimeline = new AuthoritativeProjectionTimeline();
 	private statusText: Phaser.GameObjects.Text | null = null;
 	private readonly projected = new Map<number, ProjectedCurlingBall>();
 	private rejoinTimer: ReturnType<typeof setInterval> | null = null;
@@ -112,7 +111,7 @@ export class ShellCurlOnlineController {
 		this.match = isShellCurlSnapshot(match?.snapshot) ? match : null;
 		this.lastSeq = -1;
 		this.lastPhysicsSeq = -1;
-		this.serverClockOffsetMs = 0;
+		this.projectionTimeline.reset();
 		this.releasePending = false;
 		this.projected.clear();
 		return this.isActive;
@@ -177,10 +176,8 @@ export class ShellCurlOnlineController {
 	}
 
 	updateReplay(_delta: number): void {
-		const renderAt =
-			Date.now() - this.serverClockOffsetMs - ONLINE_PHYSICS_DELAY_MS;
 		for (const ball of this.projected.values()) {
-			const sample = interpolateBellPhysics(ball.syncSamples ?? [], renderAt);
+			const sample = this.projectionTimeline.interpolate(ball.syncSamples ?? []);
 			if (!sample) continue;
 			this.applySample(ball, sample);
 		}
@@ -243,17 +240,19 @@ export class ShellCurlOnlineController {
 	}
 
 	private applyPhysicsState(state: ShellCurlPhysicsState): void {
-		if (!this.match || state.matchId !== this.match.matchId || state.physicsSeq <= this.lastPhysicsSeq) return;
-		const firstProjection = this.lastPhysicsSeq < 0;
+		if (!this.match || state.matchId !== this.match.matchId || !this.projectionTimeline.accept(state.physicsSeq, state.serverTime)) return;
 		this.lastPhysicsSeq = state.physicsSeq;
-		this.serverClockOffsetMs = firstProjection
-			? Date.now() - state.serverTime
-			: Math.min(this.serverClockOffsetMs, Date.now() - state.serverTime);
-		const ids = new Set(state.entities.map((entity) => entity.id));
-		for (const [id, ball] of this.projected) if (!ids.has(id)) {
-			this.projected.delete(id);
-			this.scene.removeBall(ball);
+		if (state.entities.length === 0) {
+			this.projected.clear();
+			this.scene.clearAllBallGfx();
+			this.scene.activeBall = null;
+			this.scene.clearActiveRing();
+			this.releasePending = false;
+			this.scene.updateSidePanels();
+			return;
 		}
+		const ids = new Set(state.entities.map((entity) => entity.id));
+		for (const id of this.projected.keys()) if (!ids.has(id)) this.destroyProjectedBall(id);
 		if (state.entities.some((entity) => !entity.stopped))
 			this.scene.discardOnlineAimBall();
 		for (const entity of state.entities) {
@@ -264,15 +263,17 @@ export class ShellCurlOnlineController {
 					| undefined);
 			if (!ball) {
 				ball = { id: entity.id, entityId: entity.id, teamId: entity.ownerSide, x: 0, y: 0, vx: 0, vy: 0, r: entity.radius * this.scene.arena.scale, power: entity.power as PowerType, stopped: entity.stopped, curlBias: DEFAULT_CURL_BIAS };
-				this.scene.ballGfx.set(entity.id, this.scene.add.graphics().setDepth(DEPTH_BALLS));
+				this.projected.set(entity.id, ball);
+				if (!this.scene.ballGfx.has(entity.id))
+					this.scene.ballGfx.set(entity.id, this.scene.add.graphics().setDepth(DEPTH_BALLS));
 			}
 			ball.entityId = entity.id;
 			this.projected.set(entity.id, ball);
-			const sample: BellPhysicsSample = { x: entity.x / 1570, y: entity.y / 880, vx: entity.vx / 1570, vy: entity.vy / 880, radius: entity.radius / 1570, stopped: entity.stopped, serverTime: state.serverTime };
+			const sample: AuthoritativePhysicsSample = { x: entity.x / 1570, y: entity.y / 880, vx: entity.vx / 1570, vy: entity.vy / 880, radius: entity.radius / 1570, stopped: entity.stopped, serverTime: state.serverTime };
 			ball.teamId = entity.ownerSide;
 			ball.power = entity.power as PowerType;
 			ball.stopped = entity.stopped;
-			ball.syncSamples = [...(ball.syncSamples ?? []).filter((entry) => entry.serverTime < sample.serverTime), sample].slice(-ONLINE_PHYSICS_BUFFER_SIZE);
+			ball.syncSamples = appendAuthoritativeSample(ball.syncSamples ?? [], sample);
 			if (entity.stopped) this.applySample(ball, sample);
 		}
 		this.scene.allBalls = [...this.projected.values()];
@@ -281,7 +282,20 @@ export class ShellCurlOnlineController {
 		this.scene.updateSidePanels();
 	}
 
-	private applySample(ball: ProjectedCurlingBall, sample: BellPhysicsSample): void {
+	private destroyProjectedBall(id: number): void {
+		this.projected.delete(id);
+		this.scene.ballGfx.get(id)?.destroy();
+		this.scene.ballGfx.delete(id);
+		destroyIngamePlayerTexture(this.scene, `shell-curl-player-${id}`);
+		this.scene.ballTrails.delete(id);
+		this.scene.allBalls = this.scene.allBalls.filter((ball) => ball.id !== id);
+		if (this.scene.activeBall?.id === id) {
+			this.scene.activeBall = null;
+			this.scene.clearActiveRing();
+		}
+	}
+
+	private applySample(ball: ProjectedCurlingBall, sample: AuthoritativePhysicsSample): void {
 		ball.x = this.scene.arena.sheetX + sample.x * this.scene.arena.sheetW;
 		ball.y = this.scene.arena.sheetY + sample.y * this.scene.arena.sheetH;
 		ball.vx = sample.vx * this.scene.arena.sheetW;

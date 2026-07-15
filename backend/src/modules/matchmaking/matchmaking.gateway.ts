@@ -1203,7 +1203,21 @@ export class MatchmakingGateway
 			matchId: physics.matchId,
 			physicsSeq: physics.physicsSeq,
 			serverTime: physics.serverTime,
-			entities: physics.entities,
+			// Keep the public transport contract independent from physics internals.
+			// In particular, Curling's per-ball trail must never be sent at 30 Hz.
+			entities: physics.entities.map((entity) => ({
+				id: entity.id,
+				ownerSide: entity.ownerSide,
+				primary: entity.primary,
+				x: entity.x,
+				y: entity.y,
+				vx: entity.vx,
+				vy: entity.vy,
+				radius: entity.radius,
+				power: entity.power,
+				stopped: entity.stopped,
+				alpha: entity.alpha,
+			})),
 			pickups: physics.pickups,
 			scoreEvents: physics.scoreEvents,
 			pickupEvents: physics.pickupEvents ?? [],

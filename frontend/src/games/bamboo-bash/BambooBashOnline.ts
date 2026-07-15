@@ -30,11 +30,10 @@ import {
 	showBambooBashPowerPickupNotice,
 } from "./BambooBashView";
 import {
-	interpolateBellPhysics,
-	ONLINE_PHYSICS_BUFFER_SIZE,
-	ONLINE_PHYSICS_DELAY_MS,
-	type BellPhysicsSample,
-} from "../bell-clash/bell-clash-interpolation";
+	appendAuthoritativeSample,
+	AuthoritativeProjectionTimeline,
+	type AuthoritativePhysicsSample,
+} from "../common/runtime/authoritative-projection";
 
 /** Online ball state with powerup visual properties. */
 export interface OnlineBallState extends BallState {
@@ -45,8 +44,8 @@ export interface OnlineBallState extends BallState {
 	power?: string;
 	trail?: Array<{ x: number; y: number }>;
 	stateFlags?: string[];
-	syncTarget?: BellPhysicsSample;
-	syncSamples?: BellPhysicsSample[];
+	syncTarget?: AuthoritativePhysicsSample;
+	syncSamples?: AuthoritativePhysicsSample[];
 }
 
 interface GameInputAck {
@@ -116,7 +115,7 @@ export class BambooBashOnlineController {
 	private lastPickupEventId = 0;
 	private hasPhysicsProjection = false;
 	private readonly projectedEntities = new Map<number, OnlineBallState>();
-	private serverClockOffsetMs = 0;
+	private readonly projectionTimeline = new AuthoritativeProjectionTimeline();
 	private latestPhysicsState: BambooBashPhysicsState | null = null;
 	private rejoinPhysicsTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -210,7 +209,7 @@ export class BambooBashOnlineController {
 		this.lastPickupEventId = 0;
 		this.hasPhysicsProjection = false;
 		this.projectedEntities.clear();
-		this.serverClockOffsetMs = 0;
+		this.projectionTimeline.reset();
 		this.latestPhysicsState = null;
 	}
 
@@ -282,10 +281,7 @@ export class BambooBashOnlineController {
 	update(_delta: number): void {
 		if (!this.match) return;
 		for (const ball of this.projectedEntities.values()) {
-			const target = interpolateBellPhysics(
-				ball.syncSamples ?? [],
-				Date.now() - this.serverClockOffsetMs - ONLINE_PHYSICS_DELAY_MS,
-			);
+			const target = this.projectionTimeline.interpolate(ball.syncSamples ?? []);
 			if (!target) continue;
 			ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
 			ball.y = this.scene.arena.cy + target.y * this.scene.arena.scale;
@@ -298,13 +294,9 @@ export class BambooBashOnlineController {
 	}
 
 	private applyPhysicsState(state: BambooBashPhysicsState): void {
-		if (!this.match || state.matchId !== this.match.matchId || state.physicsSeq <= this.lastPhysicsSeq)
+		if (!this.match || state.matchId !== this.match.matchId || !this.projectionTimeline.accept(state.physicsSeq, state.serverTime))
 			return;
 		this.lastPhysicsSeq = state.physicsSeq;
-		const offset = Date.now() - state.serverTime;
-		this.serverClockOffsetMs = this.latestPhysicsState
-			? Math.min(this.serverClockOffsetMs, offset)
-			: offset;
 		this.latestPhysicsState = state;
 		const isInitialPhysicsProjection = !this.hasPhysicsProjection;
 		this.hasPhysicsProjection = true;
@@ -350,7 +342,7 @@ export class BambooBashOnlineController {
 			let ball = entity.primary && entity.ownerSide === this.side
 				? this.scene.ball as OnlineBallState
 				: this.projectedEntities.get(entity.id);
-			const target: BellPhysicsSample = {
+			const target: AuthoritativePhysicsSample = {
 				x: entity.x, y: entity.y, vx: entity.vx, vy: entity.vy,
 				radius: entity.radius, stopped: entity.stopped, serverTime: state.serverTime,
 			};
@@ -363,7 +355,7 @@ export class BambooBashOnlineController {
 			ball.alpha = entity.alpha;
 			ball.scale = entity.radius / BALL_SRC_R;
 			ball.syncTarget = target;
-			ball.syncSamples = [...(ball.syncSamples ?? []).filter((sample) => sample.serverTime < target.serverTime), target].slice(-ONLINE_PHYSICS_BUFFER_SIZE);
+			ball.syncSamples = appendAuthoritativeSample(ball.syncSamples ?? [], target);
 			if (entity.primary && entity.ownerSide === this.side && entity.stopped) {
 				ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
 				ball.y = this.scene.arena.cy + target.y * this.scene.arena.scale;

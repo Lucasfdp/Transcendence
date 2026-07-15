@@ -165,6 +165,7 @@ describe("ArenaSimulationService", () => {
 				if (activeRoom.physicsState) activeRoom.physicsState.entities = [];
 				return true;
 			}),
+			captureReplayFrame: jest.fn(),
 		} as unknown as GameSessionService;
 		const service = new ArenaSimulationService(rooms, sessions);
 		const broadcast = jest.fn();

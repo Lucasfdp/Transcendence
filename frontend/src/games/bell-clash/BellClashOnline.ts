@@ -34,11 +34,10 @@ import {
 	ZONE_DEFS,
 } from "./BellClashView";
 import {
-	interpolateBellPhysics,
-	ONLINE_PHYSICS_BUFFER_SIZE,
-	ONLINE_PHYSICS_DELAY_MS,
-	type BellPhysicsSample,
-} from "./bell-clash-interpolation";
+	appendAuthoritativeSample,
+	AuthoritativeProjectionTimeline,
+	type AuthoritativePhysicsSample,
+} from "../common/runtime/authoritative-projection";
 
 export interface OnlineBallState extends BallState {
 	entityId?: number;
@@ -48,7 +47,7 @@ export interface OnlineBallState extends BallState {
 	power?: string;
 	trail?: Array<{ x: number; y: number }>;
 	stateFlags?: string[];
-	syncTarget?: BellPhysicsSample;
+	syncTarget?: AuthoritativePhysicsSample;
 	syncSamples?: Array<NonNullable<OnlineBallState["syncTarget"]>>;
 }
 
@@ -122,7 +121,7 @@ export class BellClashOnlineController {
 	private hasPhysicsProjection = false;
 	private readonly projectedEntities = new Map<number, OnlineBallState>();
 	private localPhysicsMoving = false;
-	private serverClockOffsetMs = 0;
+	private readonly projectionTimeline = new AuthoritativeProjectionTimeline();
 	private latestPhysicsState: BellClashPhysicsState | null = null;
 	private rejoinPhysicsTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -203,7 +202,7 @@ export class BellClashOnlineController {
 		this.hasPhysicsProjection = false;
 		this.projectedEntities.clear();
 		this.localPhysicsMoving = false;
-		this.serverClockOffsetMs = 0;
+		this.projectionTimeline.reset();
 		this.latestPhysicsState = null;
 		return this.isActive;
 	}
@@ -509,14 +508,10 @@ export class BellClashOnlineController {
 		if (
 			!this.match ||
 			state.matchId !== this.match.matchId ||
-			state.physicsSeq <= this.lastPhysicsSeq
+			!this.projectionTimeline.accept(state.physicsSeq, state.serverTime)
 		)
 			return;
 		this.lastPhysicsSeq = state.physicsSeq;
-		const observedOffset = Date.now() - state.serverTime;
-		this.serverClockOffsetMs = this.latestPhysicsState
-			? Math.min(this.serverClockOffsetMs, observedOffset)
-			: observedOffset;
 		this.latestPhysicsState = state;
 		const isInitialPhysicsProjection = !this.hasPhysicsProjection;
 		this.hasPhysicsProjection = true;
@@ -560,12 +555,10 @@ export class BellClashOnlineController {
 			ball.alpha = entity.alpha;
 			ball.scale = entity.radius / BALL_SRC_R;
 			ball.syncTarget = target;
-			ball.syncSamples = [
-				...(ball.syncSamples ?? []).filter(
-					(sample) => sample.serverTime < target.serverTime,
-				),
+			ball.syncSamples = appendAuthoritativeSample(
+				ball.syncSamples ?? [],
 				target,
-			].slice(-ONLINE_PHYSICS_BUFFER_SIZE);
+			);
 			if (
 				entity.primary &&
 				entity.ownerSide === this.side &&
@@ -646,9 +639,7 @@ export class BellClashOnlineController {
 	}
 
 	private updateProjectedBall(ball: OnlineBallState, _delta: number): void {
-		const renderTime =
-			Date.now() - this.serverClockOffsetMs - ONLINE_PHYSICS_DELAY_MS;
-		const target = interpolateBellPhysics(ball.syncSamples ?? [], renderTime);
+		const target = this.projectionTimeline.interpolate(ball.syncSamples ?? []);
 		if (!target) return;
 		const x = this.scene.arena.cx + target.x * this.scene.arena.scale;
 		const y = this.scene.arena.cy + target.y * this.scene.arena.scale;

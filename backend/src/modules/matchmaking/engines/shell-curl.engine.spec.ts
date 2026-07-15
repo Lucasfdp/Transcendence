@@ -69,6 +69,19 @@ describe("ShellCurlEngine", () => {
 		expect(room.physicsState?.entities[0]?.x).toBeGreaterThan(90);
 	});
 
+	it("keeps lifecycle state stable while a physics projection is moving", () => {
+		const engine = new ShellCurlEngine();
+		const room = makeRoom();
+		engine.start(room);
+		expect(release(engine, room, 1, { vx: 300, vy: 0 })).toBe(room);
+		const lifecycleSequence = room.state.seq;
+
+		engine.advanceSimulation(room, 1000 / 30);
+
+		expect(room.physicsState?.physicsSeq).toBeGreaterThan(0);
+		expect(room.state.seq).toBe(lifecycleSequence);
+	});
+
 	it("requires selected powers and consumes an active power only once per game", () => {
 		const engine = new ShellCurlEngine();
 		const room = makeRoom(2, [["rocket"], []]);

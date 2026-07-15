@@ -103,7 +103,6 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		if (!advanceShellCurlPhysics(physics, state, deltaMs)) return false;
 		syncShellCurlSnapshot(state, physics);
 		if (physics.entities.some((entity) => !entity.stopped)) {
-			this.bumpRoomState(room);
 			return true;
 		}
 		this.completeTurn(room, state, physics);

@@ -1,12 +1,10 @@
-export interface BellPhysicsSample {
-	x: number;
-	y: number;
-	vx: number;
-	vy: number;
-	radius: number;
-	stopped: boolean;
-	serverTime: number;
-}
+import type { AuthoritativePhysicsSample } from "../common/runtime/authoritative-projection";
+
+/**
+ * Legacy Bell Clash interpolation API retained for replay consumers and older
+ * callers. Live authoritative renderers use AuthoritativeProjectionTimeline.
+ */
+export type BellPhysicsSample = AuthoritativePhysicsSample;
 
 export const ONLINE_PHYSICS_BUFFER_SIZE = 8;
 export const ONLINE_PHYSICS_DELAY_MS = 100;

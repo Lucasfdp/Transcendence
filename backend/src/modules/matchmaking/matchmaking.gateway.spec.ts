@@ -196,6 +196,53 @@ describe("MatchmakingGateway", () => {
 	});
 
 	describe("arena simulation broadcasts", () => {
+		it("publishes a compact public physics entity without server-only trails", () => {
+			const room = makeRoom({
+				physicsState: {
+					matchId: "match-1",
+					physicsSeq: 2,
+					serverTime: 100,
+					entities: [
+						{
+							id: 7,
+							ownerSide: 1,
+							primary: true,
+							x: 10,
+							y: 20,
+							vx: 30,
+							vy: 40,
+							radius: 28,
+							rotation: 0,
+							angularVelocity: 0,
+							power: "none",
+							stopped: false,
+							alpha: 1,
+							ghostCollisionAvailable: false,
+							trail: [{ x: 1, y: 2 }],
+						} as never,
+					],
+					pickups: [],
+					scoreEvents: [],
+					nextEntityId: 8,
+					nextPickupId: 1,
+					nextScoreEventId: 1,
+					bellCooldownMs: [],
+				},
+			});
+
+			const projection = (
+				gateway as unknown as {
+					publicPhysicsState: (value: MatchRoom) => { entities: unknown[] };
+				}
+			).publicPhysicsState(room);
+
+			expect(projection.entities).toEqual([
+				expect.objectContaining({ id: 7, ownerSide: 1, x: 10, y: 20 }),
+			]);
+			expect(projection.entities[0]).not.toHaveProperty("trail");
+			expect(projection.entities[0]).not.toHaveProperty("ghostCollisionAvailable");
+		});
+
 		it("broadcasts physics separately and does not repeat lifecycle state", () => {
 			const room = makeRoom({
 				status: "active",

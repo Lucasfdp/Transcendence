@@ -323,29 +323,18 @@ Missing for completion:
   rejected. Rejoin uses a fresh physics request, while the projection frames
   remain compatible with replay capture. Curling now uses the same ball
   vocabulary as the other games across turn state, HUD state, physics, powers,
-  replay, and online projection code. Backend physics/engine/gateway tests and
-  the complete backend suite (60 suites / 833 tests) passed previously; the
-   frontend suite (51 files / 298 tests) and production build passed on
-   2026-07-15.
-- A post-merge online regression repair on 2026-07-15 strengthened the shared
-  projection path used by all four arena games. Clients now retain eight
-  physics samples, render with a 100 ms jitter margin, and use velocity-based
-  extrapolation capped at 100 ms instead of freezing immediately when a future
-  sample is late. Server catch-up still executes every fixed simulation step
-  but coalesces each room to its newest projection per timer callback, avoiding
-  bursts of stale intermediate socket messages. Bell Clash continues rendering
-  online projections through countdown or rejoin UI pauses, while Kame Knock
-  no longer rebuilds static targets, pickups, HUD panels, and slingshot state on
-  every physics packet.
-- The same repair removed Temple Curling's non-interactive balls from previous
-  ends. Authoritative reconciliation now destroys both Phaser graphics and
-  named shell textures, adopts snapshot entities rather than duplicating them,
-  and keeps the local aiming proxy on a separate negative ID range. Pending
-  matches cannot enable aiming, rejected releases restore the complete aiming
-  state and selected power, and each end reset publishes a strictly newer empty
-  physics projection. Automated validation passed the frontend suite (55 files
-  / 337 tests), backend suite (60 suites / 833 tests), both production builds,
-  backend lint with no errors, and the complete container health check.
+  replay, and online projection code. Its moving physics ticks no longer emit
+  lifecycle snapshots, and the public projection now excludes internal physics
+  fields and historical trails. All authoritative game clients share an
+  adaptive, bounded interpolation timeline and Curling removes every visual and
+  trail resource when the authoritative world removes an entity. Focused
+  backend physics/engine/gateway tests, the full frontend and backend suites,
+  and both production builds passed on 2026-07-15.
+- Temple Curling also keeps the local aiming proxy separate from authoritative
+  entities, prevents aiming while a release is pending, and restores the
+  selected power when a launch is rejected. Kame Knock avoids rebuilding
+  unchanged targets, pickups, HUD panels, and slingshot state for every
+  projection frame.
 - Complete Kame Knock spectator entry during live play and responsive relayout
   validation before claiming its rollout complete.
 - Complete the manual two-client Temple Curling matrix, including the eight

@@ -28,11 +28,10 @@ import { PLAYER_COLOUR_VALUES } from "../../shared/game-ui";
 import { clearKameKnockPowerBalls } from "./KameKnockView";
 import { popKameKnockScore, showKameKnockPowerPickupNotice } from "./KameKnockView";
 import {
-	interpolateBellPhysics,
-	ONLINE_PHYSICS_BUFFER_SIZE,
-	ONLINE_PHYSICS_DELAY_MS,
-	type BellPhysicsSample,
-} from "../bell-clash/bell-clash-interpolation";
+	appendAuthoritativeSample,
+	AuthoritativeProjectionTimeline,
+	type AuthoritativePhysicsSample,
+} from "../common/runtime/authoritative-projection";
 
 /** Online ball state with powerup visual properties. */
 export interface OnlineBallState extends BallState {
@@ -43,7 +42,7 @@ export interface OnlineBallState extends BallState {
 	power?: string;
 	trail?: Array<{ x: number; y: number }>;
 	stateFlags?: string[];
-	syncSamples?: BellPhysicsSample[];
+	syncSamples?: AuthoritativePhysicsSample[];
 }
 
 interface GameInputAck {
@@ -113,7 +112,7 @@ export class KameKnockOnlineController {
 	private lastScoreEventId = 0;
 	private lastPickupEventId = 0;
 	private readonly projectedEntities = new Map<number, OnlineBallState>();
-	private serverClockOffsetMs = 0;
+	private readonly projectionTimeline = new AuthoritativeProjectionTimeline();
 	private latestPhysicsState: KameKnockPhysicsState | null = null;
 	private rejoinPhysicsTimer: ReturnType<typeof setInterval> | null = null;
 	private targetsSignature = "";
@@ -205,8 +204,8 @@ export class KameKnockOnlineController {
 		this.lastScoreEventId = 0;
 		this.lastPickupEventId = 0;
 		this.projectedEntities.clear();
+		this.projectionTimeline.reset();
 		this.latestPhysicsState = null;
-		this.serverClockOffsetMs = 0;
 		this.targetsSignature = "";
 		this.pickupsSignature = "";
 		this.scoreSignature = "";
@@ -422,10 +421,7 @@ export class KameKnockOnlineController {
 
 	update(_delta: number): void {
 		for (const ball of this.projectedEntities.values()) {
-			const target = interpolateBellPhysics(
-				ball.syncSamples ?? [],
-				Date.now() - this.serverClockOffsetMs - ONLINE_PHYSICS_DELAY_MS,
-			);
+			const target = this.projectionTimeline.interpolate(ball.syncSamples ?? []);
 			if (!target) continue;
 			ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
 			ball.y = this.scene.arena.cy + target.y * this.scene.arena.scale;
@@ -463,11 +459,8 @@ export class KameKnockOnlineController {
 	}
 
 	private applyPhysicsState(state: KameKnockPhysicsState): void {
-		if (!this.match || state.matchId !== this.match.matchId || state.physicsSeq <= this.lastPhysicsSeq) return;
+		if (!this.match || state.matchId !== this.match.matchId || !this.projectionTimeline.accept(state.physicsSeq, state.serverTime)) return;
 		this.lastPhysicsSeq = state.physicsSeq;
-		this.serverClockOffsetMs = this.latestPhysicsState
-			? Math.min(this.serverClockOffsetMs, Date.now() - state.serverTime)
-			: Date.now() - state.serverTime;
 		this.latestPhysicsState = state;
 		const targetsSignature = JSON.stringify(state.targets ?? []);
 		const pickupsSignature = JSON.stringify(state.pickups);
@@ -492,8 +485,8 @@ export class KameKnockOnlineController {
 			if (!ball) ball = { x: this.scene.arena.cx + entity.x * this.scene.arena.scale, y: this.scene.arena.cy + entity.y * this.scene.arena.scale, vx: 0, vy: 0, r: entity.radius * this.scene.arena.scale };
 			if (ball.entityId !== entity.id) ball.syncSamples = [];
 			ball.entityId = entity.id; ball.ownerSide = entity.ownerSide; ball.power = entity.power; ball.alpha = entity.alpha; ball.scale = entity.radius / BALL_SRC_R;
-			const sample: BellPhysicsSample = { x: entity.x, y: entity.y, vx: entity.vx, vy: entity.vy, radius: entity.radius, stopped: entity.stopped, serverTime: state.serverTime };
-			ball.syncSamples = [...(ball.syncSamples ?? []).filter((entry) => entry.serverTime < sample.serverTime), sample].slice(-ONLINE_PHYSICS_BUFFER_SIZE);
+			const sample: AuthoritativePhysicsSample = { x: entity.x, y: entity.y, vx: entity.vx, vy: entity.vy, radius: entity.radius, stopped: entity.stopped, serverTime: state.serverTime };
+			ball.syncSamples = appendAuthoritativeSample(ball.syncSamples ?? [], sample);
 			if (entity.stopped) { ball.x = this.scene.arena.cx + entity.x * this.scene.arena.scale; ball.y = this.scene.arena.cy + entity.y * this.scene.arena.scale; ball.vx = 0; ball.vy = 0; }
 			this.projectedEntities.set(entity.id, ball);
 			if (entity.primary) primary.set(entity.ownerSide, ball); else derived.push({ ball, player: entity.ownerSide });
