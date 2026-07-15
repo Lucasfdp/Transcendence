@@ -56,6 +56,205 @@ input {
 	font: inherit;
 }
 
+.viewport-guard {
+	position: fixed;
+	inset: 0;
+	z-index: 10000;
+	display: grid;
+	place-items: center;
+	overflow: hidden;
+	padding: clamp(1.25rem, 4vw, 3rem);
+	background:
+		linear-gradient(135deg, rgba(7, 10, 15, 0.74), rgba(7, 10, 15, 0.95)),
+		repeating-linear-gradient(
+			90deg,
+			transparent 0,
+			transparent 3.4rem,
+			rgba(241, 211, 145, 0.045) 3.45rem,
+			rgba(241, 211, 145, 0.045) 3.5rem
+		),
+		#080b10;
+}
+
+.viewport-guard__sun {
+	position: absolute;
+	top: -20vmax;
+	right: -14vmax;
+	width: 56vmax;
+	aspect-ratio: 1;
+	border: 1px solid rgba(241, 211, 145, 0.28);
+	border-radius: 50%;
+	box-shadow: 0 0 0 4vmax rgba(241, 211, 145, 0.025), 0 0 9vmax rgba(232, 138, 61, 0.16);
+}
+
+.viewport-guard__panel {
+	position: relative;
+	width: min(100%, 38rem);
+	padding: clamp(2rem, 6vw, 4.25rem);
+	border: 1px solid rgba(241, 211, 145, 0.48);
+	background: linear-gradient(145deg, rgba(23, 28, 34, 0.98), rgba(7, 10, 14, 0.94));
+	box-shadow: 1rem 1rem 0 rgba(0, 0, 0, 0.3), 0 1.5rem 5rem rgba(0, 0, 0, 0.52);
+	text-align: center;
+}
+
+.viewport-guard__panel::before,
+.viewport-guard__panel::after {
+	position: absolute;
+	width: 1.25rem;
+	height: 1.25rem;
+	border-color: var(--accent);
+	border-style: solid;
+	content: "";
+}
+
+.viewport-guard__panel::before {
+	top: 0.55rem;
+	left: 0.55rem;
+	border-width: 1px 0 0 1px;
+}
+
+.viewport-guard__panel::after {
+	right: 0.55rem;
+	bottom: 0.55rem;
+	border-width: 0 1px 1px 0;
+}
+
+.viewport-guard__eyebrow {
+	margin: 0 0 1rem;
+	color: var(--accent);
+	font-size: 0.76rem;
+	letter-spacing: 0.28em;
+	text-transform: uppercase;
+}
+
+.viewport-guard h1 {
+	margin: 0;
+	font-family: var(--display-font);
+	font-size: clamp(2.4rem, 8vw, 5rem);
+	line-height: 0.9;
+	text-transform: uppercase;
+}
+
+.viewport-guard__panel > p:not(.viewport-guard__eyebrow) {
+	max-width: 33rem;
+	margin: 1.5rem auto 0;
+	color: var(--muted);
+	font-size: clamp(1rem, 2.4vw, 1.2rem);
+	line-height: 1.5;
+}
+
+.viewport-guard__risk,
+.viewport-guard__instruction {
+	color: var(--accent) !important;
+	font-weight: 700;
+}
+
+.viewport-guard__continue {
+	margin-top: 2rem;
+	padding: 0.9rem 1.5rem;
+	border: 1px solid var(--accent);
+	background: var(--accent);
+	color: #17110b;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	cursor: pointer;
+	transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.viewport-guard__continue:hover,
+.viewport-guard__continue:focus-visible {
+	background: transparent;
+	color: var(--accent);
+	transform: translateY(-2px);
+}
+
+.viewport-guard__device {
+	position: relative;
+	display: grid;
+	place-items: center;
+	width: 7rem;
+	margin: 0 auto 1.5rem;
+	aspect-ratio: 1;
+}
+
+.viewport-guard__device-frame {
+	width: 5.8rem;
+	height: 3.35rem;
+	border: 2px solid var(--accent);
+	border-radius: 0.4rem;
+	box-shadow: inset 0 0 0 0.35rem rgba(241, 211, 145, 0.1);
+}
+
+.viewport-guard__rotation-arrow {
+	position: absolute;
+	right: -0.1rem;
+	bottom: -0.1rem;
+	color: var(--accent-strong);
+	font-family: var(--mono-font);
+	font-size: 2.5rem;
+	line-height: 1;
+}
+
+@media (max-height: 34rem) and (orientation: landscape) {
+	.viewport-guard {
+		padding: 0.9rem;
+	}
+
+	.viewport-guard__panel {
+		width: min(100%, 42rem);
+		padding: 1.15rem 2.25rem;
+	}
+
+	.viewport-guard__device {
+		margin-bottom: 0.6rem;
+		transform: scale(0.72);
+	}
+
+	.viewport-guard__panel > p:not(.viewport-guard__eyebrow) {
+		margin-top: 0.65rem;
+		line-height: 1.35;
+	}
+
+	.viewport-guard__continue {
+		margin-top: 0.9rem;
+	}
+}
+
+/* Phone landscape can be as short as 320 px: keep the whole decision visible. */
+@media (max-height: 28rem) and (orientation: landscape) {
+	.viewport-guard__panel {
+		padding: 0.75rem 1.5rem 0.9rem;
+	}
+
+	.viewport-guard__eyebrow {
+		margin-bottom: 0.35rem;
+		font-size: 0.62rem;
+	}
+
+	.viewport-guard h1 {
+		font-size: clamp(1.75rem, 4.6vw, 2.8rem);
+	}
+
+	.viewport-guard__panel > p:not(.viewport-guard__eyebrow) {
+		margin-top: 0.45rem;
+		font-size: clamp(0.82rem, 1.7vw, 1rem);
+		line-height: 1.25;
+	}
+
+	.viewport-guard__continue {
+		margin-top: 0.65rem;
+		padding: 0.6rem 1rem;
+		font-size: 0.76rem;
+	}
+
+	.viewport-guard__device {
+		width: 4.25rem;
+		margin-bottom: 0.15rem;
+		transform: scale(0.62);
+	}
+}
+
 .nine-slice-button {
 	border-style: solid;
 	border-width: var(--nine-slice-width, 40px);
