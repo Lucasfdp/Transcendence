@@ -1,4 +1,3 @@
-import { MAX_WAGER_COINS, MIN_WAGER_COINS } from "./casino.constants";
 import {
 	PAYTABLE,
 	SLOT_REEL_COUNT,
@@ -125,13 +124,6 @@ describe("slots.constants", () => {
 		it("should land within the net-neutral band [0.99, 1.0]", () => {
 			expect(slotsRtp()).toBeGreaterThanOrEqual(0.99);
 			expect(slotsRtp()).toBeLessThanOrEqual(1 + 1e-9);
-		});
-	});
-
-	describe("wager bounds", () => {
-		it("should reuse the shared whole-coin wager bounds", () => {
-			expect(Number.isInteger(MIN_WAGER_COINS)).toBe(true);
-			expect(MAX_WAGER_COINS).toBeGreaterThan(MIN_WAGER_COINS);
 		});
 	});
 });

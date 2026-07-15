@@ -113,8 +113,8 @@ before the next. Don't skip red. Present a review checkpoint after each batch.
 ### Batch 0 — Frontend test harness
 - Added Vitest + RTL + jsdom + v8 coverage. Files:
   - `frontend/vitest.config.ts` (jsdom, setup file, lcov → `frontend/coverage/`)
-  - `frontend/src/test/setup.ts` (jest-dom matchers + auto-cleanup)
-  - `frontend/src/test/smoke.test.tsx`
+  - `frontend/src/test/setup.ts` (jest-dom matchers + auto-cleanup). The original
+    harness-only smoke test was retired once targeted frontend suites covered the setup.
   - `frontend/package.json` — scripts `test`, `test:run`, `coverage`; pinned dev deps
     (`vitest@^1.6.1`, `@vitest/coverage-v8`, `@testing-library/{react,dom,jest-dom,user-event}`, `jsdom`).
   - `.sonarcloud.properties` — registered frontend `*.test.ts[x]` as tests; added
@@ -148,7 +148,8 @@ New, fully unit-tested pure/presentational modules under `frontend/src/features/
   (`offline|online|in-game`), `setInGame`/`clearInGame`/`getStatus`/`getGameId`; `disconnect`
   clears in-game when the last socket drops.
 - `users/entities/user.entity.ts` — new nullable `lastSeenAt: Date | null` column.
-- `users/users.service.ts` — `markSeen(userId, when?)` (+ focused `users.service.markSeen.spec.ts`, 2 tests).
+- `users/users.service.ts` — `markSeen(userId, when?)` (+ two cases in the consolidated
+  `users.service.spec.ts` suite).
 - `migrations/20260701000000-add-user-last-seen.ts` — adds `users."lastSeenAt"` (camelCase to
   match the users table; `IF NOT EXISTS`, reversible).
 - `friends/friends.service.ts` — `FriendView` gained `status`, `gameId`, `lastSeenAt`
@@ -297,7 +298,7 @@ Changed/added files so far (relative to repo root):
 .gitignore  .sonarcloud.properties
 backend/src/modules/presence/presence.service.ts (+ presence.service.spec.ts)
 backend/src/modules/users/entities/user.entity.ts
-backend/src/modules/users/users.service.ts (+ users.service.markSeen.spec.ts)
+backend/src/modules/users/users.service.ts (+ users.service.spec.ts)
 backend/src/migrations/20260701000000-add-user-last-seen.ts
 backend/src/modules/friends/friends.service.ts (+ friends.service.spec.ts)
 backend/src/modules/matchmaking/matchmaking.gateway.ts

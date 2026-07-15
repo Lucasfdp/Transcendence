@@ -149,6 +149,8 @@ Checked explicitly during this audit; listed so the fixing agent doesn't chase t
 
 - Work order: 1.1 → 1.2 → 2.1 → 2.2 → 2.3 → 3.x. Items 1.1/2.2/2.3/3.5/3.6 are frontend-only; 1.2/2.1/3.1–3.4 are backend-only. They can be done as independent commits (repo convention: short, direct messages, one idea per commit — see CLAUDE.md).
 - Backend tests: `cd backend && npm run test` (Jest, `*.spec.ts`). The casino specs are comprehensive — extend them rather than working around them; 2.1 and 3.2 will require updating existing assertions.
-- Frontend tests: `cd frontend && npm run test:run` (Vitest). Coverage there is thin (`src/test/smoke.test.tsx`); add targeted tests for 1.1 and 2.3, and document manual validation for animation-timing behaviour per CLAUDE.md's testing rule.
+- Frontend tests: `cd frontend && npm run test:run` (Vitest). Targeted component,
+  gambling API, fairness and animation synchronisation suites now cover this area;
+  document manual validation for animation-timing behaviour per `AGENTS.md`'s testing rule.
 - 3.4 requires a new migration in `backend/src/migrations/` following the existing `IF EXISTS`-guarded style.
 - Per CLAUDE.md: review `docs/modules-progress.md` after the fixes land and update if a module's status changes.

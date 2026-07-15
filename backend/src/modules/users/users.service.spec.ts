@@ -31,6 +31,7 @@ const createMockRepo = <T>(): MockRepo<T> => ({
 	find: jest.fn(),
 	create: jest.fn(),
 	save: jest.fn(),
+	update: jest.fn(),
 	createQueryBuilder: jest.fn(),
 });
 
@@ -182,6 +183,28 @@ describe("UsersService", () => {
 		it("throws InternalServerErrorException on db error", async () => {
 			usersRepo.find!.mockRejectedValue(new Error("timeout"));
 			await expect(service.findAll()).rejects.toThrow(
+				InternalServerErrorException,
+			);
+		});
+	});
+
+	describe("markSeen", () => {
+		it("updates lastSeenAt for the given user", async () => {
+			const when = new Date("2026-07-01T00:00:00.000Z");
+			usersRepo.update!.mockResolvedValue({ affected: 1 });
+
+			await service.markSeen(7, when);
+
+			expect(usersRepo.update).toHaveBeenCalledWith(
+				{ id: 7 },
+				{ lastSeenAt: when },
+			);
+		});
+
+		it("wraps update errors in InternalServerErrorException", async () => {
+			usersRepo.update!.mockRejectedValue(new Error("db down"));
+
+			await expect(service.markSeen(7)).rejects.toThrow(
 				InternalServerErrorException,
 			);
 		});

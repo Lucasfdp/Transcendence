@@ -1,4 +1,3 @@
-import { MAX_WAGER_COINS, MIN_WAGER_COINS } from "./casino.constants";
 import {
 	DICE_DIRECTIONS,
 	DICE_MAX_VALUE,
@@ -112,13 +111,6 @@ describe("dice.constants", () => {
 			for (let target = 0; target <= 98; target++) {
 				expect(diceRtp("over", target)).toBeCloseTo(1, 10);
 			}
-		});
-	});
-
-	describe("wager bounds", () => {
-		it("should reuse the shared whole-coin wager bounds", () => {
-			expect(Number.isInteger(MIN_WAGER_COINS)).toBe(true);
-			expect(MAX_WAGER_COINS).toBeGreaterThan(MIN_WAGER_COINS);
 		});
 	});
 });

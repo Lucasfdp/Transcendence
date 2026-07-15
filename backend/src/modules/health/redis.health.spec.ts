@@ -1,134 +1,123 @@
-import * as net from "net";
+import { EventEmitter } from "events";
 import { ConfigService } from "@nestjs/config";
 import { HealthCheckError } from "@nestjs/terminus";
+import * as net from "net";
 import { RedisHealthIndicator } from "./redis.health";
+
+jest.mock("net", () => ({ createConnection: jest.fn() }));
+
+class FakeSocket extends EventEmitter {
+	readonly writes: string[] = [];
+	readonly setTimeout = jest.fn();
+	readonly destroy = jest.fn();
+
+	constructor(private readonly onWrite?: (value: string) => string | undefined) {
+		super();
+	}
+
+	write(value: string): boolean {
+		this.writes.push(value);
+		const response = this.onWrite?.(value);
+		if (response !== undefined) {
+			queueMicrotask(() => this.emit("data", Buffer.from(response)));
+		}
+		return true;
+	}
+}
 
 describe("RedisHealthIndicator", () => {
 	let configService: { get: jest.Mock };
 	let indicator: RedisHealthIndicator;
-	let servers: net.Server[];
+	const createConnection = net.createConnection as jest.MockedFunction<
+		typeof net.createConnection
+	>;
 
-	/** Starts a stub TCP server that reacts to raw RESP writes via `onData`. */
-	const startStubServer = (
-		onData: (chunks: string[], socket: net.Socket) => void,
-	): Promise<number> => {
-		return new Promise((resolve) => {
-			const chunks: string[] = [];
-			const server = net.createServer((socket) => {
-				socket.on("data", (data) => {
-					chunks.push(data.toString());
-					onData(chunks, socket);
-				});
-			});
-			servers.push(server);
-			server.listen(0, "127.0.0.1", () => {
-				const address = server.address();
-				resolve(typeof address === "object" && address ? address.port : 0);
-			});
+	const configure = (password = ""): void => {
+		configService.get.mockImplementation((key: string, fallback?: unknown) => {
+			if (key === "REDIS_HOST") return "redis";
+			if (key === "REDIS_PORT") return 6379;
+			if (key === "REDIS_PASSWORD") return password;
+			return fallback;
 		});
 	};
 
-	const configureFor = (port: number, password = ""): void => {
-		configService.get.mockImplementation((key: string, def?: unknown) => {
-			if (key === "REDIS_HOST") return "127.0.0.1";
-			if (key === "REDIS_PORT") return port;
-			if (key === "REDIS_PASSWORD") return password;
-			return def;
+	const connectWith = (
+		socket: FakeSocket,
+		event: "connect" | "error" | "timeout" = "connect",
+	): FakeSocket => {
+		createConnection.mockReturnValue(socket as unknown as net.Socket);
+		queueMicrotask(() => {
+			if (event === "error") socket.emit("error", new Error("ECONNREFUSED"));
+			else socket.emit(event);
 		});
+		return socket;
 	};
 
 	beforeEach(() => {
-		servers = [];
 		configService = { get: jest.fn() };
 		indicator = new RedisHealthIndicator(
 			configService as unknown as ConfigService,
 		);
 	});
 
-	afterEach(async () => {
-		await Promise.all(
-			servers.map(
-				(server) =>
-					new Promise<void>((resolve) => server.close(() => resolve())),
-			),
-		);
+	afterEach(() => {
 		jest.clearAllMocks();
 	});
 
-	it("reports up when the server replies PONG (no password configured)", async () => {
-		const port = await startStubServer((chunks, socket) => {
-			if (chunks[chunks.length - 1].startsWith("PING")) {
-				socket.write("+PONG\r\n");
-			}
+	it("reports up when Redis replies PONG without authentication", async () => {
+		configure();
+		const socket = connectWith(
+			new FakeSocket((write) => (write === "PING\r\n" ? "+PONG\r\n" : undefined)),
+		);
+
+		await expect(indicator.pingCheck("redis")).resolves.toEqual({
+			redis: { status: "up" },
 		});
-		configureFor(port);
-
-		const result = await indicator.pingCheck("redis");
-
-		expect(result.redis.status).toBe("up");
+		expect(socket.writes).toEqual(["PING\r\n"]);
 	});
 
-	it("reports up when AUTH succeeds (+OK) followed by PONG (D10 regression: PING must be sent after AUTH)", async () => {
-		const port = await startStubServer((chunks, socket) => {
-			const last = chunks[chunks.length - 1];
-			if (last.includes("AUTH")) {
-				socket.write("+OK\r\n");
-			} else if (last.startsWith("PING")) {
-				socket.write("+PONG\r\n");
-			}
+	it("sends PING only after authentication succeeds", async () => {
+		configure("correct-password");
+		const socket = connectWith(
+			new FakeSocket((write) =>
+				write.includes("AUTH") ? "+OK\r\n" : "+PONG\r\n",
+			),
+		);
+
+		await expect(indicator.pingCheck("redis")).resolves.toEqual({
+			redis: { status: "up" },
 		});
-		configureFor(port, "correct-password");
-
-		const result = await indicator.pingCheck("redis");
-
-		expect(result.redis.status).toBe("up");
+		expect(socket.writes[0]).toContain("AUTH");
+		expect(socket.writes[1]).toBe("PING\r\n");
 	});
 
-	it("reports down on a -ERR AUTH reply and never sends PING", async () => {
-		const writes: string[] = [];
-		const port = await startStubServer((chunks, socket) => {
-			writes.push(chunks[chunks.length - 1]);
-			socket.write("-ERR invalid password\r\n");
-		});
-		configureFor(port, "wrong-password");
+	it("reports down on an authentication error without sending PING", async () => {
+		configure("wrong-password");
+		const socket = connectWith(new FakeSocket(() => "-ERR invalid password\r\n"));
 
 		await expect(indicator.pingCheck("redis")).rejects.toThrow(
 			HealthCheckError,
 		);
-		expect(writes.some((w) => w.startsWith("PING"))).toBe(false);
+		expect(socket.writes).toHaveLength(1);
+		expect(socket.writes[0]).toContain("AUTH");
 	});
 
 	it("reports down when the connection is refused", async () => {
-		// Bind then immediately close a server to obtain a port nothing is
-		// listening on, instead of guessing a "probably free" fixed port.
-		const probe = net.createServer();
-		const port: number = await new Promise((resolve) => {
-			probe.listen(0, "127.0.0.1", () => {
-				const address = probe.address();
-				resolve(typeof address === "object" && address ? address.port : 0);
-			});
-		});
-		await new Promise<void>((resolve) => probe.close(() => resolve()));
-
-		configureFor(port);
+		configure();
+		connectWith(new FakeSocket(), "error");
 
 		await expect(indicator.pingCheck("redis")).rejects.toThrow(
 			HealthCheckError,
 		);
 	});
 
-	it(
-		"reports down on TCP timeout when the server never responds",
-		async () => {
-			const port = await startStubServer(() => {
-				// Intentionally never responds — exercises the 3s socket timeout.
-			});
-			configureFor(port);
+	it("reports down when the socket times out", async () => {
+		configure();
+		const socket = connectWith(new FakeSocket(), "timeout");
 
-			await expect(indicator.pingCheck("redis")).rejects.toThrow(
-				HealthCheckError,
-			);
-		},
-		10_000,
-	);
+		await expect(indicator.pingCheck("redis")).rejects.toThrow(
+			HealthCheckError,
+		);
+		expect(socket.setTimeout).toHaveBeenCalledWith(3_000);
+	});
 });
