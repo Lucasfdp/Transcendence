@@ -35,6 +35,8 @@ import {
 } from "./BellClashView";
 import {
 	interpolateBellPhysics,
+	ONLINE_PHYSICS_BUFFER_SIZE,
+	ONLINE_PHYSICS_DELAY_MS,
 	type BellPhysicsSample,
 } from "./bell-clash-interpolation";
 
@@ -563,7 +565,7 @@ export class BellClashOnlineController {
 					(sample) => sample.serverTime < target.serverTime,
 				),
 				target,
-			].slice(-4);
+			].slice(-ONLINE_PHYSICS_BUFFER_SIZE);
 			if (
 				entity.primary &&
 				entity.ownerSide === this.side &&
@@ -644,7 +646,8 @@ export class BellClashOnlineController {
 	}
 
 	private updateProjectedBall(ball: OnlineBallState, _delta: number): void {
-		const renderTime = Date.now() - this.serverClockOffsetMs - 67;
+		const renderTime =
+			Date.now() - this.serverClockOffsetMs - ONLINE_PHYSICS_DELAY_MS;
 		const target = interpolateBellPhysics(ball.syncSamples ?? [], renderTime);
 		if (!target) return;
 		const x = this.scene.arena.cx + target.x * this.scene.arena.scale;

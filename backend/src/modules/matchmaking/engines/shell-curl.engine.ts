@@ -10,6 +10,7 @@ import {
 	advanceShellCurlPhysics,
 	createShellCurlPhysicsState,
 	launchShellCurlProjectile,
+	resetShellCurlPhysicsEnd,
 	syncShellCurlSnapshot,
 } from "../shell-curl-physics";
 import { BaseEngine } from "./base.engine";
@@ -159,7 +160,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			state.endScores[state.currentEnd] = endScores;
 			state.currentEnd += 1;
 			state.throwsInEnd = 0;
-			physics.entities = [];
+			resetShellCurlPhysicsEnd(physics);
 			syncShellCurlSnapshot(state, physics);
 			if (state.currentEnd < state.totalEnds) state.map = createShellCurlMap();
 		}

@@ -17,12 +17,16 @@ import {
 import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
 import { THEME } from "../../shared/theme";
 import { drawShellCurlBallTrails, drawShellCurlBumpers } from "./ShellCurlView";
-import { interpolateBellPhysics, type BellPhysicsSample } from "../bell-clash/bell-clash-interpolation";
+import {
+	interpolateBellPhysics,
+	ONLINE_PHYSICS_BUFFER_SIZE,
+	ONLINE_PHYSICS_DELAY_MS,
+	type BellPhysicsSample,
+} from "../bell-clash/bell-clash-interpolation";
 
 const DEPTH_BALLS = 2;
 const DEPTH_HUD = 20;
 const DEPTH_OVERLAY = 100;
-const INTERPOLATION_DELAY_MS = 67;
 
 interface ProjectedCurlingBall extends CurlingBallState {
 	entityId: number;
@@ -68,10 +72,13 @@ export interface ShellCurlOnlineScene {
 	buildScoreHudState(): TurnState;
 	clearActiveRing(): void;
 	clearAllBallGfx(): void;
+	discardOnlineAimBall(): void;
 	drawPlayerBall(gfx: Phaser.GameObjects.Graphics, ball: CurlingBallState, isActive: boolean): void;
 	playerHexColour(player: number): string;
 	playerLabel(side: number, playerCount: number): string;
 	redrawAllBalls(): void;
+	removeBall(ball: CurlingBallState): void;
+	restoreOnlineAim(power: PowerType): void;
 	showRemotePlacedBall(side: number): void;
 	ballPlayersById(): Map<number | string, number>;
 	updateSidePanels(): void;
@@ -120,9 +127,9 @@ export class ShellCurlOnlineController {
 		socket.on("game:state", this.handleState);
 		socket.on("game:end", this.handleState);
 		socket.on("game:physics-state", this.handlePhysics);
-		if (this.snapshot) this.applySnapshot(this.snapshot);
 		if (this.match.physicsState)
 			this.applyPhysicsState(this.match.physicsState as ShellCurlPhysicsState);
+		if (this.snapshot) this.applySnapshot(this.snapshot);
 		const request = () => socket.emit("game:physics-request", { matchId: this.match!.matchId }, (state: ShellCurlPhysicsState | null) => {
 			if (state) this.applyPhysicsState(state);
 		});
@@ -170,7 +177,8 @@ export class ShellCurlOnlineController {
 	}
 
 	updateReplay(_delta: number): void {
-		const renderAt = Date.now() - this.serverClockOffsetMs - INTERPOLATION_DELAY_MS;
+		const renderAt =
+			Date.now() - this.serverClockOffsetMs - ONLINE_PHYSICS_DELAY_MS;
 		for (const ball of this.projected.values()) {
 			const sample = interpolateBellPhysics(ball.syncSamples ?? [], renderAt);
 			if (!sample) continue;
@@ -203,21 +211,31 @@ export class ShellCurlOnlineController {
 			currentTeam: snapshot.currentTurn, currentEnd: snapshot.currentEnd,
 			ballsLeft: snapshot.score.map((_, side) => Math.max(0, snapshot.ballsPerPlayer - this.throwsUsedBySide(snapshot, side))),
 			score: snapshot.score,
-			phase: snapshot.phase === "finished" || snapshot.phase === "abandoned" ? "gameover" : "aiming",
+			phase:
+				snapshot.phase === "finished" || snapshot.phase === "abandoned"
+					? "gameover"
+					: snapshot.phase === "active" && !snapshot.activeBallId
+						? "aiming"
+						: "settling",
 			hasHammer: false,
 		};
 		this.scene.scoreHud.update(this.scene.buildScoreHudState());
 		this.scene.syncOnlineUsedPowers(snapshot.usedPowersBySide);
 		if (!this.projected.size) this.renderSnapshotObjects(snapshot);
 		if (snapshot.phase === "finished" || snapshot.phase === "abandoned") {
+			this.scene.discardOnlineAimBall();
 			this.showEndScreen(snapshot);
 			return;
 		}
-		const localTurn = snapshot.currentTurn === this.side && !this.spectator;
+		const localTurn =
+			snapshot.phase === "active" &&
+			snapshot.currentTurn === this.side &&
+			!this.spectator;
 		if (localTurn && !snapshot.activeBallId && !this.releasePending) {
 			this.updateStatus(`Your turn (${this.scene.playerLabel(this.side, snapshot.score.length)})`);
 			if (!this.scene.activeBall) this.scene.beginTurn();
 		} else {
+			if (!localTurn) this.scene.discardOnlineAimBall();
 			this.updateStatus(`${this.scene.playerLabel(snapshot.currentTurn, snapshot.score.length)} turn`);
 			this.scene.powerSidePanel?.hide();
 			this.scene.launchInput.recreate();
@@ -226,26 +244,35 @@ export class ShellCurlOnlineController {
 
 	private applyPhysicsState(state: ShellCurlPhysicsState): void {
 		if (!this.match || state.matchId !== this.match.matchId || state.physicsSeq <= this.lastPhysicsSeq) return;
+		const firstProjection = this.lastPhysicsSeq < 0;
 		this.lastPhysicsSeq = state.physicsSeq;
-		this.serverClockOffsetMs = this.lastPhysicsSeq === 0 ? Date.now() - state.serverTime : Math.min(this.serverClockOffsetMs, Date.now() - state.serverTime);
+		this.serverClockOffsetMs = firstProjection
+			? Date.now() - state.serverTime
+			: Math.min(this.serverClockOffsetMs, Date.now() - state.serverTime);
 		const ids = new Set(state.entities.map((entity) => entity.id));
 		for (const [id, ball] of this.projected) if (!ids.has(id)) {
 			this.projected.delete(id);
-			this.scene.ballGfx.get(id)?.destroy();
-			this.scene.ballGfx.delete(id);
+			this.scene.removeBall(ball);
 		}
+		if (state.entities.some((entity) => !entity.stopped))
+			this.scene.discardOnlineAimBall();
 		for (const entity of state.entities) {
-			let ball = this.projected.get(entity.id);
+			let ball =
+				this.projected.get(entity.id) ??
+				(this.scene.allBalls.find((candidate) => candidate.id === entity.id) as
+					| ProjectedCurlingBall
+					| undefined);
 			if (!ball) {
 				ball = { id: entity.id, entityId: entity.id, teamId: entity.ownerSide, x: 0, y: 0, vx: 0, vy: 0, r: entity.radius * this.scene.arena.scale, power: entity.power as PowerType, stopped: entity.stopped, curlBias: DEFAULT_CURL_BIAS };
-				this.projected.set(entity.id, ball);
 				this.scene.ballGfx.set(entity.id, this.scene.add.graphics().setDepth(DEPTH_BALLS));
 			}
+			ball.entityId = entity.id;
+			this.projected.set(entity.id, ball);
 			const sample: BellPhysicsSample = { x: entity.x / 1570, y: entity.y / 880, vx: entity.vx / 1570, vy: entity.vy / 880, radius: entity.radius / 1570, stopped: entity.stopped, serverTime: state.serverTime };
 			ball.teamId = entity.ownerSide;
 			ball.power = entity.power as PowerType;
 			ball.stopped = entity.stopped;
-			ball.syncSamples = [...(ball.syncSamples ?? []).filter((entry) => entry.serverTime < sample.serverTime), sample].slice(-4);
+			ball.syncSamples = [...(ball.syncSamples ?? []).filter((entry) => entry.serverTime < sample.serverTime), sample].slice(-ONLINE_PHYSICS_BUFFER_SIZE);
 			if (entity.stopped) this.applySample(ball, sample);
 		}
 		this.scene.allBalls = [...this.projected.values()];
@@ -280,8 +307,7 @@ export class ShellCurlOnlineController {
 	private restoreRejectedRelease(power: PowerType): void {
 		this.releasePending = false;
 		this.updateStatus("Launch rejected. Aim and try again.");
-		void power;
-		this.scene.launchInput.recreate();
+		this.scene.restoreOnlineAim(power);
 	}
 
 	private throwsUsedBySide(snapshot: CurlingSnapshot, side: number): number {

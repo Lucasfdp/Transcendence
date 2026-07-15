@@ -325,13 +325,36 @@ Missing for completion:
   vocabulary as the other games across turn state, HUD state, physics, powers,
   replay, and online projection code. Backend physics/engine/gateway tests and
   the complete backend suite (60 suites / 833 tests) passed previously; the
-  frontend suite (51 files / 298 tests) and production build passed on
-  2026-07-15.
+   frontend suite (51 files / 298 tests) and production build passed on
+   2026-07-15.
+- A post-merge online regression repair on 2026-07-15 strengthened the shared
+  projection path used by all four arena games. Clients now retain eight
+  physics samples, render with a 100 ms jitter margin, and use velocity-based
+  extrapolation capped at 100 ms instead of freezing immediately when a future
+  sample is late. Server catch-up still executes every fixed simulation step
+  but coalesces each room to its newest projection per timer callback, avoiding
+  bursts of stale intermediate socket messages. Bell Clash continues rendering
+  online projections through countdown or rejoin UI pauses, while Kame Knock
+  no longer rebuilds static targets, pickups, HUD panels, and slingshot state on
+  every physics packet.
+- The same repair removed Temple Curling's non-interactive balls from previous
+  ends. Authoritative reconciliation now destroys both Phaser graphics and
+  named shell textures, adopts snapshot entities rather than duplicating them,
+  and keeps the local aiming proxy on a separate negative ID range. Pending
+  matches cannot enable aiming, rejected releases restore the complete aiming
+  state and selected power, and each end reset publishes a strictly newer empty
+  physics projection. Automated validation passed the frontend suite (55 files
+  / 337 tests), backend suite (60 suites / 833 tests), both production builds,
+  backend lint with no errors, and the complete container health check.
 - Complete Kame Knock spectator entry during live play and responsive relayout
   validation before claiming its rollout complete.
 - Complete the manual two-client Temple Curling matrix, including the eight
   powers, full matches, re-entry, spectators, responsive relayout, and 3–5
   player matches, before claiming its rollout complete.
+- Follow-up remote validation under the original network conditions found Bell
+  Clash and Kame Knock responsive with powers enabled. Temple Curling retained
+  additional gameplay issues after the ghost-ball cleanup; those are deferred
+  to a dedicated follow-up before its multiplayer rollout can be completed.
 
 ### Major: Multiplayer game with more than two players
 Status: `In progress`

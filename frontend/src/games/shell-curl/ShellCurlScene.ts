@@ -832,8 +832,9 @@ export class ShellCurlScene
 	// ── Ball management ──────────────────────────────────────────────────────
 
 	public spawnActiveBall(teamId: number): CurlingBallState {
+		const sequenceId = this.nextBallId++;
 		const ball: CurlingBallState = {
-			id: this.nextBallId++,
+			id: this.online.isActive ? -(sequenceId + 1) : sequenceId,
 			teamId,
 			x: this.arena.deliveryX,
 			y: this.arena.deliveryY,
@@ -982,9 +983,36 @@ export class ShellCurlScene
 		);
 	}
 
+	public discardOnlineAimBall(): void {
+		if (!this.activeBall || this.activeBall.id >= 0) return;
+		const aimBall = this.activeBall;
+		this.activeBall = null;
+		this.removeBall(aimBall);
+		this.clearActiveRing();
+	}
+
+	public restoreOnlineAim(power: PowerType): void {
+		this.activePower = power;
+		this.turnManager.setPhase("aiming");
+		if (!this.activeBall) {
+			this.beginTurn();
+			this.activePower = power;
+		} else {
+			this.launchInput.recreate();
+			this.launchInput.attach();
+			this.addActiveRing(this.activeBall);
+		}
+		this.showPowerPanel();
+		this.updateSidePanels();
+	}
+
 	public clearAllBallGfx(): void {
-		for (const ball of this.allBalls)
-			destroyIngamePlayerTexture(this, `shell-curl-player-${ball.id}`);
+		const ids = new Set<number>([
+			...this.allBalls.map((ball) => ball.id),
+			...this.ballGfx.keys(),
+		]);
+		for (const id of ids)
+			destroyIngamePlayerTexture(this, `shell-curl-player-${id}`);
 		for (const gfx of this.ballGfx.values()) gfx.destroy();
 		this.ballGfx.clear();
 		this.allBalls = [];

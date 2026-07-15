@@ -112,13 +112,15 @@ export class ArenaSimulationService implements OnModuleDestroy {
 		);
 		this.lastTickAt = now;
 		let steps = 0;
+		const pendingBroadcasts = new Set<string>();
 		while (
 			this.accumulatorMs >= ARENA_SIMULATION_TICK_MS &&
 			steps < MAX_CATCH_UP_STEPS
 		) {
-			this.tick(broadcast);
+			this.tick((matchId) => pendingBroadcasts.add(matchId));
 			this.accumulatorMs -= ARENA_SIMULATION_TICK_MS;
 			steps += 1;
 		}
+		for (const matchId of pendingBroadcasts) broadcast(matchId);
 	}
 }

@@ -31,6 +31,8 @@ import {
 } from "./BambooBashView";
 import {
 	interpolateBellPhysics,
+	ONLINE_PHYSICS_BUFFER_SIZE,
+	ONLINE_PHYSICS_DELAY_MS,
 	type BellPhysicsSample,
 } from "../bell-clash/bell-clash-interpolation";
 
@@ -282,7 +284,7 @@ export class BambooBashOnlineController {
 		for (const ball of this.projectedEntities.values()) {
 			const target = interpolateBellPhysics(
 				ball.syncSamples ?? [],
-				Date.now() - this.serverClockOffsetMs - 67,
+				Date.now() - this.serverClockOffsetMs - ONLINE_PHYSICS_DELAY_MS,
 			);
 			if (!target) continue;
 			ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
@@ -361,7 +363,7 @@ export class BambooBashOnlineController {
 			ball.alpha = entity.alpha;
 			ball.scale = entity.radius / BALL_SRC_R;
 			ball.syncTarget = target;
-			ball.syncSamples = [...(ball.syncSamples ?? []).filter((sample) => sample.serverTime < target.serverTime), target].slice(-4);
+			ball.syncSamples = [...(ball.syncSamples ?? []).filter((sample) => sample.serverTime < target.serverTime), target].slice(-ONLINE_PHYSICS_BUFFER_SIZE);
 			if (entity.primary && entity.ownerSide === this.side && entity.stopped) {
 				ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
 				ball.y = this.scene.arena.cy + target.y * this.scene.arena.scale;

@@ -486,12 +486,11 @@ export class BellClashScene
 
 	private updateBellClash(delta: number): void {
 		if (!this.online.isActive) this.localReplay.addElapsed(delta);
-		if (!this.running) return;
-
 		if (this.online.isActive) {
 			this.online.update(delta);
 			return;
 		}
+		if (!this.running) return;
 
 		this.hitCooldownMs = Math.max(0, this.hitCooldownMs - delta);
 		this.bellPulseMs = Math.max(0, this.bellPulseMs - delta);

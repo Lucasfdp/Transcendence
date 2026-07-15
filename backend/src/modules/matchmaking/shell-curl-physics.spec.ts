@@ -2,6 +2,7 @@ import {
 	advanceShellCurlPhysics,
 	createShellCurlPhysicsState,
 	launchShellCurlProjectile,
+	resetShellCurlPhysicsEnd,
 	syncShellCurlSnapshot,
 } from "./shell-curl-physics";
 import { CurlingSnapshot } from "./matchmaking.types";
@@ -41,5 +42,16 @@ describe("Temple Curling authoritative physics", () => {
 		launchShellCurlProjectile(physics, 0, 300, 0, "splitter");
 		expect(physics.entities).toHaveLength(3);
 		expect(new Set(physics.entities.map((entity) => entity.id)).size).toBe(3);
+	});
+
+	it("publishes a newer empty projection when an end resets", () => {
+		const physics = createShellCurlPhysicsState("curl-physics");
+		launchShellCurlProjectile(physics, 0, 300, 0, "none");
+		const previousSeq = physics.physicsSeq;
+
+		resetShellCurlPhysicsEnd(physics);
+
+		expect(physics.entities).toEqual([]);
+		expect(physics.physicsSeq).toBeGreaterThan(previousSeq);
 	});
 });

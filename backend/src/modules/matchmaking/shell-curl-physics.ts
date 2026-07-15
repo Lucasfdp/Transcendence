@@ -45,6 +45,13 @@ export function launchShellCurlProjectile(
 	return entity;
 }
 
+export function resetShellCurlPhysicsEnd(
+	physics: ShellCurlPhysicsState,
+): void {
+	physics.entities = [];
+	bump(physics);
+}
+
 export function advanceShellCurlPhysics(
 	physics: ShellCurlPhysicsState,
 	snapshot: CurlingSnapshot,

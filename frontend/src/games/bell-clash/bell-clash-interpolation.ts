@@ -8,6 +8,10 @@ export interface BellPhysicsSample {
 	serverTime: number;
 }
 
+export const ONLINE_PHYSICS_BUFFER_SIZE = 8;
+export const ONLINE_PHYSICS_DELAY_MS = 100;
+export const ONLINE_PHYSICS_MAX_EXTRAPOLATION_MS = 100;
+
 export function interpolateBellPhysics(
 	samples: readonly BellPhysicsSample[],
 	renderTime: number,
@@ -17,6 +21,18 @@ export function interpolateBellPhysics(
 		.find((sample) => sample.serverTime <= renderTime);
 	const after = samples.find((sample) => sample.serverTime >= renderTime);
 	if (!before && !after) return null;
+	if (!after && before && !before.stopped) {
+		const extrapolationMs = Math.min(
+			ONLINE_PHYSICS_MAX_EXTRAPOLATION_MS,
+			Math.max(0, renderTime - before.serverTime),
+		);
+		return {
+			...before,
+			x: before.x + before.vx * (extrapolationMs / 1_000),
+			y: before.y + before.vy * (extrapolationMs / 1_000),
+			serverTime: before.serverTime + extrapolationMs,
+		};
+	}
 	if (!before || !after || before === after) return { ...(before ?? after)! };
 
 	const spanMs = Math.max(1, after.serverTime - before.serverTime);
