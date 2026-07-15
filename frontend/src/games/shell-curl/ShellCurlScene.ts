@@ -703,7 +703,6 @@ export class ShellCurlScene
 
 		if (this.online.isActive) {
 			const power = this.activePower;
-			if (power !== PowerType.NONE) this.currentPowerUsed().add(power);
 			this.activePower = PowerType.NONE;
 			this.online.emitRelease(this.activeBall, vx, vy, power);
 			this.powerSidePanel?.hide();
@@ -1543,6 +1542,7 @@ export class ShellCurlScene
 			);
 		}
 		drawShellCurlPowerPickups(this.powerupsEnabled, this.powerPickups);
+		if (this.online.isActive) this.online.reprojectPhysicsState();
 		this.redrawAllBalls();
 
 		this.scoreHud.update(this.buildScoreHudState());
@@ -1772,5 +1772,12 @@ export class ShellCurlScene
 		const team = this.turnManager.state.currentTeam;
 		if (!this.powerUsed[team]) this.powerUsed[team] = new Set<PowerType>();
 		return this.powerUsed[team];
+	}
+
+	public syncOnlineUsedPowers(usedPowersBySide: string[][] | undefined): void {
+		if (!usedPowersBySide) return;
+		this.powerUsed = usedPowersBySide.map(
+			(powers) => new Set(powers as PowerType[]),
+		);
 	}
 }

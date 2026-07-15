@@ -468,14 +468,28 @@ export interface MonteConfig {
 	minWager: number;
 	maxWager: number;
 	coins: number;
+	/** A round already in progress (stake debited, not resolved) — for resume. */
+	activeRound?: MonteRoundStart | null;
 }
 
+/** A single visible swap of two slot positions. */
+export type MonteSwap = [number, number];
+
+/**
+ * A started round. Carries the ball's START slot (shown in the preview) and the
+ * shape/timeline of the shuffle — but never the winning slot or the swaps
+ * themselves, which are streamed just-in-time and recomputed server-side.
+ */
 export interface MonteRoundStart {
 	roundId: string;
 	cupIds: string[];
-	ballCupId: string;
+	ballStartSlot: number;
+	stepCount: number;
+	stepDurations: number[];
+	shuffleLeadMs: number;
+	totalShuffleMs: number;
 	serverSeedHash: string;
-	winningCupHash: string;
+	commitHash: string;
 	clientSeed: string;
 	nonce: number;
 	stake: number;
@@ -483,13 +497,23 @@ export interface MonteRoundStart {
 	coins: number;
 }
 
+/** Just-in-time swap delivery while the shuffle animates. */
+export interface MonteRoundSteps {
+	roundId: string;
+	steps: { index: number; pair: MonteSwap }[];
+	stepCount: number;
+	ready: boolean;
+}
+
 export interface MonteRoundResolution {
 	roundId: string;
 	game: "monte";
 	mode: "wagered";
 	cupIds: string[];
-	ballCupId: string;
-	selectedCupId: string;
+	ballStartSlot: number;
+	winningSlot: number;
+	selectedSlot: number;
+	shuffle: MonteSwap[];
 	won: boolean;
 	multiplier: number;
 	stake: number;
@@ -498,7 +522,7 @@ export interface MonteRoundResolution {
 	net: number;
 	coins: number;
 	fairness: SpinFairness & {
-		winningCupHash: string;
+		commitHash: string;
 	};
 }
 
@@ -1032,16 +1056,22 @@ export const api = {
 			body: JSON.stringify({ stake, clientSeed }),
 		}),
 
-	/** Resolve a committed Three-Shell Monte round with the selected cup. */
+	/** Poll the just-in-time swaps for an in-flight round. */
+	getMonteSteps: (roundId: string): Promise<MonteRoundSteps> =>
+		apiFetch<MonteRoundSteps>(
+			`/casino/monte/rounds/${encodeURIComponent(roundId)}/steps`,
+		),
+
+	/** Resolve a committed Three-Shell Monte round with the chosen slot. */
 	resolveMonteRound: (
 		roundId: string,
-		selectedCupId: string,
+		selectedSlot: number,
 	): Promise<MonteRoundResolution> =>
 		apiFetch<MonteRoundResolution>(
 			`/casino/monte/rounds/${encodeURIComponent(roundId)}/resolve`,
 			{
 				method: "POST",
-				body: JSON.stringify({ selectedCupId }),
+				body: JSON.stringify({ selectedSlot }),
 			},
 		),
 

@@ -116,4 +116,87 @@ describe("KameKnockEngine", () => {
 				.roundTargetSets.size,
 		).toBe(0);
 	});
+
+	it("owns launch movement and rejects client hit and settlement claims", () => {
+		const engine = new KameKnockEngine();
+		const room = makeRoom(true);
+		engine.start(room);
+		const state = room.state as KameKnockSnapshot;
+
+		expect(
+			engine.handleInput(room, 1, {
+				matchId: room.matchId,
+				action: "release",
+				payload: {
+					roundNumber: 1,
+					turnNumber: 0,
+					x: 999,
+					y: 999,
+					vx: 300,
+					vy: 0,
+					power: "none",
+				},
+			}),
+		).toBe(room);
+		expect(room.physicsState?.entities[0]).toMatchObject({ x: 0, y: 0 });
+		expect(
+			engine.handleInput(room, 1, {
+				matchId: room.matchId,
+				action: "target:hit",
+				payload: { targetId: state.targets[0]?.id, combo: 99, perfect: true },
+			}),
+		).toBeNull();
+		expect(
+			engine.handleInput(room, 1, {
+				matchId: room.matchId,
+				action: "settled",
+				payload: {},
+			}),
+		).toBeNull();
+
+		engine.advanceSimulation?.(room, 100);
+		expect(room.physicsState?.entities[0]?.x).toBeGreaterThan(0);
+	});
+
+	it("rejects excessive launch velocity", () => {
+		const engine = new KameKnockEngine();
+		const room = makeRoom(true);
+		engine.start(room);
+		expect(
+			engine.handleInput(room, 1, {
+				matchId: room.matchId,
+				action: "release",
+				payload: { roundNumber: 1, turnNumber: 0, vx: 5_001, vy: 0 },
+			}),
+		).toBeNull();
+		expect(room.physicsState?.entities).toHaveLength(0);
+	});
+
+	it("advances a settled authoritative turn without client settlement input", () => {
+		const engine = new KameKnockEngine();
+		const room = makeRoom(false);
+		const state = room.state as KameKnockSnapshot;
+		engine.start(room);
+
+		expect(
+			engine.handleInput(room, 1, {
+				matchId: room.matchId,
+				action: "release",
+				payload: {
+					roundNumber: 1,
+					turnNumber: 0,
+					vx: 0,
+					vy: 0,
+				},
+			}),
+		).toBe(room);
+
+		engine.advanceSimulation(room, 1000 / 30);
+		engine.advanceSimulation(room, 1000 / 30);
+
+		expect(state.activeTurnNumber).toBeNull();
+		expect(state.turnNumber).toBe(1);
+		expect(state.currentTurn).toBe(1);
+		expect(room.physicsState?.entities).toEqual([]);
+	});
 });

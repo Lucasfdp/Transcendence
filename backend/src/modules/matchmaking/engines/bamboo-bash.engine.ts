@@ -6,10 +6,15 @@ import {
 	RoomPlayer,
 } from "../matchmaking.types";
 import {
-	initializeArenaReplayBall,
 	resetArenaReplayBalls,
 	syncArenaReplayBallFromPayload,
 } from "../replay-state.helpers";
+import {
+	advanceBambooPhysics,
+	createBambooPhysicsState,
+	launchBambooProjectile,
+	resetBambooPhysicsRound,
+} from "../bamboo-bash-physics";
 import { BaseArenaEngine } from "./base-arena.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
@@ -22,6 +27,7 @@ const START_BAMBOO = 2;
 const GROW_INTERVAL_MS = 5000;
 const MAX_STAGE = 3;
 const STAGE_POINTS: Record<number, number> = { 1: 100, 2: 150, 3: 250 };
+const ARENA_SPAWN_RADIUS = 0.22 * 705;
 const POWER_POOL = [
 	"heavy",
 	"splitter",
@@ -82,6 +88,8 @@ export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 			this.startRoundClock(snapshot);
 			this.resetSharedBamboos(snapshot, room.players.length);
 		});
+		room.physicsState = createBambooPhysicsState(room.matchId);
+		resetBambooPhysicsRound(room.physicsState, state);
 	}
 
 	handleInput(
@@ -91,70 +99,58 @@ export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 	): MatchRoom | null {
 		if (input.action === "release")
 			return this.applyRelease(room, userId, input.payload ?? {});
-		if (input.action === "bamboo:hit")
-			return this.applyBambooHit(room, userId, input.payload ?? {});
-		if (input.action === "bamboo:sync")
-			return this.applyBambooSync(room, userId, input.payload ?? {});
-		if (input.action === "bamboo:power-pickup")
-			return this.applyPowerPickup(room, userId, input.payload ?? {});
-		if (input.action !== "round:score") return room;
+		// Physics, target hits, pickup collection and round completion are decided
+		// exclusively by the fixed server simulation.
+		if (input.action !== "round:score") return null;
+		return null;
+	}
+
+	advanceSimulation(room: MatchRoom, deltaMs: number): boolean {
+		if (
+			room.status !== "active" ||
+			!room.physicsState ||
+			room.state.gameId !== "bamboo-bash"
+		)
+			return false;
 		const state = room.state as BambooBashSnapshot;
-		this.updateSharedBamboos(state);
-		const player = this.findRoomPlayer(room, userId);
-		if (!player || room.status !== "active") return null;
-
-		const roundNumber = Math.floor(Number(input.payload?.roundNumber));
-		const score = Math.floor(Number(input.payload?.score));
-		if (roundNumber !== state.roundNumber) return null;
-		if (!Number.isFinite(score) || score < 0) return null;
-		if (state.roundScores[player.side] !== null) return null;
-
-		state.roundScores[player.side] = state.liveRoundScores[player.side] ?? 0;
-		this.bumpRoomState(room);
-
-		if (state.roundScores.some((value) => value === null)) return room;
-
-		for (let side = 0; side < state.roundScores.length; side++) {
-			state.score[side] += state.roundScores[side] ?? 0;
+		const physics = room.physicsState as ReturnType<typeof createBambooPhysicsState>;
+		const changed = advanceBambooPhysics(physics, state, deltaMs);
+		if (!changed) return false;
+		if (state.roundEndsAt !== null && physics.serverTime >= state.roundEndsAt) {
+			this.completeRound(room, state);
+			return true;
 		}
+		return true;
+	}
 
+	private completeRound(room: MatchRoom, state: BambooBashSnapshot): void {
+		state.roundScores = state.liveRoundScores.map((score) => score ?? 0);
+		for (let side = 0; side < state.score.length; side++)
+			state.score[side] += state.roundScores[side] ?? 0;
 		if (state.roundNumber >= state.totalRounds) {
 			room.status = "finished";
 			state.phase = "finished";
 			state.winnerSide = this.getWinnerSide(state.score);
 			this.bumpRoomState(room);
-			return room;
+			return;
 		}
-
 		state.roundNumber += 1;
-		state.liveRoundScores = Array.from(
-			{ length: room.players.length },
-			() => 0,
-		);
-		state.usedPowersBySide = Array.from(
-			{ length: room.players.length },
-			() => [],
-		);
-		state.lastPowerBySide = Array.from(
-			{ length: room.players.length },
-			() => "none",
-		);
+		state.liveRoundScores = Array.from({ length: room.players.length }, () => 0);
+		state.roundScores = Array.from({ length: room.players.length }, () => null);
+		state.usedPowersBySide = Array.from({ length: room.players.length }, () => []);
+		state.lastPowerBySide = Array.from({ length: room.players.length }, () => "none");
 		state.lastPowerPickupIdBySide = Array.from(
 			{ length: room.players.length },
 			() => null,
 		);
-		state.powerPickups = [];
-		state.nextPowerPickupId = 1;
-		state.powerPickupAccMs = 0;
-		state.roundScores = Array.from(
-			{ length: room.players.length },
-			() => null,
-		);
 		this.startRoundClock(state);
-		this.resetSharedBamboos(state, room.players.length);
 		resetArenaReplayBalls(state, { clearEntities: true });
+		if (room.physicsState)
+			resetBambooPhysicsRound(
+				room.physicsState as ReturnType<typeof createBambooPhysicsState>,
+				state,
+			);
 		this.bumpRoomState(room);
-		return room;
 	}
 
 	private applyRelease(
@@ -163,27 +159,44 @@ export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 		payload: Record<string, unknown> = {},
 	): MatchRoom | null {
 		const state = room.state as BambooBashSnapshot;
-		this.updateSharedBamboos(state);
 		const player = this.findRoomPlayer(room, userId);
 		if (!player || room.status !== "active" || state.phase !== "active")
 			return null;
 		if (state.roundScores[player.side] !== null) return null;
+		if (
+			room.physicsState?.entities.some(
+				(entity) => entity.ownerSide === player.side && !entity.stopped,
+			)
+		)
+			return null;
 
 		const roundNumber = Math.floor(Number(payload.roundNumber));
-		const x = Number(payload.x);
-		const y = Number(payload.y);
 		const vx = Number(payload.vx);
 		const vy = Number(payload.vy);
 		if (roundNumber !== state.roundNumber) return null;
 		if (
-			!Number.isFinite(x) ||
-			!Number.isFinite(y) ||
 			!Number.isFinite(vx) ||
 			!Number.isFinite(vy)
 		)
 			return null;
+		if (Math.hypot(vx, vy) > 5_000) return null;
 		const power = this.consumeArenaPower(state, player.side, payload.power);
-		initializeArenaReplayBall(state, player.side, vx, vy, { x, y }, power);
+		const physics = (room.physicsState ?? createBambooPhysicsState(room.matchId)) as ReturnType<typeof createBambooPhysicsState>;
+		room.physicsState = physics;
+		const previous = physics.entities.find(
+			(entity) => entity.ownerSide === player.side && entity.primary,
+		);
+		const sideCount = Math.max(1, room.players.length);
+		const angle = sideCount === 2
+			? (player.side === 0 ? Math.PI : 0)
+			: -Math.PI / 2 + (player.side / sideCount) * Math.PI * 2;
+		const origin = previous
+			? { x: previous.x, y: previous.y }
+			: {
+				x: Math.cos(angle) * ARENA_SPAWN_RADIUS,
+				y: Math.sin(angle) * ARENA_SPAWN_RADIUS,
+			};
+		launchBambooProjectile(physics, state, player.side, origin.x, origin.y, vx, vy, power);
 		state.lastPowerBySide[player.side] = power;
 		this.bumpRoomState(room);
 		return room;

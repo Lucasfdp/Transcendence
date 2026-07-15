@@ -274,12 +274,61 @@ Requirement breakdown:
 Evidence:
 - `matchmaking.gateway.ts`, `room.service.ts`, `gameSocket.ts`
 - Rejoin, away, abandon, and reconnect timeout implemented.
+- Bell Clash online matches now use a dedicated server-authoritative physics
+  stream: fixed-step source-space simulation, immediate launch plus 30 Hz
+  physics projections, backend collisions/powers/scoring, velocity-aware
+  snapshot interpolation, explicit reconnect/spectator projection, and
+  authoritative replay frames. Two-player plus spectator Firefox headless
+  validation covered simultaneous shots, second-shot rearming, round transition,
+  rejoin, and responsive relayout on 2026-07-13.
+- Bamboo Bash now uses the same separated authoritative projection channel:
+  fixed-step source-space projectile movement, bamboo growth/spawning, pickup
+   collection, collisions, scoring, and timed round completion are server-owned.
+   Browser inputs are limited to bounded launches; transform, bamboo-hit, pickup,
+   and round-score reports are rejected. Client rendering uses buffered physics
+   projections rather than locally stepping the match. An accepted launch now
+   emits the authoritative physics projection immediately rather than the legacy
+   client throw event. Score and pickup pop-ups are driven by server-confirmed
+   events, with the initial projection used as a deduplication baseline after a
+   reconnect; two-client manual validation confirmed both feedback paths on
+   2026-07-14. Lobby re-entry now waits for a newly emitted snapshot and physics
+   projection before recreating the game scene, avoiding stale lobby state during
+   a live trajectory. A re-entry with moving entities resumes immediately, and
+   physics projections continue rendering during any remaining UI countdown;
+   it also requests projections briefly until a newer physics sequence confirms
+   stream continuity. Phaser scene teardown now removes the projection listener
+   on both shutdown and game destruction, preventing a stale re-entry scene from
+   throwing before its replacement receives the stream. Two-client manual tests
+   confirmed leave/re-entry during live play and subsequent launches in Bamboo
+   Bash and Bell Clash on 2026-07-14. Automated backend (59 suites / 827 tests),
+   frontend (48 files / 289 tests), and build validation passed; initial two-client
+   and power-up checks are positive, while the full validation matrix remains pending.
 
 Missing for completion:
-- Complete the manual two-client validation matrix for Kame Knock, Bell Clash,
-  Bamboo Bash, and Shell Curl after the 2026-07-12 recovery from the partial
-  server-authoritative experiment. It must cover launch input, full-screen
-  resize, settlement, reconnect, spectator entry, and replay capture.
+- Bell Clash and Bamboo Bash manual multiplayer validation, including live
+  re-entry, has completed successfully. Replay-specific checks are maintained
+  separately while replay work proceeds on another branch.
+- The initial Kame Knock visual pass, including the idle opponent shell, turn
+  cleanup, and server-projected pickups, was manually validated successfully on
+  2026-07-14. The power-up, scoring, live re-entry, full-match, results,
+  history, and reward paths were also manually validated successfully. Kame
+  Knock relies exclusively on the server for projectile movement, collisions,
+  pickups, scoring, and turn settlement; its dedicated physics and engine tests
+   cover those authority boundaries.
+- Temple Curling now uses the separated server-authoritative projection channel:
+  fixed-step source-space stones, walls, bumpers, shell collisions, the eight
+  active selected powers, settlement, turns, ends, and house scoring are owned
+  by the backend. The browser sends only bounded launch intent and renders
+  interpolated `game:physics-state` projections; client `settled` reports are
+  rejected. Rejoin uses a fresh physics request, while the projection frames
+  remain compatible with replay capture. Backend physics/engine/gateway tests,
+  the complete backend suite (60 suites / 833 tests), frontend suite (48 files
+  / 289 tests), and frontend/backend builds passed on 2026-07-15.
+- Complete Kame Knock spectator entry during live play and responsive relayout
+  validation before claiming its rollout complete.
+- Complete the manual two-client Temple Curling matrix, including the eight
+  powers, full matches, re-entry, spectators, responsive relayout, and 3–5
+  player matches, before claiming its rollout complete.
 
 ### Major: Multiplayer game with more than two players
 Status: `In progress`

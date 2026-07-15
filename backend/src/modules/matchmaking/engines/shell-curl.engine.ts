@@ -7,9 +7,11 @@ import {
 	RoomPlayer,
 } from "../matchmaking.types";
 import {
-	initializeCurlingReplayBall,
-	syncCurlingReplayStateFromPayload,
-} from "../replay-state.helpers";
+	advanceShellCurlPhysics,
+	createShellCurlPhysicsState,
+	launchShellCurlProjectile,
+	syncShellCurlSnapshot,
+} from "../shell-curl-physics";
 import { BaseEngine } from "./base.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
@@ -24,22 +26,15 @@ const HOUSE_R_SRC = 220;
 const SHEET_W_SRC = 1570;
 const SHEET_H_SRC = 880;
 
-interface SettledObject {
-	id: number;
-	side: number;
-	x: number;
-	y: number;
-	vx?: number;
-	vy?: number;
-	moving?: boolean;
-	power: string;
-	trail?: Array<{ x: number; y: number }>;
-}
+const MAX_LAUNCH_SPEED = 5_000;
+const ACTIVE_POWERS = new Set([
+	"heavy", "splitter", "spinning", "rocket", "giant", "tiny", "mirror",
+	"phantom",
+]);
 
 @Injectable()
 export class ShellCurlEngine extends BaseEngine implements GameEngine {
 	readonly gameId = "temple-curling";
-	private readonly pendingSettledTurns = new Map<string, number>();
 
 	createInitialState(
 		context: GameEngineCreateContext,
@@ -67,6 +62,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			endScores: Array.from({ length: TOTAL_ENDS }, () =>
 				Array.from({ length: playerCount }, () => null),
 			),
+			usedPowersBySide: Array.from({ length: playerCount }, () => []),
 			map: createShellCurlMap(),
 			players: roomPlayers.map((player) => this.toSnapshotPlayer(player)),
 			objects: [],
@@ -80,7 +76,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		room.status = "active";
 		room.state.phase = "active";
 		room.state.seq = ++room.seq;
-		this.pendingSettledTurns.delete(room.matchId);
+		room.physicsState = createShellCurlPhysicsState(room.matchId);
 		this.refreshSnapshotPlayers(room);
 	}
 
@@ -91,18 +87,31 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 	): MatchRoom | null {
 		if (input.action === "release")
 			return this.applyRelease(room, userId, input.payload ?? {});
-		if (input.action === "settled")
-			return this.applySettled(room, userId, input.payload ?? {});
-		return room;
+		return null;
+	}
+
+	advanceSimulation(room: MatchRoom, deltaMs: number): boolean {
+		if (
+			room.status !== "active" ||
+			room.state.gameId !== "temple-curling" ||
+			!room.physicsState
+		)
+			return false;
+		const state = room.state as CurlingSnapshot;
+		const physics = room.physicsState as ReturnType<typeof createShellCurlPhysicsState>;
+		if (!advanceShellCurlPhysics(physics, state, deltaMs)) return false;
+		syncShellCurlSnapshot(state, physics);
+		if (physics.entities.some((entity) => !entity.stopped)) {
+			this.bumpRoomState(room);
+			return true;
+		}
+		this.completeTurn(room, state, physics);
+		return true;
 	}
 
 	abandon(room: MatchRoom, abandonedPlayer: RoomPlayer): number | null {
 		const state = room.state as CurlingSnapshot;
 		return this.resolveAbandonWinner(room, abandonedPlayer, state.score);
-	}
-
-	onRoomClosed(room: MatchRoom): void {
-		this.pendingSettledTurns.delete(room.matchId);
 	}
 
 	private applyRelease(
@@ -114,47 +123,26 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		const player = room.players.find((p) => p.user.id === userId);
 		if (!player || room.status !== "active") return null;
 		if (player.side !== state.currentTurn) return null;
-		if (state.objects.some((object) => object.id === state.turnNumber))
+		if (room.physicsState?.entities.some((entity) => !entity.stopped))
 			return null;
-
-		initializeCurlingReplayBall(
-			state,
-			state.turnNumber,
-			player.side,
-			Number(payload.vx ?? 0),
-			Number(payload.vy ?? 0),
-			String(payload.power ?? "none"),
-		);
-		this.pendingSettledTurns.set(room.matchId, state.turnNumber);
-		state.seq = ++room.seq;
-		this.refreshSnapshotPlayers(room);
+		const vx = Number(payload.vx);
+		const vy = Number(payload.vy);
+		if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
+		if (Math.hypot(vx, vy) > MAX_LAUNCH_SPEED) return null;
+		const power = this.consumePower(state, player, payload.power);
+		const physics = (room.physicsState ?? createShellCurlPhysicsState(room.matchId)) as ReturnType<typeof createShellCurlPhysicsState>;
+		room.physicsState = physics;
+		launchShellCurlProjectile(physics, player.side, vx, vy, power);
+		syncShellCurlSnapshot(state, physics);
+		this.bumpRoomState(room);
 		return room;
 	}
 
-	private applySettled(
+	private completeTurn(
 		room: MatchRoom,
-		userId: number,
-		payload: Record<string, unknown> = {},
-	): MatchRoom | null {
-		const state = room.state as CurlingSnapshot;
-		const player = room.players.find((p) => p.user.id === userId);
-		if (!player || room.status !== "active") return null;
-		if (player.side !== state.currentTurn) return null;
-		const expectedTurnNumber = this.pendingSettledTurns.get(room.matchId);
-		if (expectedTurnNumber !== state.turnNumber) return null;
-
-		if (payload.turnNumber !== undefined) {
-			const turnNumber = Math.floor(Number(payload.turnNumber));
-			if (!Number.isFinite(turnNumber) || turnNumber !== state.turnNumber)
-				return null;
-		}
-
-		const objects = Array.isArray(payload.objects) ? payload.objects : null;
-		if (!objects) return null;
-
-		syncCurlingReplayStateFromPayload(state, payload);
-		this.pendingSettledTurns.delete(room.matchId);
-
+		state: CurlingSnapshot,
+		physics: ReturnType<typeof createShellCurlPhysicsState>,
+	): void {
 		state.turnNumber += 1;
 		state.throwsInEnd += 1;
 
@@ -171,14 +159,13 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			state.endScores[state.currentEnd] = endScores;
 			state.currentEnd += 1;
 			state.throwsInEnd = 0;
-			state.objects = [];
-			state.entities = [];
-			state.activeBallId = null;
+			physics.entities = [];
+			syncShellCurlSnapshot(state, physics);
 			if (state.currentEnd < state.totalEnds) state.map = createShellCurlMap();
 		}
 
 		state.currentTurn = this.nextTurn(room);
-		state.seq = ++room.seq;
+		this.bumpRoomState(room);
 
 		if (
 			state.currentEnd >= state.totalEnds ||
@@ -187,7 +174,6 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			this.finish(room, this.getWinnerSide(state.score));
 		}
 
-		return room;
 	}
 
 	private finish(
@@ -208,7 +194,31 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		return (state.currentTurn + 1) % room.players.length;
 	}
 
-	private scoreEnd(objects: SettledObject[]): {
+	private consumePower(
+		state: CurlingSnapshot,
+		player: RoomPlayer,
+		value: unknown,
+	): string {
+		if (!state.powerupsEnabled) return "none";
+		const power = String(value ?? "none");
+		if (!ACTIVE_POWERS.has(power) || !player.shellSelection.includes(power))
+			return "none";
+		const usedPowers = (state.usedPowersBySide ??= Array.from(
+			{ length: state.score.length },
+			() => [],
+		));
+		usedPowers[player.side] ??= [];
+		if (usedPowers[player.side].includes(power)) return "none";
+		usedPowers[player.side].push(power);
+		return power;
+	}
+
+	private bumpRoomState(room: MatchRoom): void {
+		room.seq += 1;
+		this.refreshSnapshotPlayers(room);
+	}
+
+	private scoreEnd(objects: CurlingSnapshot["objects"]): {
 		scoringSide: number | null;
 		points: number;
 	} {
@@ -237,11 +247,11 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		return { scoringSide, points };
 	}
 
-	private isInHouse(object: SettledObject): boolean {
+	private isInHouse(object: CurlingSnapshot["objects"][number]): boolean {
 		return this.distanceToButton(object) <= HOUSE_R_SRC;
 	}
 
-	private distanceToButton(object: SettledObject): number {
+	private distanceToButton(object: CurlingSnapshot["objects"][number]): number {
 		const dx = (object.x - HOUSE_CX) * SHEET_W_SRC;
 		const dy = (object.y - HOUSE_CY) * SHEET_H_SRC;
 		return Math.hypot(dx, dy);

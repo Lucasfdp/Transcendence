@@ -149,20 +149,26 @@ export function ShrineSlotsModal({
 	const reducedMotion = useReducedMotion();
 
 	/**
-	 * `view` and `reducedMotion` mirrored into refs so the animation effect
-	 * below can read their latest values without listing them as
-	 * dependencies. Only a brand-new `pendingOutcome` should (re)start that
-	 * effect. `onCoinsChange` no longer needs this treatment since it's now
-	 * called from `runSpin` directly, before the animation starts.
+	 * `view`, `reducedMotion`, and `onCoinsChange` mirrored into refs so the
+	 * animation effect below can read their latest values without listing
+	 * them as dependencies. Only a brand-new `pendingOutcome` should (re)start
+	 * that effect. `onCoinsChange` in particular is a fresh inline closure on
+	 * every `HomePage` render, so it now needs the same ref treatment since
+	 * the wallet sync moved inside this effect (fired on reveal, not on the
+	 * raw server response).
 	 */
 	const viewRef = useRef(view);
 	const reducedMotionRef = useRef(reducedMotion);
+	const onCoinsChangeRef = useRef(onCoinsChange);
 	useEffect(() => {
 		viewRef.current = view;
 	}, [view]);
 	useEffect(() => {
 		reducedMotionRef.current = reducedMotion;
 	}, [reducedMotion]);
+	useEffect(() => {
+		onCoinsChangeRef.current = onCoinsChange;
+	}, [onCoinsChange]);
 	/** Bumped by the "Retry" button on a load failure to re-run the load effect. */
 	const [reloadToken, setReloadToken] = useState(0);
 
@@ -227,10 +233,8 @@ export function ShrineSlotsModal({
 	// frame and an instant reveal.
 	//
 	// Deliberately keyed on `pendingOutcome` alone — see the comment above the
-	// ref mirrors for why `view`/`reducedMotion` are read from refs instead of
-	// being dependencies here. The wallet sync (`onCoinsChange`) happens in
-	// `runSpin` as soon as the server responds, not here — this effect is
-	// purely cosmetic.
+	// ref mirrors for why `view`/`reducedMotion`/`onCoinsChange` are read from
+	// refs instead of being dependencies here.
 	useEffect(() => {
 		if (!pendingOutcome) return;
 		const view = viewRef.current;
@@ -238,10 +242,26 @@ export function ShrineSlotsModal({
 		const canvases = reelCanvasRefs.current;
 		const targetIds = reelsFromOutcome(pendingOutcome.outcomeId);
 
+		// Tracks whether the wallet has been synced yet for this outcome, so
+		// the cleanup below can flush it exactly once even if the animation
+		// never reaches `finish` (e.g. the modal is closed mid-spin).
+		let settled = false;
+		const syncCoins = (): void => {
+			if (settled) return;
+			settled = true;
+			onCoinsChangeRef.current(pendingOutcome.coins);
+			setView((prev) =>
+				prev ? { ...prev, coins: pendingOutcome.coins } : prev,
+			);
+		};
+
 		const finish = (): void => {
+			// Reveal the result and sync the wallet together — the player
+			// should never see the balance move before the reels land.
 			setResult(pendingOutcome);
 			setSpinning(false);
 			setPendingOutcome(null);
+			syncCoins();
 		};
 
 		const plans: (ReelPlan | null)[] = targetIds.map((targetId, index) => {
@@ -307,7 +327,13 @@ export function ShrineSlotsModal({
 			finish,
 		);
 
-		return () => cancel();
+		return () => {
+			cancel();
+			// If the animation was cut short (unmount, or a new spin started
+			// before this one finished), the wallet still needs to end up
+			// correct even though the reveal never played.
+			syncCoins();
+		};
 	}, [pendingOutcome]);
 
 	const runSpin = async (): Promise<void> => {
@@ -320,11 +346,9 @@ export function ShrineSlotsModal({
 		try {
 			await api.getCsrfToken();
 			const outcome = await api.spinSlots(stake, clientSeed || undefined);
-			// Sync the wallet the moment the server settles the wager — do not
-			// wait for the cosmetic reel animation, which may never finish if
-			// the modal is closed early.
-			onCoinsChange(outcome.coins);
-			setView((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
+			// Hold the wallet sync until the reels reveal the spin (see the
+			// animation effect's `finish`/`syncCoins`) so the balance never
+			// changes before the player sees the outcome.
 			setPendingOutcome(outcome);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Spin failed. Try again.");
@@ -372,6 +396,7 @@ export function ShrineSlotsModal({
 				))}
 			</div>
 
+			<p className="hub-slots__balance">Balance: {coins} ⬡</p>
 			{result ? (
 				<p
 					className={[
@@ -384,9 +409,7 @@ export function ShrineSlotsModal({
 						? `Three of a kind! +${result.net} ⬡`
 						: `No match · ${result.net} ⬡`}
 				</p>
-			) : (
-				<p className="hub-slots__balance">Balance: {coins} ⬡</p>
-			)}
+			) : null}
 
 			<div className="hub-slots__controls">
 				<div className="hub-slots__wager">

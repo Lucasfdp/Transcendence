@@ -9,7 +9,7 @@ import {
 	UpdateDateColumn,
 } from "typeorm";
 import { User } from "../../users/entities/user.entity";
-import type { MonteRoundStatus } from "../monte-round.constants";
+import type { MonteRoundStatus, MonteSwap } from "../monte-round.constants";
 
 /** Persisted commitment for a two-step Three-Shell Monte round. */
 @Entity("casino_monte_rounds")
@@ -33,6 +33,29 @@ export class MonteRound {
 
 	@Column({ type: "varchar" })
 	ballCupId: string;
+
+	/**
+	 * Slot (0..N-1) the ball starts under. Public — shown in the preview. New
+	 * column: nullable so rows written before the server-authored shuffle load.
+	 */
+	@Column({ type: "int", nullable: true, default: null })
+	ballStartSlot: number;
+
+	/** Slot the ball ends under after the shuffle. NEVER sent before resolve. */
+	@Column({ type: "int", nullable: true, default: null })
+	winningSlot: number;
+
+	/** The full server-authored swap sequence, revealed only at resolve. */
+	@Column({ type: "jsonb", nullable: true, default: null })
+	shuffle: MonteSwap[];
+
+	/** Number of swaps in {@link shuffle}. */
+	@Column({ type: "int", nullable: true, default: null })
+	stepCount: number;
+
+	/** Commitment binding seed, nonce, start slot and winning slot. */
+	@Column({ type: "varchar", nullable: true, default: null })
+	commitHash: string;
 
 	@Column({ type: "varchar" })
 	serverSeedHash: string;

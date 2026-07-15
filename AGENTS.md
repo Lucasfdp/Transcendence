@@ -58,5 +58,7 @@ Usa siempre el `Makefile` como entrada principal del entorno local.
 ## Testing Y Validacion
 Backend usa Jest con `*.spec.ts`; ejecuta `cd backend && npm run test` o `npm run test:cov`. Para cambios integrados en la plataforma, valida con `make dev` o `make up` segun el modo que toque. Si no hay tests de frontend para una zona, documenta la validacion manual en la entrega.
 
+When a runtime error, frozen scene, or logical failure remains unexplained after static analysis, launch Firefox in headless/developer mode and autonomously reproduce the required user flows. Inspect the browser console, network activity, visual state, and available traces to identify the cause before applying a fix. This diagnostic step complements, rather than replaces, automated tests and final manual validation.
+
 ## Commits
 El historial reciente usa mensajes cortos y directos, por ejemplo `Fixed auth and removed CORS restrictions`. Mantén ese nivel de concrecion: una idea por commit, sin titulos vagos.

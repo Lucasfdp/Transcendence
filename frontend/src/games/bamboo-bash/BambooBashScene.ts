@@ -468,8 +468,10 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		if (this.online.isActive) {
 			this.online.init();
 			this.online.createStatusText();
-			if (this.online.snapshot?.phase === "active")
-				this.online.startOnlineCountdown();
+			if (this.online.snapshot?.phase === "active") {
+				if (this.online.hasMovingProjection) this.online.resumeOnlinePlay();
+				else this.online.startOnlineCountdown();
+			}
 		} else {
 			this.localReplay.startCapture();
 			this.startCountdown();
@@ -581,7 +583,12 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 
 	private updateBambooBash(delta: number): void {
 		if (!this.online.isActive) this.localReplay.addElapsed(delta);
-		if (!this.running) return;
+		if (!this.running) {
+			// A rejoining client may still be in its UI countdown while the server
+			// has an active trajectory. Keep rendering the authoritative projection.
+			if (this.online.isActive) this.online.update(delta);
+			return;
+		}
 
 		// Countdown. Online rounds use the server-provided deadline so simultaneous
 		// games end together even if clients loaded the scene at slightly different times.
@@ -597,8 +604,12 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			if (this.localParticipants.length > 0) this.updateHudText();
 			this.powerSidePanel?.refresh();
 		}
-		if (!this.isLocalVersus() && this.timeLeftMs <= 0) {
+		if (!this.online.isActive && !this.isLocalVersus() && this.timeLeftMs <= 0) {
 			notifyGameRuleRoundComplete(this.buildGameRuleHooks());
+			return;
+		}
+		if (this.online.isActive) {
+			this.online.update(delta);
 			return;
 		}
 
@@ -2134,7 +2145,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		];
 	}
 
-	private addScoreEvent(label: string, value: string): void {
+	public addScoreEvent(label: string, value: string): void {
 		this.scoreEvents.unshift(`${label}\t${value}`);
 		this.scoreEvents = this.scoreEvents.slice(0, SCORE_LOG_LIMIT);
 		this.updateSidePanels();

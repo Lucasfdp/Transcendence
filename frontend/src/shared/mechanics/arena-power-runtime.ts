@@ -126,6 +126,10 @@ export class ArenaPowerRuntime implements Iterable<ArenaPowerBallEntry> {
 		this.entries.length = 0;
 	}
 
+	replace(entries: ArenaPowerBallEntry[]): void {
+		this.entries = entries;
+	}
+
 	map<T>(
 		callback: (
 			entry: ArenaPowerBallEntry,

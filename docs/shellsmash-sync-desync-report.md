@@ -7,29 +7,86 @@ Analysis only — no code was changed.
 
 ---
 
-## Implementation status (2026-07-12)
+## Implementation status (2026-07-14)
 
-The initial server-authoritative position layer is now in place for the three
-arena games (Bell Clash, Bamboo Bash, and Kame Knock):
+Bell Clash now has a complete server-authoritative online simulation path:
 
-- Active arena rooms run a fixed 30 Hz backend physics tick and broadcast
-  snapshots at 10 Hz while projectiles are moving.
-- The backend tick updates both live balls and snapshot entities, so
-  spectators and replay frames observe the same server state.
-- Arena clients retain local prediction but reconcile their own projectile
-  against server snapshots; remote projectiles are interpolated rather than
-  independently simulated.
-- The client-to-server projectile position sync action has been removed, so a
-  client can no longer overwrite the server trajectory after launch.
+- The backend advances Bell Clash in canonical arena source coordinates through
+  a fixed-step 30 Hz accumulator and publishes `game:physics-state` for every
+  moving simulation step, including the initial launch projection.
+- Physics projection is strictly separate from lifecycle `game:state` messages.
+  A physics update cannot restart rounds, reset controls, or rebuild the HUD.
+- Arena boundaries, the bell, projectile collisions, active powers, server
+  pickups, hit detection, zone multipliers, scoring, shot settlement, and round
+  completion are decided by the backend.
+- Clients send launch input only. Client-authored `bell:hit` and `round:score`
+  actions are rejected, and launch speed is bounded by the server.
+- Remote entities use timestamped, velocity-aware snapshot interpolation. The
+  client does not locally simulate an incomplete pre-authoritative flight.
+- Splitter and mirror projectiles receive stable server identities. Reconnects
+  and spectators request the current physics projection explicitly rather than
+  trying to reconstruct a flight from lifecycle state.
+- Authoritative physics is included in replay frames, including pickups and
+  score events.
 
-This does not yet make gameplay fully server-authoritative. Collision handling,
-pickups, hit detection, scoring, and Kame Knock turn settlement still require
-their per-game rules to move into the backend tick. Those steps remain the
-next implementation priority before treating ranked arena results as secure.
+Bamboo Bash now has an equivalent server-authoritative path for its continuous
+round model. The backend keeps a stopped primary entity for every player between
+launches, then simulates source-space movement, wall and shell collisions, bamboo
+growth and hits, pickups, scoring, and timed round transitions. The client renders
+the buffered projection only; client transform, hit, pickup, and round-score
+reports are rejected. Initial two-client checks, including powers, currently show
+matching positions and outcomes. Kame Knock and Shell Curl retain their previous
+client-simulation models and must not be described as server-authoritative.
+
+The Bamboo Bash gateway emits the authoritative projection immediately after an
+accepted launch, while retaining the launch event only in the replay record. It
+does not broadcast the legacy client throw event. Direct physics tests cover idle
+shell collision, bamboo scoring, pickup application, derived projectile identities,
+and projection synchronisation; gateway tests cover the public Bamboo projection.
+Score and pickup pop-ups are presentation-only reactions to those authoritative
+   events. Each client establishes its event cursor from the first projection, so a
+reconnect does not replay historical visual effects. Two-client manual validation
+confirmed both feedback paths on 2026-07-14.
+
+Re-entry from the lobby now waits for the server's fresh `game:state` and a
+`game:physics-request` acknowledgement before starting the game scene. This
+prevents a rejoining client from booting with a stale projection while another
+player remains in flight. Bamboo Bash also renders projections during its UI
+countdown and skips that countdown when the re-entry projection is moving; the
+lobby re-entry flow retries the physics request until it observes a newer sequence.
+Scene cleanup runs for both Phaser shutdown and game destruction, so stale socket
+listeners cannot throw on destroyed display lists and interrupt the new scene's
+projection stream. Two-client manual testing confirmed this leave/re-entry flow in
+Bamboo Bash and Bell Clash on 2026-07-14; the remaining game matrices still require
+   validation.
+
+Temple Curling now also has a game-specific server-authoritative path. Its
+backend fixed-step simulation owns persistent stones in source-space, wall and
+bumper rebounds, shell collisions, selected one-use powers, settlement, end
+scoring, and match completion. The client sends only bounded launch intent,
+renders timestamped physics projections, and rejects the former client-owned
+`settled` contract. Rejoining clients request a current projection; the same
+authoritative frames remain replay-compatible. Pickups, sweeping, hammer rules,
+and replay renderer work deliberately remain outside this rollout. Automated
+backend physics, engine, gateway, and full-suite checks passed on 2026-07-15;
+the multiplayer, spectator, and responsive-relayout manual matrix is pending.
+
+Headless Firefox validation used two registered players and a guest spectator.
+It covered private matchmaking, simultaneous launches, identical transforms and
+score events, second-shot rearming, transition into round two, reconnect,
+spectator entry, and responsive relayout. The backend suite remains green at
+58 suites and 820 tests; focused authoritative tests cover fixed-step pacing,
+physics sequence, server scoring, derived identities, round completion, and
+initial/immediate/final projection delivery. Frontend tests are green at 47 files
+and 287 tests.
 
 ---
 
-## 1. Executive summary
+## 1. Original executive summary
+
+The following sections describe the pre-authoritative baseline found on
+2026-07-11. Bell Clash no longer uses that architecture; the findings remain
+current for the other games where explicitly applicable.
 
 The desync is not a bug in any single function. The current netcode is a **"fire-and-forget initial-conditions" replication model**: when a player launches a shell, only the initial velocity is broadcast, and every client then simulates the entire flight **independently, forever, with no correction mechanism of any kind**. The server never simulates physics and never learns where any ball actually is. For this model to work, every client's simulation would need to be bit-for-bit deterministic — and it is nothing close to deterministic (variable timestep, per-client RNG, per-client collisions, per-client power effects).
 
@@ -165,48 +222,70 @@ Independent of the option chosen, four cheap fixes are worth doing in the very f
 
 ---
 
-## 6. Server-authoritative handoff (next session)
+## 6. Server-authoritative implementation record
 
 ### Current safe state
 
-The current branch contains a 30 Hz backend physics loop and periodic
-`game:state` broadcasts for arena matches. Manual testing has reported broken
-scene initialisation, including missing panels, unavailable launch input, and
-misaligned game content. Treat this path as unstable until the existing games
-are manually verified as playable again.
+The failed 2026-07-12 experiment was removed before the Bell Clash implementation
+described above. The replacement keeps `game:state` as lifecycle-only and uses a
+dedicated projection contract, avoiding the scene initialisation regression.
 
-The failure was architectural, not a physics-constant issue. Existing online
-controllers treat `game:state` as a full lifecycle snapshot: it may rebuild a
-round, reset entities, start a countdown, or alter UI controls. A high-rate
-physics stream must therefore never reuse that event without a strict
-projection-only application path.
+The remaining rollout rule is unchanged: do not connect Bamboo Bash, Kame Knock,
+or Shell Curl to the Bell loop until each game has equivalent backend rules and
+its own validation gates.
 
-### Required implementation order
+### Completed Bell Clash order
 
-1. Establish a manually-tested baseline before changing netcode. Start the
+1. Established a manually-tested baseline before changing netcode. Started the
    normal development stack and verify launch input, HUD panels, round flow,
    reconnect, spectator entry, and replay capture in Bell Clash, Bamboo Bash,
    and Kame Knock.
-2. Add a distinct `game:physics-state` event and a typed payload containing
+2. Added a distinct `game:physics-state` event and a typed payload containing
    only match id, monotonically increasing physics sequence, server timestamp,
    and entity transforms. It must not carry round or UI fields.
-3. Implement the backend fixed-step loop behind a development feature flag,
-   initially for casual Bell Clash only. Simulate at 30 Hz and publish
-   `game:physics-state` at 10 Hz only while an entity is moving.
-4. In Bell Clash, add a dedicated physics-state listener that only updates
-   interpolation targets and local prediction reconciliation. It must not call
+3. Implemented the backend fixed-step loop for Bell Clash. It simulates and
+   publishes `game:physics-state` at 30 Hz while entities move, plus immediate
+   launch and final settled projections.
+4. Added a dedicated Bell Clash physics-state listener that only updates
+   interpolation targets and authoritative projection. It must not call
    `applySnapshot`, `startRound`, reset logic, or HUD/countdown methods.
-5. Add automated tests for fixed-step advancement, monotonic sequence numbers,
+5. Added automated tests for fixed-step advancement, monotonic sequence numbers,
    final settled-state emission, replay-frame capture, and that physics events
    do not invoke scene lifecycle methods. Then manually test two browsers at
    different frame rates, delayed network conditions, reconnect, and spectator
    join before enabling the flag by default.
-6. Move Bell Clash wall/bell collision, hit detection, zone multiplier, score,
-   and round completion into the backend tick. Remove `bell:hit` only after
-   server-side scoring has matching tests and manual proof.
-7. Generalise the proven projection event and rule hooks to Bamboo Bash, then
-   Kame Knock. Keep Shell Curl separate: its persistent, turn-based stone
-   model needs its own server-authoritative design.
+6. Moved Bell Clash wall/bell collision, projectile collision, active powers,
+   pickups, hit detection, zone multiplier, score, settlement, and round
+   completion into the backend tick. Client scoring actions are rejected.
+7. Applied the projection event to Bamboo Bash with game-specific server rules.
+   Idle player shells are authoritative physics entities, so the first launch can
+   collide with the opponent and round resets do not remove either turtle.
+
+### Next-session work order
+
+1. Preserve the current stable checkpoint. Two-client manual testing now confirms
+   Bamboo Bash and Bell Clash leave/re-entry during a live trajectory, subsequent
+   launches, and the following round reset.
+2. Finish the Bamboo Bash validation matrix: powers and pickups, scoring, a full
+   three-round match, reconnect, spectator entry, and responsive relayout.
+3. Complete Bell Clash's remaining power-enabled and full-match replay matrix.
+   The online score presentation is already consistent: Bell Clash displays the
+   authoritative hit value and Bamboo Bash appends authoritative `scoreEvents`;
+   their monotonic identifiers prevent duplicate entries after projections,
+   reconnects, or spectator state requests.
+4. Bell Clash and Bamboo Bash manual matrices have now passed, excluding replay
+   checks owned by a separate branch. Begin Kame Knock by reusing the separated projection
+   transport, but write Kame-specific backend target, turn, and power rules before
+   changing its client. Keep Shell Curl as a separate future design because its
+   persistent turn-based stones have different authority and settlement requirements.
+
+Kame Knock now has the separated authoritative projection path. Its initial
+two-client visual correction pass was manually confirmed on 2026-07-14: the
+idle opponent shell appears before launch, settled turn textures are removed,
+and pickups are projected from the server. Power-up, scoring, live re-entry,
+full-match, results, history, and reward validation also passed on 2026-07-14.
+The remaining manual gate is spectator entry during live play and responsive
+relayout; replay work remains excluded while handled on its separate branch.
 
 ### Non-negotiable constraints
 

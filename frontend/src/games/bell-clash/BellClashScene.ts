@@ -87,6 +87,7 @@ import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
 import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
 import {
 	type BellClashSnapshot,
+	type BellClashPhysicsState,
 	type ReplayFrameSnapshotEntity,
 } from "../../services/network/gameSocket";
 import {
@@ -783,8 +784,6 @@ export class BellClashScene
 			`${this.localPlayerCount > 1 ? `P${playerIndex + 1} ` : ""}${label}  +${gained}`,
 			`x${multiplier}`,
 		);
-		if (this.online.isActive)
-			this.online.reportBellHit(gained, zone?.kind ?? "neutral");
 	}
 
 	private zoneAt(angle: number): ScoreZone | null {
@@ -972,6 +971,7 @@ export class BellClashScene
 	}
 
 	public collectPowerPickup(ball: BallState): void {
+		if (this.online.isActive) return;
 		if (!this.powerPickups) return;
 		const pickup = this.powerPickups.collect(ball.x, ball.y, ball.r);
 		if (!pickup) return;
@@ -979,6 +979,21 @@ export class BellClashScene
 		this.powerBalls.applyPower(pickup.type, ball, this.arena, player);
 		this.powerPickups.draw();
 		this.showPowerPickupNotice(pickup.type, pickup.x, pickup.y);
+	}
+
+	public syncOnlinePowerPickups(state: BellClashPhysicsState): void {
+		if (!this.powerPickups) return;
+		this.powerPickups.setPickups(
+			state.pickups.map((pickup) => ({
+				id: pickup.id,
+				type: (Object.values(PowerType) as string[]).includes(pickup.type)
+					? (pickup.type as PowerType)
+					: PowerType.NONE,
+				x: this.arena.cx + pickup.x * this.arena.scale,
+				y: this.arena.cy + pickup.y * this.arena.scale,
+				r: pickup.radius * this.arena.scale,
+			})),
+		);
 	}
 
 	private powerPickupBlockers(): PowerPickupBlocker[] {
@@ -990,7 +1005,7 @@ export class BellClashScene
 		return bellBlocker ? [bellBlocker] : [];
 	}
 
-	private showPowerPickupNotice(type: PowerType, x: number, y: number): void {
+	public showPowerPickupNotice(type: PowerType, x: number, y: number): void {
 		const label = this.add
 			.text(
 				x,
@@ -1791,17 +1806,14 @@ export class BellClashScene
 				isMoving: isBallMoving,
 			});
 		};
-		resizeBall(this.ball);
+		if (!this.online.isActive) resizeBall(this.ball);
 		if (!this.online.isActive && this.localPlayerCount > 1) {
 			for (const ball of new Set(this.localBalls.values())) {
 				if (ball !== this.ball) resizeBall(ball);
 			}
 		}
-		if (this.online.isActive) {
-			for (const ball of new Set(this.online.ballMap.values()))
-				resizeBall(ball);
-		}
-		for (const entry of this.powerBalls) resizeBall(entry.ball);
+		if (!this.online.isActive)
+			for (const entry of this.powerBalls) resizeBall(entry.ball);
 
 		drawBellClashBackground(
 			this.bgGfx,
@@ -1813,7 +1825,8 @@ export class BellClashScene
 		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
 		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
 		this.recreatePowerPickups();
-		if (previousPickups.length > 0)
+		if (this.online.isActive) this.online.reprojectPhysicsState();
+		else if (previousPickups.length > 0)
 			this.powerPickups?.setPickups(
 				remapPowerPickups(previousPickups, (pickup) => {
 					const relX = (pickup.x - oldArena.cx) / oldArena.rx;

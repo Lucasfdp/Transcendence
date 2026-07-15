@@ -207,13 +207,14 @@ export function ShellDropModal({
 	 * a fresh inline function (like the old `onCoinsChange` dependency) was
 	 * tearing down and restarting the in-flight `requestAnimationFrame` loop
 	 * on every unrelated parent re-render, which is why the shell appeared to
-	 * loop the first few rows and never reach the bottom — `onCoinsChange` no
-	 * longer needs this treatment since it's now called from `runDrop`
-	 * directly, before the animation starts.
+	 * loop the first few rows and never reach the bottom. `onCoinsChange` gets
+	 * the same ref treatment now that the wallet sync happens inside this
+	 * effect (on reveal) rather than in `runDrop` before the animation starts.
 	 */
 	const viewRef = useRef(view);
 	const rowsRef = useRef(rows);
 	const reducedMotionRef = useRef(reducedMotion);
+	const onCoinsChangeRef = useRef(onCoinsChange);
 	useEffect(() => {
 		viewRef.current = view;
 	}, [view]);
@@ -223,6 +224,9 @@ export function ShellDropModal({
 	useEffect(() => {
 		reducedMotionRef.current = reducedMotion;
 	}, [reducedMotion]);
+	useEffect(() => {
+		onCoinsChangeRef.current = onCoinsChange;
+	}, [onCoinsChange]);
 	/** Bumped by the "Retry" button on a load failure to re-run the load effect. */
 	const [reloadToken, setReloadToken] = useState(0);
 
@@ -303,10 +307,26 @@ export function ShellDropModal({
 		const pegs = pegLattice(tier.rows);
 		const path = computeDropPath(tier.rows, pendingOutcome.fairness.rolls);
 
+		// Tracks whether the wallet has been synced yet for this outcome, so
+		// the cleanup below can flush it exactly once even if the animation
+		// never reaches `finish` (e.g. the modal is closed mid-drop).
+		let settled = false;
+		const syncCoins = (): void => {
+			if (settled) return;
+			settled = true;
+			onCoinsChangeRef.current(pendingOutcome.coins);
+			setView((prev) =>
+				prev ? { ...prev, coins: pendingOutcome.coins } : prev,
+			);
+		};
+
 		const finish = (): void => {
+			// Reveal the result and sync the wallet together — the player
+			// should never see the balance move before the shell lands.
 			setResult(pendingOutcome);
 			setDropping(false);
 			setPendingOutcome(null);
+			syncCoins();
 		};
 
 		if (reducedMotionRef.current || rect.width === 0) {
@@ -333,7 +353,13 @@ export function ShellDropModal({
 			finish,
 		);
 
-		return () => cancel();
+		return () => {
+			cancel();
+			// If the animation was cut short (unmount, or a new drop started
+			// before this one finished), the wallet still needs to end up
+			// correct even though the reveal never played.
+			syncCoins();
+		};
 	}, [pendingOutcome]);
 
 	const runDrop = async (): Promise<void> => {
@@ -346,11 +372,9 @@ export function ShellDropModal({
 		try {
 			await api.getCsrfToken();
 			const outcome = await api.dropPlinko(stake, rows, clientSeed || undefined);
-			// Sync the wallet the moment the server settles the wager — do not
-			// wait for the cosmetic board animation, which may never finish if
-			// the modal is closed early.
-			onCoinsChange(outcome.coins);
-			setView((prev) => (prev ? { ...prev, coins: outcome.coins } : prev));
+			// Hold the wallet sync until the shell lands (see the animation
+			// effect's `finish`/`syncCoins`) so the balance never changes
+			// before the player sees the outcome.
 			setPendingOutcome(outcome);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Drop failed. Try again.");
@@ -407,6 +431,7 @@ export function ShellDropModal({
 				</div>
 			</div>
 
+			<p className="hub-drop__balance">Balance: {coins} ⬡</p>
 			{result && landedView ? (
 				<p
 					className={[
@@ -426,9 +451,7 @@ export function ShellDropModal({
 							? `${result.net} ⬡`
 							: "Push — stake returned"}
 				</p>
-			) : (
-				<p className="hub-drop__balance">Balance: {coins} ⬡</p>
-			)}
+			) : null}
 
 			<div className="hub-drop__tiers" role="group" aria-label="Risk tier">
 				{view.rowOptions.map((option) => (

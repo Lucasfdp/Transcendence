@@ -10,30 +10,41 @@
 import type Phaser from "phaser";
 import type { ArenaPixels } from "../../shared/arenas/arena";
 import type { BallState } from "../../shared/mechanics/ball";
-import { BALL_SRC_R } from "../../shared/mechanics/ball";
-import { isBallMoving } from "../../shared/mechanics/ball";
+import { BALL_SRC_R, isBallMoving } from "../../shared/mechanics/ball";
 import { PowerType } from "../../shared/mechanics/power-system";
 import type { ArenaPowerRuntime } from "../../shared/mechanics/arena-power-runtime";
 import type { ArenaBallTrailRuntime } from "../common";
 import type { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
-import type { Bamboo } from "./bamboo";
+import { bambooPos, type Bamboo } from "./bamboo";
 import {
 	getGameSocket,
+	type BambooBashPhysicsState,
 	type BambooBashSnapshot,
-	type BambooBashThrowEvent,
 	type GameSnapshot,
 	type OnlineMatchContext,
 } from "../../services/network/gameSocket";
 import { THEME } from "../../shared/theme";
-import { clearBambooBashPowerBalls } from "./BambooBashView";
+import {
+	clearBambooBashPowerBalls,
+	popBambooBashScore,
+	showBambooBashPowerPickupNotice,
+} from "./BambooBashView";
+import {
+	interpolateBellPhysics,
+	type BellPhysicsSample,
+} from "../bell-clash/bell-clash-interpolation";
 
 /** Online ball state with powerup visual properties. */
 export interface OnlineBallState extends BallState {
+	entityId?: number;
+	ownerSide?: number;
 	scale?: number;
 	alpha?: number;
 	power?: string;
 	trail?: Array<{ x: number; y: number }>;
 	stateFlags?: string[];
+	syncTarget?: BellPhysicsSample;
+	syncSamples?: BellPhysicsSample[];
 }
 
 interface GameInputAck {
@@ -71,6 +82,7 @@ export interface BambooBashOnlineScene {
 	drawBalls(): void;
 	updateScoreHud(): void;
 	updateSidePanels(): void;
+	addScoreEvent(label: string, value: string): void;
 	showPowerPanel(): void;
 	spawnPowerPickup(): void;
 	syncSlingshotForTurn(): void;
@@ -97,6 +109,14 @@ export class BambooBashOnlineController {
 	private scores: number[] = [];
 	private releasePending = false;
 	private countdownText?: Phaser.GameObjects.Text;
+	private lastPhysicsSeq = -1;
+	private lastScoreEventId = 0;
+	private lastPickupEventId = 0;
+	private hasPhysicsProjection = false;
+	private readonly projectedEntities = new Map<number, OnlineBallState>();
+	private serverClockOffsetMs = 0;
+	private latestPhysicsState: BambooBashPhysicsState | null = null;
+	private rejoinPhysicsTimer: ReturnType<typeof setInterval> | null = null;
 
 	constructor(scene: Phaser.Scene & BambooBashOnlineScene) {
 		this.scene = scene;
@@ -154,6 +174,10 @@ export class BambooBashOnlineController {
 		return this.roundSubmitted;
 	}
 
+	get hasMovingProjection(): boolean {
+		return this.latestPhysicsState?.entities.some((entity) => !entity.stopped) ?? false;
+	}
+
 	// ── Lifecycle ────────────────────────────────────────────────────────────────
 
 	/** Bind the match from the registry and reset all online state. */
@@ -169,6 +193,7 @@ export class BambooBashOnlineController {
 	}
 
 	private resetState(): void {
+		this.stopRejoinPhysicsPolling();
 		this.lastSeq = -1;
 		this.pendingBambooHits.clear();
 		this.bambooSyncAccMs = 0;
@@ -178,6 +203,13 @@ export class BambooBashOnlineController {
 		this.scores = [];
 		this.releasePending = false;
 		this.balls.clear();
+		this.lastPhysicsSeq = -1;
+		this.lastScoreEventId = 0;
+		this.lastPickupEventId = 0;
+		this.hasPhysicsProjection = false;
+		this.projectedEntities.clear();
+		this.serverClockOffsetMs = 0;
+		this.latestPhysicsState = null;
 	}
 
 	/** Register socket listeners for the live match. */
@@ -185,13 +217,18 @@ export class BambooBashOnlineController {
 		const socket = getGameSocket();
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
-		socket.off("game:bamboo-throw", this.handleThrow);
-		socket.off("game:bamboo-power-pickup", this.handlePowerPickup);
+		socket.off("game:physics-state", this.handlePhysicsState);
 		socket.on("game:state", this.handleState);
 		socket.on("game:end", this.handleState);
-		socket.on("game:bamboo-throw", this.handleThrow);
-		socket.on("game:bamboo-power-pickup", this.handlePowerPickup);
+		socket.on("game:physics-state", this.handlePhysicsState);
 		this.updateStatus("Connected to Bamboo Bash match.");
+		if (this.match?.physicsState) this.applyPhysicsState(this.match.physicsState as BambooBashPhysicsState);
+		const matchId = this.match.matchId;
+		const requestPhysics = () => socket.emit("game:physics-request", { matchId }, (state: BambooBashPhysicsState | null) => {
+			if (state) this.applyPhysicsState(state);
+		});
+		requestPhysics();
+		if (this.match.rejoining) this.startRejoinPhysicsPolling(requestPhysics);
 	}
 
 	/** Remove socket listeners and destroy status text / countdown. */
@@ -199,12 +236,29 @@ export class BambooBashOnlineController {
 		const socket = getGameSocket();
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
-		socket.off("game:bamboo-throw", this.handleThrow);
-		socket.off("game:bamboo-power-pickup", this.handlePowerPickup);
+		socket.off("game:physics-state", this.handlePhysicsState);
 		this.statusText?.destroy();
 		this.statusText = null;
 		this.countdownText?.destroy();
 		this.countdownText = undefined;
+		this.stopRejoinPhysicsPolling();
+	}
+
+	private startRejoinPhysicsPolling(requestPhysics: () => void): void {
+		const baselineSeq = this.lastPhysicsSeq;
+		let attempts = 0;
+		this.rejoinPhysicsTimer = setInterval(() => {
+			if (++attempts > 20 || this.lastPhysicsSeq > baselineSeq) {
+				this.stopRejoinPhysicsPolling();
+				return;
+			}
+			requestPhysics();
+		}, 150);
+	}
+
+	private stopRejoinPhysicsPolling(): void {
+		if (this.rejoinPhysicsTimer) clearInterval(this.rejoinPhysicsTimer);
+		this.rejoinPhysicsTimer = null;
 	}
 
 	/** Apply the registry snapshot captured at scene creation (initial=true). */
@@ -219,22 +273,147 @@ export class BambooBashOnlineController {
 		if (isBambooBashSnapshot(snapshot)) this.applyOnlineSnapshot(snapshot);
 	};
 
-	private readonly handleThrow = (event: BambooBashThrowEvent): void => {
-		this.playOnlineThrow(event);
+	private readonly handlePhysicsState = (state: BambooBashPhysicsState): void => {
+		this.applyPhysicsState(state);
 	};
 
-	private readonly handlePowerPickup = (event: {
-		matchId: string;
-		roundNumber: number;
-		side: number;
-		x: number;
-		y: number;
-		vx: number;
-		vy: number;
-		power: string;
-	}): void => {
-		this.playOnlinePowerPickup(event);
-	};
+	update(_delta: number): void {
+		if (!this.match) return;
+		for (const ball of this.projectedEntities.values()) {
+			const target = interpolateBellPhysics(
+				ball.syncSamples ?? [],
+				Date.now() - this.serverClockOffsetMs - 67,
+			);
+			if (!target) continue;
+			ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
+			ball.y = this.scene.arena.cy + target.y * this.scene.arena.scale;
+			ball.r = target.radius * this.scene.arena.scale;
+			ball.vx = target.stopped ? 0 : target.vx * this.scene.arena.scale;
+			ball.vy = target.stopped ? 0 : target.vy * this.scene.arena.scale;
+		}
+		this.scene.drawBamboos();
+		this.scene.drawBalls();
+	}
+
+	private applyPhysicsState(state: BambooBashPhysicsState): void {
+		if (!this.match || state.matchId !== this.match.matchId || state.physicsSeq <= this.lastPhysicsSeq)
+			return;
+		this.lastPhysicsSeq = state.physicsSeq;
+		const offset = Date.now() - state.serverTime;
+		this.serverClockOffsetMs = this.latestPhysicsState
+			? Math.min(this.serverClockOffsetMs, offset)
+			: offset;
+		this.latestPhysicsState = state;
+		const isInitialPhysicsProjection = !this.hasPhysicsProjection;
+		this.hasPhysicsProjection = true;
+		const snapshot = this.snapshot;
+		const previousBamboos = new Map(
+			this.scene.bamboos.map((bamboo) => [bamboo.id, bamboo]),
+		);
+		if (snapshot) {
+			snapshot.bamboos = state.bamboos.map((bamboo) => ({ ...bamboo }));
+			snapshot.powerPickups = state.pickups.map((pickup) => ({
+				id: pickup.id,
+				type: pickup.type,
+				nx: pickup.x / 705,
+				ny: pickup.y / 491,
+			}));
+			snapshot.liveRoundScores = [...state.liveRoundScores];
+		}
+		this.scene.bamboos = state.bamboos.map((bamboo) => ({ ...bamboo }));
+		this.scene.spawnPowerPickup();
+		if (!this.spectator)
+			this.scene.score = state.liveRoundScores[this.side] ?? this.scene.score;
+		if (state.entities.length === 0) {
+			// Idle rounds have no projectiles in the authoritative stream. Keep the
+			// deterministic player launch positions instead of rendering placeholder
+			// balls at the arena origin.
+			this.projectedEntities.clear();
+			this.balls.clear();
+			this.scene.powerBalls.replace([]);
+			if (snapshot) this.resetOnlineBalls(snapshot);
+			this.scene.updateScoreHud();
+			this.scene.updateSidePanels();
+			this.scene.drawBamboos();
+			this.scene.drawBalls();
+			return;
+		}
+
+		const activeIds = new Set(state.entities.map((entity) => entity.id));
+		for (const id of this.projectedEntities.keys())
+			if (!activeIds.has(id)) this.projectedEntities.delete(id);
+		const primaries = new Map<number, OnlineBallState>();
+		const derived: Array<{ ball: OnlineBallState; player: number }> = [];
+		for (const entity of state.entities) {
+			let ball = entity.primary && entity.ownerSide === this.side
+				? this.scene.ball as OnlineBallState
+				: this.projectedEntities.get(entity.id);
+			const target: BellPhysicsSample = {
+				x: entity.x, y: entity.y, vx: entity.vx, vy: entity.vy,
+				radius: entity.radius, stopped: entity.stopped, serverTime: state.serverTime,
+			};
+			if (!ball) ball = { x: this.scene.arena.cx + target.x * this.scene.arena.scale, y: this.scene.arena.cy + target.y * this.scene.arena.scale, vx: target.vx * this.scene.arena.scale, vy: target.vy * this.scene.arena.scale, r: target.radius * this.scene.arena.scale };
+			if (ball.entityId !== entity.id) ball.syncSamples = [];
+			ball.entityId = entity.id;
+			ball.ownerSide = entity.ownerSide;
+			ball.r = target.radius * this.scene.arena.scale;
+			ball.power = entity.power;
+			ball.alpha = entity.alpha;
+			ball.scale = entity.radius / BALL_SRC_R;
+			ball.syncTarget = target;
+			ball.syncSamples = [...(ball.syncSamples ?? []).filter((sample) => sample.serverTime < target.serverTime), target].slice(-4);
+			if (entity.primary && entity.ownerSide === this.side && entity.stopped) {
+				ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
+				ball.y = this.scene.arena.cy + target.y * this.scene.arena.scale;
+				ball.vx = 0;
+				ball.vy = 0;
+				this.releasePending = false;
+				this.scene.syncSlingshotForTurn();
+				this.scene.showPowerPanel();
+			}
+			this.projectedEntities.set(entity.id, ball);
+			if (entity.primary) primaries.set(entity.ownerSide, ball);
+			else derived.push({ ball, player: entity.ownerSide });
+		}
+		this.balls.clear();
+		for (const [side, ball] of primaries) this.balls.set(side, ball);
+		this.scene.powerBalls.replace(derived);
+		for (const event of state.scoreEvents) {
+			if (event.id <= this.lastScoreEventId) continue;
+			this.lastScoreEventId = event.id;
+			if (isInitialPhysicsProjection) continue;
+			this.scene.addScoreEvent(
+				`P${event.side + 1} bamboo`,
+				`+${event.points}`,
+			);
+			const bamboo = previousBamboos.get(event.bambooId);
+			const position = bamboo
+				? bambooPos(bamboo, this.scene.arena)
+				: { x: this.scene.arena.cx, y: this.scene.arena.cy };
+			popBambooBashScore(this.scene, position.x, position.y, event.points);
+			this.updateStatus(`P${event.side + 1} bamboo +${event.points}`);
+		}
+		for (const event of state.pickupEvents ?? []) {
+			if (event.id <= this.lastPickupEventId) continue;
+			this.lastPickupEventId = event.id;
+			if (isInitialPhysicsProjection) continue;
+			const type = (Object.values(PowerType) as string[]).includes(event.type)
+				? (event.type as PowerType)
+				: PowerType.NONE;
+			if (type === PowerType.NONE) continue;
+			showBambooBashPowerPickupNotice(
+				this.scene,
+				type,
+				this.scene.arena.cx + event.x * this.scene.arena.scale,
+				this.scene.arena.cy + event.y * this.scene.arena.scale,
+				this.scene.arena,
+			);
+		}
+		this.scene.updateScoreHud();
+		this.scene.updateSidePanels();
+		this.scene.drawBamboos();
+		this.scene.drawBalls();
+	}
 
 	// ── Status text ──────────────────────────────────────────────────────────────
 
@@ -279,6 +458,7 @@ export class BambooBashOnlineController {
 			return;
 		this.lastSeq = snapshot.seq;
 		this.match.snapshot = snapshot;
+		const roundChanged = snapshot.roundNumber !== this.roundNumber;
 		this.roundNumber = snapshot.roundNumber;
 		this.totalRounds = snapshot.totalRounds;
 		this.scores = snapshot.score;
@@ -295,7 +475,9 @@ export class BambooBashOnlineController {
 				this.pendingBambooHits.delete(pendingId);
 		}
 		this.scene.drawBamboos();
-		this.syncBalls(snapshot);
+		if (!this.latestPhysicsState) this.syncBalls(snapshot);
+		if (initial && snapshot.entities.length === 0)
+			this.resetOnlineBalls(snapshot);
 		this.scene.drawBalls();
 		if (!this.spectator)
 			this.scene.totalScore =
@@ -322,7 +504,7 @@ export class BambooBashOnlineController {
 			return;
 		}
 
-		if (!initial && (this.roundSubmitted || !this.scene.running))
+		if (!initial && (roundChanged || this.roundSubmitted || !this.scene.running))
 			this.startOnlineRound(snapshot);
 		else
 			this.updateStatus(
@@ -405,42 +587,8 @@ export class BambooBashOnlineController {
 		this.scene.showPowerPanel();
 	}
 
-	// ── Remote throws ──────────────────────────────────────────────────────────
-
-	private playOnlineThrow(event: BambooBashThrowEvent): void {
-		if (
-			!this.match ||
-			event.matchId !== this.match.matchId ||
-			event.roundNumber !== this.roundNumber
-		)
-			return;
-		const ball = this.balls.get(event.side);
-		if (!ball) return;
-
-		ball.r = BALL_SRC_R * this.scene.arena.scale;
-		ball.x = this.scene.arena.cx + event.x * this.scene.arena.rx;
-		ball.y = this.scene.arena.cy + event.y * this.scene.arena.ry;
-		ball.vx = event.vx * this.scene.arena.scale;
-		ball.vy = event.vy * this.scene.arena.scale;
-		const power = (Object.values(PowerType) as string[]).includes(
-			event.power,
-		)
-			? (event.power as PowerType)
-			: PowerType.NONE;
-		this.scene.powerBalls.applyPower(
-			power,
-			ball,
-			this.scene.arena,
-			event.side,
-		);
-
-		if (event.side === this.side) {
-			this.scene.markLocalBallMoving();
-			this.updateStatus("Your throw...");
-		} else {
-			this.updateStatus(`P${event.side + 1} throw...`);
-		}
-		this.scene.drawBalls();
+	resumeOnlinePlay(): void {
+		this.beginOnlinePlay();
 	}
 
 	private playOnlinePowerPickup(event: {
@@ -564,6 +712,8 @@ export class BambooBashOnlineController {
 		this.roundSubmitted = false;
 		this.bambooSyncAccMs = 0;
 		this.pendingBambooHits.clear();
+		this.projectedEntities.clear();
+		this.latestPhysicsState = null;
 		this.scene.clearPowerBalls();
 		this.scene.bamboos = [];
 		this.scene.score = 0;
@@ -675,6 +825,10 @@ export class BambooBashOnlineController {
 				(p) => p.side === player.side,
 			);
 			this.resetOnlineBall(ball, index, players.length);
+			// The local ball lives on the scene, but idle rendering is driven by
+			// ballMap. Register both sides so neither turtle disappears before a
+			// physics projection exists.
+			this.balls.set(player.side, ball);
 			this.scene.ballTrails.reset(player.side, ball.x, ball.y);
 		});
 	}

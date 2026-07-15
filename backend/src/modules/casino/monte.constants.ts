@@ -1,3 +1,5 @@
+import type { MonteRoundStartResult } from "./monte-round.constants";
+
 /**
  * Three-Shell Monte — catalogue & economy constants.
  *
@@ -58,4 +60,11 @@ export interface MonteConfig {
 	maxWager: number;
 	/** The requesting player's current coin balance. */
 	coins: number;
+	/**
+	 * A round already in progress for this player (stake debited, not yet
+	 * resolved), so a reloaded client can resume it. `null` when none is open.
+	 * Populated by the controller from {@link MonteRoundService.getActiveRound};
+	 * carries no winning information.
+	 */
+	activeRound?: MonteRoundStartResult | null;
 }

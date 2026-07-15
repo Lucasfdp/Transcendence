@@ -18,7 +18,7 @@ import { PowerType } from "../../shared/mechanics/power-system";
 import type {
 	GameSnapshot,
 	KameKnockSnapshot,
-	KameKnockThrowEvent,
+	KameKnockPhysicsState,
 	OnlineMatchContext,
 } from "../../services/network/gameSocket";
 import { getGameSocket } from "../../services/network/gameSocket";
@@ -26,14 +26,19 @@ import { THEME } from "../../shared/theme";
 import { BALL_SRC_R } from "../../shared/mechanics/ball";
 import { PLAYER_COLOUR_VALUES } from "../../shared/game-ui";
 import { clearKameKnockPowerBalls } from "./KameKnockView";
+import { popKameKnockScore, showKameKnockPowerPickupNotice } from "./KameKnockView";
+import { interpolateBellPhysics, type BellPhysicsSample } from "../bell-clash/bell-clash-interpolation";
 
 /** Online ball state with powerup visual properties. */
 export interface OnlineBallState extends BallState {
+	entityId?: number;
+	ownerSide?: number;
 	scale?: number;
 	alpha?: number;
 	power?: string;
 	trail?: Array<{ x: number; y: number }>;
 	stateFlags?: string[];
+	syncSamples?: BellPhysicsSample[];
 }
 
 interface GameInputAck {
@@ -73,10 +78,14 @@ export interface KameKnockOnlineScene {
 
 	drawTargets(): void;
 	drawBall(): void;
+	drawBallTrails(): void;
+	addScoreEvent(label: string, value: string): void;
 	updateScoreHud(): void;
 	updateSidePanels(): void;
 	showPowerPanel(): void;
-	isBallMoving(ball: BallState): boolean;
+	syncOnlinePowerPickups(
+		pickups: KameKnockPhysicsState["pickups"],
+	): void;
 	syncSlingshotForTurn(): void;
 
 	showOnlineEndScreen(snapshot: KameKnockSnapshot): void;
@@ -92,13 +101,16 @@ export class KameKnockOnlineController {
 	private match: OnlineMatchContext | null = null;
 	private lastSeq = -1;
 	private statusText: Phaser.GameObjects.Text | null = null;
-	private pendingTargetHits = new Set<number>();
-	private replayThrower: number | null = null;
-	private replayTurnNumber: number | null = null;
-	private settledSubmitted = false;
 	private releasePending = false;
 	private visibleBallSide = 0;
 	private countdownText?: Phaser.GameObjects.Text;
+	private lastPhysicsSeq = -1;
+	private lastScoreEventId = 0;
+	private lastPickupEventId = 0;
+	private readonly projectedEntities = new Map<number, OnlineBallState>();
+	private serverClockOffsetMs = 0;
+	private latestPhysicsState: KameKnockPhysicsState | null = null;
+	private rejoinPhysicsTimer: ReturnType<typeof setInterval> | null = null;
 
 	constructor(scene: Phaser.Scene & KameKnockOnlineScene) {
 		this.scene = scene;
@@ -128,14 +140,6 @@ export class KameKnockOnlineController {
 
 	get launchableBalls(): Map<number, OnlineBallState> {
 		return this.balls;
-	}
-
-	get replaySide(): number | null {
-		return this.replayThrower;
-	}
-
-	get replayTurn(): number | null {
-		return this.replayTurnNumber;
 	}
 
 	get releasePendingFlag(): boolean {
@@ -182,13 +186,14 @@ export class KameKnockOnlineController {
 
 	private resetState(): void {
 		this.lastSeq = -1;
-		this.pendingTargetHits.clear();
-		this.replayThrower = null;
-		this.replayTurnNumber = null;
-		this.settledSubmitted = false;
 		this.releasePending = false;
 		this.visibleBallSide = 0;
 		this.balls.clear();
+		this.lastPhysicsSeq = -1;
+		this.lastScoreEventId = 0;
+		this.lastPickupEventId = 0;
+		this.projectedEntities.clear();
+		this.latestPhysicsState = null;
 	}
 
 	/** Register socket listeners for the live match. */
@@ -196,13 +201,16 @@ export class KameKnockOnlineController {
 		const socket = getGameSocket();
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
-		socket.off("game:kame-throw", this.handleThrow);
-		socket.off("game:kame-power-pickup", this.handlePowerPickup);
+		socket.off("game:physics-state", this.handlePhysicsState);
 		socket.on("game:state", this.handleState);
 		socket.on("game:end", this.handleState);
-		socket.on("game:kame-throw", this.handleThrow);
-		socket.on("game:kame-power-pickup", this.handlePowerPickup);
+		socket.on("game:physics-state", this.handlePhysicsState);
 		this.updateStatus("Connected to Kame Knock match.");
+		if (this.match?.physicsState)
+			this.applyPhysicsState(this.match.physicsState as KameKnockPhysicsState);
+		const request = () => socket.emit("game:physics-request", { matchId: this.match!.matchId }, (state: KameKnockPhysicsState | null) => { if (state) this.applyPhysicsState(state); });
+		request();
+		if (this.match?.rejoining) this.startRejoinPolling(request);
 	}
 
 	/** Remove socket listeners and destroy status text. */
@@ -210,10 +218,11 @@ export class KameKnockOnlineController {
 		const socket = getGameSocket();
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
-		socket.off("game:kame-throw", this.handleThrow);
-		socket.off("game:kame-power-pickup", this.handlePowerPickup);
+		socket.off("game:physics-state", this.handlePhysicsState);
 		this.statusText?.destroy();
 		this.statusText = null;
+		if (this.rejoinPhysicsTimer) clearInterval(this.rejoinPhysicsTimer);
+		this.rejoinPhysicsTimer = null;
 	}
 
 	/** Apply the registry snapshot captured at scene creation (initial=true). */
@@ -228,36 +237,7 @@ export class KameKnockOnlineController {
 		if (isKameKnockSnapshot(snapshot)) this.applyOnlineSnapshot(snapshot);
 	};
 
-	private readonly handleThrow = (event: KameKnockThrowEvent): void => {
-		this.playOnlineThrow(event);
-	};
-
-	private readonly handlePowerPickup = (event: {
-		matchId: string;
-		roundNumber: number;
-		turnNumber: number;
-		side: number;
-		power: string;
-	}): void => {
-		if (
-			!this.match ||
-			event.matchId !== this.match.matchId ||
-			event.side === this.side
-		)
-			return;
-		const ball = this.balls.get(event.side);
-		if (ball) {
-			const power = event.power as PowerType;
-			if (power !== PowerType.NONE) {
-				this.scene.powerBalls.applyPower(
-					power,
-					ball,
-					this.scene.arena,
-					event.side,
-				);
-			}
-		}
-	};
+	private readonly handlePhysicsState = (state: KameKnockPhysicsState): void => this.applyPhysicsState(state);
 
 	// ── Status text ──────────────────────────────────────────────────────────────
 
@@ -302,20 +282,10 @@ export class KameKnockOnlineController {
 			return;
 		this.lastSeq = snapshot.seq;
 		this.match.snapshot = snapshot;
-		// The server is authoritative on whether a ball is still in flight
-		// (activeTurnNumber is null once it has processed a "settled" input).
-		// launchedThisBall is normally cleared by this client's own local
-		// physics detecting the ball has stopped (finishBallRound()) — but if a
-		// throw event for the *next* turn arrives before that local detection
-		// finishes, this client stops stepping the old ball's physics entirely
-		// and finishBallRound() never runs for it, leaving launchedThisBall
-		// stuck true forever. That freezes the ball's render mid-air (a "ghost"
-		// shell) and hides the power panel/slingshot for whoever's turn it now
-		// is. Once the server confirms nothing is in flight, force-correct our
-		// local flags to match rather than trusting a possibly-orphaned one.
+		// Lifecycle snapshots clear transient client flags after an authoritative
+		// turn completion. Flight transforms are handled only by physics states.
 		if (snapshot.activeTurnNumber === null && this.scene.launchedThisBall) {
 			this.scene.launchedThisBall = false;
-			this.settledSubmitted = false;
 		}
 		this.scene.localPlayerCount = snapshot.players.length;
 		this.scene.currentBallIndex = Math.max(0, snapshot.roundNumber - 1);
@@ -325,13 +295,6 @@ export class KameKnockOnlineController {
 		this.scene.targets = snapshot.targets.map((target) => ({ ...target }));
 		this.scene.nextTargetId = snapshot.nextTargetId;
 		this.syncBalls(snapshot);
-		const liveTargetIds = new Set(
-			this.scene.targets.map((target) => target.id),
-		);
-		for (const pendingId of [...this.pendingTargetHits]) {
-			if (!liveTargetIds.has(pendingId)) this.pendingTargetHits.delete(pendingId);
-		}
-
 		if (!this.scene.launchedThisBall) {
 			this.scene.clearPowerBalls();
 			this.resetBallForPlayer(snapshot.currentTurn);
@@ -355,7 +318,6 @@ export class KameKnockOnlineController {
 		if (!this.scene.running && !this.countdownText)
 			this.startOnlineCountdown();
 
-		if (!this.scene.launchedThisBall) this.settledSubmitted = false;
 		if (!initial) this.scene.activePower = PowerType.NONE;
 		if (this.isLocalTurn())
 			this.updateStatus(`Your turn (P${this.side + 1})`);
@@ -440,67 +402,96 @@ export class KameKnockOnlineController {
 		this.scene.syncSlingshotForTurn();
 	}
 
-	// ── Remote throws ──────────────────────────────────────────────────────────
-
-	private playOnlineThrow(event: KameKnockThrowEvent): void {
-		if (!this.match || event.matchId !== this.match.matchId) return;
-		if (event.roundNumber !== this.snapshotRoundNumber) return;
-
-		this.scene.clearPowerBalls();
-		this.scene.activePower = PowerType.NONE;
-		this.replayThrower = event.side;
-		this.replayTurnNumber = event.turnNumber;
-		this.settledSubmitted = false;
-		this.releasePending = false;
-		this.visibleBallSide = event.side;
-		this.scene.launchedThisBall = true;
-		const ball = this.ballForOnlineSide(event.side);
-		ball.vx = 0;
-		ball.vy = 0;
-		this.resetBallForPlayer(event.side);
-		ball.x = this.scene.arena.cx + event.x * this.scene.arena.rx;
-		ball.y = this.scene.arena.cy + event.y * this.scene.arena.ry;
-		ball.vx = event.vx * this.scene.arena.scale;
-		ball.vy = event.vy * this.scene.arena.scale;
-		ball.r = BALL_SRC_R * this.scene.arena.scale;
-		const power = (Object.values(PowerType) as string[]).includes(
-			event.power,
-		)
-			? (event.power as PowerType)
-			: PowerType.NONE;
-		this.scene.powerBalls.applyPower(
-			power,
-			ball,
-			this.scene.arena,
-			event.side,
-		);
-		this.scene.powerSidePanel?.hide();
-		this.scene.updateScoreHud();
-		this.updateStatus(
-			event.side === this.side ? "Your throw..." : `P${event.side + 1} throw...`,
-		);
+	update(_delta: number): void {
+		for (const ball of this.projectedEntities.values()) {
+			const target = interpolateBellPhysics(
+				ball.syncSamples ?? [],
+				Date.now() - this.serverClockOffsetMs - 67,
+			);
+			if (!target) continue;
+			ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
+			ball.y = this.scene.arena.cy + target.y * this.scene.arena.scale;
+			ball.r = target.radius * this.scene.arena.scale;
+			ball.vx = target.stopped ? 0 : target.vx * this.scene.arena.scale;
+			ball.vy = target.stopped ? 0 : target.vy * this.scene.arena.scale;
+		}
+		this.scene.drawTargets();
+		this.scene.drawBallTrails();
+		this.scene.drawBall();
 	}
 
-	/** Report a target hit to the server (deduplicated per target). */
-	reportTargetHit(
-		target: TimedTarget,
-		combo: number,
-		perfect: boolean,
-	): void {
-		if (!this.match || this.pendingTargetHits.has(target.id)) return;
-		if (this.replayThrower !== this.side) return;
-		this.pendingTargetHits.add(target.id);
-		getGameSocket().emit("game:input", {
-			matchId: this.match.matchId,
-			action: "target:hit",
-			payload: {
-				roundNumber: this.snapshotRoundNumber,
-				turnNumber: this.replayTurnNumber ?? this.snapshotTurnNumber,
-				targetId: target.id,
-				combo,
-				perfect,
-			},
-		});
+	reprojectPhysicsState(): void {
+		for (const ball of this.projectedEntities.values()) {
+			const target = ball.syncSamples?.[ball.syncSamples.length - 1];
+			if (!target) continue;
+			ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
+			ball.y = this.scene.arena.cy + target.y * this.scene.arena.scale;
+			ball.r = target.radius * this.scene.arena.scale;
+		}
+		if (this.latestPhysicsState)
+			this.scene.syncOnlinePowerPickups(this.latestPhysicsState.pickups);
+	}
+
+	private startRejoinPolling(request: () => void): void {
+		const baseline = this.lastPhysicsSeq;
+		let attempts = 0;
+		this.rejoinPhysicsTimer = setInterval(() => {
+			if (++attempts > 20 || this.lastPhysicsSeq > baseline) {
+				if (this.rejoinPhysicsTimer) clearInterval(this.rejoinPhysicsTimer);
+				this.rejoinPhysicsTimer = null;
+				return;
+			}
+			request();
+		}, 150);
+	}
+
+	private applyPhysicsState(state: KameKnockPhysicsState): void {
+		if (!this.match || state.matchId !== this.match.matchId || state.physicsSeq <= this.lastPhysicsSeq) return;
+		this.lastPhysicsSeq = state.physicsSeq;
+		this.serverClockOffsetMs = this.latestPhysicsState
+			? Math.min(this.serverClockOffsetMs, Date.now() - state.serverTime)
+			: Date.now() - state.serverTime;
+		this.latestPhysicsState = state;
+		if (state.targets) this.scene.targets = state.targets.map((target) => ({ ...target }));
+		if (state.score) this.scene.score = state.score[this.side] ?? this.scene.score;
+		if (state.roundNumber !== undefined) this.scene.currentBallIndex = Math.max(0, state.roundNumber - 1);
+		if (state.currentTurn !== undefined) this.visibleBallSide = state.currentTurn;
+		const active = new Set(state.entities.map((entity) => entity.id));
+		for (const id of this.projectedEntities.keys()) if (!active.has(id)) this.projectedEntities.delete(id);
+		const primary = new Map<number, OnlineBallState>();
+		const derived: Array<{ ball: OnlineBallState; player: number }> = [];
+		for (const entity of state.entities) {
+			let ball = entity.primary && entity.ownerSide === this.side
+				? this.scene.ball as OnlineBallState
+				: this.projectedEntities.get(entity.id);
+			if (!ball) ball = { x: this.scene.arena.cx + entity.x * this.scene.arena.scale, y: this.scene.arena.cy + entity.y * this.scene.arena.scale, vx: 0, vy: 0, r: entity.radius * this.scene.arena.scale };
+			if (ball.entityId !== entity.id) ball.syncSamples = [];
+			ball.entityId = entity.id; ball.ownerSide = entity.ownerSide; ball.power = entity.power; ball.alpha = entity.alpha; ball.scale = entity.radius / BALL_SRC_R;
+			const sample: BellPhysicsSample = { x: entity.x, y: entity.y, vx: entity.vx, vy: entity.vy, radius: entity.radius, stopped: entity.stopped, serverTime: state.serverTime };
+			ball.syncSamples = [...(ball.syncSamples ?? []).filter((entry) => entry.serverTime < sample.serverTime), sample].slice(-4);
+			if (entity.stopped) { ball.x = this.scene.arena.cx + entity.x * this.scene.arena.scale; ball.y = this.scene.arena.cy + entity.y * this.scene.arena.scale; ball.vx = 0; ball.vy = 0; }
+			this.projectedEntities.set(entity.id, ball);
+			if (entity.primary) primary.set(entity.ownerSide, ball); else derived.push({ ball, player: entity.ownerSide });
+		}
+		this.balls.clear();
+		for (const [side, ball] of primary) this.balls.set(side, ball);
+		this.scene.powerBalls.replace(derived);
+		for (const event of state.scoreEvents) {
+			if (event.id <= this.lastScoreEventId) continue;
+			this.lastScoreEventId = event.id;
+			this.scene.addScoreEvent(`P${event.side + 1} ${event.targetKind.toUpperCase()}`, event.perfect ? `PERFECT +${event.points}` : `+${event.points} x${event.combo}`);
+			popKameKnockScore(this.scene, this.scene.arena.cx + event.x * this.scene.arena.scale, this.scene.arena.cy + event.y * this.scene.arena.scale, event.points, event.combo, event.perfect);
+		}
+		for (const event of state.pickupEvents ?? []) {
+			if (event.id <= this.lastPickupEventId) continue;
+			this.lastPickupEventId = event.id;
+			if ((Object.values(PowerType) as string[]).includes(event.type)) showKameKnockPowerPickupNotice(this.scene, event.type as PowerType, this.scene.arena.cx + event.x * this.scene.arena.scale, this.scene.arena.cy + event.y * this.scene.arena.scale, this.scene.arena);
+		}
+		this.scene.syncOnlinePowerPickups(state.pickups);
+		const moving = state.entities.some((entity) => !entity.stopped);
+		this.scene.launchedThisBall = moving;
+		this.releasePending = moving;
+		this.scene.updateScoreHud(); this.scene.updateSidePanels(); this.scene.showPowerPanel(); this.scene.syncSlingshotForTurn();
 	}
 
 	/** Emit the release input for the local player's throw. */
@@ -517,33 +508,6 @@ export class KameKnockOnlineController {
 		}, (ack: GameInputAck) => {
 			if (!ack?.accepted) this.restoreRejectedRelease();
 		});
-	}
-
-	/** Emit the settled input once the local player's ball comes to rest. */
-	onLocalBallSettled(ball: BallState): void {
-		if (!this.match) return;
-		this.scene.launchedThisBall = false;
-		this.scene.activePower = PowerType.NONE;
-		ball.vx = 0;
-		ball.vy = 0;
-		if (
-			!this.settledSubmitted &&
-			this.replayThrower === this.side
-		) {
-			this.settledSubmitted = true;
-			this.releasePending = false;
-			getGameSocket().emit("game:input", {
-				matchId: this.match.matchId,
-				action: "settled",
-				payload: {
-					roundNumber: this.snapshotRoundNumber,
-					turnNumber: this.replayTurnNumber ?? this.snapshotTurnNumber,
-					x: (ball.x - this.scene.arena.cx) / this.scene.arena.rx,
-					y: (ball.y - this.scene.arena.cy) / this.scene.arena.ry,
-				},
-			});
-			this.updateStatus("Waiting for next turn...");
-		}
 	}
 
 	// ── Turn / slingshot helpers ────────────────────────────────────────────────
@@ -563,8 +527,8 @@ export class KameKnockOnlineController {
 		let ball = this.balls.get(side);
 		if (!ball) {
 			ball = {
-				x: 0,
-				y: 0,
+				x: this.scene.arena.cx,
+				y: this.scene.arena.cy,
 				vx: 0,
 				vy: 0,
 				r: BALL_SRC_R * this.scene.arena.scale,
@@ -591,7 +555,7 @@ export class KameKnockOnlineController {
 						vy: 0,
 						r: BALL_SRC_R * this.scene.arena.scale,
 					});
-			if (!this.scene.launchedThisBall || !this.scene.isBallMoving(ball))
+			if (!this.scene.launchedThisBall)
 				this.resetOnlineBall(ball, index, players.length);
 			// Sync powerup visual properties from server entity
 			if (serverBall) {
