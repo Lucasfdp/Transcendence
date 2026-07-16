@@ -19,6 +19,7 @@ export class GoogleAuthGuard extends AuthGuard("google") {
 		const host = req.headers.host ?? "localhost";
 		return {
 			callbackURL: `${proto}://${host}/api/auth/google/callback`,
+			state: typeof req.query.state === "string" ? req.query.state : "",
 		};
 	}
 

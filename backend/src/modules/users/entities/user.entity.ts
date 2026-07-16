@@ -94,6 +94,10 @@ export class User {
 	@Column({ default: false })
 	isDevAccount: boolean;
 
+	/** Canonical account after an account-link conflict has been resolved. */
+	@Column({ type: "int", nullable: true, default: null })
+	mergedIntoUserId: number | null;
+
 	/**
 	 * When the user was last seen online (their last socket disconnect).
 	 * Null until they have connected and disconnected at least once.

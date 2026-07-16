@@ -91,6 +91,7 @@ import {
 	type PresenceChange,
 } from "../features/social/presence";
 import { useToast } from "../features/social/toast/ToastContext";
+import { ConnectedAccounts } from "../features/account-links/ConnectedAccounts";
 
 type AchievementFilter = "all" | "unlocked" | "locked";
 
@@ -656,6 +657,7 @@ function HomeMenu(): JSX.Element {
 	const [profileSuccess, setProfileSuccess] = useState("");
 	const [profileTurtleName, setProfileTurtleName] = useState("");
 	const [profileShowcasedAchievements, setProfileShowcasedAchievements] = useState<(string | null)[]>([null, null, null]);
+	const accountLinkReturnHandled = useRef(false);
 	const [replays, setReplays] = useState<ReplaySummary[] | null>(null);
 	const [replaysLoading, setReplaysLoading] = useState(false);
 	const [selectedReplay, setSelectedReplay] = useState<ReplayDetail | null>(null);
@@ -1470,6 +1472,18 @@ function HomeMenu(): JSX.Element {
 			setProfileShowcasedAchievements([null, null, null]);
 		}
 	};
+
+	useEffect(() => {
+		if (
+			accountLinkReturnHandled.current ||
+			!player ||
+			(!searchParams.has("account_link_conflict") &&
+				!searchParams.has("account_linked"))
+		) return;
+		accountLinkReturnHandled.current = true;
+		void openProfile();
+		navigate(`/?view=${view}`, { replace: true });
+	}, [navigate, player, searchParams, view]);
 
 	const openCustomization = async () => {
 		setActiveModal("customization");
@@ -3414,6 +3428,7 @@ function HomeMenu(): JSX.Element {
 			{activeModal === "profile" ? (
 				<HubModal
 					title="Edit Profile"
+					variant="wide"
 					onClose={() => {
 						setActiveModal(null);
 					}}
@@ -3557,6 +3572,7 @@ function HomeMenu(): JSX.Element {
 						>
 							{profileSaving ? "Saving…" : "Save changes"}
 						</button>
+						<ConnectedAccounts />
 					</div>
 				</HubModal>
 			) : null}
@@ -4846,6 +4862,10 @@ function HubModal({
 		(firstFocusable ?? panel)?.focus();
 
 		const onKeyDown = (e: KeyboardEvent) => {
+			if (
+				document.querySelector(".account-conflict[aria-modal='true']") &&
+				!panel?.contains(document.activeElement)
+			) return;
 			if (e.key === "Escape") {
 				onClose();
 				return;

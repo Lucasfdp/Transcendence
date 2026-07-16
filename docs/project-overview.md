@@ -61,7 +61,8 @@ Nginx is the single entry point for all external traffic. It terminates TLS and 
 
 **What it does:**
 
-- Redirects all HTTP (port 80) to HTTPS (port 443) with a 301.
+- Replaces plain HTTP requests sent to the published TLS port with a branded
+  `426 Upgrade Required` page that links back to the secure entrance.
 - Serves HTTPS with TLS 1.2/1.3 only and a strong cipher suite.
 - Adds security headers: `Strict-Transport-Security`, `X-Frame-Options DENY`, `X-Content-Type-Options nosniff`, `Content-Security-Policy`.
 - Routes `/api/` to the NestJS backend (120 s read timeout, 10 MB body limit).
@@ -88,12 +89,15 @@ Handles local, guest, 42, and Google authentication with JWTs stored in an
 HTTP-only cookie.
 
 - `AuthController` — local registration/login, guest sessions, session logout,
-  current-user lookup, and the 42/Google OAuth routes and callbacks.
-- `AuthService` — account creation, credential validation, OAuth account
-  linking, and auth-cookie issuance.
+  current-user lookup, connected-account operations, and the 42/Google OAuth
+  routes and callbacks.
+- `AuthService` — local credential validation and auth-cookie issuance.
+- `AccountLinksService` — authentication identities, persistent conflicts,
+  previews, unlinking, and transactional account consolidation.
+- `OAuthStateService` — expiring, single-use OAuth state stored in Redis.
 - `JwtStrategy` — validates the auth cookie and loads the current user.
 - `FortyTwoStrategy` and `GoogleStrategy` — the two supported remote OAuth
-  providers.
+  providers; they return verified provider identities and never create users.
 
 **UsersModule** (`backend/src/modules/users/`)  
 CRUD over the `users` table.
@@ -101,6 +105,8 @@ CRUD over the `users` table.
 - `UsersController` — JWT-guarded routes: `GET /api/users`, `GET /api/users/:username`, `GET /api/users/me`.
 - `UsersService` — `findById`, `findByFortyTwoId`, `findByGoogleId`,
   `findByUsername`, `create` (also creates a linked Profile row), and `findAll`.
+- `UserAccountActivityService` — process-local queue markers used to prevent an
+  account consolidation while a player is waiting for a match.
 
 **ProfilesModule** (`backend/src/modules/profiles/`)  
 Manages the `profiles` table. Profiles are created automatically when a user is created — no separate endpoint yet.
@@ -141,12 +147,11 @@ docker compose exec database psql -U $POSTGRES_USER $POSTGRES_DB
 
 **Path:** `infra/redis/`
 
-Redis is running and connected to the backend but not yet actively used. The planned uses are:
+Redis is running and connected to the backend. It currently stores OAuth state,
+JWT revocations, and distributed rate-limit counters. Further planned uses are:
 
-- JWT blocklist / session revocation
 - WebSocket pub/sub for real-time game state
 - Matchmaking queues and lobby state
-- Per-user / per-IP rate limiting
 
 Config lives in `tools/redis.conf`. Password auth is required (`REDIS_PASSWORD`). Memory is capped at `REDIS_MAX_MEMORY` with the `allkeys-lru` eviction policy by default.
 
@@ -266,24 +271,30 @@ A 320×490 px Phaser `Container` that slides in below the HUD on the left side. 
 ## 9. Authentication Flow
 
 ```
-Dev login (local only):
-  Browser → GET /api/auth/dev-login?username=KameMaster
-          → AuthController checks NODE_ENV + ENABLE_DEV_LOGIN
-          → AuthService.devLogin() → findOrCreateUser() → issueJwt()
-          → { access_token: "eyJ..." }
-          → stored in localStorage
-          → scene.restart() → HubScene loads with user data
+ShellSmash sign-in:
+  Browser → CSRF bootstrap → POST /api/auth/login
+          → AuthIdentity scrypt verification
+          → canonical User resolution
+          → HTTP-only auth cookie
 
 JWT-protected request:
   Browser → GET /api/users/me
-          → Authorization: Bearer <token>
-          → JwtStrategy.validate() → UsersService.findById()
-          → returns User entity
+          → auth_token cookie
+          → JwtStrategy.validate() → UsersService.findCanonicalById()
+          → returns a private-field-safe user view
+
+OAuth sign-in or linking:
+  Browser → application start endpoint
+          → single-use Redis state
+          → provider authorisation and callback
+          → verified provider identity
+          → direct link, new user, or persistent account conflict
 ```
 
 42 and Google OAuth are wired through Passport strategies, provider-specific
-guards, controller callbacks, and HTTP-only auth cookies. Real client
-credentials are supplied through Vault; see `docs/oauth-setup.md`.
+guards, controller callbacks, single-use Redis state, and HTTP-only auth
+cookies. Real client credentials are supplied through Vault; see
+`docs/oauth-setup.md`. Tokens are never stored in browser storage.
 
 ---
 
@@ -291,20 +302,46 @@ credentials are supplied through Vault; see `docs/oauth-setup.md`.
 
 ### User
 
-| Column     | Type              | Notes                                |
-| ---------- | ----------------- | ------------------------------------ |
-| id         | int (PK)          | auto-increment                       |
-| fortyTwoId | string (unique)   | `"dev-<username>"` for dev logins    |
-| username   | string (unique)   |                                      |
-| email      | string (unique)   |                                      |
-| avatar     | string (nullable) | URL to avatar image                  |
-| level      | int               | default 1                            |
-| xp         | int               | default 0                            |
-| turtleName | string (nullable) | display name; falls back to username |
-| shellSkin  | string            | default `"base"`                     |
-| createdAt  | timestamp         |                                      |
-| updatedAt  | timestamp         |                                      |
-| profile    | Profile           | one-to-one, eager-loaded             |
+| Column           | Type              | Notes                                      |
+| ---------------- | ----------------- | ------------------------------------------ |
+| id               | int (PK)          | auto-increment                             |
+| username         | string (unique)   | progress-account display handle            |
+| avatar           | string (nullable) | URL to avatar image                        |
+| level            | int               | default 1                                  |
+| xp               | int               | default 0                                  |
+| coins            | int               | player balance                             |
+| turtleName       | string (nullable) | display name; falls back to username       |
+| shellSkin        | string            | default `"base"`                           |
+| mergedIntoUserId | int (nullable)    | canonical account after consolidation      |
+| createdAt        | timestamp         |                                            |
+| updatedAt        | timestamp         |                                            |
+| profile          | Profile           | one-to-one, eager-loaded                   |
+
+Legacy authentication columns remain temporarily for rolling-deployment
+compatibility. New authentication decisions use `AuthIdentity`.
+
+### AuthIdentity
+
+| Column          | Type            | Notes                                        |
+| --------------- | --------------- | -------------------------------------------- |
+| id              | UUID (PK)       |                                              |
+| userId          | int (FK)        | progress account                             |
+| method          | string          | `shellsmash`, `google`, or `forty_two`       |
+| providerSubject | string nullable | stable Google or 42 subject                  |
+| shellUsername   | string nullable | ShellSmash sign-in name                      |
+| shellEmail      | string nullable | normalised ShellSmash sign-in email          |
+| passwordHash    | string nullable | private salted scrypt hash                   |
+
+The database enforces one identity per user and method, and global uniqueness
+for provider subjects, ShellSmash usernames, and ShellSmash emails.
+
+### AccountLinkConflict
+
+Pending conflicts retain the initiating and linked user IDs, the method that
+created the conflict, and the eventual resolution. A partial unique index and
+transactional advisory locks prevent concurrent conflicts for the same
+account. Completed rows retain the final user ID for idempotent retries and
+auditability.
 
 ### Profile
 

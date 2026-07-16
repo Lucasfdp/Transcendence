@@ -459,18 +459,22 @@ export const api = {
 	guestLogin: (): Promise<{ ok: boolean }> =>
 		apiFetch<{ ok: boolean }>("/auth/guest", { method: "POST" }),
 
-	/** Create a new local account and log in. Sets httpOnly auth cookie. */
-	register: (username: string, password: string): Promise<{ ok: boolean }> =>
+	/** Create a local account and start its authenticated session. */
+	register: (
+		username: string,
+		email: string,
+		password: string,
+	): Promise<{ ok: boolean }> =>
 		apiFetch<{ ok: boolean }>("/auth/register", {
 			method: "POST",
-			body: JSON.stringify({ username, password }),
+			body: JSON.stringify({ username, email, password }),
 		}),
 
 	/** Log in to an existing local account. Sets httpOnly auth cookie. */
-	login: (username: string, password: string): Promise<{ ok: boolean }> =>
+	login: (identifier: string, password: string): Promise<{ ok: boolean }> =>
 		apiFetch<{ ok: boolean }>("/auth/login", {
 			method: "POST",
-			body: JSON.stringify({ username, password }),
+			body: JSON.stringify({ identifier, password }),
 		}),
 
 	/** Logout — clears the auth cookie. */

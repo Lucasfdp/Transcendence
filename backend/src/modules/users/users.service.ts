@@ -57,6 +57,32 @@ export class UsersService {
 		}
 	}
 
+	/** Resolve pending links and completed merges without invalidating old JWTs. */
+	async resolveCanonicalUserId(id: number): Promise<number> {
+		try {
+			const rows = await this.getDataSource().query<Array<{
+				mergedIntoUserId: number | null;
+				initiatorUserId: number | null;
+			}>>(
+				`SELECT u."mergedIntoUserId", c."initiatorUserId"
+				 FROM users u
+				 LEFT JOIN account_link_conflicts c
+				   ON c."linkedUserId" = u.id AND c.status = 'pending'
+				 WHERE u.id = $1 LIMIT 1`,
+				[id],
+			);
+			return rows[0]?.initiatorUserId ?? rows[0]?.mergedIntoUserId ?? id;
+		} catch (error) {
+			// Rolling deployments may briefly run before the migration exists.
+			if (["42P01", "42703"].includes((error as { code?: string }).code ?? "")) return id;
+			throw new InternalServerErrorException("Failed to resolve account identity");
+		}
+	}
+
+	async findCanonicalById(id: number): Promise<User | null> {
+		return this.findById(await this.resolveCanonicalUserId(id));
+	}
+
 	async findByFortyTwoId(fortyTwoId: string): Promise<User | null> {
 		try {
 			return await this.usersRepo.findOne({
@@ -108,13 +134,37 @@ export class UsersService {
 
 	async findByEmail(email: string): Promise<User | null> {
 		try {
-			return await this.usersRepo.findOne({
-				where: { email },
-				relations: ["profile"],
-			});
+			return (
+				(await this.usersRepo
+					.createQueryBuilder("user")
+					.leftJoinAndSelect("user.profile", "profile")
+					.where("LOWER(user.email) = LOWER(:email)", { email })
+					.getOne()) ?? null
+			);
 		} catch {
 			throw new InternalServerErrorException(
 				"Failed to find user by email",
+			);
+		}
+	}
+
+	/** Load the private fields needed only by password authentication. */
+	async findForLocalLogin(identifier: string): Promise<User | null> {
+		try {
+			return (
+				(await this.usersRepo
+					.createQueryBuilder("user")
+					.addSelect("user.passwordHash")
+					.leftJoinAndSelect("user.profile", "profile")
+					.where("user.username = :identifier", { identifier })
+					.orWhere("LOWER(user.email) = LOWER(:identifier)", {
+						identifier,
+					})
+					.getOne()) ?? null
+			);
+		} catch {
+			throw new InternalServerErrorException(
+				"Failed to find user for local login",
 			);
 		}
 	}
@@ -147,7 +197,7 @@ export class UsersService {
 			// We surface this as 409 so the frontend friendlyError() handler fires
 			// and the user sees "That username is already taken." instead of a 500.
 			if ((err as { code?: string })?.code === "23505") {
-				throw new ConflictException("Username is already taken");
+				throw new ConflictException("Username or email is already in use");
 			}
 			throw new InternalServerErrorException("Failed to create user");
 		}

@@ -50,7 +50,7 @@ describe("JwtStrategy", () => {
 				},
 				{
 					provide: UsersService,
-					useValue: { findById: jest.fn() },
+					useValue: { findCanonicalById: jest.fn() },
 				},
 				{
 					provide: TokenDenyListService,
@@ -66,7 +66,7 @@ describe("JwtStrategy", () => {
 
 	describe("validate", () => {
 		it("should return the user identity including jti and exp for a valid payload", async () => {
-			usersService.findById.mockResolvedValue(mockUser);
+			usersService.findCanonicalById.mockResolvedValue(mockUser);
 
 			const result = await strategy.validate(makePayload());
 
@@ -78,11 +78,11 @@ describe("JwtStrategy", () => {
 				jti: "token-1",
 				exp: 1_900_000_000,
 			});
-			expect(usersService.findById).toHaveBeenCalledWith(1);
+			expect(usersService.findCanonicalById).toHaveBeenCalledWith(1);
 		});
 
 		it("should throw UnauthorizedException when the user no longer exists", async () => {
-			usersService.findById.mockResolvedValue(null);
+			usersService.findCanonicalById.mockResolvedValue(null);
 
 			await expect(
 				strategy.validate(makePayload({ sub: 99, username: "ghost" })),
@@ -90,7 +90,7 @@ describe("JwtStrategy", () => {
 		});
 
 		it("should throw UnauthorizedException when the token jti is revoked", async () => {
-			usersService.findById.mockResolvedValue(mockUser);
+			usersService.findCanonicalById.mockResolvedValue(mockUser);
 			tokenDenyList.isRevoked.mockResolvedValue(true);
 
 			await expect(strategy.validate(makePayload())).rejects.toThrow(
@@ -100,7 +100,7 @@ describe("JwtStrategy", () => {
 		});
 
 		it("should skip the deny-list check for legacy tokens without a jti", async () => {
-			usersService.findById.mockResolvedValue(mockUser);
+			usersService.findCanonicalById.mockResolvedValue(mockUser);
 
 			const result = await strategy.validate(
 				makePayload({ jti: undefined }),

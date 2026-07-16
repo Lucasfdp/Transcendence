@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
-import { AuthCard } from "../components/auth/AuthCard";
+import { AuthCard, type AuthMode } from "../components/auth/AuthCard";
+import { registrationPrefill } from "../components/auth/registrationPrefill";
 import { TempleBackdrop } from "../components/layout/TempleBackdrop";
 import { RouteLoading } from "../components/common/RouteLoading";
 import { useSessionGate } from "../hooks/useSessionGate";
 import { api, AuthError, NetworkError } from "../features/hub/api";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 export function AuthPage(): JSX.Element {
 	const navigate = useNavigate();
 	const { status } = useSessionGate();
 	const [loginBackdropVersion] = useState(() => Date.now().toString());
+	const [mode, setMode] = useState<AuthMode>("login");
+	const [identifier, setIdentifier] = useState("");
 	const [username, setUsername] = useState("");
+	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [csrfReady, setCsrfReady] = useState(false);
@@ -18,7 +24,6 @@ export function AuthPage(): JSX.Element {
 
 	useEffect(() => {
 		let cancelled = false;
-
 		void api
 			.getCsrfToken()
 			.then(() => {
@@ -27,8 +32,8 @@ export function AuthPage(): JSX.Element {
 				}
 			})
 			.catch((err: unknown) => {
-				console.warn("[AuthPage] Failed to preload CSRF token:", err);
 				if (!cancelled) {
+					console.warn("[AuthPage] Failed to initialise authentication:", err);
 					setError("Authentication is temporarily unavailable.");
 				}
 			});
@@ -38,33 +43,31 @@ export function AuthPage(): JSX.Element {
 		};
 	}, []);
 
-	const handleLocalLogin = async (
-		event: React.FormEvent<HTMLFormElement>,
-	) => {
-		event.preventDefault();
-		if (isSubmitting) return;
+	const ensureCsrf = async (): Promise<void> => {
+		if (csrfReady) return;
+		await api.getCsrfToken();
+		setCsrfReady(true);
+	};
 
-		const nextUsername = username.trim();
-		if (!nextUsername || !password) {
-			setError("Enter your username and password.");
+	const handleLocalLogin = async (): Promise<void> => {
+		const nextIdentifier = identifier.trim();
+		if (!nextIdentifier || !password) {
+			setError("Enter your email or username and password.");
 			return;
 		}
 
 		setIsSubmitting(true);
 		setError("");
 		try {
-			if (!csrfReady) {
-				await api.getCsrfToken();
-				setCsrfReady(true);
-			}
-			await api.login(nextUsername, password);
+			await ensureCsrf();
+			await api.login(nextIdentifier, password);
 			navigate("/", { replace: true });
 		} catch (err: unknown) {
 			if (err instanceof AuthError) {
-				if (err.status === 401 || err.status === 403) {
-					setError(
-						"Invalid credentials or missing session permissions.",
-					);
+				if (err.status === 403) {
+					setError(err.message);
+				} else if (err.status === 401) {
+					setError("Invalid email, username or password.");
 				} else if (err.status === 400 || err.status === 422) {
 					setError(err.message);
 				} else if (err.status === 429) {
@@ -82,75 +85,34 @@ export function AuthPage(): JSX.Element {
 		}
 	};
 
-	const handleOAuthLogin = (url: string) => {
-		window.location.assign(url);
-	};
-
-	const handleGuestLogin = async () => {
-		if (isSubmitting) return;
-
-		setIsSubmitting(true);
-		setError("");
-		try {
-			if (!csrfReady) {
-				await api.getCsrfToken();
-				setCsrfReady(true);
-			}
-			await api.guestLogin();
-			navigate("/", { replace: true });
-		} catch (err: unknown) {
-			if (err instanceof AuthError) {
-				if (err.status === 429) {
-					setError(
-						"Too many guest sessions. Wait a moment and try again.",
-					);
-				} else if (err.status === 401 || err.status === 403) {
-					setError("Guest access is temporarily unavailable.");
-				} else if (err.status === 400 || err.status === 422) {
-					setError(err.message);
-				} else {
-					setError("Could not create a guest session.");
-				}
-			} else if (err instanceof NetworkError) {
-				setError("Could not reach the server.");
-			} else {
-				setError("Could not create a guest session.");
-			}
-		} finally {
-			setIsSubmitting(false);
-		}
-	};
-
-	const handleRegister = async () => {
-		if (isSubmitting) return;
-
+	const handleRegister = async (): Promise<void> => {
 		const nextUsername = username.trim();
-		if (!nextUsername || !password) {
-			setError("Enter your username and password.");
+		const nextEmail = email.trim().toLowerCase();
+		if (!nextUsername || !nextEmail || !password) {
+			setError("Enter a username, email and password.");
+			return;
+		}
+		if (!EMAIL_RE.test(nextEmail)) {
+			setError("Enter a valid email address.");
 			return;
 		}
 
 		setIsSubmitting(true);
 		setError("");
 		try {
-			if (!csrfReady) {
-				await api.getCsrfToken();
-				setCsrfReady(true);
-			}
-			await api.register(nextUsername, password);
+			await ensureCsrf();
+			await api.register(nextUsername, nextEmail, password);
 			navigate("/", { replace: true });
 		} catch (err: unknown) {
 			if (err instanceof AuthError) {
 				if (err.status === 409) {
-					setError("That username is already taken.");
+					setError("That username or email is already in use.");
 				} else if (err.status === 400 || err.status === 422) {
 					setError(err.message);
 				} else if (err.status === 429) {
 					setError(
 						"Too many registration attempts. Wait a moment and try again.",
 					);
-				} else if (err.status === 401 || err.status === 403) {
-					setError("Registration is temporarily unavailable.");
 				} else if (err.status >= 500) {
 					setError("The server could not complete the registration.");
 				} else {
@@ -166,13 +128,54 @@ export function AuthPage(): JSX.Element {
 		}
 	};
 
-	if (status === "checking") {
-		return <RouteLoading />;
-	}
+	const handleSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
+		event.preventDefault();
+		if (isSubmitting) return;
+		void (mode === "register" ? handleRegister() : handleLocalLogin());
+	};
 
-	if (status === "authenticated") {
-		return <Navigate to="/" replace />;
-	}
+	const handleOAuthLogin = (url: string): void => {
+		window.location.assign(url);
+	};
+
+	const handleGuestLogin = async (): Promise<void> => {
+		if (isSubmitting) return;
+		setIsSubmitting(true);
+		setError("");
+		try {
+			await ensureCsrf();
+			await api.guestLogin();
+			navigate("/", { replace: true });
+		} catch (err: unknown) {
+			if (err instanceof AuthError && err.status === 429) {
+				setError("Too many guest sessions. Wait a moment and try again.");
+			} else if (err instanceof NetworkError) {
+				setError("Could not reach the server.");
+			} else {
+				setError("Could not create a guest session.");
+			}
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
+
+	const handleModeChange = (nextMode: AuthMode): void => {
+		if (mode === "login" && nextMode === "register") {
+			const prefill = registrationPrefill(identifier);
+			if (prefill.email) {
+				setEmail((currentEmail) => currentEmail || prefill.email);
+			} else if (prefill.username) {
+				setUsername((currentUsername) =>
+					currentUsername || prefill.username,
+				);
+			}
+		}
+		setMode(nextMode);
+		setError("");
+	};
+
+	if (status === "checking") return <RouteLoading />;
+	if (status === "authenticated") return <Navigate to="/" replace />;
 
 	return (
 		<main
@@ -206,16 +209,21 @@ export function AuthPage(): JSX.Element {
 				</div>
 
 				<AuthCard
+					mode={mode}
+					identifier={identifier}
 					username={username}
+					email={email}
 					password={password}
 					error={error}
 					isSubmitting={isSubmitting}
+					onModeChange={handleModeChange}
+					onIdentifierChange={setIdentifier}
 					onUsernameChange={setUsername}
+					onEmailChange={setEmail}
 					onPasswordChange={setPassword}
-					onSubmit={handleLocalLogin}
+					onSubmit={handleSubmit}
 					onOAuthLogin={handleOAuthLogin}
-					onGuestLogin={handleGuestLogin}
-					onRegister={handleRegister}
+					onGuestLogin={() => void handleGuestLogin()}
 				/>
 			</section>
 		</main>

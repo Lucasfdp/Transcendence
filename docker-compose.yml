@@ -1,8 +1,8 @@
 services:
     reverse_proxy:
         build:
-            context: ./infra/reverse-proxy
-            dockerfile: Dockerfile
+            context: .
+            dockerfile: infra/reverse-proxy/Dockerfile
         container_name: ${COMPOSE_PROJECT_NAME}_reverse_proxy
         image: ${COMPOSE_PROJECT_NAME}/reverse_proxy:local
         restart: unless-stopped

@@ -4294,6 +4294,319 @@ img.power-card__orb {
 	margin: 0;
 }
 
+/* ── Connected accounts ── */
+.connected-accounts {
+	margin-top: 1rem;
+	padding-top: 1.25rem;
+	border-top: 1px solid rgba(226, 186, 104, 0.25);
+}
+
+.connected-accounts__heading,
+.connected-account__top,
+.account-conflict__identity,
+.account-conflict__panel > header,
+.account-conflict__actions {
+	display: flex;
+	align-items: center;
+}
+
+.connected-accounts__heading {
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 0.85rem;
+}
+
+.connected-accounts__heading p,
+.connected-accounts__heading h3,
+.connected-account h4,
+.connected-account p,
+.account-conflict h2,
+.account-conflict header p {
+	margin: 0;
+}
+
+.connected-accounts__heading p,
+.account-conflict header p,
+.account-conflict__label {
+	color: #e2ba68;
+	font-size: 0.72rem;
+	letter-spacing: 0.13em;
+	text-transform: uppercase;
+}
+
+.connected-accounts__heading h3 {
+	font-size: 1.2rem;
+}
+
+.connected-accounts__heading > span {
+	padding: 0.25rem 0.55rem;
+	border: 1px solid rgba(226, 186, 104, 0.35);
+	border-radius: 999px;
+	font-size: 0.72rem;
+}
+
+.connected-accounts__grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.75rem;
+}
+
+.connected-account {
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+	gap: 0.8rem;
+	padding: 0.9rem;
+	border: 1px solid rgba(255, 255, 255, 0.13);
+	border-radius: 8px;
+	background: linear-gradient(145deg, rgba(16, 23, 31, 0.88), rgba(42, 31, 26, 0.72));
+}
+
+.connected-account:first-child {
+	grid-column: 1 / -1;
+}
+
+.connected-account--linked {
+	border-color: rgba(111, 207, 151, 0.42);
+}
+
+.connected-account__top {
+	align-items: flex-start;
+	gap: 0.7rem;
+}
+
+.connected-account__top > div {
+	flex: 1;
+	min-width: 0;
+}
+
+.connected-account__top p {
+	margin-top: 0.22rem;
+	color: rgba(255, 255, 255, 0.58);
+	font-size: 0.74rem;
+}
+
+.connected-account__top > strong {
+	color: #6fcf97;
+	font-size: 0.7rem;
+	white-space: nowrap;
+}
+
+.connected-account:not(.connected-account--linked) .connected-account__top > strong {
+	color: rgba(255, 255, 255, 0.45);
+}
+
+.connected-account__mark {
+	display: grid;
+	width: 2.1rem;
+	height: 2.1rem;
+	flex: 0 0 auto;
+	place-items: center;
+	border: 1px solid rgba(226, 186, 104, 0.45);
+	border-radius: 7px;
+	background: rgba(226, 186, 104, 0.08);
+	color: #f0ce8b;
+	font-weight: 800;
+}
+
+.connected-account__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.45rem;
+}
+
+.connected-account__form {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.55rem;
+}
+
+.connected-account__form label {
+	display: grid;
+	gap: 0.22rem;
+	font-size: 0.72rem;
+}
+
+.connected-account__form input {
+	min-width: 0;
+	padding: 0.45rem 0.55rem;
+	border: 1px solid rgba(255, 255, 255, 0.16);
+	border-radius: 4px;
+	background: rgba(0, 0, 0, 0.22);
+	color: inherit;
+}
+
+.connected-account__form .connected-account__actions {
+	grid-column: 1 / -1;
+}
+
+.connected-account__unlink {
+	align-self: flex-end;
+	color: #ffb1aa;
+}
+
+.connected-accounts__alert,
+.connected-accounts__error,
+.account-conflict__warning,
+.account-conflict__error {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.65rem 0.75rem;
+	border: 1px solid rgba(229, 79, 72, 0.6);
+	border-radius: 5px;
+	background: rgba(117, 25, 24, 0.24);
+	color: #ffb1aa;
+}
+
+.connected-accounts__alert {
+	margin-bottom: 0.75rem;
+	text-align: left;
+}
+
+.account-conflict {
+	position: fixed;
+	z-index: 1300;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	padding: 1rem;
+}
+
+.account-conflict__backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba(4, 7, 11, 0.86);
+	backdrop-filter: blur(6px);
+}
+
+.account-conflict__panel {
+	position: relative;
+	z-index: 1;
+	width: min(68rem, 100%);
+	max-height: calc(100vh - 2rem);
+	overflow: auto;
+	padding: 1.2rem;
+	border: 1px solid rgba(226, 186, 104, 0.45);
+	border-radius: 10px;
+	background: #12191f;
+	box-shadow: 0 24px 80px rgba(0, 0, 0, 0.62);
+}
+
+.account-conflict__panel > header {
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.account-conflict__intro {
+	color: rgba(255, 255, 255, 0.7);
+}
+
+.account-conflict__grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 1rem;
+	margin-top: 1rem;
+}
+
+.account-conflict__preview {
+	padding: 1rem;
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	border-radius: 8px;
+	background: rgba(255, 255, 255, 0.035);
+}
+
+.account-conflict__identity {
+	gap: 0.7rem;
+}
+
+.account-conflict__identity img,
+.account-conflict__identity > span {
+	width: 3.2rem;
+	height: 3.2rem;
+	border-radius: 50%;
+	object-fit: cover;
+}
+
+.account-conflict__identity > span {
+	display: grid;
+	place-items: center;
+	background: rgba(226, 186, 104, 0.13);
+	font-size: 1.4rem;
+}
+
+.account-conflict__identity div {
+	display: grid;
+}
+
+.account-conflict__identity small {
+	color: rgba(255, 255, 255, 0.55);
+}
+
+.account-conflict__stats {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 0.45rem;
+}
+
+.account-conflict__stats div {
+	padding: 0.45rem;
+	background: rgba(0, 0, 0, 0.18);
+}
+
+.account-conflict__stats dt {
+	color: rgba(255, 255, 255, 0.52);
+	font-size: 0.66rem;
+}
+
+.account-conflict__stats dd {
+	margin: 0.1rem 0 0;
+	font-weight: 700;
+}
+
+.account-conflict__methods {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+}
+
+.account-conflict__methods span {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.25rem 0.45rem;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 999px;
+	font-size: 0.7rem;
+}
+
+.account-conflict__methods button {
+	padding: 0.12rem 0.35rem;
+	font-size: 0.64rem;
+}
+
+.account-conflict__actions {
+	justify-content: flex-end;
+	gap: 0.6rem;
+	margin-top: 1rem;
+}
+
+@media (max-width: 700px) {
+	.connected-accounts__grid,
+	.account-conflict__grid,
+	.connected-account__form {
+		grid-template-columns: 1fr;
+	}
+
+	.connected-account:first-child,
+	.connected-account__form .connected-account__actions {
+		grid-column: auto;
+	}
+
+	.account-conflict__stats {
+		grid-template-columns: repeat(2, 1fr);
+	}
+}
+
 /* ── Tag chip grid (profile modal) ── */
 .hub-modal__tag-grid {
 	display: flex;

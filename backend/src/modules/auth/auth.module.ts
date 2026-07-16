@@ -13,10 +13,16 @@ import { RedisRateLimiterService } from "./redis-rate-limiter.service";
 import { GuestCleanupService } from "./guest-cleanup.service";
 import { GuestGuard } from "./guards/guest.guard";
 import { TokenDenyListService } from "./token-deny-list.service";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import { AuthIdentity } from "./entities/auth-identity.entity";
+import { AccountLinkConflict } from "./entities/account-link-conflict.entity";
+import { AccountLinksService } from "./account-links.service";
+import { OAuthStateService } from "./oauth-state.service";
 
 @Module({
 	imports: [
 		UsersModule,
+		TypeOrmModule.forFeature([AuthIdentity, AccountLinkConflict]),
 		PassportModule,
 		ConfigModule,
 		JwtModule.registerAsync({
@@ -41,6 +47,8 @@ import { TokenDenyListService } from "./token-deny-list.service";
 		GuestCleanupService,
 		GuestGuard,
 		TokenDenyListService,
+		AccountLinksService,
+		OAuthStateService,
 	],
 	controllers: [AuthController],
 	exports: [
@@ -48,6 +56,7 @@ import { TokenDenyListService } from "./token-deny-list.service";
 		GuestGuard,
 		RateLimiterService,
 		RedisRateLimiterService,
+		AccountLinksService,
 	],
 })
 export class AuthModule {}

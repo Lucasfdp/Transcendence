@@ -59,3 +59,26 @@ Test each provider end to end after changing its credentials:
 4. Start the flow from the sign-in page.
 5. Confirm that the callback creates or reuses the account and redirects to the
    authenticated home page.
+
+## Connected-account flow
+
+Profile exposes Google and 42 as optional sign-in methods. The authenticated
+client starts linking with `POST /api/auth/account-links/:provider/start`; the
+response contains an application-relative authorisation URL. Do not construct
+provider URLs in the browser.
+
+Every authorisation attempt stores a random state record in Redis. The record
+contains the provider, the initiating user (or `null` for ordinary sign-in),
+and the safe return path. It expires after ten minutes and is deleted atomically
+when the callback consumes it. Ensure Redis is available before testing OAuth;
+the backend deliberately refuses to continue without secure state storage.
+
+When a provider identity already belongs to a different ShellSmash user, the
+callback signs the browser into the initiating user and redirects to
+`/?account_link_conflict=1`. Profile then opens the persistent conflict. Test
+both account choices, duplicate-provider removal, and the queue/match block
+after validating ordinary sign-in.
+
+Real provider credentials are required for the final end-to-end check. Unit and
+integration fixtures must use non-production subjects and must never record
+access or refresh tokens.

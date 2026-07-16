@@ -190,6 +190,12 @@ Requirement breakdown:
 
 Evidence:
 - Local auth, guest, and OAuth in `backend/src/modules/auth/`
+- Local registration validates and stores a unique email address, while local
+  login accepts either email or username.
+- Profile exposes ShellSmash, Google, and 42 connected-account controls.
+  Authentication identities are separate from progress, legacy credentials
+  are migrated, and a persistent two-preview conflict flow retains exactly one
+  account's progress while preserving moderation and antifraud records.
 - Editable profile and avatar upload in `backend/src/modules/users/users.controller.ts`
 - Friends and online status in `friends` and `presence`
 - Profile viewable from `HomePage`
@@ -226,6 +232,8 @@ Requirement breakdown:
 
 Evidence:
 - 42 and Google flows implemented in `backend/src/modules/auth/`
+- Both providers use expiring, single-use OAuth state in Redis and can be linked
+  or unlinked from Profile without relying on email-address matches.
 - OAuth UI in `frontend/src/components/auth/OAuthButtons.tsx`
 
 Missing for completion:

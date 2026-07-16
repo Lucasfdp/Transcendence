@@ -123,18 +123,25 @@ export class UsersController {
 	@Get("me")
 	async getMe(
 		@Request() req: { user: { id: number } },
-	): Promise<Omit<User, "passwordHash"> & { mostPlayedGame: MostPlayedGame | null }> {
+	): Promise<unknown> {
 		const user = await this.usersService.findById(req.user.id);
 		if (!user) throw new UnauthorizedException();
-		const { passwordHash: _pw, ...safe } = user as User & {
+		const {
+			passwordHash: _pw,
+			fortyTwoId: _fortyTwoId,
+			googleId: _googleId,
+			email: _email,
+			mergedIntoUserId: _mergedIntoUserId,
+			...safe
+		} = user as User & {
 			passwordHash?: unknown;
 		};
-		void _pw;
+		void [_pw, _fortyTwoId, _googleId, _email, _mergedIntoUserId];
 		const mostPlayedGame = await this.usersService.getMostPlayedGame(
 			req.user.id,
 		);
 		return {
-			...(safe as Omit<User, "passwordHash">),
+			...safe,
 			mostPlayedGame,
 		};
 	}
@@ -142,11 +149,21 @@ export class UsersController {
 	// ── PATCH /api/users/me ──────────────────────────────────────────────────────
 
 	@Patch("me")
-	updateMe(
+	async updateMe(
 		@Request() req: { user: { id: number } },
 		@Body() dto: UpdateProfileDto,
-	): Promise<User> {
-		return this.usersService.updateProfile(req.user.id, dto);
+	): Promise<unknown> {
+		const user = await this.usersService.updateProfile(req.user.id, dto);
+		const {
+			passwordHash: _pw,
+			fortyTwoId: _fortyTwoId,
+			googleId: _googleId,
+			email: _email,
+			mergedIntoUserId: _mergedIntoUserId,
+			...safe
+		} = user;
+		void [_pw, _fortyTwoId, _googleId, _email, _mergedIntoUserId];
+		return safe;
 	}
 
 	// ── POST /api/users/me/avatar ────────────────────────────────────────────────

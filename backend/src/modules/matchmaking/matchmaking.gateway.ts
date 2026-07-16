@@ -180,7 +180,7 @@ export class MatchmakingGateway
 				isGuest: boolean;
 				exp?: number;
 			}>(token);
-			const user = await this.usersService.findById(payload.sub);
+			const user = await this.usersService.findCanonicalById(payload.sub);
 			if (!user) throw new Error("User not found");
 
 			const socketUser = {
