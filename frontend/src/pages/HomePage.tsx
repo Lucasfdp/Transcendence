@@ -680,6 +680,10 @@ function HomeMenu(): JSX.Element {
 	const [suggestions, setSuggestions] = useState<PendingView[] | null>(null);
 	const [blockedUsers, setBlockedUsers] = useState<PendingView[] | null>(null);
 	const [socialLoading, setSocialLoading] = useState(false);
+	// Left-pane tab for the redesigned two-pane Social modal (Workstream C).
+	const [socialTab, setSocialTab] = useState<"friends" | "chats" | "requests">(
+		"friends",
+	);
 	const [friendSearchQuery, setFriendSearchQuery] = useState("");
 	const [friendUsername, setFriendUsername] = useState("");
 	const [friendActionLoading, setFriendActionLoading] = useState(false);
@@ -709,6 +713,10 @@ function HomeMenu(): JSX.Element {
 	const [gifSearchQuery, setGifSearchQuery] = useState("");
 	const [gifResults, setGifResults] = useState<GifSearchResult[]>([]);
 	const [gifSearchLoading, setGifSearchLoading] = useState(false);
+	// True when the last gif search failed (e.g. GIF search misconfigured or
+	// Klipy unreachable) — kept distinct from "no results" so the picker can
+	// show an accurate message instead of a misleading "No gifs found." (A4).
+	const [gifSearchError, setGifSearchError] = useState(false);
 	// ── Group member management (Decision 1/2) ───────────────────────────────
 	// `groupMembers` is the open group's member list (null = panel closed / not
 	// loaded); the rest drive the member panel, add-member picker, and the
@@ -738,6 +746,13 @@ function HomeMenu(): JSX.Element {
 	const [hoveredProfileLoading, setHoveredProfileLoading] = useState(false);
 	const profileCardCache = useRef(createProfileCardCache<User>()).current;
 	const [blockConfirmUserId, setBlockConfirmUserId] = useState<number | null>(
+		null,
+	);
+	// Which friend row's "⋯ More" overflow menu (Remove/Block/Report) is open —
+	// only one at a time, mirroring blockConfirmUserId. Keeps the friend row to
+	// a single compact line (Message + Invite inline) in the narrower Social
+	// modal sidebar instead of 5 always-visible text buttons overflowing it.
+	const [friendMenuUserId, setFriendMenuUserId] = useState<number | null>(
 		null,
 	);
 	/** Only one block-confirm row can be open at a time, so a single shared
@@ -914,6 +929,18 @@ function HomeMenu(): JSX.Element {
 		};
 	}, []);
 
+	// Mirror of `friends` for the mount-bound socket effect below (Bug B3),
+	// which closes over its first-render `friends` value otherwise — the
+	// same staleness problem `conversationsRef` solves for the chat effect.
+	const friendsRef = useRef<FriendView[] | null>(null);
+	useEffect(() => {
+		friendsRef.current = friends;
+	}, [friends]);
+	// Guards the friend:removed resync (Bug B3): a burst of removals must not
+	// stampede refreshSocial with concurrent in-flight requests, mirroring
+	// `conversationRefetchInFlightRef` below.
+	const friendRemovedRefetchInFlightRef = useRef(false);
+
 	// Subscribe to notification + lobby events on the shared game socket
 	useEffect(() => {
 		const socket = getGameSocket();
@@ -929,7 +956,16 @@ function HomeMenu(): JSX.Element {
 		// backend NotificationType doc for why it's not a persisted bell
 		// entry): just resync the friends list so the removed side doesn't
 		// keep seeing someone who unfriended them until their next refresh.
-		const onFriendRemoved = () => void refreshSocial();
+		// No-op while the Social modal has never been opened (friends === null,
+		// nothing to resync) and guard against a burst of removals firing
+		// concurrent refetches (Bug B3).
+		const onFriendRemoved = () => {
+			if (friendsRef.current === null || friendRemovedRefetchInFlightRef.current) return;
+			friendRemovedRefetchInFlightRef.current = true;
+			void refreshSocial().finally(() => {
+				friendRemovedRefetchInFlightRef.current = false;
+			});
+		};
 
 		// Live presence transition for a friend (Decision 3): patch the friend
 		// row in place. Pure patch via a functional update so the mount-bound
@@ -1552,6 +1588,22 @@ function HomeMenu(): JSX.Element {
 		}
 	};
 
+	/**
+	 * Turn a caught error into modal-banner copy (Bug B1). A 401 mid-session
+	 * means the auth cookie is gone or expired — redirect to /auth (same
+	 * pattern as the initial hub-load AuthError check above) instead of
+	 * surfacing the raw "Unauthorized" string in the modal. Other statuses
+	 * keep the backend's message, which is already user-worded for 4xx
+	 * validation errors.
+	 */
+	const describeModalError = (err: unknown, fallback: string): string => {
+		if (err instanceof AuthError && err.status === 401) {
+			navigate("/auth", { replace: true });
+			return "Your session has expired — please log in again.";
+		}
+		return err instanceof Error ? err.message : fallback;
+	};
+
 	const handleProfileSave = async () => {
 		if (profileSaving) return;
 		setProfileSaving(true);
@@ -1569,8 +1621,7 @@ function HomeMenu(): JSX.Element {
 			setPlayer(updated);
 			setProfileSuccess("Profile updated.");
 		} catch (err: unknown) {
-			const message = err instanceof Error ? err.message : "Update failed.";
-			setModalError(message);
+			setModalError(describeModalError(err, "Update failed."));
 		} finally {
 			setProfileSaving(false);
 		}
@@ -1596,7 +1647,7 @@ function HomeMenu(): JSX.Element {
 			setPlayer((current) => current ? { ...current, avatar: avatarUrl } : current);
 			setProfileSuccess("Portrait updated.");
 		} catch (err: unknown) {
-			setModalError(err instanceof Error ? err.message : "Portrait upload failed.");
+			setModalError(describeModalError(err, "Portrait upload failed."));
 		} finally {
 			setAvatarSaving(false);
 		}
@@ -1613,7 +1664,7 @@ function HomeMenu(): JSX.Element {
 			setPlayer((current) => current ? { ...current, avatar: null } : current);
 			setProfileSuccess("Equipped shell restored as your portrait.");
 		} catch (err: unknown) {
-			setModalError(err instanceof Error ? err.message : "Could not reset portrait.");
+			setModalError(describeModalError(err, "Could not reset portrait."));
 		} finally {
 			setAvatarSaving(false);
 		}
@@ -1633,6 +1684,7 @@ function HomeMenu(): JSX.Element {
 	const openSocial = async () => {
 		setActiveModal("social");
 		setModalError("");
+		setSocialTab("friends");
 		setFriends(null);
 		setPendingRequests(null);
 		setOutgoingRequests(null);
@@ -1640,6 +1692,7 @@ function HomeMenu(): JSX.Element {
 		setBlockedUsers(null);
 		setFriendSearchQuery("");
 		setBlockConfirmUserId(null);
+		setFriendMenuUserId(null);
 		setReportTarget(null);
 		setSocialLoading(true);
 		setActiveConversationId(null);
@@ -1650,6 +1703,7 @@ function HomeMenu(): JSX.Element {
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
 		setGifResults([]);
+		setGifSearchError(false);
 		// Commit any in-flight friend removals first, so the fresh fetch below
 		// doesn't momentarily re-show a friend mid-undo-window (Bug Audit L2).
 		await flushPendingRemovals();
@@ -1699,6 +1753,7 @@ function HomeMenu(): JSX.Element {
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
 		setGifResults([]);
+		setGifSearchError(false);
 		setChatThreadLoading(true);
 		try {
 			const messages = await api.getChatMessages(conversationId);
@@ -1786,6 +1841,7 @@ function HomeMenu(): JSX.Element {
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
 		setGifResults([]);
+		setGifSearchError(false);
 		// Reset the group member-management UI (Decision 1/2).
 		setGroupMembers(null);
 		setGroupMembersLoading(false);
@@ -1839,6 +1895,7 @@ function HomeMenu(): JSX.Element {
 		const seq = ++gifSearchSeq.current;
 		if (trimmed.length < GIF_SEARCH_MIN_LENGTH) {
 			setGifResults([]);
+			setGifSearchError(false);
 			setGifSearchLoading(false);
 			return;
 		}
@@ -1848,10 +1905,14 @@ function HomeMenu(): JSX.Element {
 			// Drop a stale response that resolved after a newer search began.
 			if (seq !== gifSearchSeq.current) return;
 			setGifResults(results);
+			setGifSearchError(false);
 		} catch {
-			// Non-fatal — an empty grid with no error toast is enough feedback here.
+			// Distinguish "search failed" from "no results" (A4) — e.g. GIF search
+			// is unconfigured (503) or Klipy is unreachable — so the picker shows
+			// an accurate message instead of a misleading "No gifs found."
 			if (seq !== gifSearchSeq.current) return;
 			setGifResults([]);
+			setGifSearchError(true);
 		} finally {
 			if (seq === gifSearchSeq.current) setGifSearchLoading(false);
 		}
@@ -1873,6 +1934,7 @@ function HomeMenu(): JSX.Element {
 				gifSearchDebounce.cancel();
 				setGifSearchQuery("");
 				setGifResults([]);
+				setGifSearchError(false);
 			}
 			return next;
 		});
@@ -1891,6 +1953,7 @@ function HomeMenu(): JSX.Element {
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
 		setGifResults([]);
+		setGifSearchError(false);
 	};
 
 	const handleToggleNewGroupMember = (userId: number): void => {
@@ -2082,7 +2145,7 @@ function HomeMenu(): JSX.Element {
 			const nextReplays = await api.getMyReplays();
 			setReplays(nextReplays);
 		} catch (err: unknown) {
-			setModalError(err instanceof Error ? err.message : "Could not load replays.");
+			setModalError(describeModalError(err, "Could not load replays."));
 			setReplays(null);
 		} finally {
 			setReplaysLoading(false);
@@ -2100,9 +2163,7 @@ function HomeMenu(): JSX.Element {
 			setSelectedReplayFrame(0);
 			setReplayFrameProgress(0);
 		} catch (err: unknown) {
-			setModalError(
-				err instanceof Error ? err.message : "Could not load replay.",
-			);
+			setModalError(describeModalError(err, "Could not load replay."));
 		} finally {
 			setReplayActionLoading(null);
 		}
@@ -2127,9 +2188,7 @@ function HomeMenu(): JSX.Element {
 				prev && prev.matchId === matchId ? { ...prev, ...updated } : prev,
 			);
 		} catch (err: unknown) {
-			setModalError(
-				err instanceof Error ? err.message : "Could not update replay.",
-			);
+			setModalError(describeModalError(err, "Could not update replay."));
 		} finally {
 			setReplayActionLoading(null);
 		}
@@ -2529,6 +2588,8 @@ function HomeMenu(): JSX.Element {
 
 	const playerName = accountDisplayName(player);
 	const friendStats = friendCounts(friends);
+	// Badge count for the Requests tab (Workstream C) — hidden when 0.
+	const pendingRequestsCount = pendingRequests?.length ?? 0;
 	const filteredFriends = friends
 		? filterFriends(friends, friendSearchQuery)
 		: null;
@@ -2539,37 +2600,57 @@ function HomeMenu(): JSX.Element {
 	/** Render a single friend row (shared across presence groups). */
 	const friendRow = (friend: FriendView): JSX.Element => (
 		<li key={friend.userId} className="hub-modal__social-row">
-			<span
-				className="hub-modal__social-name"
-				tabIndex={0}
-				aria-label={`View profile card for ${friend.turtleName ?? friend.username}`}
-				onMouseEnter={() => handleFriendHoverStart(friend)}
-				onMouseLeave={handleFriendHoverEnd}
-				onFocus={() => handleFriendHoverStart(friend)}
-				onBlur={handleFriendHoverEnd}
-			>
-				{friend.turtleName ?? friend.username}
-				<small> @{friend.username}</small>
-				{friend.status === "in-game" ? (
-					<span className="hub-modal__social-status hub-modal__social-status--ingame">
-						{RANKED_GAMES.find((g) => g.id === friend.gameId)?.label ??
-							"In a match"}
-					</span>
-				) : friend.status === "online" ? (
-					<span
-						className="hub-modal__social-online"
-						role="img"
-						aria-label="Online"
+			<div className="hub-modal__social-identity">
+				<span className="hub-modal__social-portrait">
+					<ShellPortrait
+						avatar={friend.avatar}
+						shellSkin={friend.shellSkin}
+						displayName={friend.turtleName ?? friend.username}
+						size="mini"
 					/>
-				) : (
-					<span className="hub-modal__social-status hub-modal__social-status--offline">
-						Last online {formatRelativeTime(friend.lastSeenAt)}
-					</span>
-				)}
-				{hoveredFriendUsername === friend.username ? (
-					<ProfileCard user={hoveredProfile} loading={hoveredProfileLoading} />
-				) : null}
-			</span>
+					<span
+						className={
+							friend.status === "in-game"
+								? "hub-modal__presence-dot hub-modal__presence-dot--online hub-modal__social-portrait-presence"
+								: friend.status === "online"
+									? "hub-modal__presence-dot hub-modal__presence-dot--online hub-modal__social-portrait-presence"
+									: "hub-modal__presence-dot hub-modal__social-portrait-presence"
+						}
+						aria-hidden="true"
+					/>
+				</span>
+				<span
+					className="hub-modal__social-name"
+					tabIndex={0}
+					aria-label={`View profile card for ${friend.turtleName ?? friend.username}`}
+					onMouseEnter={() => handleFriendHoverStart(friend)}
+					onMouseLeave={handleFriendHoverEnd}
+					onFocus={() => handleFriendHoverStart(friend)}
+					onBlur={handleFriendHoverEnd}
+				>
+					{friend.turtleName ?? friend.username}
+					<small> @{friend.username}</small>
+					{friend.status === "in-game" ? (
+						<span className="hub-modal__social-status hub-modal__social-status--ingame">
+							{RANKED_GAMES.find((g) => g.id === friend.gameId)?.label ??
+								"In a match"}
+						</span>
+					) : friend.status === "online" ? (
+						<span
+							className="hub-modal__social-online"
+							role="img"
+							aria-label="Online"
+						/>
+					) : (
+						<span className="hub-modal__social-status hub-modal__social-status--offline">
+							Last online {formatRelativeTime(friend.lastSeenAt)}
+						</span>
+					)}
+					{hoveredFriendUsername === friend.username ? (
+						<ProfileCard user={hoveredProfile} loading={hoveredProfileLoading} />
+					) : null}
+				</span>
+			</div>
 			<div className="hub-modal__social-actions">
 				{blockConfirmUserId === friend.userId ? (
 					<>
@@ -2615,32 +2696,65 @@ function HomeMenu(): JSX.Element {
 								Invite
 							</button>
 						)}
-						<button
-							type="button"
-							onClick={() => void handleRemoveFriend(friend)}
-						>
-							Remove
-						</button>
-						<button
-							type="button"
-							className="hub-modal__social-block-btn"
-							onClick={() => setBlockConfirmUserId(friend.userId)}
-						>
-							Block
-						</button>
-						<button
-							type="button"
-							className="hub-modal__social-block-btn"
-							onClick={() =>
-								setReportTarget({
-									userId: friend.userId,
-									username: friend.username,
-									turtleName: friend.turtleName,
-								})
-							}
-						>
-							Report
-						</button>
+						{/* Remove/Block/Report tucked behind a "More" menu instead of 3
+						 * always-visible text buttons — the full row (avatar + name +
+						 * 5 buttons) doesn't fit the narrower Social modal sidebar. */}
+						<div className="hub-modal__social-menu-wrapper">
+							<button
+								type="button"
+								className="hub-modal__social-menu-toggle"
+								aria-haspopup="true"
+								aria-expanded={friendMenuUserId === friend.userId}
+								aria-label={`More actions for ${friend.turtleName ?? friend.username}`}
+								onClick={() =>
+									setFriendMenuUserId((prev) =>
+										prev === friend.userId ? null : friend.userId,
+									)
+								}
+							>
+								⋯
+							</button>
+							{friendMenuUserId === friend.userId ? (
+								<div className="hub-modal__social-menu" role="menu">
+									<button
+										type="button"
+										role="menuitem"
+										onClick={() => {
+											setFriendMenuUserId(null);
+											void handleRemoveFriend(friend);
+										}}
+									>
+										Remove
+									</button>
+									<button
+										type="button"
+										role="menuitem"
+										className="hub-modal__social-block-btn"
+										onClick={() => {
+											setFriendMenuUserId(null);
+											setBlockConfirmUserId(friend.userId);
+										}}
+									>
+										Block
+									</button>
+									<button
+										type="button"
+										role="menuitem"
+										className="hub-modal__social-block-btn"
+										onClick={() => {
+											setFriendMenuUserId(null);
+											setReportTarget({
+												userId: friend.userId,
+												username: friend.username,
+												turtleName: friend.turtleName,
+											});
+										}}
+									>
+										Report
+									</button>
+								</div>
+							) : null}
+						</div>
 					</>
 				)}
 			</div>
@@ -3787,760 +3901,834 @@ function HomeMenu(): JSX.Element {
 				<HubModal title="Social" onClose={() => { setActiveModal(null); setFriendUsername(""); }} variant="wide">
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 
-					{player?.username ? (
-						<div className="hub-modal__social-code">
-							<span>
-								Your friend code: <code>{buildFriendCode(player.username)}</code>
-							</span>
-							<button
-								className="hub-modal__save-button"
-								type="button"
-								onClick={() => void handleCopyFriendCode()}
-							>
-								Copy
-							</button>
-						</div>
-					) : null}
-
-					<div className="hub-modal__social-add">
-						<input
-							className="hub-modal__field-input"
-							type="text"
-							placeholder="Username"
-							maxLength={32}
-							value={friendUsername}
-							onChange={(e) => setFriendUsername(e.target.value)}
-							onKeyDown={(e) => {
-								// Ignore Enter while an IME composition is active (Bug Audit L4).
-								if (e.key === "Enter" && !e.nativeEvent.isComposing)
-									void handleSendFriendRequest();
-							}}
-						/>
-						<button
-							className="hub-modal__save-button"
-							type="button"
-							disabled={friendActionLoading || !friendUsername.trim()}
-							onClick={() => void handleSendFriendRequest()}
-						>
-							{friendActionLoading ? "Sending…" : "Add friend"}
-						</button>
-					</div>
-
-					{socialLoading ? <p>Loading…</p> : (
-						<>
-							<section className="hub-modal__social-section hub-modal__chat-section">
-								<div className="hub-modal__chat-header">
-									<h3>Messages</h3>
-									{!activeConversationId ? (
-										<button
-											type="button"
-											className="hub-modal__save-button"
-											onClick={() => setIsNewGroupOpen((prev) => !prev)}
-										>
-											{isNewGroupOpen ? "Cancel" : "New group"}
-										</button>
-									) : null}
+					<div className="hub-modal__social-grid">
+						<div className="hub-modal__social-sidebar">
+							{player?.username ? (
+								<div className="hub-modal__social-code">
+									<span>
+										Your friend code: <code>{buildFriendCode(player.username)}</code>
+									</span>
+									<button
+										className="hub-modal__save-button"
+										type="button"
+										onClick={() => void handleCopyFriendCode()}
+									>
+										Copy
+									</button>
 								</div>
+							) : null}
+							<div className="hub-modal__social-add">
+								<input
+									className="hub-modal__field-input"
+									type="text"
+									placeholder="Username"
+									maxLength={32}
+									value={friendUsername}
+									onChange={(e) => setFriendUsername(e.target.value)}
+									onKeyDown={(e) => {
+										// Ignore Enter while an IME composition is active (Bug Audit L4).
+										if (e.key === "Enter" && !e.nativeEvent.isComposing)
+											void handleSendFriendRequest();
+									}}
+								/>
+								<button
+									className="hub-modal__save-button"
+									type="button"
+									disabled={friendActionLoading || !friendUsername.trim()}
+									onClick={() => void handleSendFriendRequest()}
+								>
+									{friendActionLoading ? "Sending…" : "Add friend"}
+								</button>
+							</div>
 
-								{isNewGroupOpen && !activeConversationId ? (
-									<div className="hub-modal__chat-new-group">
-										<input
-											className="hub-modal__field-input"
-											type="text"
-											placeholder="Group name"
-											maxLength={60}
-											value={newGroupName}
-											onChange={(e) => setNewGroupName(e.target.value)}
-										/>
-										<p className="hub-modal__chat-new-group-hint">Add friends:</p>
-										<ul className="hub-modal__social-list">
-											{(friends ?? []).map((friend) => (
-												<li key={friend.userId} className="hub-modal__chat-member-row">
-													<label>
-														<input
-															type="checkbox"
-															checked={newGroupMemberIds.has(friend.userId)}
-															onChange={() => handleToggleNewGroupMember(friend.userId)}
-														/>
-														{friend.turtleName ?? friend.username}
-													</label>
-												</li>
-											))}
-										</ul>
-										<button
-											type="button"
-											className="hub-modal__save-button"
-											disabled={
-												chatActionLoading ||
-												!newGroupName.trim() ||
-												newGroupMemberIds.size === 0
-											}
-											onClick={() => void handleCreateGroup()}
-										>
-											Create group
-										</button>
-									</div>
-								) : null}
+							<div className="hub-modal__social-tabs" role="tablist" aria-label="Social categories">
+								<button
+									type="button"
+									role="tab"
+									aria-selected={socialTab === "friends"}
+									className={`hub-modal__social-tab${socialTab === "friends" ? " hub-modal__social-tab--active" : ""}`}
+									onClick={() => setSocialTab("friends")}
+								>
+									Friends
+								</button>
+								<button
+									type="button"
+									role="tab"
+									aria-selected={socialTab === "chats"}
+									className={`hub-modal__social-tab${socialTab === "chats" ? " hub-modal__social-tab--active" : ""}`}
+									onClick={() => setSocialTab("chats")}
+								>
+									Chats
+								</button>
+								<button
+									type="button"
+									role="tab"
+									aria-selected={socialTab === "requests"}
+									className={`hub-modal__social-tab${socialTab === "requests" ? " hub-modal__social-tab--active" : ""}`}
+									onClick={() => setSocialTab("requests")}
+								>
+									Requests
+									{pendingRequestsCount > 0 ? (
+										<span className="hub-modal__social-tab-badge">{pendingRequestsCount}</span>
+									) : null}
+								</button>
+							</div>
 
-								{activeConversationId ? (
-									<div className="hub-modal__chat-thread">
-										<div className="hub-modal__chat-thread-header">
-											<button type="button" onClick={handleCloseConversation}>
-												← Back
-											</button>
-											<span className="hub-modal__chat-thread-title">
-												{conversationTitle(
-													conversations?.find((c) => c.id === activeConversationId) ?? {
-														name: null,
-														type: "dm",
-													},
+							<div className="hub-modal__social-sidebar-scroll">
+								{socialLoading ? (
+									<p>Loading…</p>
+								) : (
+									<>
+										{socialTab === "friends" ? (
+											/*
+											 * No list virtualisation here (e.g. react-window): this is a niche
+											 * 4-player mini-game hub, not a large social network — friend counts
+											 * are expected to stay in the tens, not hundreds. Suggestions are
+											 * already capped server-side (SUGGESTIONS_LIMIT = 20), and pending/
+											 * outgoing requests are inherently self-limiting. Revisit if this
+											 * list is ever observed to exceed ~50 rows in practice; a new dep
+											 * would also need `npm install` on the user's machine first.
+											 */
+											<section className="hub-modal__social-section">
+												<h3>
+													Friends
+													{friendStats.total > 0 ? (
+														<span className="hub-modal__social-count">
+															{friendStats.online}/{friendStats.total} online
+														</span>
+													) : null}
+												</h3>
+												{friends && friends.length > 0 ? (
+													<input
+														className="hub-modal__field-input hub-modal__social-search"
+														type="text"
+														placeholder="Search friends…"
+														value={friendSearchQuery}
+														onChange={(e) => setFriendSearchQuery(e.target.value)}
+														aria-label="Search friends"
+													/>
+												) : null}
+												{friendGroups && filteredFriends && filteredFriends.length > 0 ? (
+													<>
+														{friendGroups.inGame.length > 0 ? (
+															<div className="hub-modal__social-group">
+																<h4 className="hub-modal__social-group-label">In game</h4>
+																<ul className="hub-modal__social-list">
+																	{friendGroups.inGame.map(friendRow)}
+																</ul>
+															</div>
+														) : null}
+														{friendGroups.online.length > 0 ? (
+															<div className="hub-modal__social-group">
+																<h4 className="hub-modal__social-group-label">Online</h4>
+																<ul className="hub-modal__social-list">
+																	{friendGroups.online.map(friendRow)}
+																</ul>
+															</div>
+														) : null}
+														{friendGroups.offline.length > 0 ? (
+															<div className="hub-modal__social-group">
+																<h4 className="hub-modal__social-group-label">Offline</h4>
+																<ul className="hub-modal__social-list">
+																	{friendGroups.offline.map(friendRow)}
+																</ul>
+															</div>
+														) : null}
+													</>
+												) : friends && friends.length > 0 ? (
+													<p className="hub-panel__muted">No friends match your search.</p>
+												) : (
+													<p className="hub-panel__muted">No friends yet. Add someone above.</p>
 												)}
-											</span>
-											{isActiveGroup ? (
-												<div className="hub-modal__chat-thread-actions">
+
+												{/* Inline game picker — shown after clicking Invite on a friend */}
+												{inviteTarget && (
+													<div className="hub-lobby-picker">
+														<p>Invite <strong>{inviteTarget.name}</strong> to play:</p>
+														<select
+															className="hub-leaderboard-select"
+															value={inviteGameId}
+															onChange={(e) => setInviteGameId(e.target.value)}
+															aria-label="Select game to invite to"
+														>
+															{RANKED_GAMES.map((g) => (
+																<option key={g.id} value={g.id}>{g.label}</option>
+															))}
+														</select>
+														<div className="hub-lobby-picker__actions">
+															<button
+																type="button"
+																className="hub-lobby-picker__confirm"
+																onClick={() => handleCreateLobby(inviteTarget.userId, inviteGameId)}
+															>
+																Send invite
+															</button>
+															<button
+																type="button"
+																className="hub-lobby-picker__cancel"
+																onClick={() => setInviteTarget(null)}
+															>
+																Cancel
+															</button>
+														</div>
+													</div>
+												)}
+
+												{/* Report panel — shown after clicking Report on a friend or pending request */}
+												{reportTarget && (
+													<div className="hub-lobby-picker">
+														<p>
+															Report <strong>{reportTarget.turtleName ?? reportTarget.username}</strong>?
+															This will also block them.
+														</p>
+														<select
+															ref={reportCategorySelectRef}
+															className="hub-leaderboard-select"
+															value={reportCategory}
+															onChange={(e) =>
+																setReportCategory(e.target.value as ReportCategory)
+															}
+															aria-label="Report reason"
+														>
+															{REPORT_CATEGORIES.map((c) => (
+																<option key={c.id} value={c.id}>
+																	{c.label}
+																</option>
+															))}
+														</select>
+														<textarea
+															className="hub-modal__field-input"
+															placeholder="Additional details (optional)"
+															maxLength={500}
+															value={reportMessage}
+															onChange={(e) => setReportMessage(e.target.value)}
+														/>
+														<div className="hub-lobby-picker__actions">
+															<button
+																type="button"
+																className="hub-lobby-picker__confirm"
+																disabled={reportLoading}
+																onClick={() => void handleSubmitReport()}
+															>
+																{reportLoading ? "Submitting…" : "Submit report"}
+															</button>
+															<button
+																type="button"
+																className="hub-lobby-picker__cancel"
+																disabled={reportLoading}
+																onClick={() => {
+																	setReportTarget(null);
+																	setReportMessage("");
+																}}
+															>
+																Cancel
+															</button>
+														</div>
+													</div>
+												)}
+											</section>
+										) : null}
+
+										{socialTab === "chats" ? (
+											<section className="hub-modal__social-section hub-modal__chat-section">
+												<div className="hub-modal__chat-header">
+													<h3>Messages</h3>
 													<button
 														type="button"
-														className="hub-modal__chat-members-toggle"
-														onClick={handleToggleMembers}
+														className="hub-modal__save-button"
+														onClick={() => setIsNewGroupOpen((prev) => !prev)}
 													>
-														{groupMembers !== null
-															? "Hide members"
-															: "Members"}
+														{isNewGroupOpen ? "Cancel" : "New group"}
 													</button>
-													{isOwnerOfActiveGroup ? (
-														<>
-															<button
-																type="button"
-																className="hub-modal__chat-members-toggle"
-																disabled={groupActionLoading}
-																onClick={() =>
-																	setGroupRenameDraft(
-																		activeConversation?.name ?? "",
-																	)
-																}
-															>
-																Rename
-															</button>
-															<button
-																type="button"
-																className="hub-modal__chat-members-toggle"
-																disabled={chatActionLoading}
-																onClick={() =>
-																	void handleLeaveGroup(activeConversationId)
-																}
-																title="Leave the group; ownership passes to the longest-standing member"
-															>
-																Leave group
-															</button>
-															<button
-																type="button"
-																className="hub-modal__social-block-btn"
-																disabled={groupActionLoading}
-																onClick={() => void handleDeleteGroup()}
-															>
-																Delete group
-															</button>
-														</>
+												</div>
+
+												{isNewGroupOpen ? (
+													<div className="hub-modal__chat-new-group">
+														<input
+															className="hub-modal__field-input"
+															type="text"
+															placeholder="Group name"
+															maxLength={60}
+															value={newGroupName}
+															onChange={(e) => setNewGroupName(e.target.value)}
+														/>
+														{(friends ?? []).length === 0 ? (
+															<p className="hub-panel__muted">
+																Add some friends first — groups are friends-only.
+															</p>
+														) : (
+															<>
+																<p className="hub-modal__chat-new-group-hint">Add friends:</p>
+																<ul className="hub-modal__social-list">
+																	{(friends ?? []).map((friend) => (
+																		<li key={friend.userId} className="hub-modal__chat-member-row">
+																			<label>
+																				<input
+																					type="checkbox"
+																					checked={newGroupMemberIds.has(friend.userId)}
+																					onChange={() => handleToggleNewGroupMember(friend.userId)}
+																				/>
+																				{friend.turtleName ?? friend.username}
+																			</label>
+																		</li>
+																	))}
+																</ul>
+																<button
+																	type="button"
+																	className="hub-modal__save-button"
+																	disabled={
+																		chatActionLoading ||
+																		!newGroupName.trim() ||
+																		newGroupMemberIds.size === 0
+																	}
+																	onClick={() => void handleCreateGroup()}
+																>
+																	Create group
+																</button>
+															</>
+														)}
+													</div>
+												) : null}
+
+												<ul className="hub-modal__social-list">
+													{conversations && conversations.length > 0 ? (
+														conversations.map((conversation) => (
+															<li key={conversation.id} className="hub-modal__social-row">
+																<button
+																	type="button"
+																	className="hub-modal__chat-conversation-btn"
+																	onClick={() => void handleOpenConversation(conversation.id)}
+																>
+																	<span className="hub-modal__social-name">
+																		{conversationTitle(conversation)}
+																		{unreadConversationIds.has(conversation.id) ? (
+																			<span
+																				className="hub-modal__chat-unread-dot"
+																				role="img"
+																				aria-label="Unread"
+																			/>
+																		) : null}
+																	</span>
+																	<small className="hub-modal__chat-preview">
+																		{conversation.lastMessagePreview ?? "No messages yet"}
+																	</small>
+																</button>
+															</li>
+														))
 													) : (
+														<p>No conversations yet — message a friend to get started.</p>
+													)}
+												</ul>
+											</section>
+										) : null}
+
+										{socialTab === "requests" ? (
+											<>
+												{pendingRequests && pendingRequests.length > 0 ? (
+													<section className="hub-modal__social-section">
+														<h3>Pending requests</h3>
+														<ul className="hub-modal__social-list">
+															{pendingRequests.map((req) => (
+																<li key={req.userId} className="hub-modal__social-row">
+																	<span className="hub-modal__social-name">
+																		{req.turtleName ?? req.username}
+																		<small> @{req.username}</small>
+																	</span>
+																	<div className="hub-modal__social-actions">
+																		{blockConfirmUserId === req.userId ? (
+																			<>
+																				<span className="hub-modal__social-confirm-label">
+																					Block {req.turtleName ?? req.username}?
+																				</span>
+																				<button
+																					type="button"
+																					ref={blockConfirmButtonRef}
+																					className="hub-modal__social-confirm-btn"
+																					onClick={() => void handleBlockUser(req)}
+																				>
+																					Confirm
+																				</button>
+																				<button
+																					type="button"
+																					onClick={() => setBlockConfirmUserId(null)}
+																				>
+																					Cancel
+																				</button>
+																			</>
+																		) : (
+																			<>
+																				<button type="button" onClick={() => void handleAcceptRequest(req)}>Accept</button>
+																				<button type="button" onClick={() => void handleDeclineRequest(req)}>Decline</button>
+																				<button
+																					type="button"
+																					className="hub-modal__social-block-btn"
+																					onClick={() => setBlockConfirmUserId(req.userId)}
+																				>
+																					Block
+																				</button>
+																				<button
+																					type="button"
+																					className="hub-modal__social-block-btn"
+																					onClick={() =>
+																						setReportTarget({
+																							userId: req.userId,
+																							username: req.username,
+																							turtleName: req.turtleName,
+																						})
+																					}
+																				>
+																					Report
+																				</button>
+																			</>
+																		)}
+																	</div>
+																</li>
+															))}
+														</ul>
+													</section>
+												) : null}
+
+												{outgoingRequests && outgoingRequests.length > 0 ? (
+													<section className="hub-modal__social-section">
+														<h3>Outgoing requests</h3>
+														<ul className="hub-modal__social-list">
+															{outgoingRequests.map((req) => (
+																<li key={req.userId} className="hub-modal__social-row">
+																	<span className="hub-modal__social-name">
+																		{req.turtleName ?? req.username}
+																		<small> @{req.username}</small>
+																	</span>
+																	<div className="hub-modal__social-actions">
+																		<button
+																			type="button"
+																			onClick={() => void handleCancelOutgoingRequest(req)}
+																		>
+																			Cancel
+																		</button>
+																	</div>
+																</li>
+															))}
+														</ul>
+													</section>
+												) : null}
+
+												{suggestions && suggestions.length > 0 ? (
+													<section className="hub-modal__social-section">
+														<h3>People you may know</h3>
+														<ul className="hub-modal__social-list">
+															{suggestions.map((suggestion) => (
+																<li
+																	key={suggestion.userId}
+																	className="hub-modal__social-row"
+																>
+																	<span className="hub-modal__social-name">
+																		{suggestion.turtleName ?? suggestion.username}
+																		<small> @{suggestion.username}</small>
+																	</span>
+																	<div className="hub-modal__social-actions">
+																		<button
+																			type="button"
+																			onClick={() => void handleAddSuggestion(suggestion)}
+																		>
+																			Add
+																		</button>
+																	</div>
+																</li>
+															))}
+														</ul>
+													</section>
+												) : null}
+
+												{blockedUsers && blockedUsers.length > 0 ? (
+													<section className="hub-modal__social-section">
+														<h3>Blocked users</h3>
+														<ul className="hub-modal__social-list">
+															{blockedUsers.map((blocked) => (
+																<li
+																	key={blocked.userId}
+																	className="hub-modal__social-row"
+																>
+																	<span className="hub-modal__social-name">
+																		{blocked.turtleName ?? blocked.username}
+																		<small> @{blocked.username}</small>
+																	</span>
+																	<div className="hub-modal__social-actions">
+																		<button
+																			type="button"
+																			onClick={() => void handleUnblockUser(blocked)}
+																		>
+																			Unblock
+																		</button>
+																	</div>
+																</li>
+															))}
+														</ul>
+													</section>
+												) : null}
+											</>
+										) : null}
+									</>
+								)}
+							</div>
+						</div>
+
+						<div className="hub-modal__social-main">
+							{activeConversationId ? (
+								<div className="hub-modal__chat-thread">
+									<div className="hub-modal__chat-thread-header">
+										<button type="button" className="hub-modal__chat-back-button" onClick={handleCloseConversation}>
+											← Back
+										</button>
+										<span className="hub-modal__chat-thread-title">
+											{conversationTitle(
+												conversations?.find((c) => c.id === activeConversationId) ?? {
+													name: null,
+													type: "dm",
+												},
+											)}
+										</span>
+										{isActiveGroup ? (
+											<div className="hub-modal__chat-thread-actions">
+												<button
+													type="button"
+													className="hub-modal__chat-members-toggle"
+													onClick={handleToggleMembers}
+												>
+													{groupMembers !== null
+														? "Hide members"
+														: "Members"}
+												</button>
+												{isOwnerOfActiveGroup ? (
+													<>
 														<button
 															type="button"
-															className="hub-modal__social-block-btn"
+															className="hub-modal__chat-members-toggle"
+															disabled={groupActionLoading}
+															onClick={() =>
+																setGroupRenameDraft(
+																	activeConversation?.name ?? "",
+																)
+															}
+														>
+															Rename
+														</button>
+														<button
+															type="button"
+															className="hub-modal__chat-members-toggle"
 															disabled={chatActionLoading}
 															onClick={() =>
 																void handleLeaveGroup(activeConversationId)
 															}
+															title="Leave the group; ownership passes to the longest-standing member"
 														>
 															Leave group
 														</button>
-													)}
-												</div>
-											) : null}
-										</div>
-
-										{isActiveGroup && groupRenameDraft !== null ? (
-											<form
-												className="hub-modal__chat-rename"
-												onSubmit={(e) => {
-													e.preventDefault();
-													void handleRenameGroup();
-												}}
-											>
-												<input
-													type="text"
-													value={groupRenameDraft}
-													maxLength={60}
-													autoFocus
-													onChange={(e) => setGroupRenameDraft(e.target.value)}
-													placeholder="Group name"
-												/>
-												<button
-													type="submit"
-													disabled={
-														groupActionLoading || !groupRenameDraft.trim()
-													}
-												>
-													Save
-												</button>
-												<button
-													type="button"
-													onClick={() => setGroupRenameDraft(null)}
-												>
-													Cancel
-												</button>
-											</form>
-										) : null}
-
-										{isActiveGroup && groupMembers !== null ? (
-											<div className="hub-modal__chat-members">
-												{groupMembersLoading ? (
-													<p>Loading members…</p>
-												) : (
-													<ul className="hub-modal__chat-members-list">
-														{groupMembers.map((member) => (
-															<li
-																key={member.userId}
-																className="hub-modal__chat-member"
-															>
-																<span
-																	className={
-																		member.isOnline
-																			? "hub-modal__presence-dot hub-modal__presence-dot--online"
-																			: "hub-modal__presence-dot"
-																	}
-																/>
-																<span className="hub-modal__chat-member-name">
-																	{member.turtleName ?? member.username}
-																	{member.isOwner ? " (owner)" : ""}
-																</span>
-																{isOwnerOfActiveGroup && !member.isOwner ? (
-																	<button
-																		type="button"
-																		className="hub-modal__social-block-btn"
-																		disabled={groupActionLoading}
-																		onClick={() =>
-																			void handleKickMember(member.userId)
-																		}
-																	>
-																		Remove
-																	</button>
-																) : null}
-															</li>
-														))}
-													</ul>
-												)}
-
-												<button
-													type="button"
-													className="hub-modal__chat-members-toggle"
-													disabled={groupActionLoading}
-													onClick={() => setIsAddMemberOpen((v) => !v)}
-												>
-													{isAddMemberOpen ? "Cancel" : "Add friend"}
-												</button>
-
-												{isAddMemberOpen ? (
-													addableFriends.length === 0 ? (
-														<p className="hub-modal__chat-members-empty">
-															All your friends are already in this group.
-														</p>
-													) : (
-														<ul className="hub-modal__chat-members-add-list">
-															{addableFriends.map((friend) => (
-																<li key={friend.userId}>
-																	<button
-																		type="button"
-																		disabled={groupActionLoading}
-																		onClick={() =>
-																			void handleAddMemberToGroup(
-																				friend.userId,
-																			)
-																		}
-																	>
-																		{friend.turtleName ?? friend.username}
-																	</button>
-																</li>
-															))}
-														</ul>
-													)
-												) : null}
-											</div>
-										) : null}
-
-										{chatThreadLoading ? (
-											<p>Loading…</p>
-										) : (
-											<ul
-												className="hub-modal__chat-message-list"
-												ref={chatListRef}
-											>
-												{chatHasMoreOlder ? (
-													<li className="hub-modal__chat-load-older">
 														<button
 															type="button"
-															disabled={chatLoadingOlder}
-															onClick={() =>
-																void handleLoadOlderMessages()
-															}
+															className="hub-modal__social-block-btn"
+															disabled={groupActionLoading}
+															onClick={() => void handleDeleteGroup()}
 														>
-															{chatLoadingOlder
-																? "Loading…"
-																: "Load older messages"}
+															Delete group
 														</button>
-													</li>
-												) : null}
-												{chatMessages.map((message) => {
-													const gif =
-														message.type === "gif"
-															? parseGifMetadata(message.metadata)
-															: null;
-													return (
-														<li
-															key={message.id}
-															className={
-																message.type === "system"
-																	? "hub-modal__chat-message hub-modal__chat-message--system"
-																	: "hub-modal__chat-message"
-															}
-														>
-															{message.type === "system" ? (
-																<span>{message.body}</span>
-															) : message.type === "gif" && gif ? (
-																<>
-																	<span className="hub-modal__chat-message-sender">
-																		{message.senderUsername}
-																	</span>
-																	<img
-																		className="hub-modal__chat-gif-image"
-																		src={gif.url}
-																		alt={message.body}
-																		width={gif.width}
-																		height={gif.height}
-																		loading="lazy"
-																	/>
-																	<span className="hub-modal__chat-message-time">
-																		{formatRelativeTime(message.createdAt)}
-																	</span>
-																</>
-															) : (
-																<>
-																	<span className="hub-modal__chat-message-sender">
-																		{message.senderUsername}
-																	</span>
-																	<span className="hub-modal__chat-message-body">
-																		{message.body}
-																	</span>
-																	<span className="hub-modal__chat-message-time">
-																		{formatRelativeTime(message.createdAt)}
-																	</span>
-																</>
-															)}
-														</li>
-													);
-												})}
-											</ul>
-										)}
+													</>
+												) : (
+													<button
+														type="button"
+														className="hub-modal__social-block-btn"
+														disabled={chatActionLoading}
+														onClick={() =>
+															void handleLeaveGroup(activeConversationId)
+														}
+													>
+														Leave group
+													</button>
+												)}
+											</div>
+										) : null}
+									</div>
 
-										{isGifPickerOpen ? (
-											<div className="hub-modal__chat-gif-picker">
-												<input
-													className="hub-modal__field-input"
-													type="text"
-													placeholder="Search gifs…"
-													maxLength={200}
-													value={gifSearchQuery}
-													onChange={(e) => handleGifSearchChange(e.target.value)}
-													autoFocus
-												/>
-												{gifSearchLoading ? (
-													<p className="hub-modal__chat-gif-status">Searching…</p>
-												) : gifResults.length > 0 ? (
-													<ul className="hub-modal__chat-gif-grid">
-														{gifResults.map((gif) => (
-															<li key={gif.slug}>
+									{isActiveGroup && groupRenameDraft !== null ? (
+										<form
+											className="hub-modal__chat-rename"
+											onSubmit={(e) => {
+												e.preventDefault();
+												void handleRenameGroup();
+											}}
+										>
+											<input
+												type="text"
+												value={groupRenameDraft}
+												maxLength={60}
+												autoFocus
+												onChange={(e) => setGroupRenameDraft(e.target.value)}
+												placeholder="Group name"
+											/>
+											<button
+												type="submit"
+												disabled={
+													groupActionLoading || !groupRenameDraft.trim()
+												}
+											>
+												Save
+											</button>
+											<button
+												type="button"
+												onClick={() => setGroupRenameDraft(null)}
+											>
+												Cancel
+											</button>
+										</form>
+									) : null}
+
+									{isActiveGroup && groupMembers !== null ? (
+										<div className="hub-modal__chat-members">
+											{groupMembersLoading ? (
+												<p>Loading members…</p>
+											) : (
+												<ul className="hub-modal__chat-members-list">
+													{groupMembers.map((member) => (
+														<li
+															key={member.userId}
+															className="hub-modal__chat-member"
+														>
+															<span
+																className={
+																	member.isOnline
+																		? "hub-modal__presence-dot hub-modal__presence-dot--online"
+																		: "hub-modal__presence-dot"
+																}
+															/>
+															<span className="hub-modal__chat-member-name">
+																{member.turtleName ?? member.username}
+																{member.isOwner ? " (owner)" : ""}
+															</span>
+															{isOwnerOfActiveGroup && !member.isOwner ? (
 																<button
 																	type="button"
-																	className="hub-modal__chat-gif-thumb"
-																	onClick={() => handleSendGif(gif)}
+																	className="hub-modal__social-block-btn"
+																	disabled={groupActionLoading}
+																	onClick={() =>
+																		void handleKickMember(member.userId)
+																	}
 																>
-																	<img
-																		src={gif.previewUrl}
-																		alt={gif.title}
-																		loading="lazy"
-																	/>
+																	Remove
+																</button>
+															) : null}
+														</li>
+													))}
+												</ul>
+											)}
+
+											<button
+												type="button"
+												className="hub-modal__chat-members-toggle"
+												disabled={groupActionLoading}
+												onClick={() => setIsAddMemberOpen((v) => !v)}
+											>
+												{isAddMemberOpen ? "Cancel" : "Add friend"}
+											</button>
+
+											{isAddMemberOpen ? (
+												addableFriends.length === 0 ? (
+													<p className="hub-modal__chat-members-empty">
+														All your friends are already in this group.
+													</p>
+												) : (
+													<ul className="hub-modal__chat-members-add-list">
+														{addableFriends.map((friend) => (
+															<li key={friend.userId}>
+																<button
+																	type="button"
+																	disabled={groupActionLoading}
+																	onClick={() =>
+																		void handleAddMemberToGroup(
+																			friend.userId,
+																		)
+																	}
+																>
+																	{friend.turtleName ?? friend.username}
 																</button>
 															</li>
 														))}
 													</ul>
-												) : gifSearchQuery.trim().length >= GIF_SEARCH_MIN_LENGTH ? (
-													<p className="hub-modal__chat-gif-status">No gifs found.</p>
-												) : (
-													<p className="hub-modal__chat-gif-status">
-														Type to search for gifs.
-													</p>
-												)}
-											</div>
-										) : null}
+												)
+											) : null}
+										</div>
+									) : null}
 
-										<div className="hub-modal__chat-composer">
+									{chatThreadLoading ? (
+										<p>Loading…</p>
+									) : (
+										<ul
+											className="hub-modal__chat-message-list"
+											ref={chatListRef}
+										>
+											{chatHasMoreOlder ? (
+												<li className="hub-modal__chat-load-older">
+													<button
+														type="button"
+														disabled={chatLoadingOlder}
+														onClick={() =>
+															void handleLoadOlderMessages()
+														}
+													>
+														{chatLoadingOlder
+															? "Loading…"
+															: "Load older messages"}
+													</button>
+												</li>
+											) : null}
+											{chatMessages.map((message) => {
+												const gif =
+													message.type === "gif"
+														? parseGifMetadata(message.metadata)
+														: null;
+												return (
+													<li
+														key={message.id}
+														className={
+															message.type === "system"
+																? "hub-modal__chat-message hub-modal__chat-message--system"
+																: "hub-modal__chat-message"
+														}
+													>
+														{message.type === "system" ? (
+															<span>{message.body}</span>
+														) : message.type === "gif" && gif ? (
+															<>
+																<span className="hub-modal__chat-message-sender">
+																	{message.senderUsername}
+																</span>
+																<img
+																	className="hub-modal__chat-gif-image"
+																	src={gif.url}
+																	alt={message.body}
+																	width={gif.width}
+																	height={gif.height}
+																	loading="lazy"
+																/>
+																<span className="hub-modal__chat-message-time">
+																	{formatRelativeTime(message.createdAt)}
+																</span>
+															</>
+														) : (
+															<>
+																<span className="hub-modal__chat-message-sender">
+																	{message.senderUsername}
+																</span>
+																<span className="hub-modal__chat-message-body">
+																	{message.body}
+																</span>
+																<span className="hub-modal__chat-message-time">
+																	{formatRelativeTime(message.createdAt)}
+																</span>
+															</>
+														)}
+													</li>
+												);
+											})}
+										</ul>
+									)}
+
+									{isGifPickerOpen ? (
+										<div className="hub-modal__chat-gif-picker">
 											<input
 												className="hub-modal__field-input"
 												type="text"
-												placeholder="Message…"
-												maxLength={2000}
-												value={chatMessageDraft}
-												onChange={(e) => setChatMessageDraft(e.target.value)}
-												onKeyDown={(e) => {
-													// Ignore Enter while an IME composition is active (Bug Audit L4).
-													if (e.key === "Enter" && !e.nativeEvent.isComposing)
-														handleSendChatMessage();
-												}}
+												placeholder="Search gifs…"
+												maxLength={200}
+												value={gifSearchQuery}
+												onChange={(e) => handleGifSearchChange(e.target.value)}
+												autoFocus
 											/>
-											<button
-												type="button"
-												className={
-													isGifPickerOpen
-														? "hub-modal__chat-gif-toggle hub-modal__chat-gif-toggle--active"
-														: "hub-modal__chat-gif-toggle"
-												}
-												onClick={handleToggleGifPicker}
-												aria-pressed={isGifPickerOpen}
-											>
-												GIF
-											</button>
-											<button
-												type="button"
-												className="hub-modal__save-button"
-												disabled={!chatMessageDraft.trim()}
-												onClick={handleSendChatMessage}
-											>
-												Send
-											</button>
-										</div>
-									</div>
-								) : (
-									<ul className="hub-modal__social-list">
-										{conversations && conversations.length > 0 ? (
-											conversations.map((conversation) => (
-												<li key={conversation.id} className="hub-modal__social-row">
-													<button
-														type="button"
-														className="hub-modal__chat-conversation-btn"
-														onClick={() => void handleOpenConversation(conversation.id)}
-													>
-														<span className="hub-modal__social-name">
-															{conversationTitle(conversation)}
-															{unreadConversationIds.has(conversation.id) ? (
-																<span
-																	className="hub-modal__chat-unread-dot"
-																	role="img"
-																	aria-label="Unread"
+											{gifSearchLoading ? (
+												<p className="hub-modal__chat-gif-status">Searching…</p>
+											) : gifSearchError ? (
+												<p className="hub-modal__chat-gif-status hub-modal__chat-gif-status--error">
+													GIF search is unavailable right now.
+												</p>
+											) : gifResults.length > 0 ? (
+												<ul className="hub-modal__chat-gif-grid">
+													{gifResults.map((gif) => (
+														<li key={gif.slug}>
+															<button
+																type="button"
+																className="hub-modal__chat-gif-thumb"
+																onClick={() => handleSendGif(gif)}
+															>
+																<img
+																	src={gif.previewUrl}
+																	alt={gif.title}
+																	loading="lazy"
 																/>
-															) : null}
-														</span>
-														<small className="hub-modal__chat-preview">
-															{conversation.lastMessagePreview ?? "No messages yet"}
-														</small>
-													</button>
-												</li>
-											))
-										) : (
-											<p>No conversations yet — message a friend to get started.</p>
-										)}
-									</ul>
-								)}
-							</section>
-
-							{pendingRequests && pendingRequests.length > 0 ? (
-								<section className="hub-modal__social-section">
-									<h3>Pending requests</h3>
-									<ul className="hub-modal__social-list">
-										{pendingRequests.map((req) => (
-											<li key={req.userId} className="hub-modal__social-row">
-												<span className="hub-modal__social-name">
-													{req.turtleName ?? req.username}
-													<small> @{req.username}</small>
-												</span>
-												<div className="hub-modal__social-actions">
-													{blockConfirmUserId === req.userId ? (
-														<>
-															<span className="hub-modal__social-confirm-label">
-																Block {req.turtleName ?? req.username}?
-															</span>
-															<button
-																type="button"
-																ref={blockConfirmButtonRef}
-																className="hub-modal__social-confirm-btn"
-																onClick={() => void handleBlockUser(req)}
-															>
-																Confirm
 															</button>
-															<button
-																type="button"
-																onClick={() => setBlockConfirmUserId(null)}
-															>
-																Cancel
-															</button>
-														</>
-													) : (
-														<>
-															<button type="button" onClick={() => void handleAcceptRequest(req)}>Accept</button>
-															<button type="button" onClick={() => void handleDeclineRequest(req)}>Decline</button>
-															<button
-																type="button"
-																className="hub-modal__social-block-btn"
-																onClick={() => setBlockConfirmUserId(req.userId)}
-															>
-																Block
-															</button>
-															<button
-																type="button"
-																className="hub-modal__social-block-btn"
-																onClick={() =>
-																	setReportTarget({
-																		userId: req.userId,
-																		username: req.username,
-																		turtleName: req.turtleName,
-																	})
-																}
-															>
-																Report
-															</button>
-														</>
-													)}
-												</div>
-											</li>
-										))}
-									</ul>
-								</section>
-							) : null}
-
-							{outgoingRequests && outgoingRequests.length > 0 ? (
-								<section className="hub-modal__social-section">
-									<h3>Outgoing requests</h3>
-									<ul className="hub-modal__social-list">
-										{outgoingRequests.map((req) => (
-											<li key={req.userId} className="hub-modal__social-row">
-												<span className="hub-modal__social-name">
-													{req.turtleName ?? req.username}
-													<small> @{req.username}</small>
-												</span>
-												<div className="hub-modal__social-actions">
-													<button
-														type="button"
-														onClick={() => void handleCancelOutgoingRequest(req)}
-													>
-														Cancel
-													</button>
-												</div>
-											</li>
-										))}
-									</ul>
-								</section>
-							) : null}
-
-							{/*
-							 * No list virtualisation here (e.g. react-window): this is a niche
-							 * 4-player mini-game hub, not a large social network — friend counts
-							 * are expected to stay in the tens, not hundreds. Suggestions are
-							 * already capped server-side (SUGGESTIONS_LIMIT = 20), and pending/
-							 * outgoing requests are inherently self-limiting. Revisit if this
-							 * list is ever observed to exceed ~50 rows in practice; a new dep
-							 * would also need `npm install` on the user's machine first.
-							 */}
-							<section className="hub-modal__social-section">
-								<h3>
-									Friends
-									{friendStats.total > 0 ? (
-										<span className="hub-modal__social-count">
-											{friendStats.online}/{friendStats.total} online
-										</span>
+														</li>
+													))}
+												</ul>
+											) : gifSearchQuery.trim().length >= GIF_SEARCH_MIN_LENGTH ? (
+												<p className="hub-modal__chat-gif-status">No gifs found.</p>
+											) : (
+												<p className="hub-modal__chat-gif-status">
+													Type to search for gifs.
+												</p>
+											)}
+											{/* Required by Klipy's attribution guidelines
+											    (https://docs.klipy.com/attribution). */}
+											<p className="hub-modal__chat-gif-attribution">Powered by KLIPY</p>
+										</div>
 									) : null}
-								</h3>
-								{friends && friends.length > 0 ? (
-									<input
-										className="hub-modal__field-input hub-modal__social-search"
-										type="text"
-										placeholder="Search friends…"
-										value={friendSearchQuery}
-										onChange={(e) => setFriendSearchQuery(e.target.value)}
-										aria-label="Search friends"
-									/>
-								) : null}
-								{friendGroups && filteredFriends && filteredFriends.length > 0 ? (
-									<>
-										{friendGroups.inGame.length > 0 ? (
-											<div className="hub-modal__social-group">
-												<h4 className="hub-modal__social-group-label">In game</h4>
-												<ul className="hub-modal__social-list">
-													{friendGroups.inGame.map(friendRow)}
-												</ul>
-											</div>
-										) : null}
-										{friendGroups.online.length > 0 ? (
-											<div className="hub-modal__social-group">
-												<h4 className="hub-modal__social-group-label">Online</h4>
-												<ul className="hub-modal__social-list">
-													{friendGroups.online.map(friendRow)}
-												</ul>
-											</div>
-										) : null}
-										{friendGroups.offline.length > 0 ? (
-											<div className="hub-modal__social-group">
-												<h4 className="hub-modal__social-group-label">Offline</h4>
-												<ul className="hub-modal__social-list">
-													{friendGroups.offline.map(friendRow)}
-												</ul>
-											</div>
-										) : null}
-									</>
-								) : friends && friends.length > 0 ? (
-									<p className="hub-panel__muted">No friends match your search.</p>
-								) : (
-									<p className="hub-panel__muted">No friends yet. Add someone above.</p>
-								)}
 
-								{/* Inline game picker — shown after clicking Invite on a friend */}
-								{inviteTarget && (
-									<div className="hub-lobby-picker">
-										<p>Invite <strong>{inviteTarget.name}</strong> to play:</p>
-										<select
-											className="hub-leaderboard-select"
-											value={inviteGameId}
-											onChange={(e) => setInviteGameId(e.target.value)}
-											aria-label="Select game to invite to"
-										>
-											{RANKED_GAMES.map((g) => (
-												<option key={g.id} value={g.id}>{g.label}</option>
-											))}
-										</select>
-										<div className="hub-lobby-picker__actions">
-											<button
-												type="button"
-												className="hub-lobby-picker__confirm"
-												onClick={() => handleCreateLobby(inviteTarget.userId, inviteGameId)}
-											>
-												Send invite
-											</button>
-											<button
-												type="button"
-												className="hub-lobby-picker__cancel"
-												onClick={() => setInviteTarget(null)}
-											>
-												Cancel
-											</button>
-										</div>
-									</div>
-								)}
-
-								{/* Report panel — shown after clicking Report on a friend or pending request */}
-								{reportTarget && (
-									<div className="hub-lobby-picker">
-										<p>
-											Report <strong>{reportTarget.turtleName ?? reportTarget.username}</strong>?
-											This will also block them.
-										</p>
-										<select
-											ref={reportCategorySelectRef}
-											className="hub-leaderboard-select"
-											value={reportCategory}
-											onChange={(e) =>
-												setReportCategory(e.target.value as ReportCategory)
-											}
-											aria-label="Report reason"
-										>
-											{REPORT_CATEGORIES.map((c) => (
-												<option key={c.id} value={c.id}>
-													{c.label}
-												</option>
-											))}
-										</select>
-										<textarea
+									<div className="hub-modal__chat-composer">
+										<input
 											className="hub-modal__field-input"
-											placeholder="Additional details (optional)"
-											maxLength={500}
-											value={reportMessage}
-											onChange={(e) => setReportMessage(e.target.value)}
+											type="text"
+											placeholder="Message…"
+											maxLength={2000}
+											value={chatMessageDraft}
+											onChange={(e) => setChatMessageDraft(e.target.value)}
+											onKeyDown={(e) => {
+												// Ignore Enter while an IME composition is active (Bug Audit L4).
+												if (e.key === "Enter" && !e.nativeEvent.isComposing)
+													handleSendChatMessage();
+											}}
 										/>
-										<div className="hub-lobby-picker__actions">
-											<button
-												type="button"
-												className="hub-lobby-picker__confirm"
-												disabled={reportLoading}
-												onClick={() => void handleSubmitReport()}
-											>
-												{reportLoading ? "Submitting…" : "Submit report"}
-											</button>
-											<button
-												type="button"
-												className="hub-lobby-picker__cancel"
-												disabled={reportLoading}
-												onClick={() => {
-													setReportTarget(null);
-													setReportMessage("");
-												}}
-											>
-												Cancel
-											</button>
-										</div>
+										<button
+											type="button"
+											className={
+												isGifPickerOpen
+													? "hub-modal__chat-gif-toggle hub-modal__chat-gif-toggle--active"
+													: "hub-modal__chat-gif-toggle"
+											}
+											onClick={handleToggleGifPicker}
+											aria-pressed={isGifPickerOpen}
+										>
+											GIF
+										</button>
+										<button
+											type="button"
+											className="hub-modal__save-button"
+											disabled={!chatMessageDraft.trim()}
+											onClick={handleSendChatMessage}
+										>
+											Send
+										</button>
 									</div>
-								)}
-							</section>
-
-							{suggestions && suggestions.length > 0 ? (
-								<section className="hub-modal__social-section">
-									<h3>People you may know</h3>
-									<ul className="hub-modal__social-list">
-										{suggestions.map((suggestion) => (
-											<li
-												key={suggestion.userId}
-												className="hub-modal__social-row"
-											>
-												<span className="hub-modal__social-name">
-													{suggestion.turtleName ?? suggestion.username}
-													<small> @{suggestion.username}</small>
-												</span>
-												<div className="hub-modal__social-actions">
-													<button
-														type="button"
-														onClick={() => void handleAddSuggestion(suggestion)}
-													>
-														Add
-													</button>
-												</div>
-											</li>
-										))}
-									</ul>
-								</section>
-							) : null}
-
-							{blockedUsers && blockedUsers.length > 0 ? (
-								<section className="hub-modal__social-section">
-									<h3>Blocked users</h3>
-									<ul className="hub-modal__social-list">
-										{blockedUsers.map((blocked) => (
-											<li
-												key={blocked.userId}
-												className="hub-modal__social-row"
-											>
-												<span className="hub-modal__social-name">
-													{blocked.turtleName ?? blocked.username}
-													<small> @{blocked.username}</small>
-												</span>
-												<div className="hub-modal__social-actions">
-													<button
-														type="button"
-														onClick={() => void handleUnblockUser(blocked)}
-													>
-														Unblock
-													</button>
-												</div>
-											</li>
-										))}
-									</ul>
-								</section>
-							) : null}
-						</>
-					)}
+								</div>
+							) : (
+								<div className="hub-modal__social-empty">
+									<img
+										className="hub-modal__social-empty-logo"
+										src="/assets/logoShellSmash.png"
+										alt="Shell Smash"
+									/>
+									<p className="hub-panel__muted">
+										Select a conversation to start chatting.
+									</p>
+								</div>
+							)}
+						</div>
+					</div>
 				</HubModal>
 			) : null}
 

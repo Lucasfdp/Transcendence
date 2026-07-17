@@ -1,4 +1,9 @@
-import { Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import {
+	Injectable,
+	InternalServerErrorException,
+	NotFoundException,
+	ServiceUnavailableException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 
 /** Klipy API base — see https://docs.klipy.com/getting-started. */
@@ -17,11 +22,20 @@ const GIF_SEARCH_PER_PAGE = 24;
 const GIF_CONTENT_FILTER = "medium";
 
 /**
- * The only host we will ever persist or broadcast a gif/preview URL for.
+ * The only hosts we will ever persist or broadcast a gif/preview URL for.
  * Defends against a malformed or unexpected upstream response being stored
  * verbatim and rendered as an <img src> on the frontend.
+ *
+ * Klipy load-balances media across three documented CDN hosts (see
+ * https://docs.klipy.com/network-requirements) — trusting only the first
+ * one silently drops any result served from the other two, which previously
+ * presented as "No gifs found" even with a valid app key.
  */
-const KLIPY_MEDIA_HOSTNAME = "static.klipy.com";
+const KLIPY_MEDIA_HOSTNAMES: ReadonlySet<string> = new Set([
+	"static.klipy.com",
+	"static1.klipy.com",
+	"static2.klipy.com",
+]);
 
 /** Trusted, fully-resolved gif data — safe to persist and send to clients. */
 export interface GifSearchResult {
@@ -135,7 +149,11 @@ export class GifService {
 	private buildUrl(path: string): URL {
 		const appKey = this.configService.get<string>("KLIPY_APP_KEY");
 		if (!appKey) {
-			throw new InternalServerErrorException("GIF search is not configured");
+			// 503, not 500: this is an operator misconfiguration (empty
+			// KLIPY_APP_KEY), not an unexpected failure — keep it distinguishable
+			// in logs/monitoring from "Klipy is down" (InternalServerErrorException
+			// below) and from a genuine empty result set on the frontend.
+			throw new ServiceUnavailableException("GIF search is not configured");
 		}
 		return new URL(`${KLIPY_API_BASE}/${appKey}/${path}`);
 	}
@@ -174,9 +192,14 @@ export class GifService {
 		};
 	}
 
+	/**
+	 * Exact-hostname match only — no suffix/wildcard matching. A suffix check
+	 * like `endsWith("klipy.com")` would also trust lookalikes such as
+	 * `evilklipy.com` or any future compromised subdomain.
+	 */
 	private isTrustedHost(url: string): boolean {
 		try {
-			return new URL(url).hostname === KLIPY_MEDIA_HOSTNAME;
+			return KLIPY_MEDIA_HOSTNAMES.has(new URL(url).hostname);
 		} catch {
 			return false;
 		}

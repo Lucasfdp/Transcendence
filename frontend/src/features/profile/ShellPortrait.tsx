@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { resolveShellSkinAsset } from "../../shared/assets";
 
-type ShellPortraitSize = "small" | "medium" | "large";
+type ShellPortraitSize = "mini" | "small" | "medium" | "large";
 
 interface ShellPortraitProps {
 	avatar?: string | null;

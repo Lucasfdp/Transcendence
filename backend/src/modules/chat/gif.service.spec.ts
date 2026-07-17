@@ -1,4 +1,8 @@
-import { InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import {
+	InternalServerErrorException,
+	NotFoundException,
+	ServiceUnavailableException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 import { GifService } from "./gif.service";
@@ -120,10 +124,87 @@ describe("GifService", () => {
 			expect(results[0].slug).toBe("hello-hi-662");
 		});
 
-		it("should throw when KLIPY_APP_KEY is not configured", async () => {
+		it("should filter out an item with a malformed media URL instead of throwing", async () => {
+			const malformed = klipyItem({
+				slug: "malformed",
+				file: {
+					md: { gif: klipyVariant({ url: "not a url" }) },
+					xs: { gif: klipyVariant({ url: "not a url" }) },
+				},
+			});
+			fetchMock.mockResolvedValue(
+				jsonResponse({
+					result: true,
+					data: { data: [klipyItem(), malformed], current_page: 1, per_page: 24, has_next: false },
+				}),
+			);
+
+			const results = await service.search("excited");
+
+			expect(results).toHaveLength(1);
+			expect(results[0].slug).toBe("hello-hi-662");
+		});
+
+		it.each(["static.klipy.com", "static1.klipy.com", "static2.klipy.com"])(
+			"should keep results hosted on the trusted CDN host %s",
+			async (hostname) => {
+				const item = klipyItem({
+					slug: `hosted-on-${hostname}`,
+					file: {
+						md: { gif: klipyVariant({ url: `https://${hostname}/ii/abc/def/md.gif` }) },
+						xs: { gif: klipyVariant({ url: `https://${hostname}/ii/abc/def/xs.gif` }) },
+					},
+				});
+				fetchMock.mockResolvedValue(
+					jsonResponse({
+						result: true,
+						data: { data: [item], current_page: 1, per_page: 24, has_next: false },
+					}),
+				);
+
+				const results = await service.search("excited");
+
+				expect(results).toHaveLength(1);
+				expect(results[0].slug).toBe(`hosted-on-${hostname}`);
+			},
+		);
+
+		it("should filter out a lookalike host that merely contains the trusted domain", async () => {
+			const lookalikes = [
+				"https://static.klipy.com.evil.com/x.gif",
+				"https://notstatic.klipy.com/x.gif",
+				"https://evilklipy.com/x.gif",
+			];
+			for (const url of lookalikes) {
+				fetchMock.mockResolvedValue(
+					jsonResponse({
+						result: true,
+						data: {
+							data: [
+								klipyItem({
+									file: {
+										md: { gif: klipyVariant({ url }) },
+										xs: { gif: klipyVariant({ url }) },
+									},
+								}),
+							],
+							current_page: 1,
+							per_page: 24,
+							has_next: false,
+						},
+					}),
+				);
+
+				const results = await service.search("excited");
+
+				expect(results).toEqual([]);
+			}
+		});
+
+		it("should throw ServiceUnavailableException when KLIPY_APP_KEY is not configured", async () => {
 			configService.get.mockReturnValue(undefined);
 
-			await expect(service.search("excited")).rejects.toThrow(InternalServerErrorException);
+			await expect(service.search("excited")).rejects.toThrow(ServiceUnavailableException);
 			expect(fetchMock).not.toHaveBeenCalled();
 		});
 
@@ -165,6 +246,23 @@ describe("GifService", () => {
 
 			const result = await service.getBySlug("hello-hi-662");
 			expect(result.slug).toBe("hello-hi-662");
+		});
+
+		// Regression test for the "GIF provider returned an unexpected format"
+		// send failure: Klipy load-balances media onto static1/static2, and
+		// getBySlug previously trusted only static.klipy.com.
+		it("should succeed for an item hosted on static1.klipy.com", async () => {
+			const item = klipyItem({
+				file: {
+					md: { gif: klipyVariant({ url: "https://static1.klipy.com/ii/abc/def/md.gif" }) },
+					xs: { gif: klipyVariant({ url: "https://static1.klipy.com/ii/abc/def/xs.gif" }) },
+				},
+			});
+			fetchMock.mockResolvedValue(jsonResponse({ result: true, data: { data: [item] } }));
+
+			const result = await service.getBySlug("hello-hi-662");
+
+			expect(result.url).toBe("https://static1.klipy.com/ii/abc/def/md.gif");
 		});
 
 		it("should throw NotFoundException when Klipy returns no matching item", async () => {
@@ -211,10 +309,10 @@ describe("GifService", () => {
 			await expect(service.getBySlug("hello-hi-662")).rejects.toThrow(InternalServerErrorException);
 		});
 
-		it("should throw when KLIPY_APP_KEY is not configured", async () => {
+		it("should throw ServiceUnavailableException when KLIPY_APP_KEY is not configured", async () => {
 			configService.get.mockReturnValue(undefined);
 
-			await expect(service.getBySlug("hello-hi-662")).rejects.toThrow(InternalServerErrorException);
+			await expect(service.getBySlug("hello-hi-662")).rejects.toThrow(ServiceUnavailableException);
 		});
 	});
 });

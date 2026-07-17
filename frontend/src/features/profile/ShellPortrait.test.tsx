@@ -60,6 +60,15 @@ describe("ShellPortrait", () => {
 		);
 	});
 
+	it("applies the mini size class used for friend-row avatars (Social tab redesign)", () => {
+		render(<ShellPortrait displayName="Kame" shellSkin="dragon" size="mini" />);
+
+		const portrait = screen.getByRole("img", {
+			name: "Kame's shell portrait",
+		});
+		expect(portrait).toHaveClass("shell-portrait--mini");
+	});
+
 	it("assigns the same visual tone to the same player", () => {
 		const { rerender } = render(<ShellPortrait displayName="Kame" />);
 		const firstTone = screen

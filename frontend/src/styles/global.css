@@ -2389,7 +2389,8 @@ input {
 	padding: 1rem 1.1rem 1.2rem;
 }
 
-.hub-modal__panel--wide .hub-modal__body:has(.hub-modal__replays) {
+.hub-modal__panel--wide .hub-modal__body:has(.hub-modal__replays),
+.hub-modal__panel--wide .hub-modal__body:has(.hub-modal__social-grid) {
 	overflow: hidden;
 }
 
@@ -4856,10 +4857,32 @@ img.power-card__orb {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	/* Defensive fallback: if a long name/status ever can't fit alongside the
+	 * actions on one line (narrow window, long username), wrap to a second
+	 * line instead of silently overlapping — the two-pane sidebar is narrower
+	 * than the old single-column modal this row was originally designed for. */
+	flex-wrap: wrap;
 	gap: 0.5rem;
 	padding: 0.35rem 0.5rem;
 	background: rgba(255,255,255,0.05);
 	border-radius: 4px;
+}
+.hub-modal__social-identity {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	min-width: 0;
+}
+.hub-modal__social-portrait {
+	position: relative;
+	display: inline-flex;
+	flex: 0 0 auto;
+}
+.hub-modal__social-portrait-presence {
+	position: absolute;
+	right: -0.05rem;
+	bottom: -0.05rem;
+	border: 2px solid rgba(13, 17, 11, 0.9);
 }
 .hub-modal__social-name {
 	display: flex;
@@ -4971,6 +4994,156 @@ img.power-card__orb {
 
 .hub-modal__social-message-btn {
 	color: var(--accent);
+}
+
+/* ── Social modal two-pane layout (Workstream C) ──
+ * Cloned from the replay modal's `.hub-modal__replays` grid/pane/tab rules
+ * under independent `social-` names so the two features stay separately
+ * tunable, per the redesign handoff. Same 1100px collapse breakpoint and
+ * the same `:has()` body-overflow override pattern. */
+.hub-modal__social-grid {
+	display: grid;
+	grid-template-columns: minmax(18rem, 0.92fr) minmax(24rem, 1.08fr);
+	gap: 0;
+	height: 100%;
+	min-height: 0;
+}
+
+.hub-modal__social-sidebar,
+.hub-modal__social-main {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	min-height: 0;
+}
+
+.hub-modal__social-sidebar {
+	padding-right: 1rem;
+	overflow: hidden;
+}
+
+.hub-modal__social-sidebar-scroll {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding-right: 0.35rem;
+}
+
+.hub-modal__social-main {
+	padding-left: 1rem;
+	border-left: 1px solid rgba(245, 214, 119, 0.2);
+	overflow-y: auto;
+}
+
+.hub-modal__social-tabs {
+	display: flex;
+	gap: 0.55rem;
+	flex-wrap: wrap;
+}
+
+.hub-modal__social-tab {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-family: var(--rowdy-font);
+	font-size: 0.9rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	color: #d8ff9f;
+	background: rgba(9, 22, 12, 0.72);
+	border: 1px solid rgba(123, 183, 111, 0.42);
+	border-radius: 0.72rem;
+	padding: 0.55rem 0.95rem;
+	cursor: pointer;
+}
+
+.hub-modal__social-tab--active {
+	color: #eaffc8;
+	background: linear-gradient(180deg, rgba(43, 67, 35, 0.9), rgba(13, 38, 18, 0.94));
+	border-color: rgba(216, 255, 159, 0.72);
+}
+
+.hub-modal__social-tab-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 1.3rem;
+	height: 1.3rem;
+	padding: 0 0.3rem;
+	border-radius: 999px;
+	background: var(--accent-strong, #d4af37);
+	color: #1a1a1a;
+	font-size: 0.68rem;
+	font-weight: 800;
+	line-height: 1;
+}
+
+.hub-modal__social-empty {
+	flex: 1;
+	min-height: 20rem;
+	display: grid;
+	place-items: center;
+	align-content: center;
+	gap: 1rem;
+	border: 1px solid rgba(245, 214, 119, 0.16);
+	border-radius: 14px;
+	background:
+		radial-gradient(circle at 50% 36%, rgba(184, 219, 134, 0.12), transparent 34%),
+		linear-gradient(180deg, rgba(13, 17, 11, 0.72), rgba(5, 7, 8, 0.82));
+	text-align: center;
+}
+
+.hub-modal__social-empty-logo {
+	width: min(18rem, 70%);
+	max-height: 12rem;
+	object-fit: contain;
+	filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.44));
+}
+
+/* "← Back" only makes sense once the two panes collapse to one column on
+ * mobile — hidden on desktop where both the list and the open thread are
+ * visible side by side. */
+.hub-modal__chat-back-button {
+	display: none;
+}
+
+@media (max-width: 1100px) {
+	.hub-modal__panel--wide .hub-modal__body:has(.hub-modal__social-grid) {
+		overflow: auto;
+	}
+
+	.hub-modal__social-grid {
+		grid-template-columns: 1fr;
+		height: auto;
+		overflow: visible;
+	}
+
+	.hub-modal__social-sidebar {
+		padding-right: 0;
+		overflow: visible;
+	}
+
+	.hub-modal__social-main {
+		padding-left: 0;
+		padding-top: 1rem;
+		border-left: 0;
+		border-top: 1px solid rgba(245, 214, 119, 0.2);
+		overflow: visible;
+	}
+
+	.hub-modal__social-sidebar-scroll {
+		overflow: visible;
+		padding-right: 0;
+	}
+
+	.hub-modal__social-empty {
+		min-height: clamp(14rem, 48vw, 20rem);
+	}
+
+	.hub-modal__chat-back-button {
+		display: inline-block;
+	}
 }
 
 /* ── Chat (Messages section within the Social modal) ── */
@@ -5217,6 +5390,16 @@ img.power-card__orb {
 	font-size: 0.75rem;
 	color: var(--muted);
 	text-align: center;
+}
+.hub-modal__chat-gif-status--error {
+	color: #ff8d8d;
+}
+.hub-modal__chat-gif-attribution {
+	margin: 0;
+	font-size: 0.65rem;
+	color: var(--muted);
+	text-align: right;
+	opacity: 0.7;
 }
 .hub-modal__chat-gif-grid {
 	list-style: none;
@@ -5945,6 +6128,68 @@ img.power-card__orb {
 
 .hub-modal__social-invite-btn:hover {
 	background: rgba(24, 44, 24, 0.8);
+}
+
+/* "More" overflow menu (Remove/Block/Report) on friend rows — keeps the row
+ * to Message + Invite + one toggle so it fits the Social modal's narrower
+ * sidebar instead of 5 always-visible text buttons overflowing it. */
+.hub-modal__social-menu-wrapper {
+	position: relative;
+	display: inline-flex;
+}
+
+.hub-modal__social-menu-toggle {
+	width: 1.7rem;
+	height: 1.7rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	background: rgba(9, 22, 12, 0.72);
+	border: 1px solid rgba(123, 183, 111, 0.58);
+	border-radius: 4px;
+	color: #d8ff9f;
+	font-size: 1.05rem;
+	line-height: 1;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.hub-modal__social-menu-toggle:hover,
+.hub-modal__social-menu-toggle[aria-expanded="true"] {
+	background: rgba(24, 44, 24, 0.8);
+}
+
+.hub-modal__social-menu {
+	position: absolute;
+	top: calc(100% + 0.3rem);
+	right: 0;
+	z-index: 10;
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+	min-width: 7rem;
+	padding: 0.35rem;
+	background: rgba(9, 15, 10, 0.97);
+	border: 1px solid rgba(123, 183, 111, 0.42);
+	border-radius: 6px;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.hub-modal__social-menu button {
+	padding: 0.32rem 0.5rem;
+	background: none;
+	border: none;
+	border-radius: 4px;
+	color: inherit;
+	font-size: 0.78rem;
+	font-family: var(--body-font);
+	text-align: left;
+	cursor: pointer;
+}
+
+.hub-modal__social-menu button:hover {
+	background: rgba(255, 255, 255, 0.08);
 }
 
 /* ── Lobby game picker (inline in social modal) ──────────────────────────── */
@@ -8499,6 +8744,10 @@ img.power-card__orb {
 
 .shell-portrait--small {
 	--portrait-size: 3.4rem;
+}
+
+.shell-portrait--mini {
+	--portrait-size: 2.2rem;
 }
 
 .shell-portrait--large {
