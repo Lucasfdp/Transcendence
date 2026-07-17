@@ -11,6 +11,7 @@ import { randomBytes } from "crypto";
 import { DataSource, EntityManager, In, Like, Repository } from "typeorm";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PresenceService } from "../presence/presence.service";
+import { Profile } from "../profiles/entities/profile.entity";
 import { User } from "../users/entities/user.entity";
 import { FriendsService } from "../friends/friends.service";
 import { TournamentRuntimeService } from "./runtime/tournament-runtime.service";
@@ -98,6 +99,8 @@ export class TournamentLobbyService {
 		private readonly participantRepo: Repository<TournamentParticipant>,
 		@InjectRepository(User)
 		private readonly userRepo: Repository<User>,
+		@InjectRepository(Profile)
+		private readonly profileRepo: Repository<Profile>,
 		private readonly friendsService: FriendsService,
 		private readonly notifications: NotificationsService,
 		private readonly presence: PresenceService,
@@ -354,7 +357,7 @@ export class TournamentLobbyService {
 				relations: ["tournament"],
 			});
 			if (busy === 0) {
-				return bot;
+				return this.ensureBotProfile(bot);
 			}
 		}
 
@@ -366,19 +369,36 @@ export class TournamentLobbyService {
 				? ""
 				: ` ${bots.length + attempt + 1}`;
 			try {
-				return await this.userRepo.save(
+				const bot = await this.userRepo.save(
 					this.userRepo.create({
 						username: `${baseName}${suffix}`,
 						email: `cpu-${Date.now()}-${attempt}@${TOURNAMENT_BOT_EMAIL_DOMAIN}`,
 						isGuest: false,
 					}),
 				);
+				return await this.ensureBotProfile(bot);
 			} catch (err) {
 				// Unique-violation on the username: try the next suffix.
 				if ((err as { code?: string })?.code !== "23505") throw err;
 			}
 		}
 		throw new ConflictException("Could not allocate a CPU player");
+	}
+
+	/**
+	 * Every user must own a Profile row — match-result persistence hard-fails
+	 * without one (see GameResultsService). Real accounts get it in
+	 * UsersService.create; bot accounts are minted here, so the invariant is
+	 * enforced here too (and heals pre-existing profile-less bots).
+	 */
+	private async ensureBotProfile(bot: User): Promise<User> {
+		const existing = await this.profileRepo.findOne({
+			where: { user: { id: bot.id } },
+		});
+		if (!existing) {
+			await this.profileRepo.save(this.profileRepo.create({ user: bot }));
+		}
+		return bot;
 	}
 
 	/** POST /tournaments/:id/join — accept an invitation. */

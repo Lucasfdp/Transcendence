@@ -6,6 +6,7 @@ import { Match } from "../matchmaking/entities/match.entity";
 import { MatchPlayer } from "../matchmaking/entities/match-player.entity";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { PresenceModule } from "../presence/presence.module";
+import { Profile } from "../profiles/entities/profile.entity";
 import { User } from "../users/entities/user.entity";
 import { Tournament } from "./entities/tournament.entity";
 import { TournamentMatch } from "./entities/tournament-match.entity";
@@ -55,6 +56,7 @@ import { TournamentsService } from "./tournaments.service";
 			TournamentParticipant,
 			TournamentMatch,
 			User,
+			Profile,
 			Match,
 			MatchPlayer,
 		]),

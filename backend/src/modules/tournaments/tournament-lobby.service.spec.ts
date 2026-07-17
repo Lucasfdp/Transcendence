@@ -93,6 +93,7 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 		delete: jest.Mock;
 	};
 	let userRepo: { findOne: jest.Mock };
+	let profileRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
 	let friendsService: { areFriends: jest.Mock };
 	let notifications: {
 		create: jest.Mock;
@@ -148,6 +149,11 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 			delete: jest.fn().mockResolvedValue({ affected: 1 }),
 		};
 		userRepo = { findOne: jest.fn() };
+		profileRepo = {
+			findOne: jest.fn().mockResolvedValue(null),
+			create: jest.fn((data: unknown) => data),
+			save: jest.fn(async (data: unknown) => data),
+		};
 		friendsService = { areFriends: jest.fn().mockResolvedValue(true) };
 		notifications = {
 			create: jest.fn().mockResolvedValue(undefined),
@@ -188,6 +194,7 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 			tournamentRepo as never,
 			participantRepo as never,
 			userRepo as never,
+			profileRepo as never,
 			friendsService as never,
 			notifications as never,
 			presence as never,
