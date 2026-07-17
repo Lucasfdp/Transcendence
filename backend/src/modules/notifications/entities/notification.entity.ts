@@ -10,9 +10,11 @@ import { User } from "../../users/entities/user.entity";
 
 /**
  * Notification types:
- *   'friend_request'  — someone sent the recipient a friend request (persistent)
- *   'friend_accepted' — someone accepted the recipient's friend request (persistent)
- *   'friend_removed'  — someone removed the recipient as a friend (delete verb)
+ *   'friend_request'     — someone sent the recipient a friend request (persistent)
+ *   'friend_accepted'    — someone accepted the recipient's friend request (persistent)
+ *   'friend_removed'     — someone removed the recipient as a friend (delete verb)
+ *   'tournament_invite'  — a friend invited the recipient to a Tournament lobby
+ *                          (persistent; SPEC-038, seams-audit ruling #3)
  *
  * 'friend_removed' is intentionally NOT persisted here — see
  * NotificationsService.pushLiveEvent and FriendsService.removeFriend. A
@@ -25,7 +27,10 @@ import { User } from "../../users/entities/user.entity";
  * WebSocket — they are never persisted here. See docs/notifications.md for
  * the full event catalog.
  */
-export type NotificationType = "friend_request" | "friend_accepted";
+export type NotificationType =
+	| "friend_request"
+	| "friend_accepted"
+	| "tournament_invite";
 
 @Entity("notifications")
 @Index(["toUserId", "readAt"]) // fast unread lookup per user

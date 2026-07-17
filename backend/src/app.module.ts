@@ -21,6 +21,7 @@ import { NotificationsModule } from "./modules/notifications/notifications.modul
 import { ReportsModule } from "./modules/reports/reports.module";
 import { PublicApiModule } from "./modules/public-api/public-api.module";
 import { ChatModule } from "./modules/chat/chat.module";
+import { TournamentsModule } from "./modules/tournaments/tournaments.module";
 import { AppController } from "./app.controller";
 
 @Module({
@@ -67,6 +68,7 @@ import { AppController } from "./app.controller";
 		ShellsModule,
 		FriendsModule,
 		MatchmakingModule,
+		TournamentsModule,
 		LeaderboardModule,
 		NotificationsModule,
 		ReportsModule,

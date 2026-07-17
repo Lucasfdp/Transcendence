@@ -12,6 +12,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
 import { NineSliceButton } from "../components/common/NineSliceButton";
 import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
+import { TournamentLobbyModal } from "../features/tournaments/TournamentLobbyModal";
+import { WorkInProgressNotice } from "../components/common/WorkInProgressNotice";
 import { ShellCardsModal } from "../components/cards/ShellCardsModal";
 import { FortuneWheelModal } from "../components/gambling/FortuneWheelModal";
 import { KoiDiceModal } from "../components/gambling/KoiDiceModal";
@@ -3141,10 +3143,9 @@ function HomeMenu(): JSX.Element {
 				</section>
 			</div>
 
-			<WorkInProgressModal
+			<TournamentLobbyModal
 				isOpen={isTournamentModalOpen}
 				onClose={() => setIsTournamentModalOpen(false)}
-				closeLabel="Return to Hub"
 			/>
 
 			<WorkInProgressModal

@@ -10,15 +10,188 @@
  * that module for the shared behaviour this client builds on.
  */
 
-import {
-	API_BASE,
-	AuthError,
-	NetworkError,
-	apiFetch,
-	apiUploadFile,
-	fetchCsrfToken,
-} from "../../services/api/apiClient";
-import type { PackPull } from "../cards";
+const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
+
+// ── Typed errors ───────────────────────────────────────────────────────────────
+
+export class AuthError extends Error {
+	constructor(
+		public readonly status: number,
+		message: string,
+	) {
+		super(message);
+		this.name = "AuthError";
+	}
+}
+
+export class NetworkError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "NetworkError";
+	}
+}
+
+const TRANSIENT_HTTP_STATUSES = new Set([502, 503, 504]);
+const TRANSIENT_RETRY_DELAY_MS = 350;
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+// ── CSRF token — cached in-memory after first getCsrfToken() call ─────────────
+
+let cachedCsrfToken: string | null = null;
+
+function readCsrfCookie(): string | null {
+	const match = document.cookie
+		.split(";")
+		.find((c) => c.trim().startsWith("csrf_token="));
+	return match ? match.trim().slice("csrf_token=".length) : null;
+}
+
+function getCurrentCsrfToken(): string | null {
+	// Always prefer the browser cookie because it is the server-authoritative
+	// token. The in-memory cache can go stale across tabs or after a later refresh.
+	return readCsrfCookie() ?? cachedCsrfToken;
+}
+
+async function fetchCsrfToken(): Promise<string> {
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		const res = await fetch(`${API_BASE}/auth/csrf-token`, {
+			credentials: "include",
+		});
+
+		if (res.ok) {
+			const data = (await res.json()) as { csrfToken: string };
+			cachedCsrfToken = data.csrfToken;
+			return data.csrfToken;
+		}
+
+		const message = await readErrorMessage(
+			res,
+			`${res.status} on /auth/csrf-token`,
+		);
+		if (
+			attempt === 0 &&
+			TRANSIENT_HTTP_STATUSES.has(res.status)
+		) {
+			await sleep(TRANSIENT_RETRY_DELAY_MS);
+			continue;
+		}
+
+		throw new AuthError(res.status, message);
+	}
+	throw new AuthError(503, "Temporary auth bootstrap failure");
+}
+
+function isCsrfFailure(res: Response, message: string): boolean {
+	return (
+		(res.status === 401 || res.status === 403) &&
+		message.toLowerCase().includes("csrf")
+	);
+}
+
+function withCsrfHeader(
+	headers: Record<string, string>,
+	method: string,
+): Record<string, string> {
+	if (method === "GET" || method === "HEAD") return headers;
+	const token = getCurrentCsrfToken();
+	return token ? { ...headers, "X-CSRF-Token": token } : headers;
+}
+
+// ── Core fetch helper ─────────────────────────────────────────────────────────
+
+interface ApiFetchOptions extends RequestInit {
+	/**
+	 * Vouches that this endpoint is idempotent/safe to repeat, so a single
+	 * bounded retry on a transient 5xx (502/503/504) is allowed for non-GET
+	 * methods too — the same treatment GET already gets (Bug Audit L1).
+	 *
+	 * Only set this for state-scoped mutations that no-op when already
+	 * applied — see `acceptFriendRequest`, `declineOrCancelFriendRequest`,
+	 * `removeFriend`, `blockUser`, and `markConversationReadRest` below.
+	 * Do NOT set this for side-effecting actions like casino spins, chat
+	 * sends, or match-result submission: a transient 5xx there can't be
+	 * distinguished from "the backend already processed this and the
+	 * response was lost in transit", so retrying risks double-spending
+	 * coins or double-counting a match result.
+	 */
+	idempotent?: boolean;
+}
+
+export async function apiFetch<T>(
+	path: string,
+	{ idempotent, ...options }: ApiFetchOptions = {},
+): Promise<T> {
+	const method = (options.method ?? "GET").toUpperCase();
+	const baseHeaders: Record<string, string> = {
+		"Content-Type": "application/json",
+		...(options.headers as Record<string, string>),
+	};
+	// GET is always safe to retry; non-GET only retries when the caller has
+	// explicitly opted in via `idempotent: true`.
+	const retryableOnTransient = method === "GET" || idempotent === true;
+
+	const runFetch = () =>
+		fetch(`${API_BASE}${path}`, {
+			...options,
+			headers: withCsrfHeader(baseHeaders, method),
+			credentials: "include",
+		});
+
+	let res: Response;
+	try {
+		res = await runFetch();
+	} catch (err) {
+		throw new NetworkError(
+			`Network request failed for ${path}: ${String(err)}`,
+		);
+	}
+
+	if (!res.ok) {
+		const message = await readErrorMessage(res, `${res.status} on ${path}`);
+		if (
+			TRANSIENT_HTTP_STATUSES.has(res.status) &&
+			retryableOnTransient
+		) {
+			await sleep(TRANSIENT_RETRY_DELAY_MS);
+			try {
+				res = await runFetch();
+			} catch (err) {
+				throw new NetworkError(
+					`Network request failed for ${path}: ${String(err)}`,
+				);
+			}
+			if (!res.ok) {
+				throw new AuthError(
+					res.status,
+					await readErrorMessage(res, `${res.status} on ${path}`),
+				);
+			}
+		} else
+		if (isCsrfFailure(res, message) && method !== "GET" && method !== "HEAD") {
+			await fetchCsrfToken();
+			try {
+				res = await runFetch();
+			} catch (err) {
+				throw new NetworkError(
+					`Network request failed for ${path}: ${String(err)}`,
+				);
+			}
+			if (!res.ok) {
+				throw new AuthError(
+					res.status,
+					await readErrorMessage(res, `${res.status} on ${path}`),
+				);
+			}
+		} else {
+			throw new AuthError(res.status, message);
+		}
+	}
+	if (res.status === 204) return undefined as T;
+	return res.json() as Promise<T>;
+}
 
 export { AuthError, NetworkError };
 
