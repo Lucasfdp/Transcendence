@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { RevealOverlay } from "./ShellCardsModal";
-import type { PackPull } from "../../features/hub/api";
+import { RevealOverlay } from "./RevealOverlay";
+import type { PackPull } from "../../features/cards";
 
 function makePulls(): PackPull[] {
 	return [

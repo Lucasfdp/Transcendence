@@ -70,6 +70,7 @@ export {
 	type LocalReplayRuntimeOptions,
 	type LocalReplayRuntimePersistenceOptions,
 } from "./runtime/LocalReplayRuntime";
+export { ReplayCaptureRuntime } from "./replay/ReplayCaptureRuntime";
 export {
 	buildCommonLocalReplayParticipantContext,
 	buildCommonLocalReplayPlayers,

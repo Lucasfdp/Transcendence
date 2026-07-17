@@ -14,6 +14,7 @@ import {
 	MatchReplay,
 	MatchReplayEvent,
 	MatchReplayFrame,
+	ReplayMetadataV2,
 	REPLAY_CONTRACT_VERSION,
 	ReplayContractVersion,
 } from "./entities/match-replay.entity";
@@ -22,6 +23,8 @@ import { MatchRoom } from "./matchmaking.types";
 
 const REPLAY_TTL_MS = 72 * 60 * 60 * 1000;
 const REPLAY_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const REPLAY_SAMPLE_MS = 50;
+const REPLAY_KEYFRAME_MS = 1_000;
 const MAX_SAVED_REPLAYS_PER_USER = 20;
 const MAX_IMPORTED_REPLAY_FRAMES = 3_600;
 const IMPORTABLE_REPLAY_GAME_IDS = new Set([
@@ -31,12 +34,6 @@ const IMPORTABLE_REPLAY_GAME_IDS = new Set([
 	"bell-clash",
 ]);
 
-export interface ReplayImportPlayerInput {
-	side: number;
-	userId: number | null;
-	username: string;
-}
-
 export interface ReplayImportInput {
 	gameId: string;
 	mode: string;
@@ -44,8 +41,8 @@ export interface ReplayImportInput {
 	createdAt?: string;
 	finishedAt?: string | null;
 	winnerSide?: number | null;
-	playerNames?: string[];
-	playerUserIds?: Array<number | null>;
+	metadata: ReplayMetadataV2;
+	durationMs: number;
 	frames: MatchReplayFrame[];
 	events?: MatchReplayEvent[];
 }
@@ -53,7 +50,10 @@ export interface ReplayImportInput {
 export interface ReplaySummaryView {
 	id: string;
 	matchId: string;
-	replayVersion: ReplayContractVersion | null;
+	replayVersion: ReplayContractVersion;
+	contractVersion: ReplayContractVersion;
+	metadata: ReplayMetadataV2;
+	durationMs: number;
 	gameId: string;
 	mode: string;
 	status: string;
@@ -72,6 +72,116 @@ export interface ReplayDetailView extends ReplaySummaryView {
 	events: MatchReplayEvent[];
 }
 
+function clone<T>(value: T): T {
+	return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function withoutRepeatedTrails(
+	snapshot: Record<string, unknown>,
+): Record<string, unknown> {
+	const normalised = clone(snapshot);
+	for (const collection of ["entities", "balls", "objects"] as const) {
+		const values = normalised[collection];
+		if (!Array.isArray(values)) continue;
+		normalised[collection] = values.map((value) => {
+			if (!value || typeof value !== "object") return value;
+			const entity = { ...(value as Record<string, unknown>) };
+			delete entity.trail;
+			return entity;
+		});
+	}
+	return normalised;
+}
+
+function roundOf(snapshot: Record<string, unknown>): number {
+	const value =
+		snapshot.roundNumber ?? snapshot.currentEnd ?? snapshot.turnNumber;
+	return typeof value === "number" && Number.isFinite(value)
+		? Math.max(0, Math.floor(value))
+		: 0;
+}
+
+function phaseOf(snapshot: Record<string, unknown>): MatchReplayFrame["state"] {
+	const phase = snapshot.phase;
+	return phase === "pending" ||
+		phase === "active" ||
+		phase === "finished" ||
+		phase === "abandoned"
+		? phase
+		: "active";
+}
+
+function diffSnapshot(
+	previous: Record<string, unknown>,
+	next: Record<string, unknown>,
+): { changes: Record<string, unknown>; removals: string[] } {
+	const changes: Record<string, unknown> = {};
+	const removals: string[] = [];
+	for (const [key, value] of Object.entries(next)) {
+		if (JSON.stringify(previous[key]) !== JSON.stringify(value))
+			changes[key] = clone(value);
+	}
+	for (const key of Object.keys(previous)) {
+		if (!(key in next)) removals.push(key);
+	}
+	return { changes, removals };
+}
+
+function trimRoundPreRoll(
+	frames: MatchReplayFrame[],
+	events: MatchReplayEvent[],
+	maximumPreRollMs: number,
+): {
+	frames: MatchReplayFrame[];
+	events: MatchReplayEvent[];
+	durationMs: number;
+} {
+	const roundStarts = new Map<number, number>();
+	for (const frame of frames) {
+		roundStarts.set(
+			frame.round,
+			Math.min(roundStarts.get(frame.round) ?? frame.tMs, frame.tMs),
+		);
+	}
+	const cuts = new Map<number, { start: number; excess: number }>();
+	for (const event of events) {
+		if (
+			!/(action:start|throw|launch)/.test(event.type) ||
+			cuts.has(event.round)
+		)
+			continue;
+		const start = roundStarts.get(event.round) ?? 0;
+		const excess = Math.max(0, event.tMs - start - maximumPreRollMs);
+		if (excess > 0) cuts.set(event.round, { start, excess });
+	}
+	const orderedCuts = [...cuts.values()].sort(
+		(left, right) => left.start - right.start,
+	);
+	const transform = (tMs: number): number => {
+		let shifted = tMs;
+		for (const cut of orderedCuts) {
+			if (tMs < cut.start) break;
+			shifted -= Math.min(cut.excess, Math.max(0, tMs - cut.start));
+		}
+		return Math.max(0, Math.round(shifted));
+	};
+	const nextFrames = frames.map((frame, seq) => ({
+		...frame,
+		seq,
+		tMs: transform(frame.tMs),
+	}));
+	const nextEvents = events.map((event, seq) => ({
+		...event,
+		seq,
+		tMs: transform(event.tMs),
+	}));
+	return {
+		frames: nextFrames,
+		events: nextEvents,
+		durationMs: nextFrames.at(-1)?.tMs ?? 0,
+	};
+}
+
 @Injectable()
 export class ReplayService implements OnModuleInit, OnModuleDestroy {
 	private readonly logger = new Logger(ReplayService.name);
@@ -87,36 +197,75 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 
 	onModuleInit(): void {
 		void this.cleanupExpiredReplays();
-		this.cleanupTimer = setInterval(() => {
-			void this.cleanupExpiredReplays();
-		}, REPLAY_CLEANUP_INTERVAL_MS);
+		this.cleanupTimer = setInterval(
+			() => void this.cleanupExpiredReplays(),
+			REPLAY_CLEANUP_INTERVAL_MS,
+		);
 	}
 
 	onModuleDestroy(): void {
 		if (this.cleanupTimer) clearInterval(this.cleanupTimer);
 	}
 
-	captureFrame(room: MatchRoom, force = false): void {
+	captureFrame(
+		room: MatchRoom,
+		force = false,
+		logicalStepMs?: number,
+	): void {
+		if (!room.replayEnabled || room.state.powerupsEnabled) return;
 		const now = Date.now();
-		const hasSeqChange = room.replayLastCapturedSeq !== room.state.seq;
-		if (!force && !hasSeqChange) return;
 		if (room.replayStartedAt === null) room.replayStartedAt = now;
-		const deltaMs =
-			room.replayLastRecordedAt === null
-				? 0
-				: Math.max(0, now - room.replayLastRecordedAt);
-		const tickTs = Math.max(0, now - room.replayStartedAt);
+		if (
+			!force &&
+			logicalStepMs === undefined &&
+			room.replayLastSampleAt !== null &&
+			now - room.replayLastSampleAt < REPLAY_SAMPLE_MS
+		)
+			return;
+		const tMs =
+			logicalStepMs === undefined
+				? Math.max(
+						0,
+						now - room.replayStartedAt,
+						room.replayFrames[room.replayFrames.length - 1]?.tMs ?? 0,
+					)
+				: Math.max(
+						0,
+						(room.replayFrames[room.replayFrames.length - 1]?.tMs ??
+							-logicalStepMs) + logicalStepMs,
+					);
+		const snapshot = withoutRepeatedTrails(
+			clone(room.state) as unknown as Record<string, unknown>,
+		);
+		const keyframe =
+			force ||
+			room.replayLastSnapshot === null ||
+			room.replayLastKeyframeAt === null ||
+			tMs - room.replayLastKeyframeAt >= REPLAY_KEYFRAME_MS ||
+			roundOf(snapshot) !== roundOf(room.replayLastSnapshot);
+		const encoded = keyframe
+			? { changes: snapshot, removals: [] as string[] }
+			: diffSnapshot(room.replayLastSnapshot ?? {}, snapshot);
+		if (
+			!keyframe &&
+			Object.keys(encoded.changes).length === 0 &&
+			encoded.removals.length === 0
+		) {
+			room.replayLastSampleAt = now;
+			return;
+		}
 		room.replayFrames.push({
-			replayVersion: REPLAY_CONTRACT_VERSION,
-			seq: room.state.seq,
-			recordedAt: new Date(now).toISOString(),
-			recordedAtMs: now,
-			tickTs,
-			deltaMs,
-			snapshot: JSON.parse(JSON.stringify(room.state)) as MatchReplayFrame["snapshot"],
+			seq: room.replayFrames.length,
+			tMs,
+			round: roundOf(snapshot),
+			state: phaseOf(snapshot),
+			type: keyframe ? "keyframe" : "delta",
+			changes: encoded.changes,
+			removals: encoded.removals,
 		});
-		room.replayLastCapturedSeq = room.state.seq;
-		room.replayLastRecordedAt = now;
+		room.replayLastSnapshot = snapshot;
+		room.replayLastSampleAt = now;
+		if (keyframe) room.replayLastKeyframeAt = tMs;
 	}
 
 	recordEvent(
@@ -124,29 +273,62 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 		type: string,
 		payload: Record<string, unknown>,
 	): void {
-		const now = Date.now();
-		if (room.replayStartedAt === null) room.replayStartedAt = now;
+		if (!room.replayEnabled || room.state.powerupsEnabled) return;
+		this.captureFrame(room, true, 0);
+		const snapshot = room.state as unknown as Record<string, unknown>;
 		room.replayEvents.push({
-			replayVersion: REPLAY_CONTRACT_VERSION,
+			seq: room.replayEvents.length,
+			tMs: room.replayFrames[room.replayFrames.length - 1]?.tMs ?? 0,
+			round: roundOf(snapshot),
 			type,
-			seq: room.state.seq,
-			recordedAt: new Date(now).toISOString(),
-			recordedAtMs: now,
-			tickTs: Math.max(0, now - room.replayStartedAt),
-			payload: JSON.parse(JSON.stringify(payload)) as Record<string, unknown>,
+			payload: clone(payload),
 		});
 	}
 
 	async persistReplayForRoom(room: MatchRoom): Promise<void> {
-		this.captureFrame(room, true);
+		if (!room.replayEnabled || room.state.powerupsEnabled) return;
+		this.captureFrame(room, true, 0);
+		if (room.replayFrames.length === 0) return;
+		const preRollMs = Number(process.env.REPLAY_ROUND_PREROLL_MS ?? 3000);
+		const timeline = trimRoundPreRoll(
+			room.replayFrames,
+			room.replayEvents,
+			preRollMs,
+		);
+		const durationMs = timeline.durationMs;
+		const metadata: ReplayMetadataV2 = {
+			contractVersion: REPLAY_CONTRACT_VERSION,
+			origin: "online",
+			gameId: room.gameId,
+			mode: room.mode,
+			participants: room.state.players.map((player) => ({
+				side: player.side,
+				userId: player.userId,
+				username: player.username,
+				turtleName: player.turtleName,
+				shellSkin: player.shellSkin,
+				trailEffect: player.trailEffect,
+				hubBackground: player.hubBackground,
+				hubBackgroundAlter: player.hubBackgroundAlter,
+			})),
+			durationMs,
+			sampleHz: 20,
+			keyframeIntervalMs: REPLAY_KEYFRAME_MS,
+			preRollMs,
+			statistics: { winnerSide: room.state.winnerSide },
+			powerupsEnabled: false,
+		};
 		await this.replayRepo.save(
 			this.replayRepo.create({
 				matchId: room.matchId,
 				gameId: room.gameId,
 				mode: room.mode,
-				frames: room.replayFrames,
-				events: room.replayEvents,
-				frameCount: room.replayFrames.length,
+				contractVersion: REPLAY_CONTRACT_VERSION,
+				metadata,
+				durationMs,
+				frames: timeline.frames,
+				events: timeline.events,
+				frameCount: timeline.frames.length,
 				expiresAt: new Date(Date.now() + REPLAY_TTL_MS),
 			}),
 		);
@@ -162,52 +344,38 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 			.leftJoinAndSelect("replay.saves", "saves")
 			.leftJoinAndSelect("saves.user", "saveUser")
 			.where(
-				`(
-					EXISTS (
-						SELECT 1
-						FROM match_players mp
-						WHERE mp."matchId" = replay."matchId"
-						  AND mp."userId" = :userId
-					)
-					OR EXISTS (
-						SELECT 1
-						FROM match_replay_saves mrs
-						WHERE mrs."replayId" = replay.id
-						  AND mrs."userId" = :userId
-					)
-				)`,
+				`EXISTS (SELECT 1 FROM match_players mp WHERE mp."matchId" = replay."matchId" AND mp."userId" = :userId) OR EXISTS (SELECT 1 FROM match_replay_saves mrs WHERE mrs."replayId" = replay.id AND mrs."userId" = :userId)`,
 				{ userId },
 			)
+			.andWhere(`replay."contractVersion" = :version`, {
+				version: REPLAY_CONTRACT_VERSION,
+			})
+			.andWhere(`replay.metadata ->> 'powerupsEnabled' = 'false'`)
 			.andWhere(
-				`(
-					replay."expiresAt" IS NULL
-					OR replay."expiresAt" > NOW()
-					OR EXISTS (
-						SELECT 1
-						FROM match_replay_saves mrs
-						WHERE mrs."replayId" = replay.id
-						  AND mrs."userId" = :userId
-					)
-				)`,
+				`replay."expiresAt" IS NULL OR replay."expiresAt" > NOW() OR EXISTS (SELECT 1 FROM match_replay_saves mrs WHERE mrs."replayId" = replay.id AND mrs."userId" = :userId)`,
 				{ userId },
 			)
 			.orderBy(`COALESCE(match."finishedAt", replay."createdAt")`, "DESC")
 			.getMany();
-
 		return replays.map((replay) => this.toSummary(replay, userId));
 	}
 
-	async getForUser(matchId: string, userId: number): Promise<ReplayDetailView> {
+	async getForUser(
+		matchId: string,
+		userId: number,
+	): Promise<ReplayDetailView> {
 		await this.cleanupExpiredReplays();
-		const replay = await this.replayRepo.findOne({
-			where: { matchId },
-			relations: ["match", "match.players", "match.players.user", "saves", "saves.user"],
-		});
-		if (!replay) throw new BadRequestException("Replay not found");
-		if (!this.canAccessReplay(replay, userId)) {
-			throw new ForbiddenException("You do not have access to this replay");
-		}
-
+		const replay = await this.findReplay(matchId);
+		if (
+			!replay ||
+			replay.contractVersion !== REPLAY_CONTRACT_VERSION ||
+			replay.metadata.powerupsEnabled !== false
+		)
+			throw new BadRequestException("Replay not found");
+		if (!this.canAccessReplay(replay, userId))
+			throw new ForbiddenException(
+				"You do not have access to this replay",
+			);
 		return {
 			...this.toSummary(replay, userId),
 			frames: replay.frames,
@@ -225,44 +393,96 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 			const saveRepo = manager.getRepository(MatchReplaySave);
 			const replay = await replayRepo.findOne({
 				where: { matchId },
-				relations: ["match", "match.players", "match.players.user", "saves", "saves.user"],
+				relations: [
+					"match",
+					"match.players",
+					"match.players.user",
+					"saves",
+					"saves.user",
+				],
 			});
 			if (!replay) throw new BadRequestException("Replay not found");
-			if (!this.canAccessReplay(replay, user.id)) {
+			if (!this.canAccessReplay(replay, user.id))
 				throw new ForbiddenException("You cannot save this replay");
-			}
-
-			const alreadySaved = replay.saves.some((save) => save.user.id === user.id);
-			if (!alreadySaved) {
+			if (!replay.saves.some((save) => save.user.id === user.id)) {
 				const currentCount = await saveRepo
 					.createQueryBuilder("save")
 					.leftJoin("save.user", "user")
 					.where(`user.id = :userId`, { userId: user.id })
 					.getCount();
-
-				if (currentCount >= MAX_SAVED_REPLAYS_PER_USER) {
+				if (currentCount >= MAX_SAVED_REPLAYS_PER_USER)
 					throw new BadRequestException(
 						`Replay save limit reached (${MAX_SAVED_REPLAYS_PER_USER})`,
 					);
-				}
-
 				await manager
 					.createQueryBuilder()
 					.insert()
 					.into("match_replay_saves")
-					.values({
-						replayId: replay.id,
-						userId: user.id,
-					})
+					.values({ replayId: replay.id, userId: user.id })
 					.execute();
 			}
-
 			await replayRepo.update(replay.id, { expiresAt: null });
-			const refreshed = await replayRepo.findOneOrFail({
-				where: { id: replay.id },
-				relations: ["match", "match.players", "match.players.user", "saves", "saves.user"],
+			return this.toSummary(
+				await replayRepo.findOneOrFail({
+					where: { id: replay.id },
+					relations: [
+						"match",
+						"match.players",
+						"match.players.user",
+						"saves",
+						"saves.user",
+					],
+				}),
+				user.id,
+			);
+		});
+	}
+
+	async unsaveForUser(
+		matchId: string,
+		userId: number,
+	): Promise<ReplaySummaryView> {
+		await this.cleanupExpiredReplays();
+		return this.dataSource.transaction(async (manager) => {
+			const replayRepo = manager.getRepository(MatchReplay);
+			const saveRepo = manager.getRepository(MatchReplaySave);
+			const replay = await replayRepo.findOne({
+				where: { matchId },
+				relations: [
+					"match",
+					"match.players",
+					"match.players.user",
+					"saves",
+					"saves.user",
+				],
 			});
-			return this.toSummary(refreshed, user.id);
+			if (!replay) throw new BadRequestException("Replay not found");
+			if (!this.canAccessReplay(replay, userId))
+				throw new ForbiddenException("You cannot modify this replay");
+			const save = replay.saves.find((entry) => entry.user.id === userId);
+			if (save) await saveRepo.remove(save);
+			const remaining = await saveRepo
+				.createQueryBuilder("save")
+				.leftJoin("save.replay", "replay")
+				.where(`replay.id = :replayId`, { replayId: replay.id })
+				.getCount();
+			await replayRepo.update(replay.id, {
+				expiresAt:
+					remaining > 0 ? null : new Date(Date.now() + REPLAY_TTL_MS),
+			});
+			return this.toSummary(
+				await replayRepo.findOneOrFail({
+					where: { id: replay.id },
+					relations: [
+						"match",
+						"match.players",
+						"match.players.user",
+						"saves",
+						"saves.user",
+					],
+				}),
+				userId,
+			);
 		});
 	}
 
@@ -272,112 +492,240 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 	): Promise<ReplaySummaryView> {
 		await this.cleanupExpiredReplays();
 		this.validateImportedReplay(input);
-		const normalizedFrames = this.normalizeImportedFrames(input.frames);
-		const normalizedEvents = this.normalizeImportedEvents(input.events ?? []);
-		this.validateImportedReplayContract(input, normalizedFrames);
-		const normalizedInput: ReplayImportInput = {
-			...input,
-			frames: normalizedFrames,
-			events: normalizedEvents,
-		};
-
 		return this.dataSource.transaction(async (manager) => {
-			const replayRepo = manager.getRepository(MatchReplay);
-			const matchRepo = manager.getRepository(Match);
-			const playerRepo = manager.getRepository(MatchPlayer);
-
-			const createdAt = this.parseReplayDate(input.createdAt) ?? new Date();
+			const createdAt =
+				this.parseReplayDate(input.createdAt) ?? new Date();
 			const finishedAt =
-				this.parseReplayDate(input.finishedAt ?? undefined) ?? createdAt;
+				this.parseReplayDate(input.finishedAt ?? undefined) ??
+				createdAt;
 			const status = input.status as MatchStatus;
-
+			const matchRepo = manager.getRepository(Match);
 			const match = await matchRepo.save(
 				matchRepo.create({
 					gameId: input.gameId,
 					mode: "casual",
 					status,
 					winnerUserId:
-						input.winnerSide === 0 && status === "finished" ? user.id : null,
-					winnerSide:
-						typeof input.winnerSide === "number" ? input.winnerSide : null,
+						input.winnerSide === 0 && status === "finished"
+							? user.id
+							: null,
+					winnerSide: input.winnerSide ?? null,
 					startedAt: createdAt,
 					finishedAt,
 				}),
 			);
-
-			const participants = this.buildImportedReplayPlayers(user.id, normalizedInput);
-			await playerRepo.save(
-				participants.map((player) =>
-					playerRepo.create({
-						matchId: match.id,
-						match,
-						userId: player.userId,
-						side: player.side,
-						outcome: this.resolveImportedOutcome(
-							player.side,
-							input.winnerSide ?? null,
-							status,
-						),
-						shellSelection: [],
-					}),
-				),
-			);
-
+			const participants = input.metadata.participants;
+			await manager
+				.getRepository(MatchPlayer)
+				.save(
+					participants.map((player) =>
+						manager
+							.getRepository(MatchPlayer)
+							.create({
+								matchId: match.id,
+								match,
+								userId:
+									player.side === 0 ? user.id : player.userId,
+								side: player.side,
+								outcome: this.resolveImportedOutcome(
+									player.side,
+									input.winnerSide ?? null,
+									status,
+								),
+								shellSelection: [],
+							}),
+					),
+				);
+			const replayRepo = manager.getRepository(MatchReplay);
 			const replay = await replayRepo.save(
 				replayRepo.create({
 					matchId: match.id,
 					match,
 					gameId: input.gameId,
 					mode: input.mode,
-					frames: normalizedFrames,
-					events: normalizedEvents,
-					frameCount: normalizedFrames.length,
+					contractVersion: REPLAY_CONTRACT_VERSION,
+					metadata: input.metadata,
+					durationMs: input.durationMs,
+					frames: input.frames,
+					events: input.events ?? [],
+					frameCount: input.frames.length,
 					expiresAt: new Date(Date.now() + REPLAY_TTL_MS),
 				}),
 			);
-
-			const refreshed = await replayRepo.findOneOrFail({
-				where: { id: replay.id },
-				relations: ["match", "match.players", "match.players.user", "saves", "saves.user"],
-			});
-			return this.toSummary(refreshed, user.id);
+			return this.toSummary(
+				await replayRepo.findOneOrFail({
+					where: { id: replay.id },
+					relations: [
+						"match",
+						"match.players",
+						"match.players.user",
+						"saves",
+						"saves.user",
+					],
+				}),
+				user.id,
+			);
 		});
 	}
 
-	async unsaveForUser(matchId: string, userId: number): Promise<ReplaySummaryView> {
-		await this.cleanupExpiredReplays();
-		return this.dataSource.transaction(async (manager) => {
-			const replayRepo = manager.getRepository(MatchReplay);
-			const saveRepo = manager.getRepository(MatchReplaySave);
-			const replay = await replayRepo.findOne({
-				where: { matchId },
-				relations: ["match", "match.players", "match.players.user", "saves", "saves.user"],
-			});
-			if (!replay) throw new BadRequestException("Replay not found");
-			if (!this.canAccessReplay(replay, userId)) {
-				throw new ForbiddenException("You cannot modify this replay");
-			}
-
-			const save = replay.saves.find((entry) => entry.user.id === userId);
-			if (save) await saveRepo.remove(save);
-
-			const remaining = await saveRepo
-				.createQueryBuilder("save")
-				.leftJoin("save.replay", "replay")
-				.where(`replay.id = :replayId`, { replayId: replay.id })
-				.getCount();
-
-			await replayRepo.update(replay.id, {
-				expiresAt:
-					remaining > 0 ? null : new Date(Date.now() + REPLAY_TTL_MS),
-			});
-
-			const refreshed = await replayRepo.findOneOrFail({
-				where: { id: replay.id },
-				relations: ["match", "match.players", "match.players.user", "saves", "saves.user"],
-			});
-			return this.toSummary(refreshed, userId);
+	validateImportedReplay(input: ReplayImportInput): void {
+		if (!IMPORTABLE_REPLAY_GAME_IDS.has(input.gameId))
+			throw new BadRequestException(
+				"Replay import is not supported for this game",
+			);
+		if (input.status !== "finished" && input.status !== "abandoned")
+			throw new BadRequestException(
+				"Replay status must be finished or abandoned",
+			);
+		if (
+			!input.metadata ||
+			input.metadata.contractVersion !== REPLAY_CONTRACT_VERSION
+		)
+			throw new BadRequestException(
+				"Replay metadata must use contract version 2",
+			);
+		if (input.metadata.powerupsEnabled !== false)
+			throw new BadRequestException(
+				"Replays are unavailable while power-ups are enabled",
+			);
+		if (
+			input.metadata.gameId !== input.gameId ||
+			input.metadata.mode !== input.mode
+		)
+			throw new BadRequestException(
+				"Replay metadata does not match the import",
+			);
+		if (
+			!Array.isArray(input.metadata.participants) ||
+			input.metadata.participants.length < 1 ||
+			input.metadata.participants.length > 5
+		)
+			throw new BadRequestException(
+				"Replay must contain between one and five participants",
+			);
+		input.metadata.participants.forEach((participant, index) => {
+			if (
+				participant.side !== index ||
+				typeof participant.username !== "string" ||
+				!participant.username.trim()
+			)
+				throw new BadRequestException(
+					"Replay participants must use contiguous sides and valid names",
+				);
 		});
+		if (
+			!Number.isInteger(input.durationMs) ||
+			input.durationMs < 0 ||
+			input.durationMs !== input.metadata.durationMs
+		)
+			throw new BadRequestException("Replay duration is invalid");
+		if (
+			!Array.isArray(input.frames) ||
+			input.frames.length === 0 ||
+			input.frames.length > MAX_IMPORTED_REPLAY_FRAMES
+		)
+			throw new BadRequestException("Replay frame count is invalid");
+		let previousTMs = -1;
+		for (let index = 0; index < input.frames.length; index += 1) {
+			const frame = input.frames[index];
+			if (
+				frame.seq !== index ||
+				!Number.isInteger(frame.tMs) ||
+				frame.tMs < previousTMs ||
+				frame.tMs < 0 ||
+				frame.tMs > input.durationMs
+			)
+				throw new BadRequestException(
+					`Replay frame ${index} has an invalid timeline`,
+				);
+			if (index === 0 && frame.type !== "keyframe")
+				throw new BadRequestException(
+					"Replay must begin with a keyframe",
+				);
+			if (
+				!Array.isArray(frame.removals) ||
+				!frame.changes ||
+				typeof frame.changes !== "object"
+			)
+				throw new BadRequestException(
+					`Replay frame ${index} is malformed`,
+				);
+			for (const collection of [
+				"entities",
+				"balls",
+				"objects",
+			] as const) {
+				const entities = frame.changes[collection];
+				if (!Array.isArray(entities)) continue;
+				for (const entity of entities) {
+					if (!entity || typeof entity !== "object")
+						throw new BadRequestException(
+							`Replay frame ${index} contains an invalid entity`,
+						);
+					const value = entity as Record<string, unknown>;
+					if (
+						(typeof value.id !== "string" &&
+							typeof value.id !== "number") ||
+						typeof value.x !== "number" ||
+						!Number.isFinite(value.x) ||
+						Math.abs(value.x) > 2 ||
+						typeof value.y !== "number" ||
+						!Number.isFinite(value.y) ||
+						Math.abs(value.y) > 2
+					)
+						throw new BadRequestException(
+							`Replay frame ${index} contains an out-of-range entity`,
+						);
+					for (const velocity of [value.vx, value.vy]) {
+						if (
+							velocity !== undefined &&
+							(typeof velocity !== "number" ||
+								!Number.isFinite(velocity))
+						)
+							throw new BadRequestException(
+								`Replay frame ${index} contains an invalid velocity`,
+							);
+					}
+				}
+			}
+			previousTMs = frame.tMs;
+		}
+		const firstPlayers = input.frames[0]?.changes.players;
+		const firstScore =
+			input.frames[0]?.changes.score ?? input.frames[0]?.changes.scores;
+		if (
+			!Array.isArray(firstPlayers) ||
+			firstPlayers.length !== input.metadata.participants.length ||
+			!Array.isArray(firstScore) ||
+			firstScore.length !== input.metadata.participants.length
+		)
+			throw new BadRequestException(
+				"Replay participants and scores must have matching lengths",
+			);
+		const finalFrame = input.frames.at(-1);
+		if (finalFrame?.tMs !== input.durationMs)
+			throw new BadRequestException(
+				"Replay duration must match the final frame",
+			);
+		if (input.status === "finished" && finalFrame.state !== "finished")
+			throw new BadRequestException(
+				"Finished replay must end in the finished state",
+			);
+		let previousEventTMs = -1;
+		for (let index = 0; index < (input.events ?? []).length; index += 1) {
+			const event = input.events?.[index];
+			if (
+				!event ||
+				event.seq !== index ||
+				!Number.isInteger(event.tMs) ||
+				event.tMs < previousEventTMs ||
+				event.tMs > input.durationMs
+			)
+				throw new BadRequestException(
+					`Replay event ${index} has an invalid timeline`,
+				);
+			previousEventTMs = event.tMs;
+		}
 	}
 
 	async cleanupExpiredReplays(): Promise<void> {
@@ -389,402 +737,33 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 				.where(`"expiresAt" IS NOT NULL`)
 				.andWhere(`"expiresAt" <= NOW()`)
 				.andWhere(
-					`NOT EXISTS (
-						SELECT 1
-						FROM match_replay_saves mrs
-						WHERE mrs."replayId" = match_replays.id
-					)`,
+					`NOT EXISTS (SELECT 1 FROM match_replay_saves mrs WHERE mrs."replayId" = match_replays.id)`,
 				)
 				.execute();
 		} catch (err) {
 			this.logger.warn(
-				`Replay cleanup skipped: ${
-					err instanceof Error ? err.message : String(err)
-				}`,
+				`Replay cleanup skipped: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 	}
 
-	private validateImportedReplay(input: ReplayImportInput): void {
-		if (!IMPORTABLE_REPLAY_GAME_IDS.has(input.gameId)) {
-			throw new BadRequestException("Replay import is not supported for this game");
-		}
-		if (input.status !== "finished" && input.status !== "abandoned") {
-			throw new BadRequestException("Replay status must be finished or abandoned");
-		}
-		if (!Array.isArray(input.frames) || input.frames.length === 0) {
-			throw new BadRequestException("Replay frames are required");
-		}
-		if (input.frames.length > MAX_IMPORTED_REPLAY_FRAMES) {
-			throw new BadRequestException(
-				`Replay exceeds frame limit (${MAX_IMPORTED_REPLAY_FRAMES})`,
-			);
-		}
-	}
-
-	private validateImportedReplayContract(
-		input: ReplayImportInput,
-		frames: MatchReplayFrame[],
-	): void {
-		let previousRecordedAtMs: number | null = null;
-		for (let index = 0; index < frames.length; index += 1) {
-			const frame = frames[index];
-			if (frame.replayVersion !== REPLAY_CONTRACT_VERSION) {
-				throw new BadRequestException(
-					`Replay frame ${index} has unsupported replayVersion`,
-				);
-			}
-			if (frame.seq !== index) {
-				throw new BadRequestException(
-					`Replay frame ${index} has non-normalised sequence`,
-				);
-			}
-			if (!this.isFiniteNonNegative(frame.recordedAtMs)) {
-				throw new BadRequestException(
-					`Replay frame ${index} has invalid recordedAtMs`,
-				);
-			}
-			if (!this.isFiniteNonNegative(frame.tickTs)) {
-				throw new BadRequestException(
-					`Replay frame ${index} has invalid tickTs`,
-				);
-			}
-			if (!this.isFiniteNonNegative(frame.deltaMs)) {
-				throw new BadRequestException(
-					`Replay frame ${index} has invalid deltaMs`,
-				);
-			}
-			if (
-				previousRecordedAtMs !== null &&
-				frame.recordedAtMs < previousRecordedAtMs
-			) {
-				throw new BadRequestException(
-					`Replay frame ${index} is older than the previous frame`,
-				);
-			}
-			previousRecordedAtMs = frame.recordedAtMs;
-			this.validateImportedSnapshot(input.gameId, frame.snapshot, index);
-		}
-
-		const finalSnapshot = frames[frames.length - 1]?.snapshot;
-		if (input.status === "finished" && finalSnapshot?.phase !== "finished") {
-			throw new BadRequestException(
-				"Finished replay must end with a finished snapshot",
-			);
-		}
-		if (input.status === "abandoned" && finalSnapshot?.phase !== "abandoned") {
-			throw new BadRequestException(
-				"Abandoned replay must end with an abandoned snapshot",
-			);
-		}
-		if (
-			input.winnerSide !== undefined &&
-			input.winnerSide !== null &&
-			!this.hasSnapshotPlayerSide(finalSnapshot, input.winnerSide)
-		) {
-			throw new BadRequestException("Replay winnerSide does not match players");
-		}
-	}
-
-	private validateImportedSnapshot(
-		gameId: string,
-		snapshot: MatchReplayFrame["snapshot"],
-		frameIndex: number,
-	): void {
-		if (!snapshot || typeof snapshot !== "object") {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} snapshot is invalid`,
-			);
-		}
-		if (snapshot.gameId !== gameId) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} gameId does not match import`,
-			);
-		}
-		if (typeof snapshot.phase !== "string") {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} is missing phase`,
-			);
-		}
-		if (!Array.isArray(snapshot.players) || snapshot.players.length === 0) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} is missing players`,
-			);
-		}
-		for (const player of snapshot.players) {
-			this.validateImportedSnapshotPlayer(player, frameIndex);
-		}
-		const score = Array.isArray(snapshot.score)
-			? snapshot.score
-			: Array.isArray(snapshot.scores)
-				? snapshot.scores
-				: null;
-		if (!score || score.length < snapshot.players.length) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} is missing score`,
-			);
-		}
-		if (!score.every((value) => this.isFiniteNonNegative(value))) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} has invalid score`,
-			);
-		}
-
-		switch (gameId) {
-			case "temple-curling":
-				this.validateCurlingSnapshot(snapshot, frameIndex);
-				break;
-			case "bamboo-bash":
-				this.validateBambooSnapshot(snapshot, frameIndex);
-				break;
-			case "kame-knock":
-				this.validateKameSnapshot(snapshot, frameIndex);
-				break;
-			case "bell-clash":
-				this.validateBellSnapshot(snapshot, frameIndex);
-				break;
-			default:
-				throw new BadRequestException("Replay import is not supported for this game");
-		}
-	}
-
-	private validateImportedSnapshotPlayer(
-		player: unknown,
-		frameIndex: number,
-	): void {
-		if (!player || typeof player !== "object") {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} contains an invalid player`,
-			);
-		}
-		const candidate = player as Record<string, unknown>;
-		if (!this.isFiniteNonNegative(candidate.side)) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} player has invalid side`,
-			);
-		}
-		if (typeof candidate.username !== "string" || !candidate.username.trim()) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} player has invalid username`,
-			);
-		}
-	}
-
-	private validateCurlingSnapshot(
-		snapshot: MatchReplayFrame["snapshot"],
-		frameIndex: number,
-	): void {
-		if (!Array.isArray(snapshot.objects) || !Array.isArray(snapshot.entities)) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} curling snapshot is missing objects/entities`,
-			);
-		}
-		if (!this.isFiniteNonNegative(snapshot.currentTurn)) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} curling snapshot is missing currentTurn`,
-			);
-		}
-		this.validateReplayEntities(snapshot.entities, frameIndex, "ball");
-	}
-
-	private validateBambooSnapshot(
-		snapshot: MatchReplayFrame["snapshot"],
-		frameIndex: number,
-	): void {
-		if (!Array.isArray(snapshot.bamboos)) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} bamboo snapshot is missing bamboos`,
-			);
-		}
-		if (!Array.isArray(snapshot.powerPickups)) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} bamboo snapshot is missing powerPickups`,
-			);
-		}
-		this.validateBallEntitySnapshot(snapshot, frameIndex);
-	}
-
-	private validateKameSnapshot(
-		snapshot: MatchReplayFrame["snapshot"],
-		frameIndex: number,
-	): void {
-		if (!Array.isArray(snapshot.targets)) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} kame snapshot is missing targets`,
-			);
-		}
-		if (!this.isFiniteNonNegative(snapshot.currentTurn)) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} kame snapshot is missing currentTurn`,
-			);
-		}
-		this.validateBallEntitySnapshot(snapshot, frameIndex);
-	}
-
-	private validateBellSnapshot(
-		snapshot: MatchReplayFrame["snapshot"],
-		frameIndex: number,
-	): void {
-		if (!Array.isArray(snapshot.zones)) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} bell snapshot is missing zones`,
-			);
-		}
-		this.validateBallEntitySnapshot(snapshot, frameIndex);
-	}
-
-	private validateBallEntitySnapshot(
-		snapshot: MatchReplayFrame["snapshot"],
-		frameIndex: number,
-	): void {
-		if (!Array.isArray(snapshot.balls) || !Array.isArray(snapshot.entities)) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} is missing balls/entities`,
-			);
-		}
-		if (!Array.isArray(snapshot.activeBallIdBySide)) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} is missing activeBallIdBySide`,
-			);
-		}
-		if (!this.isFiniteNonNegative(snapshot.nextBallId)) {
-			throw new BadRequestException(
-				`Replay frame ${frameIndex} is missing nextBallId`,
-			);
-		}
-		this.validateReplayEntities(snapshot.entities, frameIndex, "projectile");
-	}
-
-	private validateReplayEntities(
-		entities: unknown[],
-		frameIndex: number,
-		expectedType: string,
-	): void {
-		for (const entity of entities) {
-			if (!entity || typeof entity !== "object") {
-				throw new BadRequestException(
-					`Replay frame ${frameIndex} contains an invalid entity`,
-				);
-			}
-			const candidate = entity as Record<string, unknown>;
-			if (candidate.type !== expectedType) {
-				throw new BadRequestException(
-					`Replay frame ${frameIndex} contains an unexpected entity type`,
-				);
-			}
-			for (const key of ["x", "y"] as const) {
-				if (this.finiteNumberOrNull(candidate[key]) === null) {
-					throw new BadRequestException(
-						`Replay frame ${frameIndex} entity has invalid ${key}`,
-					);
-				}
-			}
-		}
-	}
-
-	private hasSnapshotPlayerSide(
-		snapshot: MatchReplayFrame["snapshot"] | undefined,
-		side: number,
-	): boolean {
-		return (
-			Array.isArray(snapshot?.players) &&
-			snapshot.players.some((player) => player.side === side)
-		);
-	}
-
-	private normalizeImportedFrames(
-		frames: MatchReplayFrame[],
-	): MatchReplayFrame[] {
-		return frames.map((frame, index) => ({
-			...frame,
-			replayVersion: frame.replayVersion ?? REPLAY_CONTRACT_VERSION,
-			seq: index,
-			recordedAtMs:
-				this.finiteNumberOrNull(frame.recordedAtMs) ??
-				this.parseReplayDate(frame.recordedAt)?.getTime() ??
-				undefined,
-			tickTs:
-				this.finiteNumberOrNull(frame.tickTs) ??
-				this.resolveImportedFrameTickTs(frames, index),
-			deltaMs:
-				this.finiteNumberOrNull(frame.deltaMs) ??
-				this.resolveImportedFrameDeltaMs(frames, index),
-		}));
-	}
-
-	private normalizeImportedEvents(
-		events: MatchReplayEvent[],
-	): MatchReplayEvent[] {
-		return events.map((event) => ({
-			...event,
-			replayVersion: event.replayVersion ?? REPLAY_CONTRACT_VERSION,
-			recordedAtMs:
-				this.finiteNumberOrNull(event.recordedAtMs) ??
-				this.parseReplayDate(event.recordedAt)?.getTime() ??
-				undefined,
-		}));
-	}
-
-	private resolveImportedFrameDeltaMs(
-		frames: MatchReplayFrame[],
-		index: number,
-	): number {
-		if (index === 0)
-			return Math.max(0, this.finiteNumberOrNull(frames[index]?.deltaMs) ?? 0);
-		const currentTime = this.parseReplayDate(frames[index]?.recordedAt)?.getTime();
-		const previousTime = this.parseReplayDate(
-			frames[index - 1]?.recordedAt,
-		)?.getTime();
-		if (typeof currentTime !== "number" || typeof previousTime !== "number")
-			return Math.max(
-				0,
-				this.finiteNumberOrNull(frames[index]?.deltaMs) ?? 0,
-			);
-		return Math.max(0, currentTime - previousTime);
-	}
-
-	private resolveImportedFrameTickTs(
-		frames: MatchReplayFrame[],
-		index: number,
-	): number {
-		const firstTime = this.parseReplayDate(frames[0]?.recordedAt)?.getTime();
-		const currentTime = this.parseReplayDate(frames[index]?.recordedAt)?.getTime();
-		if (typeof firstTime !== "number" || typeof currentTime !== "number")
-			return Math.max(0, this.finiteNumberOrNull(frames[index]?.tickTs) ?? 0);
-		return Math.max(0, currentTime - firstTime);
-	}
-
-	private finiteNumberOrNull(value: unknown): number | null {
-		return typeof value === "number" && Number.isFinite(value) ? value : null;
-	}
-
-	private isFiniteNonNegative(value: unknown): value is number {
-		return typeof value === "number" && Number.isFinite(value) && value >= 0;
+	private findReplay(matchId: string): Promise<MatchReplay | null> {
+		return this.replayRepo.findOne({
+			where: { matchId },
+			relations: [
+				"match",
+				"match.players",
+				"match.players.user",
+				"saves",
+				"saves.user",
+			],
+		});
 	}
 
 	private parseReplayDate(value?: string): Date | null {
 		if (!value) return null;
 		const parsed = new Date(value);
 		return Number.isNaN(parsed.getTime()) ? null : parsed;
-	}
-
-	private buildImportedReplayPlayers(
-		userId: number,
-		input: ReplayImportInput,
-	): ReplayImportPlayerInput[] {
-		const playerCount = Math.max(
-			1,
-			input.playerNames?.length ?? 0,
-			input.playerUserIds?.length ?? 0,
-			Array.isArray(input.frames[0]?.snapshot?.["players"])
-				? (input.frames[0]?.snapshot?.["players"] as unknown[]).length
-				: 0,
-		);
-		return Array.from({ length: playerCount }, (_value, index) => ({
-			side: index,
-			userId: index === 0 ? userId : input.playerUserIds?.[index] ?? null,
-			username: input.playerNames?.[index] ?? `Player ${index + 1}`,
-		}));
 	}
 
 	private resolveImportedOutcome(
@@ -798,13 +777,15 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	private canAccessReplay(replay: MatchReplay, userId: number): boolean {
-		const isParticipant =
-			replay.match.players?.some((player) => player.userId === userId) ?? false;
-		const isSaved =
+		const participant =
+			replay.match.players?.some((player) => player.userId === userId) ??
+			false;
+		const saved =
 			replay.saves?.some((save) => save.user.id === userId) ?? false;
-		const notExpired =
-			replay.expiresAt === null || replay.expiresAt.getTime() > Date.now();
-		return (isParticipant && notExpired) || isSaved;
+		const current =
+			replay.expiresAt === null ||
+			replay.expiresAt.getTime() > Date.now();
+		return (participant && current) || saved;
 	}
 
 	private toSummary(replay: MatchReplay, userId: number): ReplaySummaryView {
@@ -814,7 +795,10 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 		return {
 			id: replay.id,
 			matchId: replay.matchId,
-			replayVersion: this.resolveReplayVersion(replay),
+			replayVersion: replay.contractVersion,
+			contractVersion: replay.contractVersion,
+			metadata: replay.metadata,
+			durationMs: replay.durationMs,
 			gameId: replay.gameId,
 			mode: replay.mode,
 			status: replay.match.status,
@@ -824,23 +808,11 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 			expiresAt: replay.expiresAt?.toISOString() ?? null,
 			winnerSide: replay.match.winnerSide,
 			playerUserIds: players.map((player) => player.userId ?? 0),
-			playerNames: players.map(
-				(player) => player.user?.username ?? `Player ${player.side + 1}`,
+			playerNames: replay.metadata.participants.map(
+				(player) => player.username,
 			),
 			isSavedByCurrentUser:
 				replay.saves?.some((save) => save.user.id === userId) ?? false,
 		};
-	}
-
-	private resolveReplayVersion(
-		replay: MatchReplay,
-	): ReplayContractVersion | null {
-		const frameVersion = replay.frames?.find(
-			(frame) => frame.replayVersion,
-		)?.replayVersion;
-		const eventVersion = replay.events?.find(
-			(event) => event.replayVersion,
-		)?.replayVersion;
-		return frameVersion ?? eventVersion ?? null;
 	}
 }

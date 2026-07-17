@@ -8,11 +8,14 @@ import {
 import { AuthService, DEMO_COINS } from "./auth.service";
 import { UsersService } from "../users/users.service";
 import { User } from "../users/entities/user.entity";
+import { getRepositoryToken } from "@nestjs/typeorm";
+import { AuthIdentity } from "./entities/auth-identity.entity";
+import { AccountLinksService } from "./account-links.service";
 
 const mockUser: User = {
 	id: 1,
 	fortyTwoId: "dev-testuser",
-	githubId: null,
+	googleId: null,
 	username: "testuser",
 	email: "testuser@dev.local",
 	xp: 0,
@@ -38,6 +41,13 @@ describe("AuthService", () => {
 	let service: AuthService;
 	let usersService: jest.Mocked<UsersService>;
 	let jwtService: jest.Mocked<JwtService>;
+	let identityRepo: {
+		create: jest.Mock;
+		save: jest.Mock;
+		createQueryBuilder: jest.Mock;
+	};
+	let identityQuery: { addSelect: jest.Mock; where: jest.Mock; andWhere: jest.Mock; getOne: jest.Mock };
+	let accountLinksService: { migrateLegacyIdentities: jest.Mock };
 	const ORIGINAL_ENV = { ...process.env };
 
 	afterEach(() => {
@@ -45,6 +55,21 @@ describe("AuthService", () => {
 	});
 
 	beforeEach(async () => {
+		identityQuery = {
+			addSelect: jest.fn(),
+			where: jest.fn(),
+			andWhere: jest.fn(),
+			getOne: jest.fn(),
+		};
+		identityQuery.addSelect.mockReturnValue(identityQuery);
+		identityQuery.where.mockReturnValue(identityQuery);
+		identityQuery.andWhere.mockReturnValue(identityQuery);
+		identityRepo = {
+			create: jest.fn((value) => value),
+			save: jest.fn(async (value) => value),
+			createQueryBuilder: jest.fn(() => identityQuery),
+		};
+		accountLinksService = { migrateLegacyIdentities: jest.fn() };
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				AuthService,
@@ -52,15 +77,19 @@ describe("AuthService", () => {
 					provide: UsersService,
 					useValue: {
 						findByFortyTwoId: jest.fn(),
-						findByGithubId: jest.fn(),
+						findByGoogleId: jest.fn(),
 						findByEmail: jest.fn(),
 						findByUsername: jest.fn(),
+						findForLocalLogin: jest.fn(),
 						create: jest.fn(),
 						findById: jest.fn(),
+						findCanonicalById: jest.fn(),
 						save: jest.fn(),
 						saveProfile: jest.fn(),
 					},
 				},
+				{ provide: getRepositoryToken(AuthIdentity), useValue: identityRepo },
+				{ provide: AccountLinksService, useValue: accountLinksService },
 				{
 					provide: JwtService,
 					useValue: { sign: jest.fn().mockReturnValue("signed.jwt") },
@@ -147,6 +176,42 @@ describe("AuthService", () => {
 					email: "x@x",
 				}),
 			).rejects.toThrow(InternalServerErrorException);
+		});
+	});
+
+	describe("findOrCreateGoogleUser", () => {
+		it("returns an existing user when found by Google id", async () => {
+			usersService.findByGoogleId.mockResolvedValue(mockUser);
+
+			const result = await service.findOrCreateGoogleUser({
+				googleId: "google-123",
+				username: "testuser",
+				email: "testuser@example.com",
+			});
+
+			expect(result).toBe(mockUser);
+			expect(usersService.create).not.toHaveBeenCalled();
+		});
+
+		it("creates a user for a new Google account", async () => {
+			usersService.findByGoogleId.mockResolvedValue(null);
+			usersService.findByEmail.mockResolvedValue(null);
+			usersService.findByUsername.mockResolvedValue(null);
+			usersService.create.mockResolvedValue(mockUser);
+
+			await service.findOrCreateGoogleUser({
+				googleId: "google-456",
+				username: "googleuser",
+				email: "google@example.com",
+				avatar: "https://example.com/avatar.png",
+			});
+
+			expect(usersService.create).toHaveBeenCalledWith({
+				googleId: "google-456",
+				username: "googleuser",
+				email: "google@example.com",
+				avatar: "https://example.com/avatar.png",
+			});
 		});
 	});
 
@@ -280,6 +345,7 @@ describe("AuthService", () => {
 
 			await service.onApplicationBootstrap();
 
+			expect(accountLinksService.migrateLegacyIdentities).toHaveBeenCalledTimes(1);
 			expect(spy).toHaveBeenCalledTimes(1);
 		});
 	});
@@ -290,24 +356,37 @@ describe("AuthService", () => {
 		it("throws ConflictException when the username is taken", async () => {
 			usersService.findByUsername.mockResolvedValue(mockUser);
 			await expect(
-				service.localRegister("testuser", "password123"),
+				service.localRegister(
+					"testuser",
+					"new@example.com",
+					"password123",
+				),
 			).rejects.toThrow(ConflictException);
 		});
 
-		it("creates a new user and returns it", async () => {
+		it("creates a user with a unique email address", async () => {
 			usersService.findByUsername.mockResolvedValue(null);
-			usersService.create.mockResolvedValue(mockUser);
+			usersService.findByEmail.mockResolvedValue(null);
+			const newUser = {
+				...mockUser,
+				email: "new@example.com",
+			} as User;
+			usersService.create.mockImplementation(async (data) =>
+				({ ...newUser, ...data } as User),
+			);
 			const result = await service.localRegister(
 				"newuser",
+				"new@example.com",
 				"password123",
 			);
 			expect(usersService.create).toHaveBeenCalledWith(
 				expect.objectContaining({
 					username: "newuser",
+					email: "new@example.com",
 					isGuest: false,
 				}),
 			);
-			expect(result).toBe(mockUser);
+			expect(result).toEqual(expect.objectContaining({ username: "newuser" }));
 		});
 	});
 
@@ -315,20 +394,43 @@ describe("AuthService", () => {
 
 	describe("localLogin", () => {
 		it("throws UnauthorizedException for unknown username", async () => {
-			usersService.findByUsername.mockResolvedValue(null);
+			identityQuery.getOne.mockResolvedValue(null);
 			await expect(service.localLogin("nobody", "pass")).rejects.toThrow(
 				UnauthorizedException,
 			);
 		});
 
 		it("throws UnauthorizedException when passwordHash is null (OAuth account)", async () => {
-			usersService.findByUsername.mockResolvedValue({
-				...mockUser,
-				passwordHash: null,
-			} as unknown as User);
+			identityQuery.getOne.mockResolvedValue({ userId: 1, passwordHash: null });
 			await expect(
 				service.localLogin("testuser", "pass"),
 			).rejects.toThrow(UnauthorizedException);
 		});
+
+		it("accepts an email identifier for a password account", async () => {
+			usersService.findByUsername.mockResolvedValue(null);
+			usersService.findByEmail.mockResolvedValue(null);
+			usersService.create.mockImplementation(async (data) =>
+				({ ...mockUser, ...data } as User),
+			);
+			usersService.save.mockImplementation(async (user: User) => user);
+			const registered = await service.localRegister(
+				"testuser",
+				"testuser@dev.local",
+				"password123",
+			);
+			const savedIdentity = identityRepo.save.mock.calls.at(-1)?.[0];
+			identityQuery.getOne.mockResolvedValue(savedIdentity);
+			usersService.findCanonicalById.mockResolvedValue(registered);
+
+			await expect(
+				service.localLogin("testuser@dev.local", "password123"),
+			).resolves.toBe(registered);
+			expect(identityQuery.andWhere).toHaveBeenCalledWith(
+				expect.stringContaining("shellEmail"),
+				{ identifier: "testuser@dev.local" },
+			);
+		});
+
 	});
 });

@@ -61,7 +61,7 @@ import {
 import { SweepController } from "../../shared/mechanics/sweep-controller";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
-import { showCardDropPopup } from "../../shared/card-drop-popup";
+import { showCardDropPopup } from "../../features/cards";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
@@ -94,7 +94,7 @@ import {
 	buildCommonLocalReplayParticipantContext,
 	buildShellCurlLocalReplaySnapshot,
 	CommonGameSceneHost,
-	LocalReplayRuntime,
+	ReplayCaptureRuntime,
 	resolvePlayerTrailEffects,
 	SlingshotLaunchRuntime,
 	WorldRuntime,
@@ -163,6 +163,7 @@ const DEPTH_OVERLAY = 100;
 
 /** Pause in ms between end-of-throw and advancing to next turn. */
 const SETTLING_DELAY_MS = 800;
+const SCORING_DISTANCE_EPSILON_SRC = 0.001;
 
 const PLAYER_COLOURS = PLAYER_HEX_COLOURS;
 
@@ -284,13 +285,15 @@ export class ShellCurlScene
 	private localEndScores: Array<Array<number | null>> = [];
 	private localMode: "solo" | "versus" = "versus";
 
-	private readonly localReplay = new LocalReplayRuntime<
+	private readonly localReplay = new ReplayCaptureRuntime<
 		CurlingSnapshot,
 		CurlingSnapshot["phase"]
 	>({
 		gameId: "temple-curling",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
-		shouldSkip: () => this.online.isActive,
+		shouldSkip: () =>
+			this.online.isActive ||
+			this.registry.get("replayEnabled") === false,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
@@ -550,14 +553,10 @@ export class ShellCurlScene
 					this.arena,
 				);
 
-				this.curlingPower.resolveCollisions(
-					this.allBalls,
-					this.arena,
-					{
-						activeBall: this.activeBall,
-						triggerActiveCollisionPower: true,
-					},
-				);
+				this.curlingPower.resolveCollisions(this.allBalls, this.arena, {
+					activeBall: this.activeBall,
+					triggerActiveCollisionPower: true,
+				});
 			}
 
 			// Bumper collisions for all moving balls
@@ -703,7 +702,6 @@ export class ShellCurlScene
 
 		if (this.online.isActive) {
 			const power = this.activePower;
-			if (power !== PowerType.NONE) this.currentPowerUsed().add(power);
 			this.activePower = PowerType.NONE;
 			this.online.emitRelease(this.activeBall, vx, vy, power);
 			this.powerSidePanel?.hide();
@@ -756,7 +754,7 @@ export class ShellCurlScene
 		// ballsLeft still reflects pre-throw counts. After consuming this throw,
 		// total remaining is the sum across all local players minus this throw.
 		const totalRemaining =
-			state.stonesLeft.reduce((total, left) => total + left, 0) - 1;
+			state.ballsLeft.reduce((total, left) => total + left, 0) - 1;
 
 		if (totalRemaining > 0) {
 			this.turnManager.nextThrow();
@@ -784,27 +782,41 @@ export class ShellCurlScene
 			return;
 		}
 
-		// Find closest ball to button
-		let bestDist = Infinity;
-		let scoringTeam = 0;
-		for (const s of inHouse) {
-			const d = distanceFromBallToHouseButton(s, this.arena);
-			if (d < bestDist) {
-				bestDist = d;
-				scoringTeam = s.teamId;
-			}
+		const ranked = inHouse
+			.map((ball) => ({
+				ball,
+				distance: distanceFromBallToHouseButton(ball, this.arena),
+			}))
+			.sort((a, b) => a.distance - b.distance);
+		const best = ranked[0];
+		const scoringTeam = best.ball.teamId;
+		const epsilon = SCORING_DISTANCE_EPSILON_SRC * this.arena.scale;
+		if (
+			ranked.some(
+				(entry) =>
+					entry.ball.teamId !== scoringTeam &&
+					Math.abs(entry.distance - best.distance) <= epsilon,
+			)
+		) {
+			this.localEndScores[this.turnManager.state.currentEnd] = Array.from(
+				{ length: this.turnManager.state.score.length },
+				() => 0,
+			);
+			this.turnManager.endEnd(null, 0);
+			this.updateSidePanels();
+			this.showEndScoreOverlay(null, 0);
+			return;
 		}
 
 		// Count scoring balls (all balls of scoring team closer than nearest opponent)
-		const opponentDist = inHouse
-			.filter((s) => s.teamId !== scoringTeam)
-			.map((s) => distanceFromBallToHouseButton(s, this.arena))
-			.reduce((min, d) => Math.min(min, d), Infinity);
+		const opponentDist = ranked
+			.filter((entry) => entry.ball.teamId !== scoringTeam)
+			.reduce((min, entry) => Math.min(min, entry.distance), Infinity);
 
-		const points = inHouse.filter(
-			(s) =>
-				s.teamId === scoringTeam &&
-				distanceFromBallToHouseButton(s, this.arena) < opponentDist,
+		const points = ranked.filter(
+			(entry) =>
+				entry.ball.teamId === scoringTeam &&
+				entry.distance < opponentDist - epsilon,
 		).length;
 
 		// Highlight scoring balls
@@ -832,8 +844,9 @@ export class ShellCurlScene
 	// ── Ball management ──────────────────────────────────────────────────────
 
 	public spawnActiveBall(teamId: number): CurlingBallState {
+		const sequenceId = this.nextBallId++;
 		const ball: CurlingBallState = {
-			id: this.nextBallId++,
+			id: this.online.isActive ? -(sequenceId + 1) : sequenceId,
 			teamId,
 			x: this.arena.deliveryX,
 			y: this.arena.deliveryY,
@@ -888,8 +901,7 @@ export class ShellCurlScene
 		const pad = 18 * this.arena.scale;
 		const offset = slot * ball.r * 0.45;
 		ball.x = this.arena.sheetX + ball.r + pad + offset;
-		ball.y =
-			this.arena.sheetY + this.arena.sheetH - ball.r - pad - offset;
+		ball.y = this.arena.sheetY + this.arena.sheetH - ball.r - pad - offset;
 		ball.vx = 0;
 		ball.vy = 0;
 		ball.stopped = true;
@@ -982,9 +994,36 @@ export class ShellCurlScene
 		);
 	}
 
+	public discardOnlineAimBall(): void {
+		if (!this.activeBall || this.activeBall.id >= 0) return;
+		const aimBall = this.activeBall;
+		this.activeBall = null;
+		this.removeBall(aimBall);
+		this.clearActiveRing();
+	}
+
+	public restoreOnlineAim(power: PowerType): void {
+		this.activePower = power;
+		this.turnManager.setPhase("aiming");
+		if (!this.activeBall) {
+			this.beginTurn();
+			this.activePower = power;
+		} else {
+			this.launchInput.recreate();
+			this.launchInput.attach();
+			this.addActiveRing(this.activeBall);
+		}
+		this.showPowerPanel();
+		this.updateSidePanels();
+	}
+
 	public clearAllBallGfx(): void {
-		for (const ball of this.allBalls)
-			destroyIngamePlayerTexture(this, `shell-curl-player-${ball.id}`);
+		const ids = new Set<number>([
+			...this.allBalls.map((ball) => ball.id),
+			...this.ballGfx.keys(),
+		]);
+		for (const id of ids)
+			destroyIngamePlayerTexture(this, `shell-curl-player-${id}`);
 		for (const gfx of this.ballGfx.values()) gfx.destroy();
 		this.ballGfx.clear();
 		this.allBalls = [];
@@ -1161,7 +1200,6 @@ export class ShellCurlScene
 
 		api.submitGameResult("temple-curling", "completed")
 			.then((result) => {
-				console.info("[ShellCurl] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
 				showCardDropPopup(this, result.cardDrop);
 			})
@@ -1229,13 +1267,16 @@ export class ShellCurlScene
 			getPlayerCount: () => Math.max(1, state.score.length),
 			getCurrentPlayer: () => state.currentTeam,
 			getCurrentRound: () => state.currentEnd,
-			getRemainingTurns: () => state.stonesLeft,
+			getRemainingTurns: () => state.ballsLeft,
 			getScore: () => state.score,
 			getPhase: () => state.phase,
 			hasHammer: () => state.hasHammer,
 			onRelease: () => {
 				this.scoreHud.update(this.buildScoreHudState());
-				if (!this.online.isActive) this.localReplay.captureFrame(true);
+				if (!this.online.isActive) {
+					this.localReplay.recordEvent("action:start");
+					this.localReplay.captureFrame(true);
+				}
 			},
 			onProjectileSettled: () => this.finishThrow(),
 			computeWinner: () => resolveReplayWinnerSide([...state.score]),
@@ -1543,6 +1584,7 @@ export class ShellCurlScene
 			);
 		}
 		drawShellCurlPowerPickups(this.powerupsEnabled, this.powerPickups);
+		if (this.online.isActive) this.online.reprojectPhysicsState();
 		this.redrawAllBalls();
 
 		this.scoreHud.update(this.buildScoreHudState());
@@ -1772,5 +1814,35 @@ export class ShellCurlScene
 		const team = this.turnManager.state.currentTeam;
 		if (!this.powerUsed[team]) this.powerUsed[team] = new Set<PowerType>();
 		return this.powerUsed[team];
+	}
+
+	public syncOnlineUsedPowers(
+		usedPowersBySide: string[][] | undefined,
+	): void {
+		if (!usedPowersBySide) return;
+		this.powerUsed = usedPowersBySide.map(
+			(powers) => new Set(powers as PowerType[]),
+		);
+	}
+
+	public syncOnlinePowerPickups(
+		pickups: Array<{
+			id: number;
+			type: string;
+			x: number;
+			y: number;
+			radius: number;
+		}>,
+	): void {
+		if (!this.powerPickups) return;
+		this.powerPickups.setPickups(
+			pickups.map((pickup) => ({
+				id: pickup.id,
+				type: pickup.type as PowerType,
+				x: this.arena.sheetX + (pickup.x / 1570) * this.arena.sheetW,
+				y: this.arena.sheetY + (pickup.y / 880) * this.arena.sheetH,
+				r: (pickup.radius / 1570) * this.arena.sheetW,
+			})),
+		);
 	}
 }

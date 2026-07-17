@@ -8,6 +8,7 @@ import { UserCosmetic } from "../customization/entities/user-cosmetic.entity";
 import { User } from "./entities/user.entity";
 import { UsersController } from "./users.controller";
 import { UsersService } from "./users.service";
+import { UserAccountActivityService } from "./user-account-activity.service";
 
 @Module({
 	imports: [
@@ -16,8 +17,8 @@ import { UsersService } from "./users.service";
 		PresenceModule,
 		FriendsModule,
 	],
-	providers: [UsersService],
+	providers: [UsersService, UserAccountActivityService],
 	controllers: [UsersController],
-	exports: [UsersService],
+	exports: [UsersService, UserAccountActivityService],
 })
 export class UsersModule {}

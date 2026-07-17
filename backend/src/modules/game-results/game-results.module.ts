@@ -4,6 +4,7 @@ import { GameResultsController } from "./game-results.controller";
 import { GameResultsService } from "./game-results.service";
 import { UsersModule } from "../users/users.module";
 import { AchievementsModule } from "../achievements/achievements.module";
+import { AuthModule } from "../auth/auth.module";
 import { CardsModule } from "../cards/cards.module";
 import { UserGameStats } from "./entities/user-game-stats.entity";
 
@@ -12,6 +13,7 @@ import { UserGameStats } from "./entities/user-game-stats.entity";
 		TypeOrmModule.forFeature([UserGameStats]),
 		UsersModule,
 		AchievementsModule,
+		AuthModule,
 		CardsModule,
 	],
 	controllers: [GameResultsController],

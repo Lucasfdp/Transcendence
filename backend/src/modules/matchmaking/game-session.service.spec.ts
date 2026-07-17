@@ -63,9 +63,12 @@ function makeRoom(overrides: Partial<MatchRoom> = {}): MatchRoom {
 		},
 		replayFrames: [],
 		replayEvents: [],
-		replayLastCapturedSeq: null,
+		replayEnabled: true,
+		replayDisabledReason: null,
 		replayStartedAt: null,
-		replayLastRecordedAt: null,
+		replayLastSampleAt: null,
+		replayLastKeyframeAt: null,
+		replayLastSnapshot: null,
 		...overrides,
 	};
 }
@@ -112,7 +115,12 @@ describe("GameSessionService", () => {
 			submitResult: jest.fn(),
 		} as unknown as jest.Mocked<GameResultsService>;
 		replayService = { persistReplayForRoom: jest.fn() };
-		matchRepo = { update: jest.fn() };
+		// Rankings Bug Audit M4: `matchRepo.update` is now a conditional
+		// `WHERE status = 'active'` update that reports how many rows it
+		// touched — default to "found and updated the active match" so every
+		// existing test keeps exercising the normal path unchanged. Tests for
+		// the M4 guard itself override this to `{ affected: 0 }`.
+		matchRepo = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
 		matchPlayerRepo = { update: jest.fn() };
 		ratingRepo = {
 			findOne: jest.fn(),
@@ -279,7 +287,7 @@ describe("GameSessionService", () => {
 		await service.finishIfEnded(room);
 
 		expect(matchRepo.update).toHaveBeenCalledWith(
-			room.matchId,
+			{ id: room.matchId, status: "active" },
 			expect.objectContaining({ winnerUserId: 1, winnerSide: 0 }),
 		);
 	});
@@ -293,6 +301,38 @@ describe("GameSessionService", () => {
 		await service.abandon(room, room.players[1]);
 
 		expect(engine.onRoomClosed).toHaveBeenCalledWith(room);
+	});
+
+	// ── Rankings Bug Audit M4: durable idempotency guard ─────────────────────
+
+	it("skips rewards, ratings, and replay persistence when the match row is no longer active", async () => {
+		// Simulates a duplicate re-entry into finish/abandon for a match another
+		// persistence pass already finished: the `WHERE status = 'active'`
+		// update matches 0 rows.
+		matchRepo.update.mockResolvedValue({ affected: 0 });
+		const room = makeRoom();
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		expect(matchPlayerRepo.update).not.toHaveBeenCalled();
+		expect(gameResultsService.submitResult).not.toHaveBeenCalled();
+		expect(replayService.persistReplayForRoom).not.toHaveBeenCalled();
+		// Still marked granted locally so a second in-process retry short-circuits
+		// on the fast in-memory path instead of re-entering the transaction.
+		expect(room.rewardsGranted).toBe(true);
+	});
+
+	it("still grants rewards normally when the match row is active", async () => {
+		matchRepo.update.mockResolvedValue({ affected: 1 });
+		const room = makeRoom();
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		expect(gameResultsService.submitResult).toHaveBeenCalledTimes(2);
+		expect(replayService.persistReplayForRoom).toHaveBeenCalledWith(room);
+		expect(room.rewardsGranted).toBe(true);
 	});
 });
 
@@ -309,7 +349,14 @@ describe("GameSessionService — applyEloRatings (Bug Audit H1)", () => {
 	let savedRatings: Record<number, number>;
 
 	function makeRating(userId: number, rating: number) {
-		return { userId, gameId: "temple-curling", rating, wins: 0, losses: 0 };
+		return {
+			userId,
+			gameId: "temple-curling",
+			rating,
+			wins: 0,
+			losses: 0,
+			draws: 0,
+		};
 	}
 
 	beforeEach(() => {
@@ -332,7 +379,7 @@ describe("GameSessionService — applyEloRatings (Bug Audit H1)", () => {
 			submitResult: jest.fn(),
 		} as unknown as jest.Mocked<GameResultsService>;
 		replayService = { persistReplayForRoom: jest.fn() };
-		matchRepo = { update: jest.fn() };
+		matchRepo = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
 		matchPlayerRepo = { update: jest.fn() };
 		ratingRepo = {
 			findOne: jest.fn(),
@@ -394,5 +441,92 @@ describe("GameSessionService — applyEloRatings (Bug Audit H1)", () => {
 		// Equal starting ratings, winner side 0 -> +16 / -16 at K=32.
 		expect(savedRatings[1]).toBe(1016);
 		expect(savedRatings[2]).toBe(984);
+	});
+
+	// ── Rankings Bug Audit M3: ranked draws ───────────────────────────────────
+
+	it("increments draws and applies a 0.5-score Elo delta for a ranked draw", async () => {
+		const p0 = makeRating(1, 1000);
+		const p1 = makeRating(2, 1000);
+		ratingRepo.findOne = jest
+			.fn()
+			.mockResolvedValueOnce(p0)
+			.mockResolvedValueOnce(p1);
+
+		const room = makeRoom({
+			mode: "ranked",
+			state: { ...makeRoom().state, winnerSide: null },
+		});
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		// Equal starting ratings, 0.5 score for both sides -> expected 0.5,
+		// delta 0, but `draws` still increments (the pre-fix bug: this whole
+		// method used to be skipped for a draw, so neither the rating nor
+		// `draws` ever changed).
+		expect(savedRatings[1]).toBe(1000);
+		expect(savedRatings[2]).toBe(1000);
+		expect(p0.draws).toBe(1);
+		expect(p1.draws).toBe(1);
+		expect(p0.wins).toBe(0);
+		expect(p0.losses).toBe(0);
+	});
+
+	it("moves rating toward the higher-rated player on an uneven draw", async () => {
+		const underdog = makeRating(1, 900);
+		const favorite = makeRating(2, 1100);
+		ratingRepo.findOne = jest
+			.fn()
+			.mockResolvedValueOnce(underdog)
+			.mockResolvedValueOnce(favorite);
+
+		const room = makeRoom({
+			mode: "ranked",
+			state: { ...makeRoom().state, winnerSide: null },
+		});
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		// The underdog drawing a higher-rated opponent gains rating; the
+		// favorite drawing a lower-rated opponent loses rating.
+		expect(savedRatings[1]).toBeGreaterThan(900);
+		expect(savedRatings[2]).toBeLessThan(1100);
+	});
+
+	// ── Rankings Bug Audit L5: divide-by-zero guard ───────────────────────────
+
+	it("does not throw or write a rating for a single-player ranked room", async () => {
+		const room = makeRoom({
+			mode: "ranked",
+			players: [makePlayer(0)],
+			state: { ...makeRoom().state, winnerSide: 0, score: [1] },
+		});
+		roomService.getRoom.mockReturnValue(room);
+
+		await expect(service.finishIfEnded(room)).resolves.not.toThrow();
+		expect(ratingRepo.save).not.toHaveBeenCalled();
+	});
+
+	// ── Rankings Bug Audit L6: row lock ────────────────────────────────────────
+
+	it("locks the rating row with pessimistic_write before reading it", async () => {
+		const p0 = makeRating(1, 1000);
+		const p1 = makeRating(2, 1000);
+		const findOneMock = jest
+			.fn()
+			.mockResolvedValueOnce(p0)
+			.mockResolvedValueOnce(p1);
+		ratingRepo.findOne = findOneMock;
+
+		const room = makeRoom({ mode: "ranked" });
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		expect(findOneMock).toHaveBeenCalledWith(
+			expect.objectContaining({ lock: { mode: "pessimistic_write" } }),
+		);
 	});
 });

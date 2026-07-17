@@ -4,7 +4,7 @@ export interface RoundFlowState {
 	readonly playerCount: number;
 	readonly currentTeam: number;
 	readonly currentRound: number;
-	readonly stonesLeft: number[];
+	readonly ballsLeft: number[];
 	readonly score: number[];
 	readonly phase: TurnPhase;
 	readonly hasHammer?: boolean;
@@ -17,7 +17,7 @@ export function buildHudStateFromRoundFlow(
 	return {
 		currentTeam: clamp(state.currentTeam, 0, playerCount - 1),
 		currentEnd: Math.max(0, state.currentRound),
-		stonesLeft: state.stonesLeft,
+		ballsLeft: state.ballsLeft,
 		score: state.score,
 		phase: state.phase,
 		hasHammer: state.hasHammer ?? false,

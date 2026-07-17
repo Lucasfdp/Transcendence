@@ -20,11 +20,11 @@ export class User {
 
 	/** Null for guest, local, and 42 OAuth accounts. */
 	@Column({ unique: true, nullable: true })
-	githubId: string | null;
+	googleId: string | null;
 
 	/**
 	 * scrypt-derived hash: "<hex-salt>:<hex-hash>".
-	 * Null for guest accounts and 42 OAuth accounts (no local password).
+	 * Null for guest accounts and OAuth accounts (no local password).
 	 * NEVER expose this field in API responses.
 	 */
 	@Column({ nullable: true, select: false })
@@ -93,6 +93,10 @@ export class User {
 	 */
 	@Column({ default: false })
 	isDevAccount: boolean;
+
+	/** Canonical account after an account-link conflict has been resolved. */
+	@Column({ type: "int", nullable: true, default: null })
+	mergedIntoUserId: number | null;
 
 	/**
 	 * When the user was last seen online (their last socket disconnect).

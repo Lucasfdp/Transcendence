@@ -24,9 +24,9 @@ Backend (`backend/src/modules/cards/`):
 
 Frontend:
 
-- `components/cards/ShellCardsModal.tsx` — binder grid, tier picker, `RevealOverlay`, `CardLightbox`, `CardSlot`.
-- `components/cards/binderFilters.ts`, `cardTilt.ts` — pure helpers (both clean; no issues found).
-- `features/hub/api.ts` — types + `getCards` / `openCardPack`; `ProgressionResult.cardDrop` (line ~316).
+- `components/cards/ShellCardsModal.tsx` — binder grid and tier picker orchestration only as of the Cards modularisation (see `docs/frontend-cards-and-gambling-migration-phases.md`). `RevealOverlay`, `CardLightbox`, `CardSlot`, and `CardRarityBadge` are now their own files in `components/cards/`.
+- `features/cards/binderFilters.ts`, `cardTilt.ts` — pure helpers (both clean; no issues found) — moved from `components/cards/` during the same modularisation.
+- `features/cards/contracts.ts` — Cards types; `features/cards/cardsApi.ts` — `getCards` / `openCardPack` — moved out of `features/hub/api.ts`, which now only holds a type-only `PackPull` import for `ProgressionResult.cardDrop`.
 - Mounted from `HomePage.tsx` (~line 3885) inside `HubModal variant="wide"`, coins wired from `player` state.
 
 Verified healthy: all 19 `imageUrl` assets exist under `public/assets/`
@@ -123,23 +123,28 @@ labelling); manual validation note for the scenes per project convention.
 
 ---
 
-## M1 — Pack succeeds but UI says it failed when the binder refresh throws
+## M1 — Pack succeeds but UI says it failed when the binder refresh throws — FIXED
 
-**Severity: MEDIUM.** `ShellCardsModal.tsx` L489–505: `handleOpenPack` does
+**Severity: MEDIUM.** ~~`ShellCardsModal.tsx` L489–505: `handleOpenPack` does
 purchase → `onCoinsChange` → `setReveal` → `setBinder(await api.getCards())`
 inside **one** try/catch. If only the trailing `getCards()` fails, the user
 sees the reveal overlay **and** the error "Could not open pack. Try again."
 — coins were spent, so they may buy again believing the first attempt failed.
-The binder grid also stays stale (new cards not marked owned).
+The binder grid also stays stale (new cards not marked owned).~~
 
-**Fix:** split into two try/catches. Purchase failure → keep the current
-message (ideally surface the server's message, e.g. "Not enough coins", which
-also covers the stale-`coins`-prop race). Refresh failure → keep the reveal,
-set a softer "Pack opened — couldn't refresh the binder" error, and/or retry
-the refresh when the reveal is dismissed.
+**Status (Phase 7 doc pass, 2026-07-15):** already fixed, and the line
+anchor above was stale (predates the Cards modularisation's file split,
+`docs/frontend-cards-and-gambling-migration-phases.md`). `handleOpenPack`
+(`components/cards/ShellCardsModal.tsx:85-124`) now splits the purchase and
+the binder refresh into two try/catches, with a `Bug Audit M1` comment at
+`:91-98` explaining why: the purchase try/catch (`:100-109`) surfaces the
+server's own error message; the refresh try/catch (`:114-123`) keeps the
+reveal open and sets the softer "Pack opened — couldn't refresh the binder"
+message instead.
 
 **Tests (Vitest):** `should keep the reveal and not show the purchase-failure
-message when only the binder refresh fails`.
+message when only the binder refresh fails` — verify this exists in
+`ShellCardsModal.test.tsx` and still passes.
 
 ---
 
@@ -166,35 +171,46 @@ entity save)`; keep all existing dupe/foil/prismatic specs green.
 
 ---
 
-## M3 — RevealOverlay is a `role="dialog"` with no focus management
+## M3 — RevealOverlay is a `role="dialog"` with no focus management — FIXED
 
-**Severity: MEDIUM (a11y).** `ShellCardsModal.tsx` L235–331: the reveal
+**Severity: MEDIUM (a11y).** ~~`ShellCardsModal.tsx` L235–331: the reveal
 overlay declares `role="dialog" aria-modal="true"` but, unlike
 `CardLightbox` (L350–383, which moves focus in, traps Tab, closes on Escape,
 and restores focus), it does none of that. A keyboard user's focus stays on
 the "Open pack" button behind the overlay; Tab wanders the obscured binder;
-Escape does nothing.
+Escape does nothing.~~
 
-**Fix:** reuse the lightbox's focus-trap effect (extract it into a shared
-hook, e.g. `useDialogFocusTrap(containerRef, onDismiss)`, rather than a third
-copy — HubModal has the same pattern per the L349 comment). Initial focus →
-first face-down card; Escape → `onDismiss`.
+**Status (Phase 7 doc pass, 2026-07-15):** already fixed, and the fix now
+lives in a different file, not just a shifted line range — the Cards
+modularisation split the reveal overlay out of `ShellCardsModal.tsx`
+entirely into its own component, `components/cards/RevealOverlay.tsx`
+(full file). The focus trap is the shared `useDialogFocusTrap` hook this
+finding asked for (`hooks/useDialogFocusTrap.ts`), wired in at
+`RevealOverlay.tsx:18-22` with initial focus on the first face-down card
+(`firstCardRef`, passed to the hook and attached to the first card at
+`:42`) — matching `CardLightbox`'s convention, which uses the same hook.
 
 **Tests:** mirror the existing `CardLightbox.test.tsx` focus specs for the
-overlay.
+overlay — confirm `RevealOverlay.test.tsx` has them and still passes.
 
 ---
 
-## M4 — Binder load failure is a dead end (no retry)
+## M4 — Binder load failure is a dead end (no retry) — FIXED
 
-**Severity: MEDIUM.** `ShellCardsModal.tsx` L470–487 + L507–508: if the
+**Severity: MEDIUM.** ~~`ShellCardsModal.tsx` L470–487 + L507–508: if the
 initial `getCards()` fails (flaky network, cold backend), the modal renders
 only "Could not load your binder." — no retry; the user must close and
 reopen the modal. `useSessionGate`-style retry or a simple "Retry" button
-that re-triggers the effect is enough.
+that re-triggers the effect is enough.~~
+
+**Status (Phase 7 doc pass, 2026-07-15):** already fixed; both anchors were
+stale. The load effect (with the `Bug Audit M4` comment) is at
+`components/cards/ShellCardsModal.tsx:65-83`, keyed on a `loadAttempt`
+counter (`:53`); the error state with the Retry button is at `:131-144`;
+`handleRetryLoad` (bumps `loadAttempt`) is at `:126-128`.
 
 **Tests:** `should reload the binder when Retry is clicked after a failed
-load`.
+load` — verify this exists in `ShellCardsModal.test.tsx` and still passes.
 
 ---
 

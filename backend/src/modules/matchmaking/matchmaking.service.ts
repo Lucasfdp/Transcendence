@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { ShellsService } from "../shells/shells.service";
 import { MatchMode } from "./entities/match.entity";
 import { MatchFactoryService } from "./match-factory.service";
 import { QueueJoinPayload, SocketUser } from "./matchmaking.types";
 import type { MatchRoom, RoomPlayer } from "./matchmaking.types";
 import { RoomService } from "./room.service";
+import { UserAccountActivityService } from "../users/user-account-activity.service";
 
 interface QueueEntry {
 	socketId: string;
@@ -29,6 +30,8 @@ export class MatchmakingService {
 		private readonly shellsService: ShellsService,
 		private readonly roomService: RoomService,
 		private readonly matchFactory: MatchFactoryService,
+		@Optional()
+		private readonly accountActivity?: UserAccountActivityService,
 	) {}
 
 	async joinQueue(
@@ -74,6 +77,7 @@ export class MatchmakingService {
 		});
 		this.queues.set(key, queue);
 		this.queuedUsers.set(user.id, key);
+		this.accountActivity?.setQueued(user.id, true);
 
 		const uniqueUserIds = new Set(queue.map((entry) => entry.user.id));
 		if (queue.length < playerCount || uniqueUserIds.size < playerCount) {
@@ -81,7 +85,10 @@ export class MatchmakingService {
 		}
 
 		const players = queue.splice(0, playerCount);
-		for (const player of players) this.queuedUsers.delete(player.user.id);
+		for (const player of players) {
+			this.queuedUsers.delete(player.user.id);
+			this.accountActivity?.setQueued(player.user.id, false);
+		}
 		if (!queue.length) this.queues.delete(key);
 
 		// Each queued player may have requested a different `powerupsEnabled`
@@ -125,6 +132,7 @@ export class MatchmakingService {
 		if (nextQueue.length) this.queues.set(key, nextQueue);
 		else this.queues.delete(key);
 		this.queuedUsers.delete(userId);
+		this.accountActivity?.setQueued(userId, false);
 	}
 
 	removeSocket(socketId: string): void {
@@ -134,8 +142,10 @@ export class MatchmakingService {
 				(candidate) => candidate.socketId === socketId,
 			);
 			if (!removed.length) continue;
-			for (const candidate of removed)
+			for (const candidate of removed) {
 				this.queuedUsers.delete(candidate.user.id);
+				this.accountActivity?.setQueued(candidate.user.id, false);
+			}
 			const nextQueue = queue.filter(
 				(candidate) => candidate.socketId !== socketId,
 			);

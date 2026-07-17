@@ -44,7 +44,7 @@ The best immediate opportunity is **not** to merge all four games into a single 
 
 - Core gameplay:
   - Rectangular sheet
-  - `stone` physics
+  - curling ball physics
   - House scoring
   - Turns and ends
   - Sweeping
@@ -159,7 +159,7 @@ The best immediate opportunity is **not** to merge all four games into a single 
 | Snapshot player synchronisation | Synchronisation of `room.players` into `snapshot.players` | `backend/src/modules/matchmaking/engines/base.engine.ts` |
 | Snapshot and replay entity contracts | `GameSnapshot`, `SnapshotPlayer`, `ReplayFrameSnapshotEntity`, `BallSnapshotData` | `backend/src/modules/matchmaking/matchmaking.types.ts` |
 | Replay mirroring for arena games | Projectile initialisation, synchronisation, and settle handling | `backend/src/modules/matchmaking/replay-state.helpers.ts`; used by `bamboo-bash.engine.ts`, `kame-knock.engine.ts`, and `bell-clash.engine.ts` |
-| Replay mirroring for curling | Stone initialisation and synchronisation | `backend/src/modules/matchmaking/replay-state.helpers.ts`; used by `shell-curl.engine.ts` |
+| Replay mirroring for curling | Ball initialisation and synchronisation | `backend/src/modules/matchmaking/replay-state.helpers.ts`; used by `shell-curl.engine.ts` |
 
 ---
 
@@ -167,7 +167,7 @@ The best immediate opportunity is **not** to merge all four games into a single 
 
 | Component | Current Implementation | Degree of Reuse | Proposed Extraction | Risk | Priority | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Launchable projectile layer | `ball.ts` now owns both oval ball and rectangular curling-shell helpers with a shared `Slingshot` | Similar but still mode-specific | Introduce a `LaunchableActor` contract for launching, visual flags, and movement hooks while retaining separate `stepBall()` and `stepStone()` behaviours inside `ball.ts` | Medium | High | `frontend/src/shared/mechanics/ball.ts`; `frontend/src/shared/mechanics/slingshot.ts` |
+| Launchable projectile layer | `ball.ts` now owns both oval ball and rectangular curling-shell helpers with a shared `Slingshot` | Similar but still mode-specific | Introduce a `LaunchableActor` contract for launching, visual flags, and movement hooks while retaining separate `stepBall()` and `stepCurlingBall()` behaviours inside `ball.ts` | Medium | High | `frontend/src/shared/mechanics/ball.ts`; `frontend/src/shared/mechanics/slingshot.ts` |
 | Player visual configuration | Each scene duplicates skin/colour arrays and calls to `drawIngamePlayerTexture` or `drawIngameShellTexture` | Duplicated | Create a `PlayerEntityConfig` covering skin, colour, scale, alpha, sprite key, trail, and rendering rules | Low | High | `frontend/src/games/bamboo-bash/BambooBashScene.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts`; `frontend/src/shared/mechanics/player-renderer.ts`; `frontend/src/shared/mechanics/player-trails.ts` |
 | Obstacles and objectives | `bamboo.ts`, `timed-targets.ts`, bell/zones inside `BellClashScene`, bumpers inside `ShellCurlScene` | Similar but tightly coupled | Introduce an `ObstacleDescriptor` containing geometry, collision, scoring, health, and rendering metadata while allowing each game to retain its own hooks | Medium | High | `frontend/src/games/bamboo-bash/bamboo.ts`; `frontend/src/shared/mechanics/timed-targets.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts` |
 | Collectibles / pickups | Shared manager, but local pickup contracts and separate backend payloads | Shared visually, duplicated at integration level | Introduce a `CollectibleDescriptor` covering pickup behaviour, effects, and common serialisation | Low | Medium | `frontend/src/shared/mechanics/power-pickups.ts`; `backend/src/modules/matchmaking/engines/bamboo-bash.engine.ts`; `frontend/src/games/kame-knock/KameKnockScene.ts`; `frontend/src/games/bell-clash/BellClashScene.ts`; `frontend/src/games/shell-curl/ShellCurlScene.ts` |
@@ -241,7 +241,7 @@ Should unify:
 - Integration with `Slingshot`
 
 It should **not** enforce a single physics model. `ball.ts` should continue
-to expose separate `stepBall()` and `stepStone()` behaviours for the two
+to expose separate `stepBall()` and `stepCurlingBall()` behaviours for the two
 arena families.
 
 ---
@@ -381,7 +381,7 @@ The safest implementation order is:
 
 1. Extract small data abstractions and lightweight adapters.
 2. Move the shared `arena + ball` gameplay flow into common infrastructure.
-3. Leave any attempt to unify `stone` and `ball` until the very end.
+3. Leave the unification of elliptical-arena and curling ball contracts until the very end.
 
 Reversing this order would force an overly abstract inheritance hierarchy and significantly increase the risk of gameplay regressions.
 

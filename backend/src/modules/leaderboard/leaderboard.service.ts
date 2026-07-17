@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException } from "@nestjs/common";
+import {
+	Injectable,
+	InternalServerErrorException,
+	Logger,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { UserGameStats } from "../game-results/entities/user-game-stats.entity";
@@ -34,6 +38,8 @@ const MAX_LEADERBOARD_ROWS = 100;
 
 @Injectable()
 export class LeaderboardService {
+	private readonly logger = new Logger(LeaderboardService.name);
+
 	constructor(
 		@InjectRepository(UserRating)
 		private readonly userRatingRepo: Repository<UserRating>,
@@ -69,7 +75,18 @@ export class LeaderboardService {
 				])
 				.where("ur.gameId = :gameId", { gameId })
 				.andWhere("u.isGuest = false")
+				// Rankings Bug Audit L4: `isDevAccount` is a legacy flag from the
+				// removed dev-login flow that no current code path sets — excluded
+				// here defensively so a manually-flagged test/dev account can never
+				// pollute the public board.
+				.andWhere("u.isDevAccount = false")
+				// Rankings Bug Audit M5: rating alone gives no stable order for
+				// ties, so tied players could flip position between refreshes and
+				// the LIMIT 100 cutoff would be arbitrary among a tie at #100.
+				// Break ties by wins, then alphabetically for full determinism.
 				.orderBy("ur.rating", "DESC")
+				.addOrderBy("ur.wins", "DESC")
+				.addOrderBy("u.username", "ASC")
 				.limit(MAX_LEADERBOARD_ROWS);
 
 			if (scope === "friends") {
@@ -105,6 +122,16 @@ export class LeaderboardService {
 			}));
 		} catch (err) {
 			if (err instanceof InternalServerErrorException) throw err;
+			// Rankings Bug Audit L2: the generic message below is all prod logs
+			// would otherwise show — under H1, that's an indistinguishable
+			// "Failed to fetch game leaderboard" whether the cause is a missing
+			// table, a bad query, or a transient DB blip. Log the real error.
+			this.logger.error(
+				`getGameLeaderboard failed for gameId=${gameId}: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+				err instanceof Error ? err.stack : undefined,
+			);
 			throw new InternalServerErrorException(
 				"Failed to fetch game leaderboard",
 			);
@@ -132,12 +159,18 @@ export class LeaderboardService {
 					"SUM(ugs.totalWins) AS \"totalWins\"",
 				])
 				.where("u.isGuest = false")
+				// Rankings Bug Audit L4: see getGameLeaderboard — same defensive
+				// exclusion of the legacy dev-account flag.
+				.andWhere("u.isDevAccount = false")
 				.groupBy("u.id")
 				.addGroupBy("u.username")
 				.addGroupBy("u.turtleName")
 				.addGroupBy("u.avatar")
 				.addGroupBy("u.level")
+				// Rankings Bug Audit M5: stable tie-break, mirroring getGameLeaderboard.
 				.orderBy("\"totalWins\"", "DESC")
+				.addOrderBy("u.level", "DESC")
+				.addOrderBy("u.username", "ASC")
 				.limit(MAX_LEADERBOARD_ROWS);
 
 			if (scope === "friends") {
@@ -166,6 +199,12 @@ export class LeaderboardService {
 			}));
 		} catch (err) {
 			if (err instanceof InternalServerErrorException) throw err;
+			this.logger.error(
+				`getOverallLeaderboard failed for callerId=${callerId}: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+				err instanceof Error ? err.stack : undefined,
+			);
 			throw new InternalServerErrorException(
 				"Failed to fetch overall leaderboard",
 			);

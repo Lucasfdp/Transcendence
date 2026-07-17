@@ -29,7 +29,7 @@ import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
-import { showCardDropPopup } from "../../shared/card-drop-popup";
+import { showCardDropPopup } from "../../features/cards";
 import { THEME } from "../../shared/theme";
 import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import {
@@ -87,6 +87,7 @@ import { showGameEndModal } from "../../shared/mechanics/game-end-modal";
 import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
 import {
 	type BellClashSnapshot,
+	type BellClashPhysicsState,
 	type ReplayFrameSnapshotEntity,
 } from "../../services/network/gameSocket";
 import {
@@ -94,7 +95,7 @@ import {
 	PLAYER_HEX_COLOURS,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
-import { hudPlayerLabel } from "../../shared/player-labels";
+import { displayUsername, hudPlayerLabel } from "../../shared/player-labels";
 import { resolveReplayWinnerSide } from "../common/localReplay";
 import {
 	ArenaBallTrailRuntime,
@@ -102,7 +103,7 @@ import {
 	buildBellClashScoreZoneDescriptor,
 	buildCommonLocalReplayParticipantContext,
 	CommonGameSceneHost,
-	LocalReplayRuntime,
+	ReplayCaptureRuntime,
 	resolvePlayerTrailEffects,
 	SlingshotLaunchRuntime,
 	WorldMapRuntime,
@@ -240,13 +241,14 @@ export class BellClashScene
 	private playerTrailEffects: string[] = [];
 	private localTurnNumber = 0;
 	private localScores: number[] = [0];
-	private readonly localReplay = new LocalReplayRuntime<
+	private readonly localReplay = new ReplayCaptureRuntime<
 		BellClashSnapshot,
 		BellClashSnapshot["phase"]
 	>({
 		gameId: "bell-clash",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
-		shouldSkip: () => this.online.isActive,
+		shouldSkip: () =>
+			this.online.isActive || this.registry.get("replayEnabled") === false,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
@@ -484,12 +486,11 @@ export class BellClashScene
 
 	private updateBellClash(delta: number): void {
 		if (!this.online.isActive) this.localReplay.addElapsed(delta);
-		if (!this.running) return;
-
 		if (this.online.isActive) {
 			this.online.update(delta);
 			return;
 		}
+		if (!this.running) return;
 
 		this.hitCooldownMs = Math.max(0, this.hitCooldownMs - delta);
 		this.bellPulseMs = Math.max(0, this.bellPulseMs - delta);
@@ -783,8 +784,6 @@ export class BellClashScene
 			`${this.localPlayerCount > 1 ? `P${playerIndex + 1} ` : ""}${label}  +${gained}`,
 			`x${multiplier}`,
 		);
-		if (this.online.isActive)
-			this.online.reportBellHit(gained, zone?.kind ?? "neutral");
 	}
 
 	private zoneAt(angle: number): ScoreZone | null {
@@ -891,7 +890,6 @@ export class BellClashScene
 
 		api.submitGameResult("bell-clash", "completed")
 			.then((result) => {
-				console.info("[BellClash] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
 				showCardDropPopup(this, result.cardDrop);
 			})
@@ -972,6 +970,7 @@ export class BellClashScene
 	}
 
 	public collectPowerPickup(ball: BallState): void {
+		if (this.online.isActive) return;
 		if (!this.powerPickups) return;
 		const pickup = this.powerPickups.collect(ball.x, ball.y, ball.r);
 		if (!pickup) return;
@@ -979,6 +978,21 @@ export class BellClashScene
 		this.powerBalls.applyPower(pickup.type, ball, this.arena, player);
 		this.powerPickups.draw();
 		this.showPowerPickupNotice(pickup.type, pickup.x, pickup.y);
+	}
+
+	public syncOnlinePowerPickups(state: BellClashPhysicsState): void {
+		if (!this.powerPickups) return;
+		this.powerPickups.setPickups(
+			state.pickups.map((pickup) => ({
+				id: pickup.id,
+				type: (Object.values(PowerType) as string[]).includes(pickup.type)
+					? (pickup.type as PowerType)
+					: PowerType.NONE,
+				x: this.arena.cx + pickup.x * this.arena.scale,
+				y: this.arena.cy + pickup.y * this.arena.scale,
+				r: pickup.radius * this.arena.scale,
+			})),
+		);
 	}
 
 	private powerPickupBlockers(): PowerPickupBlocker[] {
@@ -990,7 +1004,7 @@ export class BellClashScene
 		return bellBlocker ? [bellBlocker] : [];
 	}
 
-	private showPowerPickupNotice(type: PowerType, x: number, y: number): void {
+	public showPowerPickupNotice(type: PowerType, x: number, y: number): void {
 		const label = this.add
 			.text(
 				x,
@@ -1498,7 +1512,10 @@ export class BellClashScene
 			getScore: () => score,
 			getPhase: () => this.currentTurnPhase(),
 			onRelease: () => {
-				if (!this.online.isActive) this.localReplay.captureFrame(true);
+				if (!this.online.isActive) {
+					this.localReplay.recordEvent("action:start");
+					this.localReplay.captureFrame(true);
+				}
 			},
 			onProjectileSettled: () => this.finishShot(),
 			computeWinner: () => this.resolveLocalWinnerSide(),
@@ -1751,8 +1768,8 @@ export class BellClashScene
 					label: `P${player.side + 1}`,
 					detail:
 						player.side === this.online.side
-							? `${player.username} (You)`
-							: player.username,
+							? `${displayUsername(player.username)} (You)`
+							: displayUsername(player.username),
 					score: snapshot.score[player.side] ?? 0,
 					color: this.playerHexColour(player.side),
 				})),
@@ -1791,17 +1808,14 @@ export class BellClashScene
 				isMoving: isBallMoving,
 			});
 		};
-		resizeBall(this.ball);
+		if (!this.online.isActive) resizeBall(this.ball);
 		if (!this.online.isActive && this.localPlayerCount > 1) {
 			for (const ball of new Set(this.localBalls.values())) {
 				if (ball !== this.ball) resizeBall(ball);
 			}
 		}
-		if (this.online.isActive) {
-			for (const ball of new Set(this.online.ballMap.values()))
-				resizeBall(ball);
-		}
-		for (const entry of this.powerBalls) resizeBall(entry.ball);
+		if (!this.online.isActive)
+			for (const entry of this.powerBalls) resizeBall(entry.ball);
 
 		drawBellClashBackground(
 			this.bgGfx,
@@ -1813,7 +1827,8 @@ export class BellClashScene
 		drawBellClashZones(this.zoneGfx, this.zones, this.arena, this.ball);
 		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
 		this.recreatePowerPickups();
-		if (previousPickups.length > 0)
+		if (this.online.isActive) this.online.reprojectPhysicsState();
+		else if (previousPickups.length > 0)
 			this.powerPickups?.setPickups(
 				remapPowerPickups(previousPickups, (pickup) => {
 					const relX = (pickup.x - oldArena.cx) / oldArena.rx;

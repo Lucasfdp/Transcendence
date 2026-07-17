@@ -2,6 +2,11 @@ server {
     listen ${HTTPS_PORT} ssl http2;
     server_name ${DOMAIN_NAME};
 
+    # Nginx reports a plain HTTP request sent to this TLS-only port as internal
+    # status 497. Replace its generic response with the branded secure-access
+    # page while retaining a semantically accurate client status.
+    error_page 497 =426 /https-required.html;
+
     ssl_certificate     /etc/nginx/ssl/cert.pem;
     ssl_certificate_key /etc/nginx/ssl/key.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -18,9 +23,18 @@ server {
     # unsafe-eval required by Phaser 3 shader pipeline (see https://phaser.io/phaser3 known limitations)
     # unsafe-inline (script-src) required until nonce-based CSP is implemented — tracked TODO(#csp-nonce)
     # unsafe-inline (style-src) required until CSS-in-JS is replaced with external stylesheets — tracked TODO(#csp-nonce)
-    # img-src allows static.klipy.com for chat GIFs (see backend/src/modules/chat/gif.service.ts) —
-    # scoped to that exact host, not a wildcard, since it's the only third-party image origin we render.
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://static.klipy.com; font-src 'self' data:; connect-src 'self' http://localhost:3000 https://localhost:3000 https://localhost:42424 ws://localhost:3000 wss://localhost:3000 ws://localhost wss://localhost wss://localhost:42424 ${PUBLIC_HTTP_ORIGIN} ${PUBLIC_WS_ORIGIN};" always;
+    # img-src allows Klipy's three documented media-delivery hosts for chat GIFs
+    # (see backend/src/modules/chat/gif.service.ts and
+    # https://docs.klipy.com/network-requirements) — scoped to those exact hosts,
+    # not a wildcard, since they're the only third-party image origins we render.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://static.klipy.com https://static1.klipy.com https://static2.klipy.com; font-src 'self' data:; connect-src 'self' http://localhost:3000 https://localhost:3000 https://localhost:42424 ws://localhost:3000 wss://localhost:3000 ws://localhost wss://localhost wss://localhost:42424 ${PUBLIC_HTTP_ORIGIN} ${PUBLIC_WS_ORIGIN};" always;
+
+    location = /https-required.html {
+        internal;
+        modsecurity off;
+        root /usr/share/nginx/html;
+        default_type text/html;
+    }
 
     location / {
         modsecurity off;
@@ -32,7 +46,10 @@ server {
         proxy_http_version 1.1;
         proxy_set_header   Upgrade             $http_upgrade;
         proxy_set_header   Connection          $connection_upgrade;
-        proxy_read_timeout 60s;
+        # Vite HMR uses this upgraded connection in development. Keep it alive
+        # like the game socket instead of closing remote clients every minute.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 
     location = /api/auth/42/callback {
@@ -45,7 +62,7 @@ server {
         proxy_http_version 1.1;
     }
 
-    location = /api/auth/github/callback {
+    location = /api/auth/google/callback {
         modsecurity off;
         proxy_pass         http://backend:8000;
         proxy_set_header   Host                $http_host;

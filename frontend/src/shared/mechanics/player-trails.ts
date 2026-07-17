@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import type Phaser from "phaser";
 
 import { PLAYER_COLOUR_VALUES } from "../game-ui";
 
@@ -28,6 +28,11 @@ export interface PlayerTrailOptions {
 	readonly trailEffectsById?: ReadonlyMap<number | string, string>;
 	readonly movingIds?: ReadonlySet<number | string>;
 }
+
+export type ClassicPlayerTrailOptions = Pick<
+	PlayerTrailOptions,
+	"scale" | "lineWidth" | "baseAlpha" | "alphaRange"
+>;
 
 const DEFAULT_MAX_POINTS = 80;
 const DEFAULT_MIN_DISTANCE = 8;
@@ -73,25 +78,17 @@ export function drawPlayerTrails(
 ): void {
 	gfx.clear();
 	const scale = options.scale ?? 1;
-	const lineWidth = Math.max(2, (options.lineWidth ?? DEFAULT_LINE_WIDTH) * scale);
-	const baseAlpha = options.baseAlpha ?? DEFAULT_BASE_ALPHA;
-	const alphaRange = options.alphaRange ?? DEFAULT_ALPHA_RANGE;
 
 	for (const [id, trail] of store) {
-		if (trail.length < 2) continue;
 		const player = playersById.get(id) ?? 0;
 		const colour = PLAYER_COLOUR_VALUES[player % PLAYER_COLOUR_VALUES.length];
-		for (let i = 1; i < trail.length; i++) {
-			const alpha = baseAlpha + (i / trail.length) * alphaRange;
-			gfx.lineStyle(lineWidth, colour, alpha);
-			gfx.lineBetween(
-				trail[i - 1].x,
-				trail[i - 1].y,
-				trail[i].x,
-				trail[i].y,
-			);
-		}
+		drawClassicPlayerTrail(gfx, trail, colour, options);
 	}
+
+	const lineWidth = Math.max(
+		2,
+		(options.lineWidth ?? DEFAULT_LINE_WIDTH) * scale,
+	);
 
 	if (
 		!ENABLE_ADVANCED_TRAIL_EFFECTS ||
@@ -106,6 +103,33 @@ export function drawPlayerTrails(
 		const player = playersById.get(id) ?? 0;
 		const colour = PLAYER_COLOUR_VALUES[player % PLAYER_COLOUR_VALUES.length];
 		drawLiveTrailEffect(gfx, trail, colour, effect, lineWidth, scale);
+	}
+}
+
+export function drawClassicPlayerTrail(
+	gfx: Phaser.GameObjects.Graphics,
+	positions: readonly PlayerTrailPoint[],
+	colour: number,
+	options: ClassicPlayerTrailOptions = {},
+): void {
+	if (positions.length < 2) return;
+	const scale = options.scale ?? 1;
+	const lineWidth = Math.max(
+		2,
+		(options.lineWidth ?? DEFAULT_LINE_WIDTH) * scale,
+	);
+	const baseAlpha = options.baseAlpha ?? DEFAULT_BASE_ALPHA;
+	const alphaRange = options.alphaRange ?? DEFAULT_ALPHA_RANGE;
+
+	for (let index = 1; index < positions.length; index++) {
+		const alpha = baseAlpha + (index / positions.length) * alphaRange;
+		gfx.lineStyle(lineWidth, colour, alpha);
+		gfx.lineBetween(
+			positions[index - 1].x,
+			positions[index - 1].y,
+			positions[index].x,
+			positions[index].y,
+		);
 	}
 }
 

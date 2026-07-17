@@ -7,6 +7,7 @@
 - Todo documento nuevo del proyecto debe guardarse en `docs/`.
 - Antes de redactar o investigar, prioriza `docs/`. El enunciado principal esta en `docs/en.subject.md` y su version PDF en `docs/en.subject.pdf`.
 - `docs/deprecated/` y `docs/old_docs/` son archivo historico. No deben usarse como fuente principal para entender el proyecto ni para tomar decisiones actuales, salvo peticion explicita del usuario.
+- Cuando un documento de trabajo (handoff, plan de migracion, plan de fases, auditoria de bugs, etc.) queda completado — todas sus fases/hallazgos resueltos y verificados — muevelo a `docs/old_docs/` como parte de la misma tarea que lo completa. Esto evita que un agente futuro confunda un documento ya ejecutado con uno todavia activo. No muevas un documento si queda trabajo abierto en el (por ejemplo, items marcados "Still open" o hallazgos sin resolver); en ese caso dejalo en `docs/` hasta que se cierre por completo.
 - El alcance funcional del proyecto queda acotado por `docs/modules-progress.md`. No anadas modulos o funcionalidades fuera de ese marco salvo peticion explicita del usuario.
 
 ## Indice Operativo

@@ -1,5 +1,5 @@
-import Phaser from "phaser";
 import {
+	useCallback,
 	useEffect,
 	useId,
 	useLayoutEffect,
@@ -7,7 +7,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ChangeEvent, CSSProperties, ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
 import { NineSliceButton } from "../components/common/NineSliceButton";
@@ -15,15 +15,14 @@ import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { TournamentLobbyModal } from "../features/tournaments/TournamentLobbyModal";
 import { WorkInProgressNotice } from "../components/common/WorkInProgressNotice";
 import { ShellCardsModal } from "../components/cards/ShellCardsModal";
-import { FortuneWheelModal } from "../components/casino/FortuneWheelModal";
-import { KoiDiceModal } from "../components/casino/KoiDiceModal";
-import { ShellDropModal } from "../components/casino/ShellDropModal";
-import { ShellFlipModal } from "../components/casino/ShellFlipModal";
-import { ThreeShellMonteModal } from "../components/casino/ThreeShellMonteModal";
-import { ShrineSlotsModal } from "../components/casino/ShrineSlotsModal";
+import { FortuneWheelModal } from "../components/gambling/FortuneWheelModal";
+import { KoiDiceModal } from "../components/gambling/KoiDiceModal";
+import { ShellDropModal } from "../components/gambling/ShellDropModal";
+import { ShellFlipModal } from "../components/gambling/ShellFlipModal";
+import { ThreeShellMonteModal } from "../components/gambling/ThreeShellMonteModal";
+import { ShrineSlotsModal } from "../components/gambling/ShrineSlotsModal";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
-import { ReplayController } from "../games/common/ReplayController";
-import { ReplayScene } from "../games/common/ReplayScene";
+import { ReplayViewer } from "../games/common/replay/ReplayViewer";
 import {
 	hubBackgroundClass,
 	resolveHubBackgroundId,
@@ -43,6 +42,7 @@ import {
 	NotificationView,
 	OverallLeaderboardEntry,
 	PendingView,
+	type PublicUserView,
 	RANKED_GAMES,
 	REPORT_CATEGORIES,
 	type ReportCategory,
@@ -53,6 +53,7 @@ import {
 	type User,
 } from "../features/hub/api";
 import { TURTLE_TAGS } from "../shared/turtle-tags";
+import { accountDisplayName, displayUsername } from "../shared/player-labels";
 import {
 	disconnectGameSocket,
 	getGameSocket,
@@ -93,6 +94,10 @@ import {
 	type PresenceChange,
 } from "../features/social/presence";
 import { useToast } from "../features/social/toast/ToastContext";
+import { ConnectedAccounts } from "../features/account-links/ConnectedAccounts";
+import { ShellPortrait } from "../features/profile/ShellPortrait";
+import { PlayerProfilePreview } from "../features/profile/PlayerProfilePreview";
+import { ViewProfileLink } from "../features/profile/ViewProfileLink";
 
 type AchievementFilter = "all" | "unlocked" | "locked";
 
@@ -301,24 +306,6 @@ const GAME_ROUTES: Record<
 		description: "Dodge the oni assault. Coming soon.",
 		available: false,
 	},
-};
-
-const GAME_BUTTON_IMAGES: Record<string, string> = {
-	"bamboo-bash": "/assets/ui/gamesButtons/bambooBashButton.png",
-	"bell-clash": "/assets/ui/gamesButtons/bellClashButton.png",
-	"kame-knock": "/assets/ui/gamesButtons/kameKnockButton.png",
-	"oni-dodge": "/assets/ui/gamesButtons/oniDodgeButton.png",
-	"river-rush": "/assets/ui/gamesButtons/riverRushButton.png",
-	"temple-curling": "/assets/ui/gamesButtons/templeCurlingButton.png",
-};
-
-const GAMBIT_BUTTON_IMAGES: Record<string, string> = {
-	casino: "/assets/ui/gamesButtons/fortuneWheelButton.png",
-	dice: "/assets/ui/gamesButtons/koiDiceButton.png",
-	drop: "/assets/ui/gamesButtons/shellDropButton.png",
-	flip: "/assets/ui/gamesButtons/shellFlipButton.png",
-	monte: "/assets/ui/gamesButtons/threeShellMonteButton.png",
-	slots: "/assets/ui/gamesButtons/shrineSlotsButton.png",
 };
 
 type RgbColor = { r: number; g: number; b: number };
@@ -601,6 +588,10 @@ function HomeMenu(): JSX.Element {
 	const [gameLeaderboard, setGameLeaderboard] = useState<GameLeaderboardEntry[]>([]);
 	const [overallLeaderboard, setOverallLeaderboard] = useState<OverallLeaderboardEntry[]>([]);
 	const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+	// Rankings Bug Audit M2: distinct from "no rows returned" — a fetch
+	// failure (e.g. the backend 500ing under H1) must not render as the same
+	// "No rankings yet." empty state a healthy-but-empty board would show.
+	const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
 	const [notifications, setNotifications] = useState<NotificationView[]>([]);
 	const [isNotifDrawerOpen, setIsNotifDrawerOpen] = useState(false);
 	// Private lobby — host side
@@ -651,9 +642,12 @@ function HomeMenu(): JSX.Element {
 		| null
 	>(null);
 	const [profileSaving, setProfileSaving] = useState(false);
+	const [avatarSaving, setAvatarSaving] = useState(false);
 	const [profileSuccess, setProfileSuccess] = useState("");
 	const [profileTurtleName, setProfileTurtleName] = useState("");
+	const [profileDojoTagId, setProfileDojoTagId] = useState<string | null>(null);
 	const [profileShowcasedAchievements, setProfileShowcasedAchievements] = useState<(string | null)[]>([null, null, null]);
+	const accountLinkReturnHandled = useRef(false);
 	const [replays, setReplays] = useState<ReplaySummary[] | null>(null);
 	const [replaysLoading, setReplaysLoading] = useState(false);
 	const [selectedReplay, setSelectedReplay] = useState<ReplayDetail | null>(null);
@@ -674,6 +668,10 @@ function HomeMenu(): JSX.Element {
 	const [suggestions, setSuggestions] = useState<PendingView[] | null>(null);
 	const [blockedUsers, setBlockedUsers] = useState<PendingView[] | null>(null);
 	const [socialLoading, setSocialLoading] = useState(false);
+	// Left-pane tab for the redesigned two-pane Social modal (Workstream C).
+	const [socialTab, setSocialTab] = useState<"friends" | "chats" | "requests">(
+		"friends",
+	);
 	const [friendSearchQuery, setFriendSearchQuery] = useState("");
 	const [friendUsername, setFriendUsername] = useState("");
 	const [friendActionLoading, setFriendActionLoading] = useState(false);
@@ -703,6 +701,10 @@ function HomeMenu(): JSX.Element {
 	const [gifSearchQuery, setGifSearchQuery] = useState("");
 	const [gifResults, setGifResults] = useState<GifSearchResult[]>([]);
 	const [gifSearchLoading, setGifSearchLoading] = useState(false);
+	// True when the last gif search failed (e.g. GIF search misconfigured or
+	// Klipy unreachable) — kept distinct from "no results" so the picker can
+	// show an accurate message instead of a misleading "No gifs found." (A4).
+	const [gifSearchError, setGifSearchError] = useState(false);
 	// ── Group member management (Decision 1/2) ───────────────────────────────
 	// `groupMembers` is the open group's member list (null = panel closed / not
 	// loaded); the rest drive the member panel, add-member picker, and the
@@ -728,10 +730,19 @@ function HomeMenu(): JSX.Element {
 	const [hoveredFriendUsername, setHoveredFriendUsername] = useState<
 		string | null
 	>(null);
-	const [hoveredProfile, setHoveredProfile] = useState<User | null>(null);
+	const [hoveredProfile, setHoveredProfile] = useState<PublicUserView | null>(null);
 	const [hoveredProfileLoading, setHoveredProfileLoading] = useState(false);
-	const profileCardCache = useRef(createProfileCardCache<User>()).current;
+	const profileCardCache = useRef(
+		createProfileCardCache<PublicUserView>(),
+	).current;
 	const [blockConfirmUserId, setBlockConfirmUserId] = useState<number | null>(
+		null,
+	);
+	// Which friend row's "⋯ More" overflow menu (Remove/Block/Report) is open —
+	// only one at a time, mirroring blockConfirmUserId. Keeps the friend row to
+	// a single compact line (Message + Invite inline) in the narrower Social
+	// modal sidebar instead of 5 always-visible text buttons overflowing it.
+	const [friendMenuUserId, setFriendMenuUserId] = useState<number | null>(
 		null,
 	);
 	/** Only one block-confirm row can be open at a time, so a single shared
@@ -803,30 +814,70 @@ function HomeMenu(): JSX.Element {
 		};
 	}, []);
 
-	// Re-fetch leaderboard whenever the selected game or scope changes
-	useEffect(() => {
+	const loadLeaderboard = useCallback(async (): Promise<() => void> => {
 		let cancelled = false;
-
-		async function loadLeaderboard(): Promise<void> {
-			setLeaderboardLoading(true);
-			try {
-				if (leaderboardGame === "overall") {
-					const rows = await api.getOverallLeaderboard(leaderboardScope);
-					if (!cancelled) setOverallLeaderboard(rows.slice(0, 10));
-				} else {
-					const rows = await api.getGameLeaderboard(leaderboardGame, leaderboardScope);
-					if (!cancelled) setGameLeaderboard(rows.slice(0, 10));
-				}
-			} catch (err) {
-				console.warn("[HomeMenu] Failed to load leaderboard:", err);
-			} finally {
-				if (!cancelled) setLeaderboardLoading(false);
+		setLeaderboardLoading(true);
+		setLeaderboardError(null);
+		// Rankings Bug Audit M2: clear the previous game/scope's rows before
+		// fetching so a slow or failed request can't leave stale entries on
+		// screen mislabelled as the newly-selected tab.
+		if (leaderboardGame === "overall") setOverallLeaderboard([]);
+		else setGameLeaderboard([]);
+		try {
+			if (leaderboardGame === "overall") {
+				const rows = await api.getOverallLeaderboard(leaderboardScope);
+				if (!cancelled) setOverallLeaderboard(rows);
+			} else {
+				const rows = await api.getGameLeaderboard(leaderboardGame, leaderboardScope);
+				if (!cancelled) setGameLeaderboard(rows);
 			}
+		} catch (err) {
+			console.warn("[HomeMenu] Failed to load leaderboard:", err);
+			if (!cancelled) {
+				setLeaderboardError(
+					"Couldn't load rankings. Check your connection and try again.",
+				);
+			}
+		} finally {
+			if (!cancelled) setLeaderboardLoading(false);
 		}
-
-		void loadLeaderboard();
-		return () => { cancelled = true; };
+		return () => {
+			cancelled = true;
+		};
 	}, [leaderboardGame, leaderboardScope]);
+
+	// Re-fetch the leaderboard whenever the Rankings modal is open and the
+	// selected game or scope changes.
+	//
+	// Rankings Bug Audit L1: this used to run on every HomePage mount (and
+	// only on mount/game/scope change after that), so a player who kept the
+	// hub open saw standings frozen at mount time even after reopening the
+	// modal, and every player who never opened Rankings paid for a fetch
+	// they never used. Gating on `activeModal === "rankings"` fixes both:
+	// opening the modal always fetches fresh data, and nothing fires for
+	// players who never look at it.
+	useEffect(() => {
+		if (activeModal !== "rankings") return;
+		let cancel: (() => void) | undefined;
+		void loadLeaderboard().then((c) => {
+			cancel = c;
+		});
+		return () => cancel?.();
+	}, [activeModal, loadLeaderboard]);
+
+	// Rankings Bug Audit M6: up to 100 rows are fetched but only the top 10
+	// were ever rendered, so a player outside the top 10 had no way to see
+	// their own rank. The full fetched list is now rendered (scrollable);
+	// these track the caller's own row within it so it can be pinned in a
+	// summary bar regardless of scroll position.
+	const ownOverallRank = useMemo(
+		() => overallLeaderboard.find((entry) => entry.userId === player?.id) ?? null,
+		[overallLeaderboard, player],
+	);
+	const ownGameRank = useMemo(
+		() => gameLeaderboard.find((entry) => entry.userId === player?.id) ?? null,
+		[gameLeaderboard, player],
+	);
 
 	// Hydrate the notification inbox on every mount via REST (Bug Audit H1).
 	// The WS `notification:inbox` push below only fires once, at socket
@@ -868,6 +919,18 @@ function HomeMenu(): JSX.Element {
 		};
 	}, []);
 
+	// Mirror of `friends` for the mount-bound socket effect below (Bug B3),
+	// which closes over its first-render `friends` value otherwise — the
+	// same staleness problem `conversationsRef` solves for the chat effect.
+	const friendsRef = useRef<FriendView[] | null>(null);
+	useEffect(() => {
+		friendsRef.current = friends;
+	}, [friends]);
+	// Guards the friend:removed resync (Bug B3): a burst of removals must not
+	// stampede refreshSocial with concurrent in-flight requests, mirroring
+	// `conversationRefetchInFlightRef` below.
+	const friendRemovedRefetchInFlightRef = useRef(false);
+
 	// Subscribe to notification + lobby events on the shared game socket
 	useEffect(() => {
 		const socket = getGameSocket();
@@ -883,7 +946,16 @@ function HomeMenu(): JSX.Element {
 		// backend NotificationType doc for why it's not a persisted bell
 		// entry): just resync the friends list so the removed side doesn't
 		// keep seeing someone who unfriended them until their next refresh.
-		const onFriendRemoved = () => void refreshSocial();
+		// No-op while the Social modal has never been opened (friends === null,
+		// nothing to resync) and guard against a burst of removals firing
+		// concurrent refetches (Bug B3).
+		const onFriendRemoved = () => {
+			if (friendsRef.current === null || friendRemovedRefetchInFlightRef.current) return;
+			friendRemovedRefetchInFlightRef.current = true;
+			void refreshSocial().finally(() => {
+				friendRemovedRefetchInFlightRef.current = false;
+			});
+		};
 
 		// Live presence transition for a friend (Decision 3): patch the friend
 		// row in place. Pure patch via a functional update so the mount-bound
@@ -1256,7 +1328,6 @@ function HomeMenu(): JSX.Element {
 				id,
 				name: apiGame?.name ?? meta.label,
 				description: apiGame?.description ?? meta.description,
-				buttonImage: GAME_BUTTON_IMAGES[id],
 				available:
 					meta.available === true || apiGame?.status === "available",
 			};
@@ -1268,7 +1339,6 @@ function HomeMenu(): JSX.Element {
 				id: game.id,
 				name: game.name,
 				description: game.description,
-				buttonImage: GAME_BUTTON_IMAGES[game.id],
 				available: game.status === "available",
 			}));
 
@@ -1384,6 +1454,7 @@ function HomeMenu(): JSX.Element {
 
 	const openProfile = async () => {
 		setProfileTurtleName(player?.turtleName ?? "");
+		setProfileDojoTagId(player?.profile?.tag ?? null);
 		setProfileSuccess("");
 		setModalError("");
 		setShowcasePickerSlot(null);
@@ -1397,6 +1468,14 @@ function HomeMenu(): JSX.Element {
 				setAchievements(loaded);
 			} catch {
 				// Non-fatal — showcase picker will show a loading message.
+			}
+		}
+
+		if (!cosmetics) {
+			try {
+				setCosmetics(await api.getCustomization());
+			} catch {
+				// Non-fatal — the tag selector remains unavailable until the next open.
 			}
 		}
 
@@ -1428,6 +1507,18 @@ function HomeMenu(): JSX.Element {
 			setProfileShowcasedAchievements([null, null, null]);
 		}
 	};
+
+	useEffect(() => {
+		if (
+			accountLinkReturnHandled.current ||
+			!player ||
+			(!searchParams.has("account_link_conflict") &&
+				!searchParams.has("account_linked"))
+		) return;
+		accountLinkReturnHandled.current = true;
+		void openProfile();
+		navigate(`/?view=${view}`, { replace: true });
+	}, [navigate, player, searchParams, view]);
 
 	const openCustomization = async () => {
 		setActiveModal("customization");
@@ -1494,6 +1585,22 @@ function HomeMenu(): JSX.Element {
 		}
 	};
 
+	/**
+	 * Turn a caught error into modal-banner copy (Bug B1). A 401 mid-session
+	 * means the auth cookie is gone or expired — redirect to /auth (same
+	 * pattern as the initial hub-load AuthError check above) instead of
+	 * surfacing the raw "Unauthorized" string in the modal. Other statuses
+	 * keep the backend's message, which is already user-worded for 4xx
+	 * validation errors.
+	 */
+	const describeModalError = (err: unknown, fallback: string): string => {
+		if (err instanceof AuthError && err.status === 401) {
+			navigate("/auth", { replace: true });
+			return "Your session has expired — please log in again.";
+		}
+		return err instanceof Error ? err.message : fallback;
+	};
+
 	const handleProfileSave = async () => {
 		if (profileSaving) return;
 		setProfileSaving(true);
@@ -1504,6 +1611,7 @@ function HomeMenu(): JSX.Element {
 			setShowcasePickerSlot(null);
 			const updates: Parameters<typeof api.updateProfile>[0] = {};
 			if (profileTurtleName.trim()) updates.turtleName = profileTurtleName.trim();
+			updates.tag = profileDojoTagId;
 			updates.showcasedAchievements = profileShowcasedAchievements.filter(
 				(id): id is string => id !== null,
 			);
@@ -1511,10 +1619,52 @@ function HomeMenu(): JSX.Element {
 			setPlayer(updated);
 			setProfileSuccess("Profile updated.");
 		} catch (err: unknown) {
-			const message = err instanceof Error ? err.message : "Update failed.";
-			setModalError(message);
+			setModalError(describeModalError(err, "Update failed."));
 		} finally {
 			setProfileSaving(false);
+		}
+	};
+
+	const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		event.target.value = "";
+		if (!file || avatarSaving) return;
+
+		const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+		if (!allowedTypes.has(file.type) || file.size > 2 * 1024 * 1024) {
+			setModalError("Choose a JPEG, PNG, WebP, or GIF image up to 2 MB.");
+			return;
+		}
+
+		setAvatarSaving(true);
+		setModalError("");
+		setProfileSuccess("");
+		try {
+			await api.getCsrfToken();
+			const { avatarUrl } = await api.uploadAvatar(file);
+			setPlayer((current) => current ? { ...current, avatar: avatarUrl } : current);
+			setProfileSuccess("Portrait updated.");
+		} catch (err: unknown) {
+			setModalError(describeModalError(err, "Portrait upload failed."));
+		} finally {
+			setAvatarSaving(false);
+		}
+	};
+
+	const handleAvatarClear = async () => {
+		if (avatarSaving) return;
+		setAvatarSaving(true);
+		setModalError("");
+		setProfileSuccess("");
+		try {
+			await api.getCsrfToken();
+			await api.clearAvatar();
+			setPlayer((current) => current ? { ...current, avatar: null } : current);
+			setProfileSuccess("Equipped shell restored as your portrait.");
+		} catch (err: unknown) {
+			setModalError(describeModalError(err, "Could not reset portrait."));
+		} finally {
+			setAvatarSaving(false);
 		}
 	};
 
@@ -1532,6 +1682,7 @@ function HomeMenu(): JSX.Element {
 	const openSocial = async () => {
 		setActiveModal("social");
 		setModalError("");
+		setSocialTab("friends");
 		setFriends(null);
 		setPendingRequests(null);
 		setOutgoingRequests(null);
@@ -1539,6 +1690,7 @@ function HomeMenu(): JSX.Element {
 		setBlockedUsers(null);
 		setFriendSearchQuery("");
 		setBlockConfirmUserId(null);
+		setFriendMenuUserId(null);
 		setReportTarget(null);
 		setSocialLoading(true);
 		setActiveConversationId(null);
@@ -1549,6 +1701,7 @@ function HomeMenu(): JSX.Element {
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
 		setGifResults([]);
+		setGifSearchError(false);
 		// Commit any in-flight friend removals first, so the fresh fetch below
 		// doesn't momentarily re-show a friend mid-undo-window (Bug Audit L2).
 		await flushPendingRemovals();
@@ -1598,6 +1751,7 @@ function HomeMenu(): JSX.Element {
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
 		setGifResults([]);
+		setGifSearchError(false);
 		setChatThreadLoading(true);
 		try {
 			const messages = await api.getChatMessages(conversationId);
@@ -1685,6 +1839,7 @@ function HomeMenu(): JSX.Element {
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
 		setGifResults([]);
+		setGifSearchError(false);
 		// Reset the group member-management UI (Decision 1/2).
 		setGroupMembers(null);
 		setGroupMembersLoading(false);
@@ -1738,6 +1893,7 @@ function HomeMenu(): JSX.Element {
 		const seq = ++gifSearchSeq.current;
 		if (trimmed.length < GIF_SEARCH_MIN_LENGTH) {
 			setGifResults([]);
+			setGifSearchError(false);
 			setGifSearchLoading(false);
 			return;
 		}
@@ -1747,10 +1903,14 @@ function HomeMenu(): JSX.Element {
 			// Drop a stale response that resolved after a newer search began.
 			if (seq !== gifSearchSeq.current) return;
 			setGifResults(results);
+			setGifSearchError(false);
 		} catch {
-			// Non-fatal — an empty grid with no error toast is enough feedback here.
+			// Distinguish "search failed" from "no results" (A4) — e.g. GIF search
+			// is unconfigured (503) or Klipy is unreachable — so the picker shows
+			// an accurate message instead of a misleading "No gifs found."
 			if (seq !== gifSearchSeq.current) return;
 			setGifResults([]);
+			setGifSearchError(true);
 		} finally {
 			if (seq === gifSearchSeq.current) setGifSearchLoading(false);
 		}
@@ -1772,6 +1932,7 @@ function HomeMenu(): JSX.Element {
 				gifSearchDebounce.cancel();
 				setGifSearchQuery("");
 				setGifResults([]);
+				setGifSearchError(false);
 			}
 			return next;
 		});
@@ -1790,6 +1951,7 @@ function HomeMenu(): JSX.Element {
 		setIsGifPickerOpen(false);
 		setGifSearchQuery("");
 		setGifResults([]);
+		setGifSearchError(false);
 	};
 
 	const handleToggleNewGroupMember = (userId: number): void => {
@@ -1981,7 +2143,7 @@ function HomeMenu(): JSX.Element {
 			const nextReplays = await api.getMyReplays();
 			setReplays(nextReplays);
 		} catch (err: unknown) {
-			setModalError(err instanceof Error ? err.message : "Could not load replays.");
+			setModalError(describeModalError(err, "Could not load replays."));
 			setReplays(null);
 		} finally {
 			setReplaysLoading(false);
@@ -1999,9 +2161,7 @@ function HomeMenu(): JSX.Element {
 			setSelectedReplayFrame(0);
 			setReplayFrameProgress(0);
 		} catch (err: unknown) {
-			setModalError(
-				err instanceof Error ? err.message : "Could not load replay.",
-			);
+			setModalError(describeModalError(err, "Could not load replay."));
 		} finally {
 			setReplayActionLoading(null);
 		}
@@ -2026,9 +2186,7 @@ function HomeMenu(): JSX.Element {
 				prev && prev.matchId === matchId ? { ...prev, ...updated } : prev,
 			);
 		} catch (err: unknown) {
-			setModalError(
-				err instanceof Error ? err.message : "Could not update replay.",
-			);
+			setModalError(describeModalError(err, "Could not update replay."));
 		} finally {
 			setReplayActionLoading(null);
 		}
@@ -2426,8 +2584,10 @@ function HomeMenu(): JSX.Element {
 
 	if (isLoading) return <RouteLoading />;
 
-	const playerName = player?.turtleName ?? player?.username ?? "Player";
+	const playerName = accountDisplayName(player);
 	const friendStats = friendCounts(friends);
+	// Badge count for the Requests tab (Workstream C) — hidden when 0.
+	const pendingRequestsCount = pendingRequests?.length ?? 0;
 	const filteredFriends = friends
 		? filterFriends(friends, friendSearchQuery)
 		: null;
@@ -2438,37 +2598,57 @@ function HomeMenu(): JSX.Element {
 	/** Render a single friend row (shared across presence groups). */
 	const friendRow = (friend: FriendView): JSX.Element => (
 		<li key={friend.userId} className="hub-modal__social-row">
-			<span
-				className="hub-modal__social-name"
-				tabIndex={0}
-				aria-label={`View profile card for ${friend.turtleName ?? friend.username}`}
-				onMouseEnter={() => handleFriendHoverStart(friend)}
-				onMouseLeave={handleFriendHoverEnd}
-				onFocus={() => handleFriendHoverStart(friend)}
-				onBlur={handleFriendHoverEnd}
-			>
-				{friend.turtleName ?? friend.username}
-				<small> @{friend.username}</small>
-				{friend.status === "in-game" ? (
-					<span className="hub-modal__social-status hub-modal__social-status--ingame">
-						{RANKED_GAMES.find((g) => g.id === friend.gameId)?.label ??
-							"In a match"}
-					</span>
-				) : friend.status === "online" ? (
-					<span
-						className="hub-modal__social-online"
-						role="img"
-						aria-label="Online"
+			<div className="hub-modal__social-identity">
+				<span className="hub-modal__social-portrait">
+					<ShellPortrait
+						avatar={friend.avatar}
+						shellSkin={friend.shellSkin}
+						displayName={friend.turtleName ?? friend.username}
+						size="mini"
 					/>
-				) : (
-					<span className="hub-modal__social-status hub-modal__social-status--offline">
-						Last online {formatRelativeTime(friend.lastSeenAt)}
-					</span>
-				)}
-				{hoveredFriendUsername === friend.username ? (
-					<ProfileCard user={hoveredProfile} loading={hoveredProfileLoading} />
-				) : null}
-			</span>
+					<span
+						className={
+							friend.status === "in-game"
+								? "hub-modal__presence-dot hub-modal__presence-dot--online hub-modal__social-portrait-presence"
+								: friend.status === "online"
+									? "hub-modal__presence-dot hub-modal__presence-dot--online hub-modal__social-portrait-presence"
+									: "hub-modal__presence-dot hub-modal__social-portrait-presence"
+						}
+						aria-hidden="true"
+					/>
+				</span>
+				<span
+					className="hub-modal__social-name"
+					tabIndex={0}
+					aria-label={`View profile card for ${friend.turtleName ?? friend.username}`}
+					onMouseEnter={() => handleFriendHoverStart(friend)}
+					onMouseLeave={handleFriendHoverEnd}
+					onFocus={() => handleFriendHoverStart(friend)}
+					onBlur={handleFriendHoverEnd}
+				>
+					{friend.turtleName ?? friend.username}
+					<small> @{friend.username}</small>
+					{friend.status === "in-game" ? (
+						<span className="hub-modal__social-status hub-modal__social-status--ingame">
+							{RANKED_GAMES.find((g) => g.id === friend.gameId)?.label ??
+								"In a match"}
+						</span>
+					) : friend.status === "online" ? (
+						<span
+							className="hub-modal__social-online"
+							role="img"
+							aria-label="Online"
+						/>
+					) : (
+						<span className="hub-modal__social-status hub-modal__social-status--offline">
+							Last online {formatRelativeTime(friend.lastSeenAt)}
+						</span>
+					)}
+					{hoveredFriendUsername === friend.username ? (
+						<ProfileCard user={hoveredProfile} loading={hoveredProfileLoading} />
+					) : null}
+				</span>
+			</div>
 			<div className="hub-modal__social-actions">
 				{blockConfirmUserId === friend.userId ? (
 					<>
@@ -2492,6 +2672,10 @@ function HomeMenu(): JSX.Element {
 					</>
 				) : (
 					<>
+						<ViewProfileLink
+							className="hub-modal__social-profile-link"
+							username={friend.username}
+						/>
 						<button
 							type="button"
 							className="hub-modal__social-message-btn"
@@ -2514,32 +2698,65 @@ function HomeMenu(): JSX.Element {
 								Invite
 							</button>
 						)}
-						<button
-							type="button"
-							onClick={() => void handleRemoveFriend(friend)}
-						>
-							Remove
-						</button>
-						<button
-							type="button"
-							className="hub-modal__social-block-btn"
-							onClick={() => setBlockConfirmUserId(friend.userId)}
-						>
-							Block
-						</button>
-						<button
-							type="button"
-							className="hub-modal__social-block-btn"
-							onClick={() =>
-								setReportTarget({
-									userId: friend.userId,
-									username: friend.username,
-									turtleName: friend.turtleName,
-								})
-							}
-						>
-							Report
-						</button>
+						{/* Remove/Block/Report tucked behind a "More" menu instead of 3
+						 * always-visible text buttons — the full row (avatar + name +
+						 * 5 buttons) doesn't fit the narrower Social modal sidebar. */}
+						<div className="hub-modal__social-menu-wrapper">
+							<button
+								type="button"
+								className="hub-modal__social-menu-toggle"
+								aria-haspopup="true"
+								aria-expanded={friendMenuUserId === friend.userId}
+								aria-label={`More actions for ${friend.turtleName ?? friend.username}`}
+								onClick={() =>
+									setFriendMenuUserId((prev) =>
+										prev === friend.userId ? null : friend.userId,
+									)
+								}
+							>
+								⋯
+							</button>
+							{friendMenuUserId === friend.userId ? (
+								<div className="hub-modal__social-menu" role="menu">
+									<button
+										type="button"
+										role="menuitem"
+										onClick={() => {
+											setFriendMenuUserId(null);
+											void handleRemoveFriend(friend);
+										}}
+									>
+										Remove
+									</button>
+									<button
+										type="button"
+										role="menuitem"
+										className="hub-modal__social-block-btn"
+										onClick={() => {
+											setFriendMenuUserId(null);
+											setBlockConfirmUserId(friend.userId);
+										}}
+									>
+										Block
+									</button>
+									<button
+										type="button"
+										role="menuitem"
+										className="hub-modal__social-block-btn"
+										onClick={() => {
+											setFriendMenuUserId(null);
+											setReportTarget({
+												userId: friend.userId,
+												username: friend.username,
+												turtleName: friend.turtleName,
+											});
+										}}
+									>
+										Report
+									</button>
+								</div>
+							) : null}
+						</div>
 					</>
 				)}
 			</div>
@@ -2550,6 +2767,15 @@ function HomeMenu(): JSX.Element {
 	const currentTag = profileTagId
 		? (TURTLE_TAGS.find((t) => t.id === profileTagId) ?? null)
 		: null;
+	const selectedProfileTag = profileDojoTagId
+		? (TURTLE_TAGS.find((tag) => tag.id === profileDojoTagId) ?? null)
+		: null;
+	const unlockedProfileTags = (cosmetics ?? [])
+		.filter((cosmetic) => cosmetic.type === "dojo_tag" && cosmetic.owned)
+		.flatMap((cosmetic) => {
+			const tag = TURTLE_TAGS.find((candidate) => candidate.id === cosmetic.id);
+			return tag ? [tag] : [];
+		});
 
 	const showcasedIds = player?.profile?.showcasedAchievements ?? [];
 	const showcasedAchievements = showcasedIds
@@ -2577,37 +2803,56 @@ function HomeMenu(): JSX.Element {
 			{showCycleBackdrop ? <CycleBackdrop now={displayedNow} /> : null}
 			<div className="menu-page__shell hub-page__shell">
 				<header className="menu-page__topbar hub-page__topbar">
-					<button
-						className="hub-page__player-card"
-						type="button"
-						onClick={() => void openProfile()}
-					>
-						<span className="hub-page__player-name-row">
-							<strong className="menu-page__player-name">{playerName}</strong>
-							{currentTag ? (
-								<span className="hub-page__player-tag">
-									{currentTag.emoji} {currentTag.label}
+					<div className="hub-page__player-area">
+						<button
+							className="hub-page__player-card"
+							type="button"
+							onClick={() => void openProfile()}
+						>
+						<ShellPortrait
+							avatar={player?.avatar}
+							shellSkin={player?.shellSkin}
+							displayName={playerName}
+							level={player?.level ?? 1}
+							size="small"
+						/>
+						<span className="hub-page__player-copy">
+							<span className="hub-page__player-name-row">
+								<strong className="menu-page__player-name">{playerName}</strong>
+								{currentTag ? (
+									<span className="hub-page__player-tag">
+										{currentTag.emoji} {currentTag.label}
+									</span>
+								) : null}
+							</span>
+							<span className="hub-page__player-meta">
+								Lvl {player?.level ?? 1} · {getShellSkinDisplayName(player?.shellSkin)} · ⬡ {player?.coins ?? 0}
+							</span>
+							{player?.mostPlayedGame ? (
+								<span className="hub-page__most-played">
+									🐢 {player.mostPlayedGame.gameName} · {player.mostPlayedGame.gamesPlayed} {player.mostPlayedGame.gamesPlayed === 1 ? "match" : "matches"} · {player.mostPlayedGame.winRate}% wins
+								</span>
+							) : null}
+							{showcasedAchievements.length > 0 ? (
+								<span className="hub-page__player-badges">
+									{showcasedAchievements.map((a) => (
+										<span key={a.id} className="hub-page__player-badge">
+											{a.title}
+										</span>
+									))}
 								</span>
 							) : null}
 						</span>
-						<span className="hub-page__player-meta">
-							Lvl {player?.level ?? 1} · {getShellSkinDisplayName(player?.shellSkin)} · ⬡ {player?.coins ?? 0}
-						</span>
-						{player?.mostPlayedGame ? (
-							<span className="hub-page__most-played">
-								🐢 {player.mostPlayedGame.gameName} · {player.mostPlayedGame.gamesPlayed} {player.mostPlayedGame.gamesPlayed === 1 ? "match" : "matches"} · {player.mostPlayedGame.winRate}% wins
-							</span>
+						</button>
+						{player?.username ? (
+							<ViewProfileLink
+								className="hub-page__profile-link"
+								username={player.username}
+							>
+								View public profile
+							</ViewProfileLink>
 						) : null}
-						{showcasedAchievements.length > 0 ? (
-							<span className="hub-page__player-badges">
-								{showcasedAchievements.map((a) => (
-									<span key={a.id} className="hub-page__player-badge">
-										{a.title}
-									</span>
-								))}
-							</span>
-						) : null}
-					</button>
+					</div>
 
 					<div className="hub-page__clock-wrap">
 						<button
@@ -2660,6 +2905,8 @@ function HomeMenu(): JSX.Element {
 							className={`hub-notif-bell${isNotifDrawerOpen ? " is-open" : ""}`}
 							type="button"
 							aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+							aria-expanded={isNotifDrawerOpen}
+							aria-controls="hub-notif-drawer"
 							onClick={() => setIsNotifDrawerOpen((o) => !o)}
 						>
 							🔔
@@ -2799,13 +3046,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("casino")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.casino}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Fortune Wheel</span>
+												<span className="hub-game-card__title">Fortune Wheel</span>
 												<small>Wager coins at the gambling den</small>
 											</button>
 											<button
@@ -2813,13 +3054,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("flip")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.flip}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Shell Flip</span>
+												<span className="hub-game-card__title">Shell Flip</span>
 												<small>Call a shell, double or nothing</small>
 											</button>
 											<button
@@ -2827,13 +3062,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("monte")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.monte}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Three-Shell Monte</span>
+												<span className="hub-game-card__title">Three-Shell Monte</span>
 												<small>Find the pearl, pay up to 5×</small>
 											</button>
 											<button
@@ -2841,13 +3070,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("slots")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.slots}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Shrine Slots</span>
+												<span className="hub-game-card__title">Shrine Slots</span>
 												<small>Spin three reels for the jackpot</small>
 											</button>
 											<button
@@ -2855,13 +3078,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("dice")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.dice}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Koi Dice</span>
+												<span className="hub-game-card__title">Koi Dice</span>
 												<small>Set your own odds, under or over</small>
 											</button>
 											<button
@@ -2869,13 +3086,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("drop")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.drop}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Shell Drop</span>
+												<span className="hub-game-card__title">Shell Drop</span>
 												<small>Drop a shell through the pegs</small>
 											</button>
 										</>
@@ -2887,23 +3098,8 @@ function HomeMenu(): JSX.Element {
 													className={`hub-game-card hub-game-card--${game.id}`}
 													to={`/play/${game.id}`}
 												>
-													{game.buttonImage ? (
-														<>
-															<img
-																className="hub-game-card__image"
-																src={game.buttonImage}
-																alt=""
-																aria-hidden="true"
-															/>
-															<span className="sr-only">{game.name}</span>
-															<small>{game.description}</small>
-														</>
-													) : (
-														<>
-															<span>{game.name}</span>
-															<small>{game.description}</small>
-														</>
-													)}
+													<span className="hub-game-card__title">{game.name}</span>
+													<small>{game.description}</small>
 												</Link>
 											) : (
 												<button
@@ -2919,23 +3115,8 @@ function HomeMenu(): JSX.Element {
 																})
 													}
 												>
-													{game.buttonImage ? (
-														<>
-															<img
-																className="hub-game-card__image"
-																src={game.buttonImage}
-																alt=""
-																aria-hidden="true"
-															/>
-															<span className="sr-only">{game.name}</span>
-															<small>{game.description}</small>
-														</>
-													) : (
-														<>
-															<span>{game.name}</span>
-															<small>Coming soon</small>
-														</>
-													)}
+													<span className="hub-game-card__title">{game.name}</span>
+													<small>{game.description}</small>
 												</button>
 											),
 										)
@@ -2947,7 +3128,13 @@ function HomeMenu(): JSX.Element {
 									type="button"
 									onClick={handleReturnToModeSelector}
 								>
-									Back to mode selector
+									<img
+										className="hub-page__mode-back-button-image"
+										src="/assets/ui/backButton.png"
+										alt=""
+										aria-hidden="true"
+									/>
+									<span>Back to mode selector</span>
 								</button>
 							</div>
 						)}
@@ -3029,7 +3216,19 @@ function HomeMenu(): JSX.Element {
 
 			{/* Notification drawer */}
 			{isNotifDrawerOpen && (
-				<div className="hub-notif-drawer" role="dialog" aria-label="Notifications">
+				<>
+					<button
+						className="hub-notif-drawer__backdrop"
+						type="button"
+						aria-label="Close notifications"
+						onClick={() => setIsNotifDrawerOpen(false)}
+					/>
+					<div
+						id="hub-notif-drawer"
+						className="hub-notif-drawer"
+						role="dialog"
+						aria-label="Notifications"
+					>
 					<div className="hub-notif-drawer__header">
 						<h3>Notifications</h3>
 						{unreadCount > 0 && (
@@ -3163,7 +3362,8 @@ function HomeMenu(): JSX.Element {
 							))}
 						</ul>
 					)}
-				</div>
+					</div>
+				</>
 			)}
 
 			{infoModal ? (
@@ -3213,39 +3413,87 @@ function HomeMenu(): JSX.Element {
 
 						{leaderboardLoading ? (
 							<p className="hub-panel__muted">Loading…</p>
+						) : leaderboardError ? (
+							// Rankings Bug Audit M2: a fetch failure gets its own state,
+							// distinct from "the board is genuinely empty" below.
+							<div className="hub-modal__rankings-error">
+								<p className="hub-modal__error">{leaderboardError}</p>
+								<button
+									type="button"
+									className="hub-modal__retry-button"
+									onClick={() => void loadLeaderboard()}
+								>
+									Retry
+								</button>
+							</div>
 						) : leaderboardGame === "overall" ? (
 							overallLeaderboard.length > 0 ? (
-								<ol className="hub-ranking-list">
-									{overallLeaderboard.map((entry) => (
-										<li key={entry.userId}>
-											<span className="hub-ranking-list__rank">#{entry.rank}</span>
-											<strong className="hub-ranking-list__name">
-												{entry.turtleName ?? entry.username}
-											</strong>
-											<small className="hub-ranking-list__stat">
-												{entry.totalWins} wins
-											</small>
-										</li>
-									))}
-								</ol>
+								<>
+									<ol className="hub-ranking-list hub-ranking-list--scrollable">
+										{overallLeaderboard.map((entry) => (
+											<li
+												key={entry.userId}
+												className={
+													entry.userId === player?.id
+														? "hub-ranking-list__self"
+														: undefined
+												}
+											>
+												<span className="hub-ranking-list__rank">#{entry.rank}</span>
+												<strong className="hub-ranking-list__name">
+													{entry.turtleName ?? entry.username}
+												</strong>
+												<small className="hub-ranking-list__stat">
+													{entry.totalWins} wins
+												</small>
+											</li>
+										))}
+									</ol>
+									{ownOverallRank ? (
+										<div className="hub-ranking-list__own-rank">
+											<span>Your rank</span>
+											<strong>#{ownOverallRank.rank}</strong>
+											<small>{ownOverallRank.totalWins} wins</small>
+										</div>
+									) : null}
+								</>
 							) : (
 								<p className="hub-panel__muted">No rankings yet.</p>
 							)
 						) : (
 							gameLeaderboard.length > 0 ? (
-								<ol className="hub-ranking-list">
-									{gameLeaderboard.map((entry) => (
-										<li key={entry.userId}>
-											<span className="hub-ranking-list__rank">#{entry.rank}</span>
-											<strong className="hub-ranking-list__name">
-												{entry.turtleName ?? entry.username}
-											</strong>
-											<small className="hub-ranking-list__stat">
-												{entry.rating} ELO · {entry.wins}W/{entry.losses}L
+								<>
+									<ol className="hub-ranking-list hub-ranking-list--scrollable">
+										{gameLeaderboard.map((entry) => (
+											<li
+												key={entry.userId}
+												className={
+													entry.userId === player?.id
+														? "hub-ranking-list__self"
+														: undefined
+												}
+											>
+												<span className="hub-ranking-list__rank">#{entry.rank}</span>
+												<strong className="hub-ranking-list__name">
+													{entry.turtleName ?? entry.username}
+												</strong>
+												<small className="hub-ranking-list__stat">
+													{entry.rating} ELO · {entry.wins}W/{entry.losses}L
+												</small>
+											</li>
+										))}
+									</ol>
+									{ownGameRank ? (
+										<div className="hub-ranking-list__own-rank">
+											<span>Your rank</span>
+											<strong>#{ownGameRank.rank}</strong>
+											<small>
+												{ownGameRank.rating} ELO · {ownGameRank.wins}W/
+												{ownGameRank.losses}L
 											</small>
-										</li>
-									))}
-								</ol>
+										</div>
+									) : null}
+								</>
 							) : (
 								<p className="hub-panel__muted">No rankings yet.</p>
 							)
@@ -3322,7 +3570,8 @@ function HomeMenu(): JSX.Element {
 
 			{activeModal === "profile" ? (
 				<HubModal
-					title="Edit Profile"
+					title="Profile"
+					variant="profile"
 					onClose={() => {
 						setActiveModal(null);
 					}}
@@ -3330,46 +3579,97 @@ function HomeMenu(): JSX.Element {
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					{profileSuccess ? <p className="hub-modal__success">{profileSuccess}</p> : null}
 					<div className="hub-modal__profile">
-						<WorkInProgressNotice
-							featureName="Avatar"
-							title="Customisable turtle coming soon"
-							description="Your teammate is building turtle avatar customisation. Check back once it's ready."
-						/>
-						<label className="hub-modal__field-label" htmlFor="turtle-name-input">
-							Turtle name
-						</label>
-						<input
-							id="turtle-name-input"
-							className="hub-modal__field-input"
-							type="text"
-							maxLength={32}
-							value={profileTurtleName}
-							placeholder={player?.username ?? ""}
-							onChange={(e) => setProfileTurtleName(e.target.value)}
-						/>
-						<span className="hub-modal__field-label">Your dojo tag</span>
-						<div className="hub-modal__current-tag">
-							{currentTag ? (
-								<span className="hub-modal__tag-chip hub-modal__tag-chip--selected">
-									<span className="hub-modal__tag-chip-emoji">{currentTag.emoji}</span>
-									<span className="hub-modal__tag-chip-label">{currentTag.label}</span>
-								</span>
-							) : (
-								<span className="hub-panel__muted">No dojo tag selected.</span>
-							)}
-							<small>Choose and unlock dojo tags from Customisation.</small>
-						</div>
-						<span className="hub-modal__field-label">Achievement showcase</span>
-						<div className="hub-modal__showcase-slots">
-							{profileShowcasedAchievements.map((achievementId, slotIdx) => {
-								const achievement = achievementId
-									? achievements?.find((a) => a.id === achievementId)
-									: null;
-								const isOpen = showcasePickerSlot === slotIdx;
-								const unlockedAchievements =
-									achievements?.filter((a) => a.unlocked) ?? [];
+						<div className="hub-modal__profile-layout">
+							<section
+								className="hub-modal__profile-controls"
+								aria-labelledby="profile-customisation-heading"
+							>
+								<div className="hub-modal__section-heading">
+									<span>Profile customisation</span>
+									<h3 id="profile-customisation-heading">Build your player card</h3>
+								</div>
 
-								return (
+								<div className="hub-modal__profile-fields">
+									<label htmlFor="turtle-name-input">
+										<span className="hub-modal__field-label">Turtle name</span>
+										<input
+											id="turtle-name-input"
+											className="hub-modal__field-input"
+											type="text"
+											maxLength={32}
+											value={profileTurtleName}
+											placeholder={displayUsername(player?.username)}
+											onChange={(e) => setProfileTurtleName(e.target.value)}
+										/>
+									</label>
+									<label htmlFor="dojo-tag-select">
+										<span className="hub-modal__field-label">Dojo tag</span>
+										<select
+											id="dojo-tag-select"
+											className="hub-modal__field-input hub-modal__field-select"
+											value={profileDojoTagId ?? ""}
+											disabled={cosmetics === null}
+											onChange={(event) =>
+												setProfileDojoTagId(event.target.value || null)
+											}
+										>
+											<option value="">No dojo tag</option>
+											{unlockedProfileTags.map((tag) => (
+												<option key={tag.id} value={tag.id}>
+													{tag.emoji} {tag.label}
+												</option>
+											))}
+										</select>
+									</label>
+								</div>
+
+								<div className="hub-modal__portrait-editor" aria-labelledby="portrait-heading">
+									<ShellPortrait
+										avatar={player?.avatar}
+										shellSkin={player?.shellSkin}
+										displayName={profileTurtleName.trim() || playerName}
+										level={player?.level ?? 1}
+										size="medium"
+									/>
+									<div className="hub-modal__portrait-copy">
+										<span className="hub-modal__portrait-kicker">Portrait</span>
+										<h3 id="portrait-heading">Choose your image</h3>
+										<div className="hub-modal__portrait-actions">
+											<label className="hub-modal__portrait-upload">
+												{avatarSaving ? "Updating…" : player?.avatar ? "Replace image" : "Choose image"}
+												<input
+													type="file"
+													accept="image/jpeg,image/png,image/webp,image/gif"
+													disabled={avatarSaving}
+													onChange={(event) => void handleAvatarUpload(event)}
+												/>
+											</label>
+											{player?.avatar ? (
+												<button
+													type="button"
+													className="hub-modal__portrait-reset"
+													disabled={avatarSaving}
+													onClick={() => void handleAvatarClear()}
+												>
+													Use equipped shell
+												</button>
+											) : null}
+										</div>
+										<small>JPEG, PNG, WebP, or GIF · 2 MB maximum</small>
+									</div>
+								</div>
+
+								<span className="hub-modal__field-label">Achievement showcase</span>
+								<div className="hub-modal__showcase-slots">
+									{profileShowcasedAchievements.map((achievementId, slotIdx) => {
+										const achievement = achievementId
+											? achievements?.find((a) => a.id === achievementId)
+											: null;
+										const isOpen = showcasePickerSlot === slotIdx;
+										const unlockedAchievements =
+											achievements?.filter((a) => a.unlocked) ?? [];
+
+										return (
 									<div
 										key={slotIdx}
 										className="hub-modal__showcase-slot-wrapper"
@@ -3454,18 +3754,50 @@ function HomeMenu(): JSX.Element {
 											</div>
 										) : null}
 									</div>
-								);
-							})}
-						</div>
+										);
+									})}
+								</div>
 
-						<button
-							className="hub-modal__save-button"
-							type="button"
-							disabled={profileSaving}
-							onClick={() => void handleProfileSave()}
-						>
-							{profileSaving ? "Saving…" : "Save changes"}
-						</button>
+								<button
+									className="hub-modal__save-button"
+									type="button"
+									disabled={profileSaving}
+									onClick={() => void handleProfileSave()}
+								>
+									{profileSaving ? "Saving…" : "Save changes"}
+								</button>
+							</section>
+
+							<PlayerProfilePreview
+								displayName={profileTurtleName.trim() || playerName}
+								avatar={player?.avatar}
+								shellSkin={player?.shellSkin}
+								level={player?.level ?? 1}
+								tag={selectedProfileTag}
+								achievements={profileShowcasedAchievements.map((achievementId) =>
+									achievementId
+										? achievements?.find(
+												(achievement) => achievement.id === achievementId,
+											) ?? null
+										: null,
+								)}
+								statistics={[
+									{
+										label: "Matches",
+										value: player?.profile?.gamesPlayed ?? 0,
+									},
+									{
+										label: "Wins",
+										value: player?.profile?.totalWins ?? 0,
+									},
+									{
+										label: "Gold earned",
+										value: player?.profile?.totalCoinsEarned ?? 0,
+									},
+								]}
+							/>
+						</div>
+						<ConnectedAccounts />
 					</div>
 				</HubModal>
 			) : null}
@@ -3484,7 +3816,7 @@ function HomeMenu(): JSX.Element {
 					}}
 				>
 					<p className="hub-modal__replay-notice">
-						For now, replays are only available for modes without power-ups.
+						Replays are unavailable while power-ups are enabled.
 					</p>
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					<div className="hub-modal__replays">
@@ -3587,760 +3919,834 @@ function HomeMenu(): JSX.Element {
 				<HubModal title="Social" onClose={() => { setActiveModal(null); setFriendUsername(""); }} variant="wide">
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 
-					{player?.username ? (
-						<div className="hub-modal__social-code">
-							<span>
-								Your friend code: <code>{buildFriendCode(player.username)}</code>
-							</span>
-							<button
-								className="hub-modal__save-button"
-								type="button"
-								onClick={() => void handleCopyFriendCode()}
-							>
-								Copy
-							</button>
-						</div>
-					) : null}
-
-					<div className="hub-modal__social-add">
-						<input
-							className="hub-modal__field-input"
-							type="text"
-							placeholder="Username"
-							maxLength={32}
-							value={friendUsername}
-							onChange={(e) => setFriendUsername(e.target.value)}
-							onKeyDown={(e) => {
-								// Ignore Enter while an IME composition is active (Bug Audit L4).
-								if (e.key === "Enter" && !e.nativeEvent.isComposing)
-									void handleSendFriendRequest();
-							}}
-						/>
-						<button
-							className="hub-modal__save-button"
-							type="button"
-							disabled={friendActionLoading || !friendUsername.trim()}
-							onClick={() => void handleSendFriendRequest()}
-						>
-							{friendActionLoading ? "Sending…" : "Add friend"}
-						</button>
-					</div>
-
-					{socialLoading ? <p>Loading…</p> : (
-						<>
-							<section className="hub-modal__social-section hub-modal__chat-section">
-								<div className="hub-modal__chat-header">
-									<h3>Messages</h3>
-									{!activeConversationId ? (
-										<button
-											type="button"
-											className="hub-modal__save-button"
-											onClick={() => setIsNewGroupOpen((prev) => !prev)}
-										>
-											{isNewGroupOpen ? "Cancel" : "New group"}
-										</button>
-									) : null}
+					<div className="hub-modal__social-grid">
+						<div className="hub-modal__social-sidebar">
+							{player?.username ? (
+								<div className="hub-modal__social-code">
+									<span>
+										Your friend code: <code>{buildFriendCode(player.username)}</code>
+									</span>
+									<button
+										className="hub-modal__save-button"
+										type="button"
+										onClick={() => void handleCopyFriendCode()}
+									>
+										Copy
+									</button>
 								</div>
+							) : null}
+							<div className="hub-modal__social-add">
+								<input
+									className="hub-modal__field-input"
+									type="text"
+									placeholder="Username"
+									maxLength={32}
+									value={friendUsername}
+									onChange={(e) => setFriendUsername(e.target.value)}
+									onKeyDown={(e) => {
+										// Ignore Enter while an IME composition is active (Bug Audit L4).
+										if (e.key === "Enter" && !e.nativeEvent.isComposing)
+											void handleSendFriendRequest();
+									}}
+								/>
+								<button
+									className="hub-modal__save-button"
+									type="button"
+									disabled={friendActionLoading || !friendUsername.trim()}
+									onClick={() => void handleSendFriendRequest()}
+								>
+									{friendActionLoading ? "Sending…" : "Add friend"}
+								</button>
+							</div>
 
-								{isNewGroupOpen && !activeConversationId ? (
-									<div className="hub-modal__chat-new-group">
-										<input
-											className="hub-modal__field-input"
-											type="text"
-											placeholder="Group name"
-											maxLength={60}
-											value={newGroupName}
-											onChange={(e) => setNewGroupName(e.target.value)}
-										/>
-										<p className="hub-modal__chat-new-group-hint">Add friends:</p>
-										<ul className="hub-modal__social-list">
-											{(friends ?? []).map((friend) => (
-												<li key={friend.userId} className="hub-modal__chat-member-row">
-													<label>
-														<input
-															type="checkbox"
-															checked={newGroupMemberIds.has(friend.userId)}
-															onChange={() => handleToggleNewGroupMember(friend.userId)}
-														/>
-														{friend.turtleName ?? friend.username}
-													</label>
-												</li>
-											))}
-										</ul>
-										<button
-											type="button"
-											className="hub-modal__save-button"
-											disabled={
-												chatActionLoading ||
-												!newGroupName.trim() ||
-												newGroupMemberIds.size === 0
-											}
-											onClick={() => void handleCreateGroup()}
-										>
-											Create group
-										</button>
-									</div>
-								) : null}
+							<div className="hub-modal__social-tabs" role="tablist" aria-label="Social categories">
+								<button
+									type="button"
+									role="tab"
+									aria-selected={socialTab === "friends"}
+									className={`hub-modal__social-tab${socialTab === "friends" ? " hub-modal__social-tab--active" : ""}`}
+									onClick={() => setSocialTab("friends")}
+								>
+									Friends
+								</button>
+								<button
+									type="button"
+									role="tab"
+									aria-selected={socialTab === "chats"}
+									className={`hub-modal__social-tab${socialTab === "chats" ? " hub-modal__social-tab--active" : ""}`}
+									onClick={() => setSocialTab("chats")}
+								>
+									Chats
+								</button>
+								<button
+									type="button"
+									role="tab"
+									aria-selected={socialTab === "requests"}
+									className={`hub-modal__social-tab${socialTab === "requests" ? " hub-modal__social-tab--active" : ""}`}
+									onClick={() => setSocialTab("requests")}
+								>
+									Requests
+									{pendingRequestsCount > 0 ? (
+										<span className="hub-modal__social-tab-badge">{pendingRequestsCount}</span>
+									) : null}
+								</button>
+							</div>
 
-								{activeConversationId ? (
-									<div className="hub-modal__chat-thread">
-										<div className="hub-modal__chat-thread-header">
-											<button type="button" onClick={handleCloseConversation}>
-												← Back
-											</button>
-											<span className="hub-modal__chat-thread-title">
-												{conversationTitle(
-													conversations?.find((c) => c.id === activeConversationId) ?? {
-														name: null,
-														type: "dm",
-													},
+							<div className="hub-modal__social-sidebar-scroll">
+								{socialLoading ? (
+									<p>Loading…</p>
+								) : (
+									<>
+										{socialTab === "friends" ? (
+											/*
+											 * No list virtualisation here (e.g. react-window): this is a niche
+											 * 4-player mini-game hub, not a large social network — friend counts
+											 * are expected to stay in the tens, not hundreds. Suggestions are
+											 * already capped server-side (SUGGESTIONS_LIMIT = 20), and pending/
+											 * outgoing requests are inherently self-limiting. Revisit if this
+											 * list is ever observed to exceed ~50 rows in practice; a new dep
+											 * would also need `npm install` on the user's machine first.
+											 */
+											<section className="hub-modal__social-section">
+												<h3>
+													Friends
+													{friendStats.total > 0 ? (
+														<span className="hub-modal__social-count">
+															{friendStats.online}/{friendStats.total} online
+														</span>
+													) : null}
+												</h3>
+												{friends && friends.length > 0 ? (
+													<input
+														className="hub-modal__field-input hub-modal__social-search"
+														type="text"
+														placeholder="Search friends…"
+														value={friendSearchQuery}
+														onChange={(e) => setFriendSearchQuery(e.target.value)}
+														aria-label="Search friends"
+													/>
+												) : null}
+												{friendGroups && filteredFriends && filteredFriends.length > 0 ? (
+													<>
+														{friendGroups.inGame.length > 0 ? (
+															<div className="hub-modal__social-group">
+																<h4 className="hub-modal__social-group-label">In game</h4>
+																<ul className="hub-modal__social-list">
+																	{friendGroups.inGame.map(friendRow)}
+																</ul>
+															</div>
+														) : null}
+														{friendGroups.online.length > 0 ? (
+															<div className="hub-modal__social-group">
+																<h4 className="hub-modal__social-group-label">Online</h4>
+																<ul className="hub-modal__social-list">
+																	{friendGroups.online.map(friendRow)}
+																</ul>
+															</div>
+														) : null}
+														{friendGroups.offline.length > 0 ? (
+															<div className="hub-modal__social-group">
+																<h4 className="hub-modal__social-group-label">Offline</h4>
+																<ul className="hub-modal__social-list">
+																	{friendGroups.offline.map(friendRow)}
+																</ul>
+															</div>
+														) : null}
+													</>
+												) : friends && friends.length > 0 ? (
+													<p className="hub-panel__muted">No friends match your search.</p>
+												) : (
+													<p className="hub-panel__muted">No friends yet. Add someone above.</p>
 												)}
-											</span>
-											{isActiveGroup ? (
-												<div className="hub-modal__chat-thread-actions">
+
+												{/* Inline game picker — shown after clicking Invite on a friend */}
+												{inviteTarget && (
+													<div className="hub-lobby-picker">
+														<p>Invite <strong>{inviteTarget.name}</strong> to play:</p>
+														<select
+															className="hub-leaderboard-select"
+															value={inviteGameId}
+															onChange={(e) => setInviteGameId(e.target.value)}
+															aria-label="Select game to invite to"
+														>
+															{RANKED_GAMES.map((g) => (
+																<option key={g.id} value={g.id}>{g.label}</option>
+															))}
+														</select>
+														<div className="hub-lobby-picker__actions">
+															<button
+																type="button"
+																className="hub-lobby-picker__confirm"
+																onClick={() => handleCreateLobby(inviteTarget.userId, inviteGameId)}
+															>
+																Send invite
+															</button>
+															<button
+																type="button"
+																className="hub-lobby-picker__cancel"
+																onClick={() => setInviteTarget(null)}
+															>
+																Cancel
+															</button>
+														</div>
+													</div>
+												)}
+
+												{/* Report panel — shown after clicking Report on a friend or pending request */}
+												{reportTarget && (
+													<div className="hub-lobby-picker">
+														<p>
+															Report <strong>{reportTarget.turtleName ?? reportTarget.username}</strong>?
+															This will also block them.
+														</p>
+														<select
+															ref={reportCategorySelectRef}
+															className="hub-leaderboard-select"
+															value={reportCategory}
+															onChange={(e) =>
+																setReportCategory(e.target.value as ReportCategory)
+															}
+															aria-label="Report reason"
+														>
+															{REPORT_CATEGORIES.map((c) => (
+																<option key={c.id} value={c.id}>
+																	{c.label}
+																</option>
+															))}
+														</select>
+														<textarea
+															className="hub-modal__field-input"
+															placeholder="Additional details (optional)"
+															maxLength={500}
+															value={reportMessage}
+															onChange={(e) => setReportMessage(e.target.value)}
+														/>
+														<div className="hub-lobby-picker__actions">
+															<button
+																type="button"
+																className="hub-lobby-picker__confirm"
+																disabled={reportLoading}
+																onClick={() => void handleSubmitReport()}
+															>
+																{reportLoading ? "Submitting…" : "Submit report"}
+															</button>
+															<button
+																type="button"
+																className="hub-lobby-picker__cancel"
+																disabled={reportLoading}
+																onClick={() => {
+																	setReportTarget(null);
+																	setReportMessage("");
+																}}
+															>
+																Cancel
+															</button>
+														</div>
+													</div>
+												)}
+											</section>
+										) : null}
+
+										{socialTab === "chats" ? (
+											<section className="hub-modal__social-section hub-modal__chat-section">
+												<div className="hub-modal__chat-header">
+													<h3>Messages</h3>
 													<button
 														type="button"
-														className="hub-modal__chat-members-toggle"
-														onClick={handleToggleMembers}
+														className="hub-modal__save-button"
+														onClick={() => setIsNewGroupOpen((prev) => !prev)}
 													>
-														{groupMembers !== null
-															? "Hide members"
-															: "Members"}
+														{isNewGroupOpen ? "Cancel" : "New group"}
 													</button>
-													{isOwnerOfActiveGroup ? (
-														<>
-															<button
-																type="button"
-																className="hub-modal__chat-members-toggle"
-																disabled={groupActionLoading}
-																onClick={() =>
-																	setGroupRenameDraft(
-																		activeConversation?.name ?? "",
-																	)
-																}
-															>
-																Rename
-															</button>
-															<button
-																type="button"
-																className="hub-modal__chat-members-toggle"
-																disabled={chatActionLoading}
-																onClick={() =>
-																	void handleLeaveGroup(activeConversationId)
-																}
-																title="Leave the group; ownership passes to the longest-standing member"
-															>
-																Leave group
-															</button>
-															<button
-																type="button"
-																className="hub-modal__social-block-btn"
-																disabled={groupActionLoading}
-																onClick={() => void handleDeleteGroup()}
-															>
-																Delete group
-															</button>
-														</>
+												</div>
+
+												{isNewGroupOpen ? (
+													<div className="hub-modal__chat-new-group">
+														<input
+															className="hub-modal__field-input"
+															type="text"
+															placeholder="Group name"
+															maxLength={60}
+															value={newGroupName}
+															onChange={(e) => setNewGroupName(e.target.value)}
+														/>
+														{(friends ?? []).length === 0 ? (
+															<p className="hub-panel__muted">
+																Add some friends first — groups are friends-only.
+															</p>
+														) : (
+															<>
+																<p className="hub-modal__chat-new-group-hint">Add friends:</p>
+																<ul className="hub-modal__social-list">
+																	{(friends ?? []).map((friend) => (
+																		<li key={friend.userId} className="hub-modal__chat-member-row">
+																			<label>
+																				<input
+																					type="checkbox"
+																					checked={newGroupMemberIds.has(friend.userId)}
+																					onChange={() => handleToggleNewGroupMember(friend.userId)}
+																				/>
+																				{friend.turtleName ?? friend.username}
+																			</label>
+																		</li>
+																	))}
+																</ul>
+																<button
+																	type="button"
+																	className="hub-modal__save-button"
+																	disabled={
+																		chatActionLoading ||
+																		!newGroupName.trim() ||
+																		newGroupMemberIds.size === 0
+																	}
+																	onClick={() => void handleCreateGroup()}
+																>
+																	Create group
+																</button>
+															</>
+														)}
+													</div>
+												) : null}
+
+												<ul className="hub-modal__social-list">
+													{conversations && conversations.length > 0 ? (
+														conversations.map((conversation) => (
+															<li key={conversation.id} className="hub-modal__social-row">
+																<button
+																	type="button"
+																	className="hub-modal__chat-conversation-btn"
+																	onClick={() => void handleOpenConversation(conversation.id)}
+																>
+																	<span className="hub-modal__social-name">
+																		{conversationTitle(conversation)}
+																		{unreadConversationIds.has(conversation.id) ? (
+																			<span
+																				className="hub-modal__chat-unread-dot"
+																				role="img"
+																				aria-label="Unread"
+																			/>
+																		) : null}
+																	</span>
+																	<small className="hub-modal__chat-preview">
+																		{conversation.lastMessagePreview ?? "No messages yet"}
+																	</small>
+																</button>
+															</li>
+														))
 													) : (
+														<p>No conversations yet — message a friend to get started.</p>
+													)}
+												</ul>
+											</section>
+										) : null}
+
+										{socialTab === "requests" ? (
+											<>
+												{pendingRequests && pendingRequests.length > 0 ? (
+													<section className="hub-modal__social-section">
+														<h3>Pending requests</h3>
+														<ul className="hub-modal__social-list">
+															{pendingRequests.map((req) => (
+																<li key={req.userId} className="hub-modal__social-row">
+																	<span className="hub-modal__social-name">
+																		{req.turtleName ?? req.username}
+																		<small> @{req.username}</small>
+																	</span>
+																	<div className="hub-modal__social-actions">
+																		{blockConfirmUserId === req.userId ? (
+																			<>
+																				<span className="hub-modal__social-confirm-label">
+																					Block {req.turtleName ?? req.username}?
+																				</span>
+																				<button
+																					type="button"
+																					ref={blockConfirmButtonRef}
+																					className="hub-modal__social-confirm-btn"
+																					onClick={() => void handleBlockUser(req)}
+																				>
+																					Confirm
+																				</button>
+																				<button
+																					type="button"
+																					onClick={() => setBlockConfirmUserId(null)}
+																				>
+																					Cancel
+																				</button>
+																			</>
+																		) : (
+																			<>
+																				<button type="button" onClick={() => void handleAcceptRequest(req)}>Accept</button>
+																				<button type="button" onClick={() => void handleDeclineRequest(req)}>Decline</button>
+																				<button
+																					type="button"
+																					className="hub-modal__social-block-btn"
+																					onClick={() => setBlockConfirmUserId(req.userId)}
+																				>
+																					Block
+																				</button>
+																				<button
+																					type="button"
+																					className="hub-modal__social-block-btn"
+																					onClick={() =>
+																						setReportTarget({
+																							userId: req.userId,
+																							username: req.username,
+																							turtleName: req.turtleName,
+																						})
+																					}
+																				>
+																					Report
+																				</button>
+																			</>
+																		)}
+																	</div>
+																</li>
+															))}
+														</ul>
+													</section>
+												) : null}
+
+												{outgoingRequests && outgoingRequests.length > 0 ? (
+													<section className="hub-modal__social-section">
+														<h3>Outgoing requests</h3>
+														<ul className="hub-modal__social-list">
+															{outgoingRequests.map((req) => (
+																<li key={req.userId} className="hub-modal__social-row">
+																	<span className="hub-modal__social-name">
+																		{req.turtleName ?? req.username}
+																		<small> @{req.username}</small>
+																	</span>
+																	<div className="hub-modal__social-actions">
+																		<button
+																			type="button"
+																			onClick={() => void handleCancelOutgoingRequest(req)}
+																		>
+																			Cancel
+																		</button>
+																	</div>
+																</li>
+															))}
+														</ul>
+													</section>
+												) : null}
+
+												{suggestions && suggestions.length > 0 ? (
+													<section className="hub-modal__social-section">
+														<h3>People you may know</h3>
+														<ul className="hub-modal__social-list">
+															{suggestions.map((suggestion) => (
+																<li
+																	key={suggestion.userId}
+																	className="hub-modal__social-row"
+																>
+																	<span className="hub-modal__social-name">
+																		{suggestion.turtleName ?? suggestion.username}
+																		<small> @{suggestion.username}</small>
+																	</span>
+																	<div className="hub-modal__social-actions">
+																		<button
+																			type="button"
+																			onClick={() => void handleAddSuggestion(suggestion)}
+																		>
+																			Add
+																		</button>
+																	</div>
+																</li>
+															))}
+														</ul>
+													</section>
+												) : null}
+
+												{blockedUsers && blockedUsers.length > 0 ? (
+													<section className="hub-modal__social-section">
+														<h3>Blocked users</h3>
+														<ul className="hub-modal__social-list">
+															{blockedUsers.map((blocked) => (
+																<li
+																	key={blocked.userId}
+																	className="hub-modal__social-row"
+																>
+																	<span className="hub-modal__social-name">
+																		{blocked.turtleName ?? blocked.username}
+																		<small> @{blocked.username}</small>
+																	</span>
+																	<div className="hub-modal__social-actions">
+																		<button
+																			type="button"
+																			onClick={() => void handleUnblockUser(blocked)}
+																		>
+																			Unblock
+																		</button>
+																	</div>
+																</li>
+															))}
+														</ul>
+													</section>
+												) : null}
+											</>
+										) : null}
+									</>
+								)}
+							</div>
+						</div>
+
+						<div className="hub-modal__social-main">
+							{activeConversationId ? (
+								<div className="hub-modal__chat-thread">
+									<div className="hub-modal__chat-thread-header">
+										<button type="button" className="hub-modal__chat-back-button" onClick={handleCloseConversation}>
+											← Back
+										</button>
+										<span className="hub-modal__chat-thread-title">
+											{conversationTitle(
+												conversations?.find((c) => c.id === activeConversationId) ?? {
+													name: null,
+													type: "dm",
+												},
+											)}
+										</span>
+										{isActiveGroup ? (
+											<div className="hub-modal__chat-thread-actions">
+												<button
+													type="button"
+													className="hub-modal__chat-members-toggle"
+													onClick={handleToggleMembers}
+												>
+													{groupMembers !== null
+														? "Hide members"
+														: "Members"}
+												</button>
+												{isOwnerOfActiveGroup ? (
+													<>
 														<button
 															type="button"
-															className="hub-modal__social-block-btn"
+															className="hub-modal__chat-members-toggle"
+															disabled={groupActionLoading}
+															onClick={() =>
+																setGroupRenameDraft(
+																	activeConversation?.name ?? "",
+																)
+															}
+														>
+															Rename
+														</button>
+														<button
+															type="button"
+															className="hub-modal__chat-members-toggle"
 															disabled={chatActionLoading}
 															onClick={() =>
 																void handleLeaveGroup(activeConversationId)
 															}
+															title="Leave the group; ownership passes to the longest-standing member"
 														>
 															Leave group
 														</button>
-													)}
-												</div>
-											) : null}
-										</div>
-
-										{isActiveGroup && groupRenameDraft !== null ? (
-											<form
-												className="hub-modal__chat-rename"
-												onSubmit={(e) => {
-													e.preventDefault();
-													void handleRenameGroup();
-												}}
-											>
-												<input
-													type="text"
-													value={groupRenameDraft}
-													maxLength={60}
-													autoFocus
-													onChange={(e) => setGroupRenameDraft(e.target.value)}
-													placeholder="Group name"
-												/>
-												<button
-													type="submit"
-													disabled={
-														groupActionLoading || !groupRenameDraft.trim()
-													}
-												>
-													Save
-												</button>
-												<button
-													type="button"
-													onClick={() => setGroupRenameDraft(null)}
-												>
-													Cancel
-												</button>
-											</form>
-										) : null}
-
-										{isActiveGroup && groupMembers !== null ? (
-											<div className="hub-modal__chat-members">
-												{groupMembersLoading ? (
-													<p>Loading members…</p>
-												) : (
-													<ul className="hub-modal__chat-members-list">
-														{groupMembers.map((member) => (
-															<li
-																key={member.userId}
-																className="hub-modal__chat-member"
-															>
-																<span
-																	className={
-																		member.isOnline
-																			? "hub-modal__presence-dot hub-modal__presence-dot--online"
-																			: "hub-modal__presence-dot"
-																	}
-																/>
-																<span className="hub-modal__chat-member-name">
-																	{member.turtleName ?? member.username}
-																	{member.isOwner ? " (owner)" : ""}
-																</span>
-																{isOwnerOfActiveGroup && !member.isOwner ? (
-																	<button
-																		type="button"
-																		className="hub-modal__social-block-btn"
-																		disabled={groupActionLoading}
-																		onClick={() =>
-																			void handleKickMember(member.userId)
-																		}
-																	>
-																		Remove
-																	</button>
-																) : null}
-															</li>
-														))}
-													</ul>
-												)}
-
-												<button
-													type="button"
-													className="hub-modal__chat-members-toggle"
-													disabled={groupActionLoading}
-													onClick={() => setIsAddMemberOpen((v) => !v)}
-												>
-													{isAddMemberOpen ? "Cancel" : "Add friend"}
-												</button>
-
-												{isAddMemberOpen ? (
-													addableFriends.length === 0 ? (
-														<p className="hub-modal__chat-members-empty">
-															All your friends are already in this group.
-														</p>
-													) : (
-														<ul className="hub-modal__chat-members-add-list">
-															{addableFriends.map((friend) => (
-																<li key={friend.userId}>
-																	<button
-																		type="button"
-																		disabled={groupActionLoading}
-																		onClick={() =>
-																			void handleAddMemberToGroup(
-																				friend.userId,
-																			)
-																		}
-																	>
-																		{friend.turtleName ?? friend.username}
-																	</button>
-																</li>
-															))}
-														</ul>
-													)
-												) : null}
-											</div>
-										) : null}
-
-										{chatThreadLoading ? (
-											<p>Loading…</p>
-										) : (
-											<ul
-												className="hub-modal__chat-message-list"
-												ref={chatListRef}
-											>
-												{chatHasMoreOlder ? (
-													<li className="hub-modal__chat-load-older">
 														<button
 															type="button"
-															disabled={chatLoadingOlder}
-															onClick={() =>
-																void handleLoadOlderMessages()
-															}
+															className="hub-modal__social-block-btn"
+															disabled={groupActionLoading}
+															onClick={() => void handleDeleteGroup()}
 														>
-															{chatLoadingOlder
-																? "Loading…"
-																: "Load older messages"}
+															Delete group
 														</button>
-													</li>
-												) : null}
-												{chatMessages.map((message) => {
-													const gif =
-														message.type === "gif"
-															? parseGifMetadata(message.metadata)
-															: null;
-													return (
-														<li
-															key={message.id}
-															className={
-																message.type === "system"
-																	? "hub-modal__chat-message hub-modal__chat-message--system"
-																	: "hub-modal__chat-message"
-															}
-														>
-															{message.type === "system" ? (
-																<span>{message.body}</span>
-															) : message.type === "gif" && gif ? (
-																<>
-																	<span className="hub-modal__chat-message-sender">
-																		{message.senderUsername}
-																	</span>
-																	<img
-																		className="hub-modal__chat-gif-image"
-																		src={gif.url}
-																		alt={message.body}
-																		width={gif.width}
-																		height={gif.height}
-																		loading="lazy"
-																	/>
-																	<span className="hub-modal__chat-message-time">
-																		{formatRelativeTime(message.createdAt)}
-																	</span>
-																</>
-															) : (
-																<>
-																	<span className="hub-modal__chat-message-sender">
-																		{message.senderUsername}
-																	</span>
-																	<span className="hub-modal__chat-message-body">
-																		{message.body}
-																	</span>
-																	<span className="hub-modal__chat-message-time">
-																		{formatRelativeTime(message.createdAt)}
-																	</span>
-																</>
-															)}
-														</li>
-													);
-												})}
-											</ul>
-										)}
+													</>
+												) : (
+													<button
+														type="button"
+														className="hub-modal__social-block-btn"
+														disabled={chatActionLoading}
+														onClick={() =>
+															void handleLeaveGroup(activeConversationId)
+														}
+													>
+														Leave group
+													</button>
+												)}
+											</div>
+										) : null}
+									</div>
 
-										{isGifPickerOpen ? (
-											<div className="hub-modal__chat-gif-picker">
-												<input
-													className="hub-modal__field-input"
-													type="text"
-													placeholder="Search gifs…"
-													maxLength={200}
-													value={gifSearchQuery}
-													onChange={(e) => handleGifSearchChange(e.target.value)}
-													autoFocus
-												/>
-												{gifSearchLoading ? (
-													<p className="hub-modal__chat-gif-status">Searching…</p>
-												) : gifResults.length > 0 ? (
-													<ul className="hub-modal__chat-gif-grid">
-														{gifResults.map((gif) => (
-															<li key={gif.slug}>
+									{isActiveGroup && groupRenameDraft !== null ? (
+										<form
+											className="hub-modal__chat-rename"
+											onSubmit={(e) => {
+												e.preventDefault();
+												void handleRenameGroup();
+											}}
+										>
+											<input
+												type="text"
+												value={groupRenameDraft}
+												maxLength={60}
+												autoFocus
+												onChange={(e) => setGroupRenameDraft(e.target.value)}
+												placeholder="Group name"
+											/>
+											<button
+												type="submit"
+												disabled={
+													groupActionLoading || !groupRenameDraft.trim()
+												}
+											>
+												Save
+											</button>
+											<button
+												type="button"
+												onClick={() => setGroupRenameDraft(null)}
+											>
+												Cancel
+											</button>
+										</form>
+									) : null}
+
+									{isActiveGroup && groupMembers !== null ? (
+										<div className="hub-modal__chat-members">
+											{groupMembersLoading ? (
+												<p>Loading members…</p>
+											) : (
+												<ul className="hub-modal__chat-members-list">
+													{groupMembers.map((member) => (
+														<li
+															key={member.userId}
+															className="hub-modal__chat-member"
+														>
+															<span
+																className={
+																	member.isOnline
+																		? "hub-modal__presence-dot hub-modal__presence-dot--online"
+																		: "hub-modal__presence-dot"
+																}
+															/>
+															<span className="hub-modal__chat-member-name">
+																{member.turtleName ?? member.username}
+																{member.isOwner ? " (owner)" : ""}
+															</span>
+															{isOwnerOfActiveGroup && !member.isOwner ? (
 																<button
 																	type="button"
-																	className="hub-modal__chat-gif-thumb"
-																	onClick={() => handleSendGif(gif)}
+																	className="hub-modal__social-block-btn"
+																	disabled={groupActionLoading}
+																	onClick={() =>
+																		void handleKickMember(member.userId)
+																	}
 																>
-																	<img
-																		src={gif.previewUrl}
-																		alt={gif.title}
-																		loading="lazy"
-																	/>
+																	Remove
+																</button>
+															) : null}
+														</li>
+													))}
+												</ul>
+											)}
+
+											<button
+												type="button"
+												className="hub-modal__chat-members-toggle"
+												disabled={groupActionLoading}
+												onClick={() => setIsAddMemberOpen((v) => !v)}
+											>
+												{isAddMemberOpen ? "Cancel" : "Add friend"}
+											</button>
+
+											{isAddMemberOpen ? (
+												addableFriends.length === 0 ? (
+													<p className="hub-modal__chat-members-empty">
+														All your friends are already in this group.
+													</p>
+												) : (
+													<ul className="hub-modal__chat-members-add-list">
+														{addableFriends.map((friend) => (
+															<li key={friend.userId}>
+																<button
+																	type="button"
+																	disabled={groupActionLoading}
+																	onClick={() =>
+																		void handleAddMemberToGroup(
+																			friend.userId,
+																		)
+																	}
+																>
+																	{friend.turtleName ?? friend.username}
 																</button>
 															</li>
 														))}
 													</ul>
-												) : gifSearchQuery.trim().length >= GIF_SEARCH_MIN_LENGTH ? (
-													<p className="hub-modal__chat-gif-status">No gifs found.</p>
-												) : (
-													<p className="hub-modal__chat-gif-status">
-														Type to search for gifs.
-													</p>
-												)}
-											</div>
-										) : null}
+												)
+											) : null}
+										</div>
+									) : null}
 
-										<div className="hub-modal__chat-composer">
+									{chatThreadLoading ? (
+										<p>Loading…</p>
+									) : (
+										<ul
+											className="hub-modal__chat-message-list"
+											ref={chatListRef}
+										>
+											{chatHasMoreOlder ? (
+												<li className="hub-modal__chat-load-older">
+													<button
+														type="button"
+														disabled={chatLoadingOlder}
+														onClick={() =>
+															void handleLoadOlderMessages()
+														}
+													>
+														{chatLoadingOlder
+															? "Loading…"
+															: "Load older messages"}
+													</button>
+												</li>
+											) : null}
+											{chatMessages.map((message) => {
+												const gif =
+													message.type === "gif"
+														? parseGifMetadata(message.metadata)
+														: null;
+												return (
+													<li
+														key={message.id}
+														className={
+															message.type === "system"
+																? "hub-modal__chat-message hub-modal__chat-message--system"
+																: "hub-modal__chat-message"
+														}
+													>
+														{message.type === "system" ? (
+															<span>{message.body}</span>
+														) : message.type === "gif" && gif ? (
+															<>
+																<span className="hub-modal__chat-message-sender">
+																	{message.senderUsername}
+																</span>
+																<img
+																	className="hub-modal__chat-gif-image"
+																	src={gif.url}
+																	alt={message.body}
+																	width={gif.width}
+																	height={gif.height}
+																	loading="lazy"
+																/>
+																<span className="hub-modal__chat-message-time">
+																	{formatRelativeTime(message.createdAt)}
+																</span>
+															</>
+														) : (
+															<>
+																<span className="hub-modal__chat-message-sender">
+																	{message.senderUsername}
+																</span>
+																<span className="hub-modal__chat-message-body">
+																	{message.body}
+																</span>
+																<span className="hub-modal__chat-message-time">
+																	{formatRelativeTime(message.createdAt)}
+																</span>
+															</>
+														)}
+													</li>
+												);
+											})}
+										</ul>
+									)}
+
+									{isGifPickerOpen ? (
+										<div className="hub-modal__chat-gif-picker">
 											<input
 												className="hub-modal__field-input"
 												type="text"
-												placeholder="Message…"
-												maxLength={2000}
-												value={chatMessageDraft}
-												onChange={(e) => setChatMessageDraft(e.target.value)}
-												onKeyDown={(e) => {
-													// Ignore Enter while an IME composition is active (Bug Audit L4).
-													if (e.key === "Enter" && !e.nativeEvent.isComposing)
-														handleSendChatMessage();
-												}}
+												placeholder="Search gifs…"
+												maxLength={200}
+												value={gifSearchQuery}
+												onChange={(e) => handleGifSearchChange(e.target.value)}
+												autoFocus
 											/>
-											<button
-												type="button"
-												className={
-													isGifPickerOpen
-														? "hub-modal__chat-gif-toggle hub-modal__chat-gif-toggle--active"
-														: "hub-modal__chat-gif-toggle"
-												}
-												onClick={handleToggleGifPicker}
-												aria-pressed={isGifPickerOpen}
-											>
-												GIF
-											</button>
-											<button
-												type="button"
-												className="hub-modal__save-button"
-												disabled={!chatMessageDraft.trim()}
-												onClick={handleSendChatMessage}
-											>
-												Send
-											</button>
-										</div>
-									</div>
-								) : (
-									<ul className="hub-modal__social-list">
-										{conversations && conversations.length > 0 ? (
-											conversations.map((conversation) => (
-												<li key={conversation.id} className="hub-modal__social-row">
-													<button
-														type="button"
-														className="hub-modal__chat-conversation-btn"
-														onClick={() => void handleOpenConversation(conversation.id)}
-													>
-														<span className="hub-modal__social-name">
-															{conversationTitle(conversation)}
-															{unreadConversationIds.has(conversation.id) ? (
-																<span
-																	className="hub-modal__chat-unread-dot"
-																	role="img"
-																	aria-label="Unread"
+											{gifSearchLoading ? (
+												<p className="hub-modal__chat-gif-status">Searching…</p>
+											) : gifSearchError ? (
+												<p className="hub-modal__chat-gif-status hub-modal__chat-gif-status--error">
+													GIF search is unavailable right now.
+												</p>
+											) : gifResults.length > 0 ? (
+												<ul className="hub-modal__chat-gif-grid">
+													{gifResults.map((gif) => (
+														<li key={gif.slug}>
+															<button
+																type="button"
+																className="hub-modal__chat-gif-thumb"
+																onClick={() => handleSendGif(gif)}
+															>
+																<img
+																	src={gif.previewUrl}
+																	alt={gif.title}
+																	loading="lazy"
 																/>
-															) : null}
-														</span>
-														<small className="hub-modal__chat-preview">
-															{conversation.lastMessagePreview ?? "No messages yet"}
-														</small>
-													</button>
-												</li>
-											))
-										) : (
-											<p>No conversations yet — message a friend to get started.</p>
-										)}
-									</ul>
-								)}
-							</section>
-
-							{pendingRequests && pendingRequests.length > 0 ? (
-								<section className="hub-modal__social-section">
-									<h3>Pending requests</h3>
-									<ul className="hub-modal__social-list">
-										{pendingRequests.map((req) => (
-											<li key={req.userId} className="hub-modal__social-row">
-												<span className="hub-modal__social-name">
-													{req.turtleName ?? req.username}
-													<small> @{req.username}</small>
-												</span>
-												<div className="hub-modal__social-actions">
-													{blockConfirmUserId === req.userId ? (
-														<>
-															<span className="hub-modal__social-confirm-label">
-																Block {req.turtleName ?? req.username}?
-															</span>
-															<button
-																type="button"
-																ref={blockConfirmButtonRef}
-																className="hub-modal__social-confirm-btn"
-																onClick={() => void handleBlockUser(req)}
-															>
-																Confirm
 															</button>
-															<button
-																type="button"
-																onClick={() => setBlockConfirmUserId(null)}
-															>
-																Cancel
-															</button>
-														</>
-													) : (
-														<>
-															<button type="button" onClick={() => void handleAcceptRequest(req)}>Accept</button>
-															<button type="button" onClick={() => void handleDeclineRequest(req)}>Decline</button>
-															<button
-																type="button"
-																className="hub-modal__social-block-btn"
-																onClick={() => setBlockConfirmUserId(req.userId)}
-															>
-																Block
-															</button>
-															<button
-																type="button"
-																className="hub-modal__social-block-btn"
-																onClick={() =>
-																	setReportTarget({
-																		userId: req.userId,
-																		username: req.username,
-																		turtleName: req.turtleName,
-																	})
-																}
-															>
-																Report
-															</button>
-														</>
-													)}
-												</div>
-											</li>
-										))}
-									</ul>
-								</section>
-							) : null}
-
-							{outgoingRequests && outgoingRequests.length > 0 ? (
-								<section className="hub-modal__social-section">
-									<h3>Outgoing requests</h3>
-									<ul className="hub-modal__social-list">
-										{outgoingRequests.map((req) => (
-											<li key={req.userId} className="hub-modal__social-row">
-												<span className="hub-modal__social-name">
-													{req.turtleName ?? req.username}
-													<small> @{req.username}</small>
-												</span>
-												<div className="hub-modal__social-actions">
-													<button
-														type="button"
-														onClick={() => void handleCancelOutgoingRequest(req)}
-													>
-														Cancel
-													</button>
-												</div>
-											</li>
-										))}
-									</ul>
-								</section>
-							) : null}
-
-							{/*
-							 * No list virtualisation here (e.g. react-window): this is a niche
-							 * 4-player mini-game hub, not a large social network — friend counts
-							 * are expected to stay in the tens, not hundreds. Suggestions are
-							 * already capped server-side (SUGGESTIONS_LIMIT = 20), and pending/
-							 * outgoing requests are inherently self-limiting. Revisit if this
-							 * list is ever observed to exceed ~50 rows in practice; a new dep
-							 * would also need `npm install` on the user's machine first.
-							 */}
-							<section className="hub-modal__social-section">
-								<h3>
-									Friends
-									{friendStats.total > 0 ? (
-										<span className="hub-modal__social-count">
-											{friendStats.online}/{friendStats.total} online
-										</span>
+														</li>
+													))}
+												</ul>
+											) : gifSearchQuery.trim().length >= GIF_SEARCH_MIN_LENGTH ? (
+												<p className="hub-modal__chat-gif-status">No gifs found.</p>
+											) : (
+												<p className="hub-modal__chat-gif-status">
+													Type to search for gifs.
+												</p>
+											)}
+											{/* Required by Klipy's attribution guidelines
+											    (https://docs.klipy.com/attribution). */}
+											<p className="hub-modal__chat-gif-attribution">Powered by KLIPY</p>
+										</div>
 									) : null}
-								</h3>
-								{friends && friends.length > 0 ? (
-									<input
-										className="hub-modal__field-input hub-modal__social-search"
-										type="text"
-										placeholder="Search friends…"
-										value={friendSearchQuery}
-										onChange={(e) => setFriendSearchQuery(e.target.value)}
-										aria-label="Search friends"
-									/>
-								) : null}
-								{friendGroups && filteredFriends && filteredFriends.length > 0 ? (
-									<>
-										{friendGroups.inGame.length > 0 ? (
-											<div className="hub-modal__social-group">
-												<h4 className="hub-modal__social-group-label">In game</h4>
-												<ul className="hub-modal__social-list">
-													{friendGroups.inGame.map(friendRow)}
-												</ul>
-											</div>
-										) : null}
-										{friendGroups.online.length > 0 ? (
-											<div className="hub-modal__social-group">
-												<h4 className="hub-modal__social-group-label">Online</h4>
-												<ul className="hub-modal__social-list">
-													{friendGroups.online.map(friendRow)}
-												</ul>
-											</div>
-										) : null}
-										{friendGroups.offline.length > 0 ? (
-											<div className="hub-modal__social-group">
-												<h4 className="hub-modal__social-group-label">Offline</h4>
-												<ul className="hub-modal__social-list">
-													{friendGroups.offline.map(friendRow)}
-												</ul>
-											</div>
-										) : null}
-									</>
-								) : friends && friends.length > 0 ? (
-									<p className="hub-panel__muted">No friends match your search.</p>
-								) : (
-									<p className="hub-panel__muted">No friends yet. Add someone above.</p>
-								)}
 
-								{/* Inline game picker — shown after clicking Invite on a friend */}
-								{inviteTarget && (
-									<div className="hub-lobby-picker">
-										<p>Invite <strong>{inviteTarget.name}</strong> to play:</p>
-										<select
-											className="hub-leaderboard-select"
-											value={inviteGameId}
-											onChange={(e) => setInviteGameId(e.target.value)}
-											aria-label="Select game to invite to"
-										>
-											{RANKED_GAMES.map((g) => (
-												<option key={g.id} value={g.id}>{g.label}</option>
-											))}
-										</select>
-										<div className="hub-lobby-picker__actions">
-											<button
-												type="button"
-												className="hub-lobby-picker__confirm"
-												onClick={() => handleCreateLobby(inviteTarget.userId, inviteGameId)}
-											>
-												Send invite
-											</button>
-											<button
-												type="button"
-												className="hub-lobby-picker__cancel"
-												onClick={() => setInviteTarget(null)}
-											>
-												Cancel
-											</button>
-										</div>
-									</div>
-								)}
-
-								{/* Report panel — shown after clicking Report on a friend or pending request */}
-								{reportTarget && (
-									<div className="hub-lobby-picker">
-										<p>
-											Report <strong>{reportTarget.turtleName ?? reportTarget.username}</strong>?
-											This will also block them.
-										</p>
-										<select
-											ref={reportCategorySelectRef}
-											className="hub-leaderboard-select"
-											value={reportCategory}
-											onChange={(e) =>
-												setReportCategory(e.target.value as ReportCategory)
-											}
-											aria-label="Report reason"
-										>
-											{REPORT_CATEGORIES.map((c) => (
-												<option key={c.id} value={c.id}>
-													{c.label}
-												</option>
-											))}
-										</select>
-										<textarea
+									<div className="hub-modal__chat-composer">
+										<input
 											className="hub-modal__field-input"
-											placeholder="Additional details (optional)"
-											maxLength={500}
-											value={reportMessage}
-											onChange={(e) => setReportMessage(e.target.value)}
+											type="text"
+											placeholder="Message…"
+											maxLength={2000}
+											value={chatMessageDraft}
+											onChange={(e) => setChatMessageDraft(e.target.value)}
+											onKeyDown={(e) => {
+												// Ignore Enter while an IME composition is active (Bug Audit L4).
+												if (e.key === "Enter" && !e.nativeEvent.isComposing)
+													handleSendChatMessage();
+											}}
 										/>
-										<div className="hub-lobby-picker__actions">
-											<button
-												type="button"
-												className="hub-lobby-picker__confirm"
-												disabled={reportLoading}
-												onClick={() => void handleSubmitReport()}
-											>
-												{reportLoading ? "Submitting…" : "Submit report"}
-											</button>
-											<button
-												type="button"
-												className="hub-lobby-picker__cancel"
-												disabled={reportLoading}
-												onClick={() => {
-													setReportTarget(null);
-													setReportMessage("");
-												}}
-											>
-												Cancel
-											</button>
-										</div>
+										<button
+											type="button"
+											className={
+												isGifPickerOpen
+													? "hub-modal__chat-gif-toggle hub-modal__chat-gif-toggle--active"
+													: "hub-modal__chat-gif-toggle"
+											}
+											onClick={handleToggleGifPicker}
+											aria-pressed={isGifPickerOpen}
+										>
+											GIF
+										</button>
+										<button
+											type="button"
+											className="hub-modal__save-button"
+											disabled={!chatMessageDraft.trim()}
+											onClick={handleSendChatMessage}
+										>
+											Send
+										</button>
 									</div>
-								)}
-							</section>
-
-							{suggestions && suggestions.length > 0 ? (
-								<section className="hub-modal__social-section">
-									<h3>People you may know</h3>
-									<ul className="hub-modal__social-list">
-										{suggestions.map((suggestion) => (
-											<li
-												key={suggestion.userId}
-												className="hub-modal__social-row"
-											>
-												<span className="hub-modal__social-name">
-													{suggestion.turtleName ?? suggestion.username}
-													<small> @{suggestion.username}</small>
-												</span>
-												<div className="hub-modal__social-actions">
-													<button
-														type="button"
-														onClick={() => void handleAddSuggestion(suggestion)}
-													>
-														Add
-													</button>
-												</div>
-											</li>
-										))}
-									</ul>
-								</section>
-							) : null}
-
-							{blockedUsers && blockedUsers.length > 0 ? (
-								<section className="hub-modal__social-section">
-									<h3>Blocked users</h3>
-									<ul className="hub-modal__social-list">
-										{blockedUsers.map((blocked) => (
-											<li
-												key={blocked.userId}
-												className="hub-modal__social-row"
-											>
-												<span className="hub-modal__social-name">
-													{blocked.turtleName ?? blocked.username}
-													<small> @{blocked.username}</small>
-												</span>
-												<div className="hub-modal__social-actions">
-													<button
-														type="button"
-														onClick={() => void handleUnblockUser(blocked)}
-													>
-														Unblock
-													</button>
-												</div>
-											</li>
-										))}
-									</ul>
-								</section>
-							) : null}
-						</>
-					)}
+								</div>
+							) : (
+								<div className="hub-modal__social-empty">
+									<img
+										className="hub-modal__social-empty-logo"
+										src="/assets/logoShellSmash.png"
+										alt="Shell Smash"
+									/>
+									<p className="hub-panel__muted">
+										Select a conversation to start chatting.
+									</p>
+								</div>
+							)}
+						</div>
+					</div>
 				</HubModal>
 			) : null}
 
@@ -4739,7 +5145,7 @@ function HubModal({
 	onClose: () => void;
 	children: ReactNode;
 	headerAddon?: ReactNode;
-	variant?: "default" | "wide";
+	variant?: "default" | "wide" | "profile";
 }): JSX.Element {
 	const titleId = useId();
 	const panelRef = useRef<HTMLElement>(null);
@@ -4755,6 +5161,10 @@ function HubModal({
 		(firstFocusable ?? panel)?.focus();
 
 		const onKeyDown = (e: KeyboardEvent) => {
+			if (
+				document.querySelector(".account-conflict[aria-modal='true']") &&
+				!panel?.contains(document.activeElement)
+			) return;
 			if (e.key === "Escape") {
 				onClose();
 				return;
@@ -4794,7 +5204,7 @@ function HubModal({
 				onClick={onClose}
 			/>
 			<section
-				className={`hub-modal__panel${variant === "wide" ? " hub-modal__panel--wide" : ""}`}
+				className={`hub-modal__panel${variant !== "default" ? " hub-modal__panel--wide" : ""}${variant === "profile" ? " hub-modal__panel--profile" : ""}`}
 				ref={panelRef}
 				tabIndex={-1}
 			>
@@ -4840,7 +5250,9 @@ function ReplayListSection({
 							<li key={replay.matchId} className="hub-modal__replay-item">
 								<div className="hub-modal__replay-copy">
 									<strong>{getReplayGameLabel(replay.gameId)}</strong>
-									<small>{replay.playerNames.join(" vs ")}</small>
+									<small>
+										{replay.playerNames.map(displayUsername).join(" vs ")}
+									</small>
 									<small>{formatReplayDate(replay.finishedAt)}</small>
 								</div>
 								<div className="hub-modal__replay-actions">
@@ -4869,203 +5281,6 @@ function ReplayListSection({
 				<p className="hub-panel__muted">{emptyMessage}</p>
 			)}
 		</section>
-	);
-}
-
-function ReplayViewer({
-	replay,
-	selectedReplayFrame,
-	replayFrameProgress,
-	isReplayPlaying,
-	onSelectedReplayFrameChange,
-	onReplayFrameProgressChange,
-	onIsReplayPlayingChange,
-	onExpand,
-	expanded = false,
-}: {
-	replay: ReplayDetail;
-	selectedReplayFrame: number;
-	replayFrameProgress: number;
-	isReplayPlaying: boolean;
-	onSelectedReplayFrameChange: (value: number) => void;
-	onReplayFrameProgressChange: (value: number) => void;
-	onIsReplayPlayingChange: (value: boolean | ((current: boolean) => boolean)) => void;
-	onExpand?: () => void;
-	expanded?: boolean;
-}): JSX.Element {
-	const replayHostRef = useRef<HTMLDivElement | null>(null);
-	const replayGameRef = useRef<Phaser.Game | null>(null);
-	const replayControllerRef = useRef<ReplayController | null>(null);
-	const replayFrame = replay.frames[selectedReplayFrame] ?? replay.frames[0] ?? null;
-
-	useEffect(() => {
-		const host = replayHostRef.current;
-		if (!host) return;
-
-		const controller = new ReplayController(replay);
-		replayControllerRef.current = controller;
-		const unsubscribe = controller.subscribe((state) => {
-			onSelectedReplayFrameChange(state.frameIndex);
-			onReplayFrameProgressChange(state.progress);
-			onIsReplayPlayingChange(state.playing);
-		});
-
-		const game = new Phaser.Game({
-			type: Phaser.AUTO,
-			width: host.clientWidth || 720,
-			height: host.clientHeight || 720,
-			backgroundColor: "rgba(0,0,0,0)",
-			transparent: true,
-			parent: host,
-			scene: [],
-			scale: {
-				mode: Phaser.Scale.NONE,
-				autoCenter: Phaser.Scale.NO_CENTER,
-			},
-		});
-		replayGameRef.current = game;
-		game.scene.add("ReplayScene", new ReplayScene(), true, {
-			replay,
-			controller,
-			autoAdvance: false,
-		});
-
-		const resizeObserver = new ResizeObserver((entries) => {
-			const bounds = entries[0]?.contentRect;
-			if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
-			game.scale.resize(bounds.width, bounds.height);
-		});
-		resizeObserver.observe(host);
-
-		return () => {
-			unsubscribe();
-			resizeObserver.disconnect();
-			replayControllerRef.current = null;
-			replayGameRef.current = null;
-			game.destroy(true);
-			host.replaceChildren();
-		};
-	}, [replay, onIsReplayPlayingChange, onReplayFrameProgressChange, onSelectedReplayFrameChange]);
-
-	useEffect(() => {
-		replayControllerRef.current?.setPlayback(
-			selectedReplayFrame,
-			replayFrameProgress,
-			isReplayPlaying,
-		);
-	}, [isReplayPlaying, replayFrameProgress, selectedReplayFrame, replay]);
-
-	useEffect(() => {
-		if (!isReplayPlaying || !replayControllerRef.current) return;
-		let frameId = 0;
-		let lastTime = 0;
-
-		const tick = (now: number) => {
-			if (lastTime !== 0)
-				replayControllerRef.current?.update(Math.max(0, now - lastTime));
-			lastTime = now;
-			frameId = window.requestAnimationFrame(tick);
-		};
-
-		frameId = window.requestAnimationFrame(tick);
-		return () => window.cancelAnimationFrame(frameId);
-	}, [isReplayPlaying, replay.matchId]);
-
-	return (
-		<>
-			<p className="hub-modal__replay-meta">
-				<strong>{getReplayGameLabel(replay.gameId)}</strong>
-				<span>
-					Frame {selectedReplayFrame + 1} / {replay.frames.length}
-				</span>
-			</p>
-			<div className="hub-modal__replay-toolbar">
-				<button
-					type="button"
-					onClick={() => {
-						onIsReplayPlayingChange((value) => !value);
-					}}
-				>
-					{isReplayPlaying ? "Pause" : "Play"}
-				</button>
-				<button
-					type="button"
-					onClick={() => {
-						onIsReplayPlayingChange(false);
-						onReplayFrameProgressChange(0);
-						onSelectedReplayFrameChange(0);
-					}}
-				>
-					Reset
-				</button>
-				<button
-					type="button"
-					disabled={selectedReplayFrame <= 0}
-					onClick={() => {
-						onIsReplayPlayingChange(false);
-						onReplayFrameProgressChange(0);
-						onSelectedReplayFrameChange(Math.max(0, selectedReplayFrame - 1));
-					}}
-				>
-					Prev
-				</button>
-				<button
-					type="button"
-					disabled={selectedReplayFrame >= replay.frames.length - 1}
-					onClick={() => {
-						onIsReplayPlayingChange(false);
-						onReplayFrameProgressChange(0);
-						onSelectedReplayFrameChange(
-							Math.min(replay.frames.length - 1, selectedReplayFrame + 1),
-						);
-					}}
-				>
-					Next
-				</button>
-				{onExpand ? (
-					<button type="button" onClick={onExpand}>
-						{expanded ? "Expanded" : "Expand"}
-					</button>
-				) : null}
-			</div>
-			<div
-				ref={replayHostRef}
-				className={`hub-modal__replay-phaser${expanded ? " hub-modal__replay-phaser--expanded" : ""}`}
-				role="img"
-				aria-label={`${getReplayGameLabel(replay.gameId)} replay`}
-			/>
-			<input
-				className="hub-modal__replay-slider"
-				type="range"
-				min="0"
-				max={Math.max(replay.frames.length - 1, 0)}
-				step="1"
-				value={selectedReplayFrame}
-				onChange={(event) => {
-					onReplayFrameProgressChange(0);
-					onSelectedReplayFrameChange(Number(event.target.value));
-				}}
-			/>
-			{replayFrame ? (
-				<>
-					<div className="hub-modal__replay-frame-meta">
-						<small>Recorded: {formatReplayDate(replayFrame.recordedAt)}</small>
-						<small>Seq: {replayFrame.seq}</small>
-					</div>
-					<div className="hub-modal__replay-scoreboard">
-						{Array.isArray((replayFrame.snapshot as { score?: number[] }).score)
-							? (replayFrame.snapshot as { score: number[] }).score.map(
-									(score, index) => (
-										<span key={`replay-score-${index}`}>
-											P{index + 1}: {score}
-										</span>
-									),
-								)
-							: null}
-					</div>
-				</>
-			) : null}
-		</>
 	);
 }
 

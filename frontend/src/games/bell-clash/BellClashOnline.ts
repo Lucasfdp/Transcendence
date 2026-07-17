@@ -13,17 +13,15 @@ import {
 	BALL_SRC_R,
 	isBallMoving,
 } from "../../shared/mechanics/ball";
-import { type BallExtState } from "../../shared/mechanics/ball-powers";
 import { PowerType } from "../../shared/mechanics/power-system";
 import type { ArenaPowerRuntime } from "../../shared/mechanics/arena-power-runtime";
-import { stepArenaBall } from "../../shared/mechanics/arena-power-runtime";
 import type { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
 import type { ArenaBallTrailRuntime, SlingshotLaunchRuntime } from "../common";
 import { WorldMapRuntime } from "../common";
 import {
 	getGameSocket,
 	type BellClashSnapshot,
-	type BellClashThrowEvent,
+	type BellClashPhysicsState,
 	type GameSnapshot,
 	type OnlineMatchContext,
 } from "../../services/network/gameSocket";
@@ -31,15 +29,26 @@ import { THEME } from "../../shared/theme";
 import {
 	clearBellClashPowerBalls,
 	drawBellClashZones,
+	popBellClashScore,
 	type ScoreZone,
+	ZONE_DEFS,
 } from "./BellClashView";
+import {
+	appendAuthoritativeSample,
+	AuthoritativeProjectionTimeline,
+	type AuthoritativePhysicsSample,
+} from "../common/runtime/authoritative-projection";
 
 export interface OnlineBallState extends BallState {
+	entityId?: number;
+	ownerSide?: number;
 	scale?: number;
 	alpha?: number;
 	power?: string;
 	trail?: Array<{ x: number; y: number }>;
 	stateFlags?: string[];
+	syncTarget?: AuthoritativePhysicsSample;
+	syncSamples?: Array<NonNullable<OnlineBallState["syncTarget"]>>;
 }
 
 interface GameInputAck {
@@ -76,9 +85,6 @@ export interface BellClashOnlineScene {
 	set zones(zones: readonly ScoreZone[]);
 
 	addScoreEvent(label: string, value: string): void;
-	checkBellHitForBall(ball: BallState, canScore: boolean): void;
-	clearStoppedPowerFlags(ext: BallExtState, local: boolean): void;
-	collectPowerPickup(ball: BallState): void;
 	currentPlayerIndex(): number;
 	drawBallTrails(): void;
 	drawBalls(): void;
@@ -86,13 +92,13 @@ export interface BellClashOnlineScene {
 	formatShotText(): string;
 	layoutBell(): void;
 	recreateSlingshot(): void;
-	resolveOnlineBallCollisions(): void;
 	resetBallPosition(ball: BallState, index: number, total: number): void;
 	showOnlineEndScreen(snapshot: BellClashSnapshot): void;
 	showPowerPanel(): void;
-	updatePowerBalls(delta: number): void;
+	showPowerPickupNotice(type: PowerType, x: number, y: number): void;
 	updateScoreTexts(): void;
 	updateSidePanels(): void;
+	syncOnlinePowerPickups(state: BellClashPhysicsState): void;
 }
 
 export class BellClashOnlineController {
@@ -108,8 +114,16 @@ export class BellClashOnlineController {
 	private scores: number[] = [];
 	private localShotNumber = 0;
 	private roundSubmitted = false;
-	private ballWasMoving = false;
 	private appliedRound = 0;
+	private lastPhysicsSeq = -1;
+	private lastScoreEventId = 0;
+	private lastPickupEventId = 0;
+	private hasPhysicsProjection = false;
+	private readonly projectedEntities = new Map<number, OnlineBallState>();
+	private localPhysicsMoving = false;
+	private readonly projectionTimeline = new AuthoritativeProjectionTimeline();
+	private latestPhysicsState: BellClashPhysicsState | null = null;
+	private rejoinPhysicsTimer: ReturnType<typeof setInterval> | null = null;
 
 	constructor(scene: Phaser.Scene & BellClashOnlineScene) {
 		this.scene = scene;
@@ -166,6 +180,7 @@ export class BellClashOnlineController {
 	}
 
 	bindFromRegistry(): boolean {
+		this.stopRejoinPhysicsPolling();
 		const registryMatch = this.scene.registry.get("onlineMatch") as
 			| OnlineMatchContext
 			| undefined;
@@ -180,8 +195,15 @@ export class BellClashOnlineController {
 		this.scores = [];
 		this.localShotNumber = 0;
 		this.roundSubmitted = false;
-		this.ballWasMoving = false;
 		this.appliedRound = 0;
+		this.lastPhysicsSeq = -1;
+		this.lastScoreEventId = 0;
+		this.lastPickupEventId = 0;
+		this.hasPhysicsProjection = false;
+		this.projectedEntities.clear();
+		this.localPhysicsMoving = false;
+		this.projectionTimeline.reset();
+		this.latestPhysicsState = null;
 		return this.isActive;
 	}
 
@@ -190,23 +212,49 @@ export class BellClashOnlineController {
 		const socket = getGameSocket();
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
-		socket.off("game:bell-throw", this.handleThrow);
-		socket.off("game:bell-power-pickup", this.handlePowerPickup);
+		socket.off("game:physics-state", this.handlePhysicsState);
 		socket.on("game:state", this.handleState);
 		socket.on("game:end", this.handleState);
-		socket.on("game:bell-throw", this.handleThrow);
-		socket.on("game:bell-power-pickup", this.handlePowerPickup);
+		socket.on("game:physics-state", this.handlePhysicsState);
 		this.updateStatus("Connected to Bell Clash match.");
+		if (this.match.physicsState)
+			this.applyPhysicsState(this.match.physicsState as BellClashPhysicsState);
+		const requestPhysics = () => socket.emit(
+			"game:physics-request",
+			{ matchId: this.match!.matchId },
+			(state: BellClashPhysicsState | null) => {
+				if (state) this.applyPhysicsState(state);
+			},
+		);
+		requestPhysics();
+		if (this.match.rejoining) this.startRejoinPhysicsPolling(requestPhysics);
 	}
 
 	shutdown(): void {
 		const socket = getGameSocket();
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
-		socket.off("game:bell-throw", this.handleThrow);
-		socket.off("game:bell-power-pickup", this.handlePowerPickup);
+		socket.off("game:physics-state", this.handlePhysicsState);
 		this.statusText?.destroy();
 		this.statusText = null;
+		this.stopRejoinPhysicsPolling();
+	}
+
+	private startRejoinPhysicsPolling(requestPhysics: () => void): void {
+		const baselineSeq = this.lastPhysicsSeq;
+		let attempts = 0;
+		this.rejoinPhysicsTimer = setInterval(() => {
+			if (++attempts > 20 || this.lastPhysicsSeq > baselineSeq) {
+				this.stopRejoinPhysicsPolling();
+				return;
+			}
+			requestPhysics();
+		}, 150);
+	}
+
+	private stopRejoinPhysicsPolling(): void {
+		if (this.rejoinPhysicsTimer) clearInterval(this.rejoinPhysicsTimer);
+		this.rejoinPhysicsTimer = null;
 	}
 
 	createStatusText(): void {
@@ -253,6 +301,7 @@ export class BellClashOnlineController {
 		this.scene.activePower = PowerType.NONE;
 		this.scene.powerSidePanel?.hide();
 		this.scene.launchInput.recreate();
+		this.localPhysicsMoving = true;
 		this.updateStatus("Launching...");
 		getGameSocket().emit("game:input", {
 			matchId: this.match.matchId,
@@ -270,20 +319,7 @@ export class BellClashOnlineController {
 				power,
 			},
 		}, (ack: GameInputAck) => {
-			if (!ack?.accepted) this.restoreRejectedRelease();
-		});
-	}
-
-	reportBellHit(points: number, zoneKind: string): void {
-		if (!this.match) return;
-		getGameSocket().emit("game:input", {
-			matchId: this.match.matchId,
-			action: "bell:hit",
-			payload: {
-				roundNumber: this.roundNumber,
-				points,
-				zoneKind,
-			},
+			if (!ack?.accepted) this.restoreRejectedRelease(power);
 		});
 	}
 
@@ -295,25 +331,9 @@ export class BellClashOnlineController {
 		);
 		this.scene.bellPulseMs = Math.max(0, this.scene.bellPulseMs - delta);
 
-		for (const [side, ball] of this.mutableBallMap.entries()) {
-			const moving = stepArenaBall(ball, delta, this.scene.arena);
-			const ext = ball as BallExtState;
-			if (moving) {
-				if (side === this.side) this.scene.collectPowerPickup(ball);
-				this.scene.checkBellHitForBall(ball, side === this.side);
-			}
-			if (!moving)
-				this.scene.clearStoppedPowerFlags(ext, side === this.side);
+		for (const ball of this.projectedEntities.values()) {
+			this.updateProjectedBall(ball, delta);
 		}
-		this.scene.updatePowerBalls(delta);
-		this.scene.resolveOnlineBallCollisions();
-
-		const localMoving =
-			isBallMoving(this.scene.ball) ||
-			this.scene.powerBalls.some((entry) => isBallMoving(entry.ball));
-
-		if (!localMoving && this.ballWasMoving) this.finishShot();
-		this.ballWasMoving = localMoving;
 
 		this.scene.layoutBell();
 		this.scene.drawBallTrails();
@@ -324,7 +344,7 @@ export class BellClashOnlineController {
 		if (
 			!this.match ||
 			snapshot.matchId !== this.match.matchId ||
-			snapshot.seq < this.lastSeq
+			snapshot.seq <= this.lastSeq
 		)
 			return;
 		this.lastSeq = snapshot.seq;
@@ -377,34 +397,8 @@ export class BellClashOnlineController {
 		if (isBellClashSnapshot(snapshot)) this.applySnapshot(snapshot);
 	};
 
-	private readonly handleThrow = (event: BellClashThrowEvent): void => {
-		this.playThrow(event);
-	};
-
-	private readonly handlePowerPickup = (event: {
-		matchId: string;
-		roundNumber: number;
-		shotNumber: number;
-		side: number;
-		power: string;
-	}): void => {
-		if (
-			!this.match ||
-			event.matchId !== this.match.matchId ||
-			event.side === this.side
-		)
-			return;
-		const ball = this.mutableBallMap.get(event.side);
-		if (ball) {
-			const power = event.power as PowerType;
-			if (power !== PowerType.NONE)
-				this.scene.powerBalls.applyPower(
-					power,
-					ball,
-					this.scene.arena,
-					event.side,
-				);
-		}
+	private readonly handlePhysicsState = (state: BellClashPhysicsState): void => {
+		this.applyPhysicsState(state);
 	};
 
 	private startRound(snapshot: BellClashSnapshot): void {
@@ -415,7 +409,6 @@ export class BellClashOnlineController {
 		);
 		this.appliedRound = snapshot.roundNumber;
 		this.roundSubmitted = false;
-		this.ballWasMoving = false;
 		this.scene.launchedThisShot = false;
 		this.scene.hitCooldownMs = 0;
 		this.scene.bellPulseMs = 0;
@@ -429,51 +422,6 @@ export class BellClashOnlineController {
 		this.scene.showPowerPanel();
 	}
 
-	private playThrow(event: BellClashThrowEvent): void {
-		if (
-			!this.match ||
-			event.matchId !== this.match.matchId ||
-			event.roundNumber !== this.roundNumber
-		)
-			return;
-		this.scene.powerBallTexCount = clearBellClashPowerBalls(
-			this.scene,
-			this.scene.powerBalls,
-			this.scene.powerBallTexCount,
-		);
-		const ball = this.mutableBallMap.get(event.side);
-		if (!ball) return;
-		ball.r = BALL_SRC_R * this.scene.arena.scale;
-		ball.x = this.scene.arena.cx + event.x * this.scene.arena.rx;
-		ball.y = this.scene.arena.cy + event.y * this.scene.arena.ry;
-		ball.vx = event.vx * this.scene.arena.scale;
-		ball.vy = event.vy * this.scene.arena.scale;
-		const power = (Object.values(PowerType) as string[]).includes(
-			event.power,
-		)
-			? (event.power as PowerType)
-			: PowerType.NONE;
-		this.scene.powerBalls.applyPower(
-			power,
-			ball,
-			this.scene.arena,
-			event.side,
-		);
-		if (event.side === this.side) {
-			this.localShotNumber = event.shotNumber;
-			this.ballWasMoving = true;
-			this.scene.launchedThisShot = true;
-			this.updateStatus(
-				`Shell ${event.shotNumber}/${this.shotsPerRound}`,
-			);
-		} else {
-			this.updateStatus(
-				`P${event.side + 1} shell ${event.shotNumber}/${this.shotsPerRound}`,
-			);
-		}
-		this.scene.drawBalls();
-	}
-
 	private finishShot(): void {
 		if (!this.match || this.spectator || this.roundSubmitted) return;
 		this.scene.launchedThisShot = false;
@@ -482,11 +430,6 @@ export class BellClashOnlineController {
 			this.roundSubmitted = true;
 			this.updateStatus("Waiting for opponents...");
 			this.scene.powerSidePanel?.hide();
-			getGameSocket().emit("game:input", {
-				matchId: this.match.matchId,
-				action: "round:score",
-				payload: { roundNumber: this.roundNumber },
-			});
 			return;
 		}
 		this.updateStatus(
@@ -550,12 +493,161 @@ export class BellClashOnlineController {
 		this.ballWorld.replace(next);
 	}
 
-	private restoreRejectedRelease(): void {
+	private restoreRejectedRelease(power: PowerType): void {
 		if (!this.match || this.roundSubmitted) return;
 		this.scene.launchedThisShot = false;
-		this.scene.activePower = PowerType.NONE;
+		this.scene.activePower = power;
+		if (power !== PowerType.NONE) this.scene.powerUsed[this.side]?.delete(power);
+		this.scene.showPowerPanel();
+		this.localPhysicsMoving = false;
 		this.syncSlingshot();
 		this.updateStatus("Launch rejected. Aim and try again.");
+	}
+
+	private applyPhysicsState(state: BellClashPhysicsState): void {
+		if (
+			!this.match ||
+			state.matchId !== this.match.matchId ||
+			!this.projectionTimeline.accept(state.physicsSeq, state.serverTime)
+		)
+			return;
+		this.lastPhysicsSeq = state.physicsSeq;
+		this.latestPhysicsState = state;
+		const isInitialPhysicsProjection = !this.hasPhysicsProjection;
+		this.hasPhysicsProjection = true;
+		const activeIds = new Set(state.entities.map((entity) => entity.id));
+		for (const id of this.projectedEntities.keys()) {
+			if (!activeIds.has(id)) this.projectedEntities.delete(id);
+		}
+
+		const primaryBySide = new Map<number, OnlineBallState>();
+		const derived: Array<{ ball: OnlineBallState; player: number }> = [];
+		for (const entity of state.entities) {
+			let ball =
+				entity.primary && entity.ownerSide === this.side
+					? (this.scene.ball as OnlineBallState)
+					: this.projectedEntities.get(entity.id);
+			const target = {
+				x: entity.x,
+				y: entity.y,
+				vx: entity.vx,
+				vy: entity.vy,
+				radius: entity.radius,
+				stopped: entity.stopped,
+				serverTime: state.serverTime,
+			};
+			if (!ball) {
+				ball = {
+					x: this.scene.arena.cx + target.x * this.scene.arena.scale,
+					y: this.scene.arena.cy + target.y * this.scene.arena.scale,
+					vx: target.vx * this.scene.arena.scale,
+					vy: target.vy * this.scene.arena.scale,
+					r: entity.radius * this.scene.arena.scale,
+				};
+			}
+			if (ball.entityId !== undefined && ball.entityId !== entity.id)
+				ball.syncSamples = [];
+			this.projectedEntities.set(entity.id, ball);
+			ball.entityId = entity.id;
+			ball.ownerSide = entity.ownerSide;
+			ball.r = entity.radius * this.scene.arena.scale;
+			ball.power = entity.power;
+			ball.alpha = entity.alpha;
+			ball.scale = entity.radius / BALL_SRC_R;
+			ball.syncTarget = target;
+			ball.syncSamples = appendAuthoritativeSample(
+				ball.syncSamples ?? [],
+				target,
+			);
+			if (
+				entity.primary &&
+				entity.ownerSide === this.side &&
+				entity.stopped
+			) {
+				// The input gate must see the authoritative settled velocity now,
+				// rather than after the interpolation buffer reaches this sample.
+				ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
+				ball.y = this.scene.arena.cy + target.y * this.scene.arena.scale;
+				ball.vx = 0;
+				ball.vy = 0;
+			}
+			if (entity.primary) primaryBySide.set(entity.ownerSide, ball);
+			else derived.push({ ball, player: entity.ownerSide });
+		}
+
+		for (const [side, ball] of primaryBySide) {
+			this.mutableBallMap.set(side, ball);
+		}
+		this.scene.powerBalls.replace(derived);
+		this.scene.syncOnlinePowerPickups(state);
+
+		for (const event of state.scoreEvents) {
+			if (event.id <= this.lastScoreEventId) continue;
+			this.lastScoreEventId = event.id;
+			if (isInitialPhysicsProjection) continue;
+			this.scene.addScoreEvent(
+				`P${event.side + 1} ${event.zoneKind.toUpperCase()}`,
+				`+${event.points}`,
+			);
+			const zone = event.zoneKind === "neutral"
+				? null
+				: ZONE_DEFS[event.zoneKind];
+			popBellClashScore(
+				this.scene,
+				this.scene.arena.cx,
+				this.scene.arena.cy,
+				`+${event.points}  ${zone?.label ?? "NEUTRAL"}`,
+				zone ? `#${zone.color.toString(16).padStart(6, "0")}` : THEME.text,
+			);
+			this.scene.bellPulseMs = 180;
+		}
+		for (const event of state.pickupEvents ?? []) {
+			if (event.id <= this.lastPickupEventId) continue;
+			this.lastPickupEventId = event.id;
+			if (isInitialPhysicsProjection) continue;
+			const type = (Object.values(PowerType) as string[]).includes(event.type)
+				? (event.type as PowerType)
+				: PowerType.NONE;
+			if (type === PowerType.NONE) continue;
+			this.scene.showPowerPickupNotice(
+				type,
+				this.scene.arena.cx + event.x * this.scene.arena.scale,
+				this.scene.arena.cy + event.y * this.scene.arena.scale,
+			);
+		}
+
+		const localMoving = state.entities.some(
+			(entity) => entity.ownerSide === this.side && !entity.stopped,
+		);
+		if (!localMoving && this.localPhysicsMoving) this.finishShot();
+		this.localPhysicsMoving = localMoving;
+		this.scene.drawBalls();
+	}
+
+	reprojectPhysicsState(): void {
+		for (const ball of this.projectedEntities.values()) {
+			const target = ball.syncTarget;
+			if (!target) continue;
+			ball.x = this.scene.arena.cx + target.x * this.scene.arena.scale;
+			ball.y = this.scene.arena.cy + target.y * this.scene.arena.scale;
+			ball.r = target.radius * this.scene.arena.scale;
+			ball.vx = target.stopped ? 0 : target.vx * this.scene.arena.scale;
+			ball.vy = target.stopped ? 0 : target.vy * this.scene.arena.scale;
+		}
+		if (this.latestPhysicsState)
+			this.scene.syncOnlinePowerPickups(this.latestPhysicsState);
+	}
+
+	private updateProjectedBall(ball: OnlineBallState, _delta: number): void {
+		const target = this.projectionTimeline.interpolate(ball.syncSamples ?? []);
+		if (!target) return;
+		const x = this.scene.arena.cx + target.x * this.scene.arena.scale;
+		const y = this.scene.arena.cy + target.y * this.scene.arena.scale;
+		ball.x = x;
+		ball.y = y;
+		ball.r = target.radius * this.scene.arena.scale;
+		ball.vx = target.stopped ? 0 : target.vx * this.scene.arena.scale;
+		ball.vy = target.stopped ? 0 : target.vy * this.scene.arena.scale;
 	}
 
 	private formatStatus(snapshot: BellClashSnapshot): string {

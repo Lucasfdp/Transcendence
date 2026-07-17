@@ -23,6 +23,10 @@ export class LocalReplayCaptureRuntime<
 	) {}
 
 	start(): void {
+		if (this.options.shouldSkip?.()) {
+			this.options.recorder.reset();
+			return;
+		}
 		this.options.recorder.start(this.options.gameId, (phaseOverride) =>
 			this.options.buildSnapshot(phaseOverride as TPhase | undefined),
 		);

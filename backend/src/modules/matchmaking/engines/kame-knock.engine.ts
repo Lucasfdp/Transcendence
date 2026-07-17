@@ -6,10 +6,15 @@ import {
 	RoomPlayer,
 } from "../matchmaking.types";
 import {
-	initializeArenaReplayBall,
 	resetArenaReplayBalls,
-	settleArenaReplayBall,
 } from "../replay-state.helpers";
+import {
+	advanceKamePhysics,
+	allKameProjectilesSettled,
+	createKamePhysicsState,
+	launchKameProjectile,
+	resetKamePhysicsTurn,
+} from "../kame-knock-physics";
 import { BaseArenaEngine } from "./base-arena.engine";
 import { GameEngine, GameEngineCreateContext } from "./game-engine";
 
@@ -66,6 +71,8 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 			this.createRoundTargetSet(room.matchId, snapshot.roundNumber);
 			this.resetTurnTargets(room.matchId, snapshot);
 		});
+		room.physicsState = createKamePhysicsState(room.matchId);
+		resetKamePhysicsTurn(room.physicsState, state.powerupsEnabled);
 	}
 
 	handleInput(
@@ -75,11 +82,27 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 	): MatchRoom | null {
 		if (input.action === "release")
 			return this.applyRelease(room, userId, input.payload ?? {});
-		if (input.action === "target:hit")
-			return this.applyTargetHit(room, userId, input.payload ?? {});
-		if (input.action === "settled")
-			return this.applySettled(room, userId, input.payload ?? {});
-		return room;
+		return null;
+	}
+
+	advanceSimulation(room: MatchRoom, deltaMs: number): boolean {
+		if (
+			room.status !== "active" ||
+			room.state.gameId !== "kame-knock" ||
+			!room.physicsState
+		)
+			return false;
+		const state = room.state as KameKnockSnapshot;
+		const physics = room.physicsState as ReturnType<typeof createKamePhysicsState>;
+		if (!advanceKamePhysics(physics, state, deltaMs)) {
+			if (!physics.settledProjectionPending) return false;
+			this.completeTurn(room, state, physics);
+			return true;
+		}
+		this.syncPhysicsEntities(state, physics);
+		if (allKameProjectilesSettled(physics))
+			physics.settledProjectionPending = true;
+		return true;
 	}
 
 	abandon(room: MatchRoom, abandonedPlayer: RoomPlayer): number | null {
@@ -105,8 +128,6 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 
 		const roundNumber = Math.floor(Number(payload.roundNumber));
 		const turnNumber = Math.floor(Number(payload.turnNumber));
-		const x = Number(payload.x);
-		const y = Number(payload.y);
 		const vx = Number(payload.vx);
 		const vy = Number(payload.vy);
 		if (
@@ -115,91 +136,36 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 		)
 			return null;
 		if (
-			!Number.isFinite(x) ||
-			!Number.isFinite(y) ||
 			!Number.isFinite(vx) ||
 			!Number.isFinite(vy)
 		)
 			return null;
+		if (Math.hypot(vx, vy) > 5_000) return null;
 
 		state.activeTurnNumber = state.turnNumber;
 		const power = this.consumeArenaPower(state, player.side, payload.power);
-		initializeArenaReplayBall(
-			state,
+		room.physicsState ??= createKamePhysicsState(room.matchId);
+		launchKameProjectile(
+			room.physicsState as ReturnType<typeof createKamePhysicsState>,
 			player.side,
+			state.turnNumber,
 			vx,
 			vy,
-			{ x, y },
 			power,
 		);
+		this.syncPhysicsEntities(
+			state,
+			room.physicsState as ReturnType<typeof createKamePhysicsState>,
+		);
 		this.bumpRoomState(room);
 		return room;
 	}
 
-	private applyTargetHit(
+	private completeTurn(
 		room: MatchRoom,
-		userId: number,
-		payload: Record<string, unknown>,
-	): MatchRoom | null {
-		const state = room.state as KameKnockSnapshot;
-		const player = this.findRoomPlayer(room, userId);
-		if (!player || room.status !== "active" || state.phase !== "active")
-			return null;
-		if (player.side !== state.currentTurn) return null;
-		if (state.activeTurnNumber !== state.turnNumber) return null;
-
-		const roundNumber = Math.floor(Number(payload.roundNumber));
-		const turnNumber = Math.floor(Number(payload.turnNumber));
-		const targetId = Math.floor(Number(payload.targetId));
-		const combo = Math.max(
-			1,
-			Math.min(99, Math.floor(Number(payload.combo ?? 1))),
-		);
-		const perfect = Boolean(payload.perfect);
-		if (
-			roundNumber !== state.roundNumber ||
-			turnNumber !== state.turnNumber ||
-			!Number.isFinite(targetId)
-		)
-			return null;
-
-		const index = state.targets.findIndex(
-			(target) => target.id === targetId,
-		);
-		if (index < 0) return room;
-		const target = state.targets[index];
-		if (!target.breakable) return room;
-
-		state.targets.splice(index, 1);
-		const gained = target.points * combo + (perfect ? 500 : 0);
-		state.score[player.side] = (state.score[player.side] ?? 0) + gained;
-		state.roundScores[player.side] =
-			(state.roundScores[player.side] ?? 0) + gained;
-		this.bumpRoomState(room);
-		return room;
-	}
-
-	private applySettled(
-		room: MatchRoom,
-		userId: number,
-		payload: Record<string, unknown>,
-	): MatchRoom | null {
-		const state = room.state as KameKnockSnapshot;
-		const player = this.findRoomPlayer(room, userId);
-		if (!player || room.status !== "active" || state.phase !== "active")
-			return null;
-		if (player.side !== state.currentTurn) return null;
-		if (state.activeTurnNumber !== state.turnNumber) return null;
-
-		const roundNumber = Math.floor(Number(payload.roundNumber));
-		const turnNumber = Math.floor(Number(payload.turnNumber));
-		if (
-			roundNumber !== state.roundNumber ||
-			turnNumber !== state.turnNumber
-		)
-			return null;
-
-		settleArenaReplayBall(state, player.side, payload);
+		state: KameKnockSnapshot,
+		physics: ReturnType<typeof createKamePhysicsState>,
+	): void {
 		state.activeTurnNumber = null;
 		state.turnNumber += 1;
 		if (state.turnNumber >= room.players.length * state.totalRounds) {
@@ -208,7 +174,7 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 			state.winnerSide = this.getWinnerSide(state.score);
 			this.roundTargetSets.delete(room.matchId);
 			this.bumpRoomState(room);
-			return room;
+			return;
 		}
 
 		const nextRound =
@@ -232,8 +198,33 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 		resetArenaReplayBalls(state, {
 			clearEntities: isNewRound,
 		});
+		resetKamePhysicsTurn(physics, state.powerupsEnabled);
 		this.bumpRoomState(room);
-		return room;
+	}
+
+	private syncPhysicsEntities(
+		state: KameKnockSnapshot,
+		physics: ReturnType<typeof createKamePhysicsState>,
+	): void {
+		state.entities = physics.entities.map((entity) => ({
+			id: entity.id, type: "projectile", side: entity.ownerSide,
+			ownerSide: entity.ownerSide, x: entity.x / 705, y: entity.y / 491,
+			vx: entity.vx, vy: entity.vy, rotation: entity.rotation,
+			angularVelocity: entity.angularVelocity, r: entity.radius,
+			power: entity.power, scale: entity.radius / 52, visible: true,
+			alpha: entity.alpha, spriteKey: "kame-knock-shell",
+			stateFlags: [entity.stopped ? "settled" : "sliding"],
+			createdAt: physics.serverTime, updatedAt: physics.serverTime,
+			stopped: entity.stopped,
+		}));
+		state.balls = state.entities.filter(
+			(entity): entity is KameKnockSnapshot["balls"][number] =>
+				physics.entities.find((candidate) => candidate.id === entity.id)?.primary === true,
+		);
+		state.activeBallIdBySide = state.players.map((player) =>
+			physics.entities.find((entity) => entity.ownerSide === player.side && entity.primary)?.id ?? null,
+		);
+		state.nextBallId = physics.nextEntityId;
 	}
 
 	private createRoundTargetSet(matchId: string, roundNumber: number): void {

@@ -31,6 +31,7 @@ const createMockRepo = <T>(): MockRepo<T> => ({
 	find: jest.fn(),
 	create: jest.fn(),
 	save: jest.fn(),
+	update: jest.fn(),
 	createQueryBuilder: jest.fn(),
 });
 
@@ -86,6 +87,35 @@ describe("UsersService", () => {
 			await expect(service.findById(1)).rejects.toThrow(
 				InternalServerErrorException,
 			);
+		});
+	});
+
+	describe("avatar persistence", () => {
+		it("stores a public API URL for a newly uploaded avatar", async () => {
+			const user = { ...mockUser, avatar: null } as User;
+			usersRepo.findOne!.mockResolvedValue(user);
+			usersRepo.save!.mockResolvedValue(user);
+
+			await expect(service.updateAvatar(user.id, "kame.png")).resolves.toEqual({
+				avatarUrl: "/api/uploads/avatars/kame.png",
+			});
+			expect(user.avatar).toBe("/api/uploads/avatars/kame.png");
+			expect(usersRepo.save).toHaveBeenCalledWith(user);
+		});
+
+		it("removes the uploaded avatar and persists the fallback state", async () => {
+			const user = {
+				...mockUser,
+				avatar: "/api/uploads/avatars/kame.png",
+			} as User;
+			usersRepo.findOne!.mockResolvedValue(user);
+			usersRepo.save!.mockResolvedValue(user);
+
+			await expect(service.clearAvatar(user.id)).resolves.toEqual({
+				ok: true,
+			});
+			expect(user.avatar).toBe("");
+			expect(usersRepo.save).toHaveBeenCalledWith(user);
 		});
 	});
 
@@ -182,6 +212,28 @@ describe("UsersService", () => {
 		it("throws InternalServerErrorException on db error", async () => {
 			usersRepo.find!.mockRejectedValue(new Error("timeout"));
 			await expect(service.findAll()).rejects.toThrow(
+				InternalServerErrorException,
+			);
+		});
+	});
+
+	describe("markSeen", () => {
+		it("updates lastSeenAt for the given user", async () => {
+			const when = new Date("2026-07-01T00:00:00.000Z");
+			usersRepo.update!.mockResolvedValue({ affected: 1 });
+
+			await service.markSeen(7, when);
+
+			expect(usersRepo.update).toHaveBeenCalledWith(
+				{ id: 7 },
+				{ lastSeenAt: when },
+			);
+		});
+
+		it("wraps update errors in InternalServerErrorException", async () => {
+			usersRepo.update!.mockRejectedValue(new Error("db down"));
+
+			await expect(service.markSeen(7)).rejects.toThrow(
 				InternalServerErrorException,
 			);
 		});

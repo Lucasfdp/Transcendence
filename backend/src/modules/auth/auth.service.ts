@@ -11,36 +11,15 @@ import { Request, Response } from "express";
 import {
 	randomBytes,
 	randomUUID,
-	scrypt,
-	timingSafeEqual,
-	ScryptOptions,
 } from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { UsersService } from "../users/users.service";
 import { User } from "../users/entities/user.entity";
-
-// ── Password-hashing constants ─────────────────────────────────────────────────
-// scrypt params: N=2^15 (32 768), r=8, p=1 → ~100 ms on a modern single core.
-// keyLen=64 bytes → 128 hex chars in the stored hash.
-// maxmem is set explicitly: the required working memory is 128·N·r = 32 MiB,
-// which equals Node's default maxmem and causes OpenSSL to reject the params
-// with ERR_CRYPTO_INVALID_SCRYPT_PARAMS. 64 MiB gives ample headroom.
-const SCRYPT_OPTS: ScryptOptions = {
-	N: 32_768,
-	r: 8,
-	p: 1,
-	maxmem: 64 * 1024 * 1024,
-};
-const SCRYPT_KEYLEN = 64;
-
-/** Promisified scrypt with full options support (avoids promisify's type limits). */
-function scryptDerive(password: string, salt: string): Promise<Buffer> {
-	return new Promise((resolve, reject) =>
-		scrypt(password, salt, SCRYPT_KEYLEN, SCRYPT_OPTS, (err, key) =>
-			err ? reject(err) : resolve(key),
-		),
-	);
-}
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { AuthIdentity } from "./entities/auth-identity.entity";
+import { AccountLinksService } from "./account-links.service";
+import { hashPassword, verifyPassword } from "./password.util";
 
 // ── Cookie tuning ─────────────────────────────────────────────────────────────
 
@@ -95,6 +74,9 @@ export class AuthService implements OnApplicationBootstrap {
 	constructor(
 		private readonly usersService: UsersService,
 		private readonly jwtService: JwtService,
+		@InjectRepository(AuthIdentity)
+		private readonly identities: Repository<AuthIdentity>,
+		private readonly accountLinksService: AccountLinksService,
 	) {}
 
 	/**
@@ -105,6 +87,7 @@ export class AuthService implements OnApplicationBootstrap {
 	 * startup.
 	 */
 	async onApplicationBootstrap(): Promise<void> {
+		await this.accountLinksService.migrateLegacyIdentities();
 		await this.seedDemoAccount();
 	}
 
@@ -187,14 +170,14 @@ export class AuthService implements OnApplicationBootstrap {
 		}
 	}
 
-	async findOrCreateGithubUser(data: {
-		githubId: string;
+	async findOrCreateGoogleUser(data: {
+		googleId: string;
 		username: string;
 		email?: string | null;
 		avatar?: string | null;
 	}): Promise<User> {
 		try {
-			let user = await this.usersService.findByGithubId(data.githubId);
+			let user = await this.usersService.findByGoogleId(data.googleId);
 			if (user) return user;
 
 			const existingEmail = data.email
@@ -204,7 +187,7 @@ export class AuthService implements OnApplicationBootstrap {
 				data.username,
 			);
 			user = await this.usersService.create({
-				githubId: data.githubId,
+				googleId: data.googleId,
 				email: existingEmail ? null : (data.email ?? null),
 				username: uniqueUsername,
 				avatar: data.avatar ?? undefined,
@@ -212,7 +195,7 @@ export class AuthService implements OnApplicationBootstrap {
 			return user;
 		} catch {
 			throw new InternalServerErrorException(
-				"Failed to find or create GitHub user",
+				"Failed to find or create Google user",
 			);
 		}
 	}
@@ -318,12 +301,22 @@ export class AuthService implements OnApplicationBootstrap {
 			let user = await this.usersService.findByUsername(username);
 
 			if (!user) {
-				const passwordHash = await this.hashPassword(password);
+				const passwordHash = await hashPassword(password);
 				user = await this.usersService.create({
 					username,
 					email: `${username}@demo.local`,
 					passwordHash,
 				});
+				await this.identities.save(
+					this.identities.create({
+						userId: user.id,
+						method: "shellsmash",
+						providerSubject: null,
+						shellUsername: username,
+						shellEmail: `${username.toLowerCase()}@demo.local`,
+						passwordHash,
+					}),
+				);
 
 				user.level = DEMO_LEVEL;
 				user.xp = DEMO_XP;
@@ -355,48 +348,42 @@ export class AuthService implements OnApplicationBootstrap {
 	 * Hash a plaintext password with scrypt + a random 16-byte salt.
 	 * Output format: "<hex-salt>:<hex-derived-key>".
 	 */
-	private async hashPassword(plain: string): Promise<string> {
-		const salt = randomBytes(16).toString("hex");
-		const derived = await scryptDerive(plain, salt);
-		return `${salt}:${derived.toString("hex")}`;
-	}
-
 	/**
-	 * Verify a plaintext password against a stored hash.
-	 * Uses timingSafeEqual to prevent timing-based enumeration.
+	 * Create a new local account with a unique username and email address.
 	 */
-	private async verifyPassword(
-		plain: string,
-		stored: string,
-	): Promise<boolean> {
-		const [salt, hash] = stored.split(":");
-		if (!salt || !hash) return false;
-		try {
-			const hashBuf = Buffer.from(hash, "hex");
-			const derivedBuf = await scryptDerive(plain, salt);
-			return timingSafeEqual(hashBuf, derivedBuf);
-		} catch {
-			return false;
+	async localRegister(
+		username: string,
+		email: string,
+		password: string,
+	): Promise<User> {
+		const [existingUsername, existingEmail] = await Promise.all([
+			this.usersService.findByUsername(username),
+			this.usersService.findByEmail(email),
+		]);
+		if (existingUsername || existingEmail) {
+			throw new ConflictException("Username or email is already in use");
 		}
-	}
-
-	/**
-	 * Create a new local account with a hashed password.
-	 * Throws ConflictException if the username is taken.
-	 */
-	async localRegister(username: string, password: string): Promise<User> {
-		const existing = await this.usersService.findByUsername(username);
-		if (existing) throw new ConflictException("Username is already taken");
 		try {
-			const passwordHash = await this.hashPassword(password);
-			return await this.usersService.create({
+			const passwordHash = await hashPassword(password);
+			const user = await this.usersService.create({
 				username,
 				fortyTwoId: null,
-				email: null,
+				email,
 				passwordHash,
 				isGuest: false,
 				isDevAccount: false,
 			});
+			await this.identities.save(
+				this.identities.create({
+					userId: user.id,
+					method: "shellsmash",
+					providerSubject: null,
+					shellUsername: username,
+					shellEmail: email,
+					passwordHash,
+				}),
+			);
+			return user;
 		} catch (err) {
 			if (err instanceof ConflictException) throw err;
 			throw new InternalServerErrorException("Failed to create account");
@@ -409,24 +396,21 @@ export class AuthService implements OnApplicationBootstrap {
 	 * so the response time is constant (prevents username enumeration).
 	 * Throws UnauthorizedException on any mismatch.
 	 */
-	async localLogin(username: string, password: string): Promise<User> {
-		const user = await this.usersService.findByUsername(username);
-		const stored = user?.passwordHash ?? null;
-
-		// Always run a dummy derivation when there is no stored hash so that
-		// the response time is indistinguishable from a real verify.
-		if (!stored) {
-			await scryptDerive("__dummy_constant__", "__dummy_salt__").catch(
-				() => {},
-			);
-			throw new UnauthorizedException("Invalid username or password");
-		}
-
-		const valid = await this.verifyPassword(password, stored);
+	async localLogin(identifier: string, password: string): Promise<User> {
+		const identity = await this.identities
+			.createQueryBuilder("identity")
+			.addSelect("identity.passwordHash")
+			.where("identity.method = 'shellsmash'")
+			.andWhere(
+				"(identity.shellUsername = :identifier OR LOWER(identity.shellEmail) = LOWER(:identifier))",
+				{ identifier },
+			)
+			.getOne();
+		const valid = await verifyPassword(password, identity?.passwordHash ?? null);
 		if (!valid)
-			throw new UnauthorizedException("Invalid username or password");
-
-		// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-		return user!;
+			throw new UnauthorizedException("Invalid email, username or password");
+		const user = await this.usersService.findCanonicalById(identity!.userId);
+		if (!user) throw new UnauthorizedException("Invalid email, username or password");
+		return user;
 	}
 }

@@ -2,7 +2,13 @@ import type {
 	ReplayDetail,
 	ReplayEvent,
 	ReplayFrame,
+	ReplayFrameSnapshot,
 } from "../../features/hub/api";
+import { reconstructReplayFrame } from "./replay/ReplayEncoder";
+
+export type ResolvedReplayFrame = ReplayFrame & {
+	snapshot: ReplayFrameSnapshot;
+};
 
 export interface ReplayControllerState {
 	replay: ReplayDetail | null;
@@ -10,67 +16,26 @@ export interface ReplayControllerState {
 	progress: number;
 	playing: boolean;
 	timeMs: number;
-	frame: ReplayFrame | null;
-	nextFrame: ReplayFrame | null;
+	frame: ResolvedReplayFrame | null;
+	nextFrame: ResolvedReplayFrame | null;
 }
 
 type ReplayListener = (state: ReplayControllerState) => void;
 
-function clamp01(value: number): number {
-	return Math.min(1, Math.max(0, value));
-}
-
-function frameWindow(
-	replay: ReplayDetail | null,
-	frameIndex: number,
-): { frame: ReplayFrame | null; nextFrame: ReplayFrame | null } {
-	if (!replay || replay.frames.length === 0) {
-		return { frame: null, nextFrame: null };
-	}
-	const safeIndex = Math.min(
-		Math.max(frameIndex, 0),
-		Math.max(replay.frames.length - 1, 0),
-	);
-	return {
-		frame: replay.frames[safeIndex] ?? null,
-		nextFrame: replay.frames[safeIndex + 1] ?? null,
-	};
-}
-
-function getFrameDurationMs(
-	replay: ReplayDetail | null,
-	frameIndex: number,
-): number {
-	if (!replay) return 0;
-	const currentFrame = replay.frames[frameIndex];
-	const nextFrame = replay.frames[frameIndex + 1];
-	if (!currentFrame || !nextFrame) return 0;
-	if (typeof nextFrame.deltaMs === "number" && Number.isFinite(nextFrame.deltaMs))
-		return Math.max(0, nextFrame.deltaMs);
-
-	const currentTime = new Date(currentFrame.recordedAt).getTime();
-	const nextTime = new Date(nextFrame.recordedAt).getTime();
-	return Math.max(0, nextTime - currentTime);
-}
-
-function playbackTime(
-	replay: ReplayDetail | null,
-	frameIndex: number,
-	progress: number,
-): number {
-	const window = frameWindow(replay, frameIndex);
-	if (!window.frame) return Date.now();
-	const frameTime = new Date(window.frame.recordedAt).getTime();
-	const duration = getFrameDurationMs(replay, frameIndex);
-	return frameTime + duration * clamp01(progress);
+function clamp(value: number, min: number, max: number): number {
+	return Math.min(max, Math.max(min, value));
 }
 
 export class ReplayController {
 	private replay: ReplayDetail | null;
-	private frameIndex = 0;
-	private progress = 0;
+	private timeMs = 0;
 	private playing = false;
 	private readonly listeners = new Set<ReplayListener>();
+	private readonly reconstructionCache = new Map<
+		number,
+		ReplayFrameSnapshot
+	>();
+	private lastEmittedAt = -Infinity;
 
 	constructor(replay: ReplayDetail | null = null) {
 		this.replay = replay;
@@ -79,118 +44,115 @@ export class ReplayController {
 	subscribe(listener: ReplayListener): () => void {
 		this.listeners.add(listener);
 		listener(this.getState());
-		return () => {
-			this.listeners.delete(listener);
-		};
+		return () => this.listeners.delete(listener);
 	}
 
 	setReplay(replay: ReplayDetail | null): void {
 		this.replay = replay;
-		this.frameIndex = 0;
-		this.progress = 0;
+		this.timeMs = 0;
 		this.playing = false;
-		this.emit();
+		this.reconstructionCache.clear();
+		this.emit(true);
 	}
 
 	setPlayback(frameIndex: number, progress: number, playing: boolean): void {
-		this.frameIndex = Math.max(0, frameIndex);
-		this.progress = clamp01(progress);
+		const frame = this.replay?.frames[frameIndex];
+		const next = this.replay?.frames[frameIndex + 1];
+		this.timeMs = frame
+			? frame.tMs +
+				Math.max(0, (next?.tMs ?? frame.tMs) - frame.tMs) *
+					clamp(progress, 0, 1)
+			: 0;
 		this.playing = playing;
-		this.emit();
+		this.emit(true);
 	}
 
 	seek(frameIndex: number, progress = 0): void {
-		this.frameIndex = Math.max(0, frameIndex);
-		this.progress = clamp01(progress);
-		this.emit();
+		this.setPlayback(frameIndex, progress, this.playing);
+	}
+
+	seekTime(timeMs: number): void {
+		this.timeMs = clamp(timeMs, 0, this.replay?.durationMs ?? 0);
+		this.emit(true);
+	}
+
+	setPlaying(playing: boolean): void {
+		this.playing = playing && this.timeMs < (this.replay?.durationMs ?? 0);
+		this.emit(true);
 	}
 
 	update(deltaMs: number): void {
-		if (!this.playing || !this.replay || this.replay.frames.length <= 1) return;
-		if (this.frameIndex >= this.replay.frames.length - 1) {
-			this.playing = false;
-			this.emit();
-			return;
-		}
-
-		let remainingDeltaMs = Math.max(0, deltaMs);
-		let changed = false;
-
-		while (remainingDeltaMs > 0 && this.playing) {
-			const duration = getFrameDurationMs(this.replay, this.frameIndex);
-			if (duration <= 0) {
-				if (this.frameIndex >= this.replay.frames.length - 2) {
-					this.frameIndex = this.replay.frames.length - 1;
-					this.progress = 0;
-					this.playing = false;
-					changed = true;
-					break;
-				}
-				this.frameIndex += 1;
-				this.progress = 0;
-				changed = true;
-				continue;
-			}
-
-			const remainingFrameMs = duration * (1 - this.progress);
-			if (remainingDeltaMs >= remainingFrameMs) {
-				remainingDeltaMs -= remainingFrameMs;
-				if (this.frameIndex >= this.replay.frames.length - 2) {
-					this.frameIndex = this.replay.frames.length - 1;
-					this.progress = 0;
-					this.playing = false;
-					changed = true;
-					break;
-				}
-				this.frameIndex += 1;
-				this.progress = 0;
-				changed = true;
-				continue;
-			}
-
-			this.progress = clamp01(this.progress + remainingDeltaMs / duration);
-			remainingDeltaMs = 0;
-			changed = true;
-		}
-
-		if (!changed && this.frameIndex >= this.replay.frames.length - 1) {
-			this.playing = false;
-			this.progress = 0;
-			this.emit();
-			return;
-		}
-
-		if (this.frameIndex >= this.replay.frames.length - 1) {
-			if (this.playing) {
-				this.frameIndex = this.replay.frames.length - 1;
-				this.progress = 0;
-				this.playing = false;
-			}
-		}
-		this.emit();
+		if (!this.playing || !this.replay) return;
+		this.timeMs = Math.min(
+			this.replay.durationMs,
+			this.timeMs + Math.max(0, deltaMs),
+		);
+		if (this.timeMs >= this.replay.durationMs) this.playing = false;
+		this.emit(!this.playing || this.timeMs - this.lastEmittedAt >= 100);
 	}
 
 	getEventsUpTo(timeMs: number): ReplayEvent[] {
-		if (!this.replay) return [];
-		return this.replay.events.filter(
-			(event) => new Date(event.recordedAt).getTime() <= timeMs,
-		);
+		return this.replay?.events.filter((event) => event.tMs <= timeMs) ?? [];
 	}
 
 	getState(): ReplayControllerState {
-		const window = frameWindow(this.replay, this.frameIndex);
+		const frameIndex = this.findFrameIndex(this.timeMs);
+		const frame = this.resolveFrame(frameIndex);
+		const nextFrame = this.resolveFrame(frameIndex + 1);
+		const windowMs =
+			frame && nextFrame ? Math.max(0, nextFrame.tMs - frame.tMs) : 0;
 		return {
 			replay: this.replay,
-			frameIndex: this.frameIndex,
-			progress: this.progress,
+			frameIndex,
+			progress:
+				frame && windowMs > 0
+					? clamp((this.timeMs - frame.tMs) / windowMs, 0, 1)
+					: 0,
 			playing: this.playing,
-			timeMs: playbackTime(this.replay, this.frameIndex, this.progress),
-			frame: window.frame,
-			nextFrame: window.nextFrame,
+			timeMs: this.timeMs,
+			frame,
+			nextFrame,
 		};
 	}
 
-	private emit(): void {
+	private findFrameIndex(timeMs: number): number {
+		const frames = this.replay?.frames ?? [];
+		if (frames.length === 0) return 0;
+		let low = 0;
+		let high = frames.length - 1;
+		while (low <= high) {
+			const middle = Math.floor((low + high) / 2);
+			if ((frames[middle]?.tMs ?? 0) <= timeMs) low = middle + 1;
+			else high = middle - 1;
+		}
+		return Math.max(0, high);
+	}
+
+	private resolveFrame(index: number): ResolvedReplayFrame | null {
+		const frames = this.replay?.frames;
+		const frame = frames?.[index];
+		if (!frames || !frame) return null;
+		let snapshot = this.reconstructionCache.get(index);
+		if (!snapshot) {
+			snapshot = reconstructReplayFrame(
+				frames,
+				index,
+			) as ReplayFrameSnapshot;
+			this.reconstructionCache.set(index, snapshot);
+			while (this.reconstructionCache.size > 24) {
+				const oldest = this.reconstructionCache.keys().next().value as
+					| number
+					| undefined;
+				if (oldest === undefined) break;
+				this.reconstructionCache.delete(oldest);
+			}
+		}
+		return { ...frame, snapshot };
+	}
+
+	private emit(force: boolean): void {
+		if (!force) return;
+		this.lastEmittedAt = this.timeMs;
 		const state = this.getState();
 		for (const listener of this.listeners) listener(state);
 	}

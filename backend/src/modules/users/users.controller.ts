@@ -2,6 +2,7 @@ import {
 	BadRequestException,
 	Body,
 	Controller,
+	Delete,
 	Get,
 	InternalServerErrorException,
 	Logger,
@@ -19,7 +20,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { diskStorage } from "multer";
-import { extname } from "path";
+import { extname, join } from "path";
 import { randomUUID } from "crypto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { FriendsService } from "../friends/friends.service";
@@ -45,6 +46,10 @@ const ALLOWED_IMAGE_MIMES = [
 
 /** Max avatar file size: 2 MB. */
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+const AVATAR_UPLOAD_DIR = join(
+	process.env.UPLOADS_DIR ?? join(process.cwd(), "uploads"),
+	"avatars",
+);
 
 export type LbPeriod = "all" | "monthly" | "weekly";
 export type LbScope = "global" | "friends";
@@ -65,7 +70,7 @@ export interface LeaderboardEntry {
 /**
  * Public-facing view returned by GET /api/users/:username — the hover/focus
  * profile card. Deliberately a *whitelist*: it must never include PII or
- * account-linkage fields (email, fortyTwoId, githubId, passwordHash) or
+ * account-linkage fields (email, fortyTwoId, googleId, passwordHash) or
  * balances (coins, xp) that the previous "strip only passwordHash and return
  * the whole entity" implementation leaked to any authenticated user, guests
  * included (Bug Audit H2). Add a field here only if a public profile card
@@ -123,18 +128,25 @@ export class UsersController {
 	@Get("me")
 	async getMe(
 		@Request() req: { user: { id: number } },
-	): Promise<Omit<User, "passwordHash"> & { mostPlayedGame: MostPlayedGame | null }> {
+	): Promise<unknown> {
 		const user = await this.usersService.findById(req.user.id);
 		if (!user) throw new UnauthorizedException();
-		const { passwordHash: _pw, ...safe } = user as User & {
+		const {
+			passwordHash: _pw,
+			fortyTwoId: _fortyTwoId,
+			googleId: _googleId,
+			email: _email,
+			mergedIntoUserId: _mergedIntoUserId,
+			...safe
+		} = user as User & {
 			passwordHash?: unknown;
 		};
-		void _pw;
+		void [_pw, _fortyTwoId, _googleId, _email, _mergedIntoUserId];
 		const mostPlayedGame = await this.usersService.getMostPlayedGame(
 			req.user.id,
 		);
 		return {
-			...(safe as Omit<User, "passwordHash">),
+			...safe,
 			mostPlayedGame,
 		};
 	}
@@ -142,25 +154,34 @@ export class UsersController {
 	// ── PATCH /api/users/me ──────────────────────────────────────────────────────
 
 	@Patch("me")
-	updateMe(
+	async updateMe(
 		@Request() req: { user: { id: number } },
 		@Body() dto: UpdateProfileDto,
-	): Promise<User> {
-		return this.usersService.updateProfile(req.user.id, dto);
+	): Promise<unknown> {
+		const user = await this.usersService.updateProfile(req.user.id, dto);
+		const {
+			passwordHash: _pw,
+			fortyTwoId: _fortyTwoId,
+			googleId: _googleId,
+			email: _email,
+			mergedIntoUserId: _mergedIntoUserId,
+			...safe
+		} = user;
+		void [_pw, _fortyTwoId, _googleId, _email, _mergedIntoUserId];
+		return safe;
 	}
 
 	// ── POST /api/users/me/avatar ────────────────────────────────────────────────
 	//
 	// Accepts a single multipart file under the field name "avatar".
-	// Writes to ./uploads/avatars/ (mounted as a Docker volume).
-	// Nginx serves /uploads/ as a static directory —
-	// see infra/reverse-proxy/conf/default.conf.template
+	// Writes to the persistent uploads volume. Nest serves it through
+	// /api/uploads/, which is already routed by the reverse proxy.
 
 	@Post("me/avatar")
 	@UseInterceptors(
 		FileInterceptor("avatar", {
 			storage: diskStorage({
-				destination: "./uploads/avatars",
+				destination: AVATAR_UPLOAD_DIR,
 				filename: (_req, file, cb) => {
 					const ext = extname(file.originalname);
 					cb(null, `${randomUUID()}${ext}`);
@@ -187,6 +208,13 @@ export class UsersController {
 			);
 		}
 		return this.usersService.updateAvatar(req.user.id, file.filename);
+	}
+
+	@Delete("me/avatar")
+	clearAvatar(
+		@Request() req: { user: { id: number } },
+	): Promise<{ ok: boolean }> {
+		return this.usersService.clearAvatar(req.user.id);
 	}
 
 	// ── GET /api/users/leaderboard ───────────────────────────────────────────────

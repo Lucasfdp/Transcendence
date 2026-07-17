@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { ProfileCard, type ProfileCardUser } from "./ProfileCard";
 
 const baseUser: ProfileCardUser = {
+	username: "kame",
+	turtleName: "Kame",
+	shellSkin: "dragon",
+	avatar: null,
 	level: 12,
 	profile: {
 		totalWins: 5,
@@ -33,6 +37,9 @@ describe("ProfileCard", () => {
 		expect(screen.getByText(/bamboo bash/i)).toBeInTheDocument();
 		expect(screen.getByText(/62% wr/i)).toBeInTheDocument();
 		expect(screen.getByText(/5\s*-\s*3/)).toBeInTheDocument();
+		expect(
+			screen.getByRole("img", { name: "Kame's shell portrait" }),
+		).toBeInTheDocument();
 	});
 
 	it("should fall back gracefully when tag and mostPlayedGame are null", () => {
@@ -53,11 +60,18 @@ describe("ProfileCard", () => {
 	it("should fall back gracefully when profile is undefined (e.g. guest account)", () => {
 		render(
 			<ProfileCard
-				user={{ level: 1, profile: undefined, mostPlayedGame: null }}
+				user={{
+					username: "guest_42a3bc9d127e",
+					level: 1,
+					profile: undefined,
+					mostPlayedGame: null,
+				}}
 				loading={false}
 			/>,
 		);
 		expect(screen.getByText(/level 1/i)).toBeInTheDocument();
 		expect(screen.getByText(/0\s*-\s*0/)).toBeInTheDocument();
+		expect(screen.getByText("guest_42a3")).toBeInTheDocument();
+		expect(screen.queryByText("guest_42a3bc9d127e")).not.toBeInTheDocument();
 	});
 });

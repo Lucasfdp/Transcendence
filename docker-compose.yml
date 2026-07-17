@@ -1,8 +1,8 @@
 services:
     reverse_proxy:
         build:
-            context: ./infra/reverse-proxy
-            dockerfile: Dockerfile
+            context: .
+            dockerfile: infra/reverse-proxy/Dockerfile
         container_name: ${COMPOSE_PROJECT_NAME}_reverse_proxy
         image: ${COMPOSE_PROJECT_NAME}/reverse_proxy:local
         restart: unless-stopped
@@ -40,7 +40,6 @@ services:
             args:
                 - FRONTEND_ENV=${FRONTEND_ENV:-development}
                 - VITE_API_URL=${VITE_API_URL:-/api}
-                - VITE_GITHUB_AUTH_URL=${VITE_GITHUB_AUTH_URL:-}
         container_name: ${COMPOSE_PROJECT_NAME}_frontend
         image: ${COMPOSE_PROJECT_NAME}/frontend:local
         restart: unless-stopped
@@ -53,7 +52,6 @@ services:
         environment:
             - NODE_ENV=${FRONTEND_ENV:-development}
             - VITE_API_URL=${VITE_API_URL:-/api}
-            - VITE_GITHUB_AUTH_URL=${VITE_GITHUB_AUTH_URL:-}
             - REACT_APP_API_URL=${REACT_APP_API_URL:-/api}
         healthcheck:
             test:
@@ -89,6 +87,7 @@ services:
         volumes:
             - logs:/var/log/backend
             - backend_vault_rendered:/vault/secrets:ro
+            - uploads_data:/app/uploads
         networks:
             - frontend_network
             - backend_network
@@ -119,19 +118,10 @@ services:
             - DEMO_USERNAME=${DEMO_USERNAME:-KameMaster}
             - DEMO_PASSWORD=${DEMO_PASSWORD:-KameMaster42}
             - FORTYTWO_CALLBACK_URL=${FORTYTWO_CALLBACK_URL:-https://localhost:42424/api/auth/42/callback}
-            - GITHUB_CALLBACK_URL=${GITHUB_CALLBACK_URL:-https://localhost:42424/api/auth/github/callback}
             - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-https://localhost:42424/api/auth/google/callback}
-            - REDDIT_CALLBACK_URL=${REDDIT_CALLBACK_URL:-https://localhost:42424/api/auth/reddit/callback}
-            - STEAM_CALLBACK_URL=${STEAM_CALLBACK_URL:-https://localhost:42424/api/auth/steam/callback}
-            - XBOX_CALLBACK_URL=${XBOX_CALLBACK_URL:-https://localhost:42424/api/auth/xbox/callback}
-            - NINTENDO_CALLBACK_URL=${NINTENDO_CALLBACK_URL:-https://localhost:42424/api/auth/nintendo/callback}
-            - PLAYSTATION_CALLBACK_URL=${PLAYSTATION_CALLBACK_URL:-https://localhost:42424/api/auth/playstation/callback}
-            - CHATGPT_CALLBACK_URL=${CHATGPT_CALLBACK_URL:-https://localhost:42424/api/auth/chatgpt/callback}
-            - CLAUDE_CALLBACK_URL=${CLAUDE_CALLBACK_URL:-https://localhost:42424/api/auth/claude/callback}
-            - DEEPSEEK_CALLBACK_URL=${DEEPSEEK_CALLBACK_URL:-https://localhost:42424/api/auth/deepseek/callback}
-            - PERPLEXITY_CALLBACK_URL=${PERPLEXITY_CALLBACK_URL:-https://localhost:42424/api/auth/perplexity/callback}
             - VAULT_ENV_FILE=/vault/secrets/backend.env
             - SECRETS_WAIT_TIMEOUT=${SECRETS_WAIT_TIMEOUT:-120}
+            - UPLOADS_DIR=/app/uploads
         healthcheck:
             test:
                 [
@@ -497,6 +487,7 @@ volumes:
     db_data:
     redis_data:
     monitoring_data:
+    uploads_data:
     logs:
     vault_data:
     backend_vault_rendered:

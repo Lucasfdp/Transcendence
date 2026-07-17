@@ -9,7 +9,12 @@ import { ArenaSimulationService } from "./arena-simulation.service";
 import { GameSessionService } from "./game-session.service";
 import { MatchmakingGateway } from "./matchmaking.gateway";
 import { MatchmakingService } from "./matchmaking.service";
-import type { MatchRoom, RoomPlayer, SocketUser } from "./matchmaking.types";
+import type {
+	BambooBashSnapshot,
+	MatchRoom,
+	RoomPlayer,
+	SocketUser,
+} from "./matchmaking.types";
 import { PresenceService } from "./presence.service";
 import {
 	PRIVATE_LOBBY_NOT_FOUND_MESSAGE,
@@ -84,15 +89,16 @@ const makeSocket = (overrides: Partial<{ id: string; data: Record<string, unknow
 
 describe("MatchmakingGateway", () => {
 	let gateway: MatchmakingGateway;
-	let arenaSimulation: ArenaSimulationService;
 	let presence: ReturnType<typeof makePresenceMock>;
 	let usersService: ReturnType<typeof makeUsersServiceMock>;
 	let rooms: {
 		removeSpectator: jest.Mock;
+		reconnect: jest.Mock;
 		markDisconnected: jest.Mock;
 		setReady: jest.Mock;
 		getRoom: jest.Mock;
 		getActiveRooms: jest.Mock;
+		getUserMatchStatus: jest.Mock;
 	};
 	let matchmaking: { removeSocket: jest.Mock };
 	let privateLobbies: {
@@ -102,8 +108,13 @@ describe("MatchmakingGateway", () => {
 		getLobbyByPin: jest.Mock;
 		getStartedMatchByPin: jest.Mock;
 	};
-	let sessions: { startIfReady: jest.Mock; advanceSimulation: jest.Mock };
-	let replays: { captureFrame: jest.Mock };
+	let sessions: {
+		startIfReady: jest.Mock;
+		advanceSimulation: jest.Mock;
+		handleInput: jest.Mock;
+		captureReplayFrame: jest.Mock;
+	};
+	let replays: { captureFrame: jest.Mock; recordEvent: jest.Mock };
 	let chatService: {
 		sendMessage: jest.Mock;
 		sendGifMessage: jest.Mock;
@@ -123,10 +134,12 @@ describe("MatchmakingGateway", () => {
 		usersService = makeUsersServiceMock();
 		rooms = {
 			removeSpectator: jest.fn(),
+			reconnect: jest.fn(),
 			markDisconnected: jest.fn().mockReturnValue(null),
 			setReady: jest.fn(),
 			getRoom: jest.fn(),
 			getActiveRooms: jest.fn().mockReturnValue([]),
+			getUserMatchStatus: jest.fn().mockReturnValue(null),
 		};
 		matchmaking = { removeSocket: jest.fn() };
 		privateLobbies = {
@@ -136,8 +149,13 @@ describe("MatchmakingGateway", () => {
 			getLobbyByPin: jest.fn().mockReturnValue(null),
 			getStartedMatchByPin: jest.fn().mockReturnValue(null),
 		};
-		sessions = { startIfReady: jest.fn(), advanceSimulation: jest.fn() };
-		replays = { captureFrame: jest.fn() };
+		sessions = {
+			startIfReady: jest.fn(),
+			advanceSimulation: jest.fn(),
+			handleInput: jest.fn(),
+			captureReplayFrame: jest.fn(),
+		};
+		replays = { captureFrame: jest.fn(), recordEvent: jest.fn() };
 		chatService = {
 			sendMessage: jest.fn(),
 			sendGifMessage: jest.fn(),
@@ -175,30 +193,274 @@ describe("MatchmakingGateway", () => {
 		}).compile();
 
 		gateway = module.get(MatchmakingGateway);
-		arenaSimulation = module.get(ArenaSimulationService);
 	});
 
 	describe("arena simulation broadcasts", () => {
-		it("captures and broadcasts a server simulation snapshot every 100 ms", () => {
-			const room = makeRoom({ status: "active" });
+		it("publishes a compact public physics entity without server-only trails", () => {
+			const room = makeRoom({
+				physicsState: {
+					matchId: "match-1",
+					physicsSeq: 2,
+					serverTime: 100,
+					entities: [
+						{
+							id: 7,
+							ownerSide: 1,
+							primary: true,
+							x: 10,
+							y: 20,
+							vx: 30,
+							vy: 40,
+							radius: 28,
+							rotation: 0,
+							angularVelocity: 0,
+							power: "none",
+							stopped: false,
+							alpha: 1,
+							ghostCollisionAvailable: false,
+							trail: [{ x: 1, y: 2 }],
+						} as never,
+					],
+					pickups: [],
+					scoreEvents: [],
+					nextEntityId: 8,
+					nextPickupId: 1,
+					nextScoreEventId: 1,
+					bellCooldownMs: [],
+				},
+			});
+
+			const projection = (
+				gateway as unknown as {
+					publicPhysicsState: (value: MatchRoom) => { entities: unknown[] };
+				}
+			).publicPhysicsState(room);
+
+			expect(projection.entities).toEqual([
+				expect.objectContaining({ id: 7, ownerSide: 1, x: 10, y: 20 }),
+			]);
+			expect(projection.entities[0]).not.toHaveProperty("trail");
+			expect(projection.entities[0]).not.toHaveProperty("ghostCollisionAvailable");
+		});
+
+		it("broadcasts physics separately and does not repeat lifecycle state", () => {
+			const room = makeRoom({
+				status: "active",
+				state: { seq: 4 } as MatchRoom["state"],
+				physicsState: {
+					matchId: "match-1",
+					physicsSeq: 7,
+					serverTime: 100,
+					entities: [],
+					pickups: [],
+					scoreEvents: [],
+					nextEntityId: 1,
+					nextPickupId: 1,
+					nextScoreEventId: 1,
+					bellCooldownMs: [],
+				},
+			});
 			const emit = jest.fn();
-			rooms.getActiveRooms.mockReturnValue([room]);
 			rooms.getRoom.mockReturnValue(room);
-			sessions.advanceSimulation.mockReturnValue(true);
 			gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
 
-			// Same broadcast callback the gateway wires in afterInit().
-			const broadcast = (matchId: string) =>
+			const emitPhysics = () =>
 				(
-					gateway as unknown as { emitState: (id: string) => void }
-				).emitState(matchId);
-			arenaSimulation.tick(broadcast);
-			arenaSimulation.tick(broadcast);
-			arenaSimulation.tick(broadcast);
+					gateway as unknown as { emitPhysicsState: (id: string) => void }
+				).emitPhysicsState(room.matchId);
+			emitPhysics();
+			emitPhysics();
 
-			expect(replays.captureFrame).toHaveBeenCalledWith(room);
+			expect(replays.captureFrame).toHaveBeenCalledWith(room, true);
 			expect(gateway.server.to).toHaveBeenCalledWith(room.matchId);
-			expect(emit).toHaveBeenCalledWith("game:state", room.state);
+			expect(emit).toHaveBeenCalledWith(
+				"game:physics-state",
+				expect.objectContaining({ matchId: room.matchId, physicsSeq: 7 }),
+			);
+			expect(emit.mock.calls.filter(([event]) => event === "game:state")).toHaveLength(1);
+		});
+
+		it("includes Bamboo Bash world and score state in the physics projection", () => {
+			const room = makeRoom({
+				state: {
+					gameId: "bamboo-bash",
+					bamboos: [{ id: 4, nx: 0.2, ny: -0.1, stage: 2, ageMs: 5_000 }],
+					liveRoundScores: [150, 0],
+				} as MatchRoom["state"],
+				physicsState: {
+					matchId: "match-1",
+					physicsSeq: 9,
+					serverTime: 300,
+					entities: [],
+					pickups: [{ id: 2, type: "rocket", x: 30, y: 40, radius: 20 }],
+					scoreEvents: [{ id: 3, side: 0, points: 150, bambooId: 4 }],
+					pickupEvents: [{ id: 5, side: 0, type: "rocket", x: 30, y: 40 }],
+					nextEntityId: 1,
+					nextPickupId: 3,
+					nextScoreEventId: 4,
+				},
+			});
+			const emit = jest.fn();
+			rooms.getRoom.mockReturnValue(room);
+			gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
+
+			(
+				gateway as unknown as { emitPhysicsState: (id: string) => void }
+			).emitPhysicsState(room.matchId);
+
+			expect(emit).toHaveBeenCalledWith(
+				"game:physics-state",
+				expect.objectContaining({
+					physicsSeq: 9,
+					bamboos: (room.state as BambooBashSnapshot).bamboos,
+					liveRoundScores: [150, 0],
+					scoreEvents: [{ id: 3, side: 0, points: 150, bambooId: 4 }],
+					pickupEvents: [{ id: 5, side: 0, type: "rocket", x: 30, y: 40 }],
+				}),
+			);
+		});
+	});
+
+	describe("match rejoin", () => {
+		it("hydrates the rejoining socket with the current lifecycle and physics state", () => {
+			const room = makeRoom({
+				state: {
+					gameId: "bamboo-bash",
+					seq: 4,
+					bamboos: [],
+					liveRoundScores: [100, 0],
+				} as MatchRoom["state"],
+				physicsState: {
+					matchId: "match-1",
+					physicsSeq: 12,
+					serverTime: 500,
+					entities: [],
+					pickups: [],
+					scoreEvents: [],
+					nextEntityId: 1,
+					nextPickupId: 1,
+					nextScoreEventId: 1,
+				},
+			});
+			const socket = {
+				id: "socket-rejoin",
+				data: { user: makePlayer(1).user },
+				join: jest.fn(),
+				emit: jest.fn(),
+			} as unknown as Socket;
+			rooms.reconnect.mockReturnValue(room);
+
+			gateway.onMatchRejoin(socket);
+
+			expect(rooms.reconnect).toHaveBeenCalledWith("socket-rejoin", makePlayer(1).user);
+			expect(socket.join).toHaveBeenCalledWith(room.matchId);
+			expect(socket.emit).toHaveBeenCalledWith("game:state", room.state);
+			expect(socket.emit).toHaveBeenCalledWith(
+				"game:physics-state",
+				expect.objectContaining({ physicsSeq: 12, liveRoundScores: [100, 0] }),
+			);
+		});
+	});
+
+	describe("Bell Clash launch projection", () => {
+		it("publishes the authoritative physics state immediately after release", async () => {
+			const room = makeRoom({
+				gameId: "bell-clash",
+				state: {
+					seq: 4,
+					roundNumber: 1,
+					shotCounts: [1, 0],
+				} as MatchRoom["state"],
+				physicsState: {
+					matchId: "match-1",
+					physicsSeq: 8,
+					serverTime: 200,
+					entities: [],
+					pickups: [],
+					scoreEvents: [],
+					nextEntityId: 1,
+					nextPickupId: 1,
+					nextScoreEventId: 1,
+					bellCooldownMs: [],
+				},
+			});
+			const emit = jest.fn();
+			gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
+			sessions.handleInput.mockReturnValue(room);
+			rooms.getRoom.mockReturnValue(room);
+
+			const ack = await gateway.onGameInput(
+				makeSocket({ data: { user: makePlayer(1).user } }),
+				{
+					matchId: room.matchId,
+					action: "release",
+					payload: { roundNumber: 1, vx: 100, vy: 0 },
+				},
+			);
+
+			expect(ack).toEqual({ accepted: true });
+			expect(emit.mock.calls[0]).toEqual([
+				"game:physics-state",
+				expect.objectContaining({ physicsSeq: 8 }),
+			]);
+			expect(emit).not.toHaveBeenCalledWith(
+			"game:bell-throw",
+			expect.anything(),
+		);
+			expect(replays.recordEvent).toHaveBeenCalledWith(
+				room,
+				"game:bell-throw",
+				expect.objectContaining({ matchId: room.matchId }),
+			);
+		});
+	});
+
+	describe("Bamboo Bash launch projection", () => {
+		it("publishes the authoritative physics state immediately after release", async () => {
+			const room = makeRoom({
+				state: {
+					gameId: "bamboo-bash",
+					seq: 4,
+					roundNumber: 1,
+					bamboos: [],
+					liveRoundScores: [0, 0],
+					lastPowerBySide: ["none", "none"],
+				} as MatchRoom["state"],
+				physicsState: {
+					matchId: "match-1",
+					physicsSeq: 10,
+					serverTime: 400,
+					entities: [],
+					pickups: [],
+					scoreEvents: [],
+					nextEntityId: 1,
+					nextPickupId: 1,
+					nextScoreEventId: 1,
+				},
+			});
+			const emit = jest.fn();
+			gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
+			sessions.handleInput.mockReturnValue(room);
+			rooms.getRoom.mockReturnValue(room);
+
+			const ack = await gateway.onGameInput(
+				makeSocket({ data: { user: makePlayer(1).user } }),
+				{
+					matchId: room.matchId,
+					action: "release",
+					payload: { roundNumber: 1, vx: 100, vy: 0 },
+				},
+			);
+
+			expect(ack).toEqual({ accepted: true });
+			expect(emit).toHaveBeenCalledWith(
+				"game:physics-state",
+				expect.objectContaining({ physicsSeq: 10, bamboos: [] }),
+			);
+			expect(emit).not.toHaveBeenCalledWith(
+				"game:bamboo-throw",
+				expect.anything(),
+			);
 		});
 	});
 	// ── syncRoomPresence (private — invoked via cast, no public seam) ──────────

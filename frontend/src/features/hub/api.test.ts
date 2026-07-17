@@ -1,127 +1,87 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthError, api } from "./api";
+import { api } from "./api";
 
-/** Minimal fake Response covering only what apiFetch/apiUploadFile touch. */
-function makeResponse(
-	status: number,
-	body: unknown = null,
-	options: { contentType?: string } = {},
-): Response {
-	const contentType = options.contentType ?? "application/json";
+function jsonResponse(body: unknown, status = 200): Response {
 	return {
 		ok: status >= 200 && status < 300,
 		status,
-		headers: {
-			get: (name: string) =>
-				name.toLowerCase() === "content-type" ? contentType : null,
-		},
+		headers: { get: () => "application/json" },
 		json: async () => body,
-		text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
+		text: async () => JSON.stringify(body),
 	} as unknown as Response;
 }
 
-describe("hub/api — apiFetch transient-retry gating (Bug Audit L1)", () => {
+describe("hub API contracts", () => {
 	let fetchMock: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
-		fetchMock = vi.fn();
+		fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
 		vi.stubGlobal("fetch", fetchMock);
-		document.cookie = "";
+		document.cookie =
+			"csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 	});
 
 	afterEach(() => {
 		vi.unstubAllGlobals();
 	});
 
-	it("retries a GET once on a transient 503 and returns the successful result", async () => {
-		fetchMock
-			.mockResolvedValueOnce(makeResponse(503, { message: "unavailable" }))
-			.mockResolvedValueOnce(makeResponse(200, { ok: true }));
+	it("requests the current session from the auth endpoint", async () => {
+		await api.getMe();
 
-		const result = await api.getMe();
-
-		expect(fetchMock).toHaveBeenCalledTimes(2);
-		expect(result).toEqual({ ok: true });
-	});
-
-	it("does NOT retry a non-idempotent POST on a transient 503 — fails fast instead", async () => {
-		// sendFriendRequest is not marked idempotent: a lost response could
-		// mean the request actually succeeded, so silently retrying it risks
-		// creating confusing duplicate-request errors instead of a clean
-		// single outcome.
-		fetchMock.mockResolvedValueOnce(
-			makeResponse(503, { message: "unavailable" }),
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/auth/me",
+			expect.objectContaining({ credentials: "include" }),
 		);
+	});
 
-		await expect(api.sendFriendRequest("rival")).rejects.toBeInstanceOf(
-			AuthError,
+	it("encodes usernames when requesting a public profile", async () => {
+		await api.getUser("turtle rival");
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/users/turtle%20rival",
+			expect.objectContaining({ credentials: "include" }),
 		);
-		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
-	it("retries a POST marked idempotent once on a transient 503 and succeeds", async () => {
-		// markConversationReadRest opts into `idempotent: true` since marking
-		// a conversation read is safe to repeat.
-		fetchMock
-			.mockResolvedValueOnce(makeResponse(503, { message: "unavailable" }))
-			.mockResolvedValueOnce(makeResponse(204));
+	it("sends friend requests using the expected endpoint and payload", async () => {
+		await api.sendFriendRequest("rival");
 
-		await expect(
-			api.markConversationReadRest(10),
-		).resolves.toBeUndefined();
-		expect(fetchMock).toHaveBeenCalledTimes(2);
-	});
-
-	it("still throws AuthError when an idempotent POST fails both the original attempt and the retry", async () => {
-		fetchMock
-			.mockResolvedValueOnce(makeResponse(503, { message: "unavailable" }))
-			.mockResolvedValueOnce(makeResponse(503, { message: "still down" }));
-
-		await expect(api.markConversationReadRest(10)).rejects.toBeInstanceOf(
-			AuthError,
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/friends/request",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({ username: "rival" }),
+			}),
 		);
-		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
-	it("does not retry a non-transient error status (e.g. 404) regardless of idempotent", async () => {
-		fetchMock.mockResolvedValueOnce(makeResponse(404, { message: "gone" }));
+	it("marks a conversation as read through its REST endpoint", async () => {
+		await api.markConversationReadRest(10);
 
-		await expect(api.markConversationReadRest(10)).rejects.toBeInstanceOf(
-			AuthError,
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/chat/conversations/10/read",
+			expect.objectContaining({ method: "POST" }),
 		);
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-	});
-});
-
-describe("hub/api — apiUploadFile empty-body handling (Bug Audit L2)", () => {
-	let fetchMock: ReturnType<typeof vi.fn>;
-
-	beforeEach(() => {
-		fetchMock = vi.fn();
-		vi.stubGlobal("fetch", fetchMock);
-		document.cookie = "";
 	});
 
-	afterEach(() => {
-		vi.unstubAllGlobals();
+	it("uploads an avatar under the backend avatar field", async () => {
+		const avatar = new File(["image"], "avatar.png", { type: "image/png" });
+
+		await api.uploadAvatar(avatar);
+
+		const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe("/api/users/me/avatar");
+		expect(request.method).toBe("POST");
+		expect(request.body).toBeInstanceOf(FormData);
+		expect((request.body as FormData).get("avatar")).toBe(avatar);
 	});
 
-	const fakeAvatar = () =>
-		new File(["fake-image-bytes"], "avatar.png", { type: "image/png" });
+	it("clears an uploaded avatar through the current-user endpoint", async () => {
+		await api.clearAvatar();
 
-	it("parses a normal JSON response as before", async () => {
-		fetchMock.mockResolvedValueOnce(
-			makeResponse(200, { avatarUrl: "/uploads/avatars/x.png" }),
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/users/me/avatar",
+			expect.objectContaining({ method: "DELETE" }),
 		);
-
-		const result = await api.uploadAvatar(fakeAvatar());
-
-		expect(result).toEqual({ avatarUrl: "/uploads/avatars/x.png" });
-	});
-
-	it("returns an empty object instead of throwing on a 204 empty body", async () => {
-		fetchMock.mockResolvedValueOnce(makeResponse(204));
-
-		await expect(api.uploadAvatar(fakeAvatar())).resolves.toEqual({});
 	});
 });

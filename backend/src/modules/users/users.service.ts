@@ -57,6 +57,32 @@ export class UsersService {
 		}
 	}
 
+	/** Resolve pending links and completed merges without invalidating old JWTs. */
+	async resolveCanonicalUserId(id: number): Promise<number> {
+		try {
+			const rows = await this.getDataSource().query<Array<{
+				mergedIntoUserId: number | null;
+				initiatorUserId: number | null;
+			}>>(
+				`SELECT u."mergedIntoUserId", c."initiatorUserId"
+				 FROM users u
+				 LEFT JOIN account_link_conflicts c
+				   ON c."linkedUserId" = u.id AND c.status = 'pending'
+				 WHERE u.id = $1 LIMIT 1`,
+				[id],
+			);
+			return rows[0]?.initiatorUserId ?? rows[0]?.mergedIntoUserId ?? id;
+		} catch (error) {
+			// Rolling deployments may briefly run before the migration exists.
+			if (["42P01", "42703"].includes((error as { code?: string }).code ?? "")) return id;
+			throw new InternalServerErrorException("Failed to resolve account identity");
+		}
+	}
+
+	async findCanonicalById(id: number): Promise<User | null> {
+		return this.findById(await this.resolveCanonicalUserId(id));
+	}
+
 	async findByFortyTwoId(fortyTwoId: string): Promise<User | null> {
 		try {
 			return await this.usersRepo.findOne({
@@ -70,15 +96,15 @@ export class UsersService {
 		}
 	}
 
-	async findByGithubId(githubId: string): Promise<User | null> {
+	async findByGoogleId(googleId: string): Promise<User | null> {
 		try {
 			return await this.usersRepo.findOne({
-				where: { githubId },
+				where: { googleId },
 				relations: ["profile"],
 			});
 		} catch {
 			throw new InternalServerErrorException(
-				"Failed to find user by GitHub id",
+				"Failed to find user by Google id",
 			);
 		}
 	}
@@ -108,10 +134,13 @@ export class UsersService {
 
 	async findByEmail(email: string): Promise<User | null> {
 		try {
-			return await this.usersRepo.findOne({
-				where: { email },
-				relations: ["profile"],
-			});
+			return (
+				(await this.usersRepo
+					.createQueryBuilder("user")
+					.leftJoinAndSelect("user.profile", "profile")
+					.where("LOWER(user.email) = LOWER(:email)", { email })
+					.getOne()) ?? null
+			);
 		} catch {
 			throw new InternalServerErrorException(
 				"Failed to find user by email",
@@ -119,9 +148,30 @@ export class UsersService {
 		}
 	}
 
+	/** Load the private fields needed only by password authentication. */
+	async findForLocalLogin(identifier: string): Promise<User | null> {
+		try {
+			return (
+				(await this.usersRepo
+					.createQueryBuilder("user")
+					.addSelect("user.passwordHash")
+					.leftJoinAndSelect("user.profile", "profile")
+					.where("user.username = :identifier", { identifier })
+					.orWhere("LOWER(user.email) = LOWER(:identifier)", {
+						identifier,
+					})
+					.getOne()) ?? null
+			);
+		} catch {
+			throw new InternalServerErrorException(
+				"Failed to find user for local login",
+			);
+		}
+	}
+
 	async create(data: {
 		fortyTwoId?: string | null;
-		githubId?: string | null;
+		googleId?: string | null;
 		username: string;
 		email?: string | null;
 		avatar?: string;
@@ -147,7 +197,7 @@ export class UsersService {
 			// We surface this as 409 so the frontend friendlyError() handler fires
 			// and the user sees "That username is already taken." instead of a 500.
 			if ((err as { code?: string })?.code === "23505") {
-				throw new ConflictException("Username is already taken");
+				throw new ConflictException("Username or email is already in use");
 			}
 			throw new InternalServerErrorException("Failed to create user");
 		}
@@ -330,8 +380,7 @@ export class UsersService {
 	 * Persist a newly-uploaded avatar filename and return the public URL.
 	 * The filename is the UUID-prefixed name written to disk by multer's diskStorage.
 	 *
-	 * Nginx serves /uploads/ as a static directory —
-	 * see infra/reverse-proxy/conf/default.conf.template
+	 * Nest serves the persistent uploads volume through /api/uploads/.
 	 */
 	async updateAvatar(
 		userId: number,
@@ -343,7 +392,7 @@ export class UsersService {
 				throw new NotFoundException(`User ${userId} not found`);
 			}
 
-			const avatarUrl = `/uploads/avatars/${filename}`;
+			const avatarUrl = `/api/uploads/avatars/${filename}`;
 			user.avatar = avatarUrl;
 			await this.usersRepo.save(user);
 
@@ -356,6 +405,22 @@ export class UsersService {
 				throw err;
 			}
 			throw new InternalServerErrorException("Failed to update avatar");
+		}
+	}
+
+	async clearAvatar(userId: number): Promise<{ ok: boolean }> {
+		try {
+			const user = await this.findById(userId);
+			if (!user) {
+				throw new NotFoundException(`User ${userId} not found`);
+			}
+
+			user.avatar = "";
+			await this.usersRepo.save(user);
+			return { ok: true };
+		} catch (err) {
+			if (err instanceof NotFoundException) throw err;
+			throw new InternalServerErrorException("Failed to clear avatar");
 		}
 	}
 

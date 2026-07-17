@@ -1,20 +1,11 @@
-/**
- * ShellCurlOnline — online/multiplayer controller for ShellCurlScene.
- *
- * Owns matchmaking state, socket wiring, remote throw replay and authoritative
- * snapshot application. The scene keeps local physics/rendering helpers and
- * exposes only the surface this controller needs.
- */
-
 import type Phaser from "phaser";
 import type { CurlingBallState } from "../../shared/mechanics/ball";
-import { DEFAULT_CURL_BIAS, CURLING_BALL_SRC_R } from "../../shared/mechanics/ball";
 import {
-	isBallOutOfBounds,
-	type RectArenaPixels,
-} from "../../shared/mechanics/rect-arena";
+	CURLING_BALL_SRC_R,
+	DEFAULT_CURL_BIAS,
+} from "../../shared/mechanics/ball";
+import type { RectArenaPixels } from "../../shared/mechanics/rect-arena";
 import { PowerType } from "../../shared/mechanics/power-system";
-import type { CurlingPowerRuntime } from "../../shared/mechanics/curling-power-runtime";
 import type { ScoreHud } from "../../shared/mechanics/score-hud";
 import type {
 	TurnManager,
@@ -25,30 +16,31 @@ import type { ArenaBallTrailRuntime, SlingshotLaunchRuntime } from "../common";
 import {
 	getGameSocket,
 	type CurlingSnapshot,
-	type CurlingThrowEvent,
 	type GameSnapshot,
 	type OnlineMatchContext,
+	type ShellCurlPhysicsState,
 } from "../../services/network/gameSocket";
 import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
 import { THEME } from "../../shared/theme";
+import { displayUsername } from "../../shared/player-labels";
+import { drawShellCurlBallTrails, drawShellCurlBumpers } from "./ShellCurlView";
 import { destroyIngamePlayerTexture } from "../../shared/mechanics/player-renderer";
 import {
-	drawShellCurlBumpers,
-	drawShellCurlBallTrails,
-} from "./ShellCurlView";
+	appendAuthoritativeSample,
+	AuthoritativeProjectionTimeline,
+	type AuthoritativePhysicsSample,
+} from "../common/runtime/authoritative-projection";
 
-const ONLINE_REPLAY_STEP_MS = 1000 / 60;
-const ONLINE_REPLAY_MAX_FRAME_MS = 100;
-const SETTLING_DELAY_MS = 800;
 const DEPTH_BALLS = 2;
 const DEPTH_HUD = 20;
 const DEPTH_OVERLAY = 100;
+interface ProjectedCurlingBall extends CurlingBallState {
+	entityId: number;
+	syncSamples?: AuthoritativePhysicsSample[];
+}
 
-export interface OnlineCurlingBallState extends CurlingBallState {
-	scale?: number;
-	alpha?: number;
-	trail?: Array<{ x: number; y: number }>;
-	stateFlags?: string[];
+interface GameInputAck {
+	accepted: boolean;
 }
 
 export function isShellCurlSnapshot(
@@ -69,7 +61,6 @@ export interface ShellCurlBumper {
 export interface ShellCurlOnlineScene {
 	arena: RectArenaPixels;
 	turnManager: TurnManager;
-	curlingPower: CurlingPowerRuntime;
 	ballGfx: Map<number, Phaser.GameObjects.Graphics>;
 	activeBall: CurlingBallState | null;
 	ballTrails: ArenaBallTrailRuntime;
@@ -80,15 +71,14 @@ export interface ShellCurlOnlineScene {
 	powerSidePanel: GameInfoSidePanel | null;
 	launchInput: SlingshotLaunchRuntime<CurlingBallState>;
 	overlayContainer: Phaser.GameObjects.Container | null;
-
 	get allBalls(): CurlingBallState[];
 	set allBalls(balls: readonly CurlingBallState[]);
-
 	beginTurn(): void;
 	buildBumpers(regenerate?: boolean): void;
 	buildScoreHudState(): TurnState;
 	clearActiveRing(): void;
 	clearAllBallGfx(): void;
+	discardOnlineAimBall(): void;
 	drawPlayerBall(
 		gfx: Phaser.GameObjects.Graphics,
 		ball: CurlingBallState,
@@ -97,29 +87,25 @@ export interface ShellCurlOnlineScene {
 	playerHexColour(player: number): string;
 	playerLabel(side: number, playerCount: number): string;
 	redrawAllBalls(): void;
-	recordMovingBallTrails(): void;
 	removeBall(ball: CurlingBallState): void;
-	resolveDeliverySpawnBlockers(): void;
-	resolveBallBumperCollisions(balls: CurlingBallState[]): void;
+	restoreOnlineAim(power: PowerType): void;
 	showRemotePlacedBall(side: number): void;
-	spawnActiveBall(teamId: number): CurlingBallState;
 	ballPlayersById(): Map<number | string, number>;
 	updateSidePanels(): void;
+	syncOnlinePowerPickups(pickups: ShellCurlPhysicsState["pickups"]): void;
+	syncOnlineUsedPowers(usedPowersBySide: string[][] | undefined): void;
 }
 
 export class ShellCurlOnlineController {
 	private readonly scene: Phaser.Scene & ShellCurlOnlineScene;
 	private match: OnlineMatchContext | null = null;
 	private lastSeq = -1;
+	private lastPhysicsSeq = -1;
+	private readonly projectionTimeline = new AuthoritativeProjectionTimeline();
 	private statusText: Phaser.GameObjects.Text | null = null;
-	private replaying = false;
-	private replaySettlingTimer = 0;
-	private replayAccumulatorMs = 0;
-	private replayStopApplied = false;
-	private replayThrower: number | null = null;
-	private replayThrowId: number | null = null;
-	private pendingSnapshot: CurlingSnapshot | null = null;
-	private confirmedBallIds: Set<number> = new Set();
+	private readonly projected = new Map<number, ProjectedCurlingBall>();
+	private rejoinTimer: ReturnType<typeof setInterval> | null = null;
+	private releasePending = false;
 
 	constructor(scene: Phaser.Scene & ShellCurlOnlineScene) {
 		this.scene = scene;
@@ -128,41 +114,28 @@ export class ShellCurlOnlineController {
 	get isActive(): boolean {
 		return this.match !== null;
 	}
-
 	get snapshot(): CurlingSnapshot | null {
 		return isShellCurlSnapshot(this.match?.snapshot)
 			? this.match.snapshot
 			: null;
 	}
-
 	get side(): number {
 		return this.match?.side ?? 0;
 	}
-
 	get spectator(): boolean {
 		return this.match?.spectator ?? false;
 	}
 
-	get isReplaying(): boolean {
-		return this.replaying;
-	}
-
 	bindFromRegistry(): boolean {
-		const registryMatch = this.scene.registry.get("onlineMatch") as
+		const match = this.scene.registry.get("onlineMatch") as
 			| OnlineMatchContext
 			| undefined;
-		this.match = isShellCurlSnapshot(registryMatch?.snapshot)
-			? registryMatch
-			: null;
+		this.match = isShellCurlSnapshot(match?.snapshot) ? match : null;
 		this.lastSeq = -1;
-		this.replaying = false;
-		this.replaySettlingTimer = 0;
-		this.replayAccumulatorMs = 0;
-		this.replayStopApplied = false;
-		this.replayThrower = null;
-		this.replayThrowId = null;
-		this.pendingSnapshot = null;
-		this.confirmedBallIds.clear();
+		this.lastPhysicsSeq = -1;
+		this.projectionTimeline.reset();
+		this.releasePending = false;
+		this.projected.clear();
 		return this.isActive;
 	}
 
@@ -171,12 +144,25 @@ export class ShellCurlOnlineController {
 		const socket = getGameSocket();
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
-		socket.off("game:throw", this.handleThrow);
+		socket.off("game:physics-state", this.handlePhysics);
 		socket.on("game:state", this.handleState);
 		socket.on("game:end", this.handleState);
-		socket.on("game:throw", this.handleThrow);
-		if (isShellCurlSnapshot(this.match.snapshot))
-			this.applySnapshot(this.match.snapshot);
+		socket.on("game:physics-state", this.handlePhysics);
+		if (this.match.physicsState)
+			this.applyPhysicsState(
+				this.match.physicsState as ShellCurlPhysicsState,
+			);
+		if (this.snapshot) this.applySnapshot(this.snapshot);
+		const request = () =>
+			socket.emit(
+				"game:physics-request",
+				{ matchId: this.match!.matchId },
+				(state: ShellCurlPhysicsState | null) => {
+					if (state) this.applyPhysicsState(state);
+				},
+			);
+		request();
+		if (this.match.rejoining) this.startRejoinPolling(request);
 		this.updateStatus("Connected to online match.");
 	}
 
@@ -184,7 +170,9 @@ export class ShellCurlOnlineController {
 		const socket = getGameSocket();
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
-		socket.off("game:throw", this.handleThrow);
+		socket.off("game:physics-state", this.handlePhysics);
+		if (this.rejoinTimer) clearInterval(this.rejoinTimer);
+		this.rejoinTimer = null;
 		this.statusText?.destroy();
 		this.statusText = null;
 	}
@@ -204,159 +192,83 @@ export class ShellCurlOnlineController {
 	updateStatus(message: string): void {
 		this.statusText?.setText(message);
 	}
-
 	repositionStatus(x: number, y: number): void {
 		this.statusText?.setPosition(x, y);
 	}
 
 	markAway(): void {
-		const phase = this.snapshot?.phase;
-		if (this.match && phase !== "finished" && phase !== "abandoned") {
+		if (
+			this.match &&
+			this.snapshot?.phase !== "finished" &&
+			this.snapshot?.phase !== "abandoned"
+		)
 			getGameSocket().emit("match:status", { away: true });
-		}
 	}
 
 	emitRelease(
-		ball: CurlingBallState,
+		_ball: CurlingBallState,
 		vx: number,
 		vy: number,
 		power: PowerType,
 	): void {
-		if (!this.match) return;
-		getGameSocket().emit("game:input", {
-			matchId: this.match.matchId,
-			action: "release",
-			payload: {
-				x: Math.max(
-					0,
-					Math.min(
-						1,
-						(ball.x - this.scene.arena.sheetX) /
-							this.scene.arena.sheetW,
-					),
-				),
-				y: Math.max(
-					0,
-					Math.min(
-						1,
-						(ball.y - this.scene.arena.sheetY) /
-							this.scene.arena.sheetH,
-					),
-				),
-				vx: vx / this.scene.arena.scale,
-				vy: vy / this.scene.arena.scale,
-				power,
-			},
-		});
+		if (!this.match || this.releasePending) return;
+		this.releasePending = true;
 		this.updateStatus("Launching...");
+		getGameSocket().emit(
+			"game:input",
+			{
+				matchId: this.match.matchId,
+				action: "release",
+				payload: {
+					vx: vx / this.scene.arena.scale,
+					vy: vy / this.scene.arena.scale,
+					power,
+				},
+			},
+			(ack: GameInputAck) => {
+				if (!ack?.accepted) this.restoreRejectedRelease(power);
+			},
+		);
 	}
 
-	updateReplay(delta: number): void {
-		if (!this.replaying) return;
-
-		this.replayAccumulatorMs += Math.min(delta, ONLINE_REPLAY_MAX_FRAME_MS);
-
-		while (
-			this.replayAccumulatorMs >= ONLINE_REPLAY_STEP_MS &&
-			this.replaying
-		) {
-			this.replayAccumulatorMs -= ONLINE_REPLAY_STEP_MS;
-
-			let anyMoving = false;
-			const active = this.scene.activeBall;
-
-			for (const ball of [...this.scene.allBalls]) {
-				if (ball.stopped) continue;
-				this.scene.curlingPower.stepCurlingBall(
-					ball,
-					ONLINE_REPLAY_STEP_MS,
-					this.scene.arena,
-				);
-				if (ball === active)
-					this.scene.curlingPower.updatePower(
-						ball,
-						ONLINE_REPLAY_STEP_MS,
-						this.scene.arena,
-					);
-				if (isBallOutOfBounds(ball, this.scene.arena)) {
-					this.scene.removeBall(ball);
-					if (ball === active) this.scene.activeBall = null;
-				} else if (!ball.stopped) {
-					anyMoving = true;
-				}
-			}
-
-			this.scene.curlingPower.resolveCollisions(
-				this.scene.allBalls,
-				this.scene.arena,
-				{
-					activeBall: active,
-					triggerActiveCollisionPower: true,
-				},
+	updateReplay(_delta: number): void {
+		for (const ball of this.projected.values()) {
+			const sample = this.projectionTimeline.interpolate(
+				ball.syncSamples ?? [],
 			);
-
-			this.scene.resolveBallBumperCollisions(this.scene.allBalls);
-			for (const bumper of this.scene.bumpers) {
-				if (bumper.flashTimer > 0)
-					bumper.flashTimer = Math.max(
-						0,
-						bumper.flashTimer - ONLINE_REPLAY_STEP_MS,
-					);
-			}
-			for (const ball of this.scene.allBalls) {
-				if (!ball.stopped) anyMoving = true;
-			}
-
-			if (
-				this.scene.activeBall &&
-				this.scene.activeBall.stopped &&
-				!this.replayStopApplied
-			) {
-				this.scene.curlingPower.stopPower(
-					this.scene.activeBall,
-					this.scene.arena,
-					this.scene.allBalls,
-				);
-				this.replayStopApplied = true;
-			}
-
-			if (anyMoving) {
-				this.replaySettlingTimer = 0;
-			} else {
-				this.replaySettlingTimer += ONLINE_REPLAY_STEP_MS;
-				if (this.replaySettlingTimer >= SETTLING_DELAY_MS)
-					this.finishReplay();
-			}
+			if (!sample) continue;
+			this.applySample(ball, sample);
 		}
-
-		if (!this.replaying) return;
-
-		drawShellCurlBumpers(
-			this.scene.bumperGfx,
-			this.scene.bumpers,
-			this.scene.arena,
-		);
-		this.scene.recordMovingBallTrails();
+		this.scene.redrawAllBalls();
 		drawShellCurlBallTrails(
 			this.scene.ballTrails,
 			this.scene.trailGfx,
 			this.scene.ballPlayersById(),
 			this.scene.arena,
 		);
+	}
+
+	reprojectPhysicsState(): void {
+		for (const ball of this.projected.values()) {
+			const sample = ball.syncSamples?.[ball.syncSamples.length - 1];
+			if (sample) this.applySample(ball, sample);
+		}
 		this.scene.redrawAllBalls();
 	}
 
-	applySnapshot(snapshot: CurlingSnapshot): void {
+	private readonly handleState = (snapshot: GameSnapshot): void => {
+		if (isShellCurlSnapshot(snapshot)) this.applySnapshot(snapshot);
+	};
+	private readonly handlePhysics = (state: ShellCurlPhysicsState): void =>
+		this.applyPhysicsState(state);
+
+	private applySnapshot(snapshot: CurlingSnapshot): void {
 		if (
 			!this.match ||
 			snapshot.matchId !== this.match.matchId ||
 			snapshot.seq < this.lastSeq
 		)
 			return;
-		if (this.replaying) {
-			this.pendingSnapshot = snapshot;
-			return;
-		}
 		this.lastSeq = snapshot.seq;
 		this.match.snapshot = snapshot;
 		this.scene.buildBumpers();
@@ -365,7 +277,6 @@ export class ShellCurlOnlineController {
 			this.scene.bumpers,
 			this.scene.arena,
 		);
-
 		(this.scene.turnManager as unknown as { _state: unknown })._state = {
 			currentTeam: snapshot.currentTurn,
 			currentEnd: snapshot.currentEnd,
@@ -380,244 +291,213 @@ export class ShellCurlOnlineController {
 			phase:
 				snapshot.phase === "finished" || snapshot.phase === "abandoned"
 					? "gameover"
-					: snapshot.phase === "active"
+					: snapshot.phase === "active" && !snapshot.activeBallId
 						? "aiming"
 						: "settling",
 			hasHammer: false,
 		};
 		this.scene.scoreHud.update(this.scene.buildScoreHudState());
-		this.renderObjects(snapshot);
-
+		this.scene.syncOnlineUsedPowers(snapshot.usedPowersBySide);
+		if (!this.projected.size) this.renderSnapshotObjects(snapshot);
 		if (snapshot.phase === "finished" || snapshot.phase === "abandoned") {
+			this.scene.discardOnlineAimBall();
 			this.showEndScreen(snapshot);
 			return;
 		}
-
-		if (snapshot.phase !== "active") {
-			this.updateStatus("Waiting for opponent...");
-			return;
-		}
-
-		const isLocalTurn =
-			snapshot.currentTurn === this.side && !this.spectator;
-		if (isLocalTurn) {
+		const localTurn =
+			snapshot.phase === "active" &&
+			snapshot.currentTurn === this.side &&
+			!this.spectator;
+		if (localTurn && !snapshot.activeBallId && !this.releasePending) {
 			this.updateStatus(
 				`Your turn (${this.scene.playerLabel(this.side, snapshot.score.length)})`,
 			);
 			if (!this.scene.activeBall) this.scene.beginTurn();
 		} else {
+			if (!localTurn) this.scene.discardOnlineAimBall();
 			this.updateStatus(
 				`${this.scene.playerLabel(snapshot.currentTurn, snapshot.score.length)} turn`,
 			);
-			this.scene.showRemotePlacedBall(snapshot.currentTurn);
 			this.scene.powerSidePanel?.hide();
 			this.scene.launchInput.recreate();
 		}
 	}
 
-	throwsUsedBySide(snapshot: CurlingSnapshot, side: number): number {
-		const playerCount = Math.max(1, snapshot.score.length);
-		return Math.floor(
-			(snapshot.throwsInEnd + playerCount - 1 - side) / playerCount,
-		);
-	}
-
-	private readonly handleState = (snapshot: GameSnapshot): void => {
-		if (isShellCurlSnapshot(snapshot)) this.applySnapshot(snapshot);
-	};
-
-	private readonly handleThrow = (event: CurlingThrowEvent): void => {
-		this.playThrow(event);
-	};
-
-	private playThrow(event: CurlingThrowEvent): void {
-		if (!this.match || event.matchId !== this.match.matchId) return;
-
-		this.scene.powerSidePanel?.hide();
-		this.scene.clearActiveRing();
-
+	private applyPhysicsState(state: ShellCurlPhysicsState): void {
 		if (
-			this.scene.activeBall &&
-			this.scene.activeBall.teamId !== event.side &&
-			!this.confirmedBallIds.has(this.scene.activeBall.id)
-		) {
-			this.scene.removeBall(this.scene.activeBall);
+			!this.match ||
+			state.matchId !== this.match.matchId ||
+			!this.projectionTimeline.accept(state.physicsSeq, state.serverTime)
+		)
+			return;
+		this.lastPhysicsSeq = state.physicsSeq;
+		this.scene.syncOnlinePowerPickups(state.pickups);
+		if (state.entities.length === 0) {
+			this.projected.clear();
+			this.scene.clearAllBallGfx();
 			this.scene.activeBall = null;
+			this.scene.clearActiveRing();
+			this.releasePending = false;
+			this.scene.updateSidePanels();
+			this.restoreAimFromCurrentSnapshot();
+			return;
 		}
-
-		let ball =
-			this.scene.activeBall?.teamId === event.side
-				? this.scene.activeBall
-				: null;
-		if (!ball) ball = this.scene.spawnActiveBall(event.side);
-
-		for (const candidate of [...this.scene.allBalls]) {
-			if (
-				candidate !== ball &&
-				!this.confirmedBallIds.has(candidate.id)
-			)
-				this.scene.removeBall(candidate);
-		}
-
-		const previousId = ball.id;
-		const gfx = this.scene.ballGfx.get(previousId);
-		this.scene.ballGfx.delete(previousId);
-		this.scene.ballTrails.delete(previousId);
-		destroyIngamePlayerTexture(
-			this.scene,
-			`shell-curl-player-${previousId}`,
-		);
-		ball.id = event.id;
-		if (gfx) this.scene.ballGfx.set(ball.id, gfx);
-
-		ball.x = this.scene.arena.deliveryX;
-		ball.y = this.scene.arena.deliveryY;
-		ball.vx = event.vx * this.scene.arena.scale;
-		ball.vy = event.vy * this.scene.arena.scale;
-		ball.power = event.power as PowerType;
-		ball.stopped = false;
-		ball.r = CURLING_BALL_SRC_R * this.scene.arena.scale;
-		ball.curlBias = DEFAULT_CURL_BIAS * (event.side === 0 ? 1 : -1);
-
-		this.scene.curlingPower.applyPower(
-			ball.power,
-			ball,
-			this.scene.arena,
-		);
-
-		this.scene.activeBall = ball;
-		this.scene.ballTrails.set(ball.id, [{ x: ball.x, y: ball.y }]);
-		this.replaying = true;
-		this.replaySettlingTimer = 0;
-		this.replayAccumulatorMs = 0;
-		this.replayStopApplied = false;
-		this.replayThrower = event.side;
-		this.replayThrowId = event.id;
-		this.scene.turnManager.setPhase("settling");
-		this.updateStatus(
-			`${event.side === this.side ? "Your" : "Opponent"} throw...`,
-		);
-	}
-
-	private finishReplay(): void {
-		const shouldSubmitSettled =
-			this.match && !this.spectator && this.replayThrower === this.side;
-
-		if (shouldSubmitSettled) {
-			const match = this.match;
-			if (!match) return;
-			getGameSocket().emit("game:input", {
-				matchId: match.matchId,
-				action: "settled",
-				payload: { objects: this.serializeObjects() },
-			});
-		}
-
-		this.replaying = false;
-		this.replaySettlingTimer = 0;
-		this.replayAccumulatorMs = 0;
-		this.replayStopApplied = false;
-		this.replayThrower = null;
-		this.replayThrowId = null;
-		this.scene.activeBall = null;
-		if (this.pendingSnapshot) {
-			const snapshot = this.pendingSnapshot;
-			this.pendingSnapshot = null;
-			this.applySnapshot(snapshot);
-		}
-	}
-
-	private renderObjects(snapshot: CurlingSnapshot): void {
-		const existingTrails = new Map(this.scene.ballTrails.entries());
-		const existingBalls = new Map(
-			this.scene.allBalls.map((ball) => [
-				ball.id,
-				{ x: ball.x, y: ball.y },
-			]),
-		);
-		this.confirmedBallIds = new Set(
-			snapshot.objects.map((object) => object.id),
-		);
-		this.scene.clearAllBallGfx();
-		this.scene.activeBall = null;
-		for (const object of snapshot.objects) {
-			const existingBall = existingBalls.get(object.id);
-			const ball: CurlingBallState = {
-				id: object.id,
-				teamId: object.side,
-				x:
-					existingBall?.x ??
-					this.scene.arena.sheetX +
-						object.x * this.scene.arena.sheetW,
-				y:
-					existingBall?.y ??
-					this.scene.arena.sheetY +
-						object.y * this.scene.arena.sheetH,
-				vx: 0,
-				vy: 0,
-				r: CURLING_BALL_SRC_R * this.scene.arena.scale,
-				power: object.power as PowerType,
-				stopped: true,
-				curlBias: DEFAULT_CURL_BIAS * (object.side === 0 ? 1 : -1),
+		const ids = new Set(state.entities.map((entity) => entity.id));
+		for (const id of this.projected.keys())
+			if (!ids.has(id)) this.destroyProjectedBall(id);
+		if (state.entities.some((entity) => !entity.stopped))
+			this.scene.discardOnlineAimBall();
+		for (const entity of state.entities) {
+			let ball =
+				this.projected.get(entity.id) ??
+				(this.scene.allBalls.find(
+					(candidate) => candidate.id === entity.id,
+				) as ProjectedCurlingBall | undefined);
+			if (!ball) {
+				ball = {
+					id: entity.id,
+					entityId: entity.id,
+					teamId: entity.ownerSide,
+					x: 0,
+					y: 0,
+					vx: 0,
+					vy: 0,
+					r: entity.radius * this.scene.arena.scale,
+					power: entity.power as PowerType,
+					stopped: entity.stopped,
+					curlBias: DEFAULT_CURL_BIAS,
+				};
+				this.projected.set(entity.id, ball);
+				if (!this.scene.ballGfx.has(entity.id))
+					this.scene.ballGfx.set(
+						entity.id,
+						this.scene.add.graphics().setDepth(DEPTH_BALLS),
+					);
+			}
+			ball.entityId = entity.id;
+			this.projected.set(entity.id, ball);
+			const sample: AuthoritativePhysicsSample = {
+				x: entity.x / 1570,
+				y: entity.y / 880,
+				vx: entity.vx / 1570,
+				vy: entity.vy / 880,
+				radius: entity.radius / 1570,
+				stopped: entity.stopped,
+				serverTime: state.serverTime,
 			};
-			const gfx = this.scene.add.graphics().setDepth(DEPTH_BALLS);
-			this.scene.ballGfx.set(ball.id, gfx);
-			this.scene.allBalls.push(ball);
-			const trail =
-				existingTrails.get(ball.id) ??
-				object.trail?.map((point) => ({
-					x:
-						this.scene.arena.sheetX +
-						point.x * this.scene.arena.sheetW,
-					y:
-						this.scene.arena.sheetY +
-						point.y * this.scene.arena.sheetH,
-				}));
-			if (trail?.length) this.scene.ballTrails.set(ball.id, trail);
-			this.scene.drawPlayerBall(gfx, ball, false);
+			ball.teamId = entity.ownerSide;
+			ball.power = entity.power as PowerType;
+			ball.stopped = entity.stopped;
+			ball.syncSamples = appendAuthoritativeSample(
+				ball.syncSamples ?? [],
+				sample,
+			);
+			if (entity.stopped) this.applySample(ball, sample);
 		}
-		drawShellCurlBallTrails(
-			this.scene.ballTrails,
-			this.scene.trailGfx,
-			this.scene.ballPlayersById(),
-			this.scene.arena,
+		this.scene.allBalls = [...this.projected.values()];
+		this.scene.activeBall = state.entities.some((entity) => !entity.stopped)
+			? null
+			: this.scene.activeBall;
+		this.releasePending = state.entities.some((entity) => !entity.stopped);
+		this.scene.updateSidePanels();
+	}
+
+	private restoreAimFromCurrentSnapshot(): void {
+		const snapshot = this.snapshot;
+		if (
+			!snapshot ||
+			snapshot.phase !== "active" ||
+			snapshot.currentTurn !== this.side ||
+			this.spectator ||
+			snapshot.activeBallId ||
+			this.releasePending ||
+			this.scene.activeBall
+		)
+			return;
+		this.scene.beginTurn();
+	}
+
+	private destroyProjectedBall(id: number): void {
+		this.projected.delete(id);
+		this.scene.ballGfx.get(id)?.destroy();
+		this.scene.ballGfx.delete(id);
+		destroyIngamePlayerTexture(this.scene, `shell-curl-player-${id}`);
+		this.scene.ballTrails.delete(id);
+		this.scene.allBalls = this.scene.allBalls.filter(
+			(ball) => ball.id !== id,
+		);
+		if (this.scene.activeBall?.id === id) {
+			this.scene.activeBall = null;
+			this.scene.clearActiveRing();
+		}
+	}
+
+	private applySample(
+		ball: ProjectedCurlingBall,
+		sample: AuthoritativePhysicsSample,
+	): void {
+		ball.x = this.scene.arena.sheetX + sample.x * this.scene.arena.sheetW;
+		ball.y = this.scene.arena.sheetY + sample.y * this.scene.arena.sheetH;
+		ball.vx = sample.vx * this.scene.arena.sheetW;
+		ball.vy = sample.vy * this.scene.arena.sheetH;
+		ball.r = sample.radius * this.scene.arena.sheetW;
+		ball.stopped = sample.stopped;
+	}
+
+	private renderSnapshotObjects(snapshot: CurlingSnapshot): void {
+		this.scene.clearAllBallGfx();
+		const balls: CurlingBallState[] = snapshot.objects.map((object) => ({
+			id: object.id,
+			teamId: object.side,
+			x: this.scene.arena.sheetX + object.x * this.scene.arena.sheetW,
+			y: this.scene.arena.sheetY + object.y * this.scene.arena.sheetH,
+			vx: 0,
+			vy: 0,
+			r:
+				CURLING_BALL_SRC_R *
+				(object.scale ?? 1) *
+				this.scene.arena.scale,
+			power: object.power as PowerType,
+			stopped: true,
+			curlBias: DEFAULT_CURL_BIAS,
+		}));
+		this.scene.allBalls = balls;
+		for (const ball of balls)
+			this.scene.ballGfx.set(
+				ball.id,
+				this.scene.add.graphics().setDepth(DEPTH_BALLS),
+			);
+		this.scene.redrawAllBalls();
+	}
+
+	private restoreRejectedRelease(power: PowerType): void {
+		this.releasePending = false;
+		this.updateStatus("Launch rejected. Aim and try again.");
+		this.scene.restoreOnlineAim(power);
+	}
+
+	private throwsUsedBySide(snapshot: CurlingSnapshot, side: number): number {
+		return Math.floor(
+			(snapshot.throwsInEnd + snapshot.score.length - 1 - side) /
+				Math.max(1, snapshot.score.length),
 		);
 	}
 
-	private serializeObjects(): CurlingSnapshot["objects"] {
-		return this.scene.allBalls.map((ball) => ({
-			id: ball.id,
-			side: ball.teamId,
-			x: Math.max(
-				0,
-				Math.min(
-					1,
-					(ball.x - this.scene.arena.sheetX) /
-						this.scene.arena.sheetW,
-				),
-			),
-			y: Math.max(
-				0,
-				Math.min(
-					1,
-					(ball.y - this.scene.arena.sheetY) /
-						this.scene.arena.sheetH,
-				),
-			),
-			vx: ball.vx / this.scene.arena.scale,
-			vy: ball.vy / this.scene.arena.scale,
-			moving: !ball.stopped,
-			power: ball.power,
-			trail: this.scene.ballTrails.readRectNormalisedTrail(
-				ball.id,
-				this.scene.arena,
-				{ clamp: true },
-			),
-		}));
+	private startRejoinPolling(request: () => void): void {
+		const baseline = this.lastPhysicsSeq;
+		let attempts = 0;
+		this.rejoinTimer = setInterval(() => {
+			if (++attempts > 20 || this.lastPhysicsSeq > baseline) {
+				if (this.rejoinTimer) clearInterval(this.rejoinTimer);
+				this.rejoinTimer = null;
+				return;
+			}
+			request();
+		}, 150);
 	}
 
 	private showEndScreen(snapshot: CurlingSnapshot): void {
-		const winner =
+		const result =
 			snapshot.winnerSide === null
 				? "DRAW"
 				: snapshot.winnerSide === this.side
@@ -628,7 +508,7 @@ export class ShellCurlOnlineController {
 			this.scene.overlayContainer,
 			{
 				title: "TEMPLE CURLING",
-				result: winner,
+				result,
 				matchId: snapshot.matchId,
 				side: this.side,
 				sceneKey: "ShellCurlScene",
@@ -638,8 +518,8 @@ export class ShellCurlOnlineController {
 						label: `P${player.side + 1}`,
 						detail:
 							player.side === this.side
-								? `${player.username} (You)`
-								: player.username,
+								? `${displayUsername(player.username)} (You)`
+								: displayUsername(player.username),
 						score: snapshot.score[player.side] ?? 0,
 						color: this.scene.playerHexColour(player.side),
 					})),

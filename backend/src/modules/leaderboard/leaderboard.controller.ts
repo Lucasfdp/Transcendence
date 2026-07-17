@@ -1,4 +1,5 @@
 import {
+	BadRequestException,
 	Controller,
 	Get,
 	Query,
@@ -7,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { KNOWN_GAME_IDS } from "../game-results/game-ids.constants";
 import {
 	GameLeaderboardEntry,
 	LeaderboardScope,
@@ -22,19 +24,35 @@ export class LeaderboardController {
 	constructor(private readonly leaderboardService: LeaderboardService) {}
 
 	/**
-	 * GET /api/leaderboard?gameId=shell-curl&scope=global
+	 * GET /api/leaderboard?gameId=temple-curling&scope=global
 	 *
 	 * Returns ELO standings for a single game, ranked highest rating first.
 	 * scope=friends limits results to accepted friends of the caller + caller.
 	 */
 	@Get()
-	@ApiQuery({ name: "gameId", required: true })
+	@ApiQuery({ name: "gameId", required: true, enum: KNOWN_GAME_IDS })
 	@ApiQuery({ name: "scope", enum: ["global", "friends"], required: false })
 	getGameLeaderboard(
 		@Request() req: { user: { id: number } },
 		@Query("gameId") gameId: string,
 		@Query("scope") scope: string = "global",
 	): Promise<GameLeaderboardEntry[]> {
+		// Rankings Bug Audit M1: an absent `gameId` used to reach the service
+		// and bind `undefined` into the query builder, which TypeORM throws on
+		// — surfaced to the client as a generic 500 instead of a 400. A
+		// present-but-unrecognized id used to silently return `[]`, which is
+		// harmless but indistinguishable from a genuinely empty board and
+		// masks `gameId` drift between this API and the frontend's
+		// `RANKED_GAMES` list. Validate against the shared, single-source-of-
+		// truth game id list so both cases become an explicit 400.
+		if (
+			!gameId ||
+			!KNOWN_GAME_IDS.includes(gameId as (typeof KNOWN_GAME_IDS)[number])
+		) {
+			throw new BadRequestException(
+				`gameId is required and must be one of: ${KNOWN_GAME_IDS.join(", ")}`,
+			);
+		}
 		const resolvedScope: LeaderboardScope =
 			scope === "friends" ? "friends" : "global";
 		return this.leaderboardService.getGameLeaderboard(

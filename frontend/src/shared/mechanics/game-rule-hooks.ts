@@ -41,7 +41,7 @@ export function buildTurnStateFromGameRuleHooks(
 		playerCount: hooks.getPlayerCount(),
 		currentTeam: hooks.getCurrentPlayer(),
 		currentRound: hooks.getCurrentRound(),
-		stonesLeft: [...hooks.getRemainingTurns()],
+		ballsLeft: [...hooks.getRemainingTurns()],
 		score,
 		phase: hooks.getPhase(),
 		hasHammer: hooks.hasHammer?.() ?? false,

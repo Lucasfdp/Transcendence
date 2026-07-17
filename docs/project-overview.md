@@ -13,7 +13,7 @@ Shell Smash (ft_transcendence) is a sumo-turtle multiplayer gaming hub served en
 5. [Redis](#5-redis)
 6. [Frontend (Phaser 3 + Vite)](#6-frontend-phaser-3--vite)
 7. [Hub Scene](#7-hub-scene)
-8. [Profile Panel](#8-profile-panel)
+8. [Profiles](#8-profiles)
 9. [Authentication Flow](#9-authentication-flow)
 10. [Data Models](#10-data-models)
 11. [Mini-Games Registry](#11-mini-games-registry)
@@ -61,7 +61,8 @@ Nginx is the single entry point for all external traffic. It terminates TLS and 
 
 **What it does:**
 
-- Redirects all HTTP (port 80) to HTTPS (port 443) with a 301.
+- Replaces plain HTTP requests sent to the published TLS port with a branded
+  `426 Upgrade Required` page that links back to the secure entrance.
 - Serves HTTPS with TLS 1.2/1.3 only and a strong cipher suite.
 - Adds security headers: `Strict-Transport-Security`, `X-Frame-Options DENY`, `X-Content-Type-Options nosniff`, `Content-Security-Policy`.
 - Routes `/api/` to the NestJS backend (120 s read timeout, 10 MB body limit).
@@ -84,20 +85,31 @@ A NestJS API server backed by TypeORM. It handles authentication, user data, and
 Root module. Wires up ConfigModule (global), TypeORM (async factory using ConfigService), and all feature modules. TypeORM `synchronize` is enabled in development so schema changes apply automatically — disabled in production.
 
 **AuthModule** (`backend/src/modules/auth/`)  
-Handles login and JWT issuance.
+Handles local, guest, 42, and Google authentication with JWTs stored in an
+HTTP-only cookie.
 
-- `AuthController` — two endpoints:
-    - `GET /api/auth/dev-login?username=<name>` — creates or finds a local user and returns a JWT. Double-gated: only works when `NODE_ENV !== 'production'` **and** `ENABLE_DEV_LOGIN=true`.
-    - `GET /api/auth/me` — returns the current user from the JWT (JWT-guarded).
-- `AuthService` — `findOrCreateUser()`, `issueJwt()`, `devLogin()`. All async calls are wrapped in try/catch with `InternalServerErrorException`.
-- `JwtStrategy` — validates Bearer tokens and loads the full user from the database.
-- `FortyTwoStrategy` — stub for 42 OAuth (disabled; see TODO #1 in the code).
+- `AuthController` — local registration/login, guest sessions, session logout,
+  current-user lookup, connected-account operations, and the 42/Google OAuth
+  routes and callbacks.
+- `AuthService` — local credential validation and auth-cookie issuance.
+- `AccountLinksService` — authentication identities, persistent conflicts,
+  previews, unlinking, and transactional account consolidation.
+- `OAuthStateService` — expiring, single-use OAuth state stored in Redis.
+- `JwtStrategy` — validates the auth cookie and loads the current user.
+- `FortyTwoStrategy` and `GoogleStrategy` — the two supported remote OAuth
+  providers; they return verified provider identities and never create users.
 
 **UsersModule** (`backend/src/modules/users/`)  
 CRUD over the `users` table.
 
-- `UsersController` — JWT-guarded routes: `GET /api/users`, `GET /api/users/:username`, `GET /api/users/me`.
-- `UsersService` — `findById`, `findByFortyTwoId`, `findByUsername` (throws `NotFoundException` when missing), `create` (also creates a linked Profile row), `findAll`.
+- `UsersController` — JWT-guarded routes for the strict public user view,
+  current-user profile updates, avatar upload/removal and leaderboards. Public
+  profile data is served by `GET /api/users/:username` without returning the
+  `User` entity or private account fields.
+- `UsersService` — `findById`, `findByFortyTwoId`, `findByGoogleId`,
+  `findByUsername`, `create` (also creates a linked Profile row), and `findAll`.
+- `UserAccountActivityService` — process-local queue markers used to prevent an
+  account consolidation while a player is waiting for a match.
 
 **ProfilesModule** (`backend/src/modules/profiles/`)  
 Manages the `profiles` table. Profiles are created automatically when a user is created — no separate endpoint yet.
@@ -138,12 +150,11 @@ docker compose exec database psql -U $POSTGRES_USER $POSTGRES_DB
 
 **Path:** `infra/redis/`
 
-Redis is running and connected to the backend but not yet actively used. The planned uses are:
+Redis is running and connected to the backend. It currently stores OAuth state,
+JWT revocations, and distributed rate-limit counters. Further planned uses are:
 
-- JWT blocklist / session revocation
 - WebSocket pub/sub for real-time game state
 - Matchmaking queues and lobby state
-- Per-user / per-IP rate limiting
 
 Config lives in `tools/redis.conf`. Password auth is required (`REDIS_PASSWORD`). Memory is capped at `REDIS_MAX_MEMORY` with the `allkeys-lru` eviction policy by default.
 
@@ -171,7 +182,7 @@ The main hub world. See [§7 Hub Scene](#7-hub-scene).
 
 | File                               | Purpose                                                                                                                                                                                                      |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `frontend/src/features/hub/api.ts` | Typed wrappers around `fetch` — all API calls go through `apiFetch()` which attaches the JWT Bearer token automatically. Exports `api.getMe()`, `api.getAllUsers()`, `api.getMiniGames()`, `api.devLogin()`. |
+| `frontend/src/features/hub/api.ts` | Typed wrappers around the shared cookie/CSRF-aware API transport, including private current-user and strict `PublicUserView` contracts. |
 | `frontend/src/shared/theme.ts`     | Central colour palette (warm Japanese-temple: deep charcoal background, gold accents, muted red). All Phaser graphics calls reference `THEME.*` constants so colours are changed in one place.               |
 | `public/assets/hub-background.png` | Optional background image. If missing or failed to load, the procedural night-sky scene renders as a full fallback.                                                                                          |
 
@@ -229,7 +240,9 @@ Rendered by `drawHUD()` when a user is logged in. A 56 px tall translucent bar a
 - XP progress bar with numeric label
 - Dojo Rankings leaderboard (bottom-right, top 5 by XP)
 
-**Clicking anywhere in the left ~220 px of the HUD** (the avatar + name area) opens/closes the Profile Panel. A gold glow ring around the avatar indicates hover.
+The player card opens the profile editor. A separate accessible link opens the
+current player's public `/profile/:username` page, so the existing editor action
+is unchanged.
 
 ### Login Prompt
 
@@ -237,48 +250,51 @@ Rendered by `drawLoginPrompt()` when no user is authenticated. Shows the Shell S
 
 ---
 
-## 8. Profile Panel
+## 8. Profiles
 
-**File:** `frontend/src/features/hub/ProfilePanel.ts`
+The React profile editor lives in `frontend/src/pages/HomePage.tsx`. It updates
+the turtle name, an unlocked dojo tag, three showcased achievements and the
+custom avatar while rendering a live `PlayerProfilePreview`. Connected account
+controls remain in the same fixed desktop modal.
 
-A 320×490 px Phaser `Container` that slides in below the HUD on the left side. All art is drawn with `Graphics` primitives — no external textures required.
+`frontend/src/pages/ProfilePage.tsx` implements the protected
+`/profile/:username` route. It loads the strict public endpoint independently of
+Hub state and displays the player's identity, `ShellPortrait`, level, online
+state, dojo tag, showcased achievements, match record and most-played game.
+Loading, missing, network, malformed-response and empty-data states are explicit.
 
-**Sections (top to bottom):**
-
-1. Panel background — dark charcoal with a rounded gold border and subtle inner accent ring.
-2. Avatar frame — gold ring with layered glow halos, dark inner fill.
-3. Turtle placeholder art — top-down sumo turtle: oval shell body with hex-grid pattern, head, eyes with highlight dots, two side flippers. Fully procedural.
-4. 42 badge — small gold-bordered circle at the bottom-right of the avatar ring.
-5. Player name (uppercase) + level badge circle.
-6. Shell skin subtitle.
-7. XP bar — track + fill + numeric label.
-8. Stats row — three equal cards for Wins, Losses, and Games Played.
-9. Bio text (italic, word-wrapped).
-10. Close button — full-width, inverts to gold on hover.
-
-**API:** `show()`, `hide()` (both animated with Phaser tweens), `toggle()`, `isOpen()`, `destroy()`. Created lazily the first time the avatar area is clicked.
+Social friend rows include a separate `View profile` link. Compact Social hover
+cards continue to provide a quick summary without exposing private account data.
 
 ---
 
 ## 9. Authentication Flow
 
 ```
-Dev login (local only):
-  Browser → GET /api/auth/dev-login?username=KameMaster
-          → AuthController checks NODE_ENV + ENABLE_DEV_LOGIN
-          → AuthService.devLogin() → findOrCreateUser() → issueJwt()
-          → { access_token: "eyJ..." }
-          → stored in localStorage
-          → scene.restart() → HubScene loads with user data
+ShellSmash sign-in:
+  Browser → CSRF bootstrap → POST /api/auth/login
+          → AuthIdentity scrypt verification
+          → canonical User resolution
+          → HTTP-only auth cookie
 
 JWT-protected request:
   Browser → GET /api/users/me
-          → Authorization: Bearer <token>
-          → JwtStrategy.validate() → UsersService.findById()
-          → returns User entity
+          → auth_token cookie
+          → JwtStrategy.validate() → UsersService.findCanonicalById()
+          → returns a private-field-safe user view
+
+OAuth sign-in or linking:
+  Browser → application start endpoint
+          → single-use Redis state
+          → provider authorisation and callback
+          → verified provider identity
+          → direct link, new user, or persistent account conflict
 ```
 
-42 OAuth is stubbed and ready to wire up. The strategy file (`forty-two.strategy.ts`) and guard (`ft-auth.guard.ts`) exist; the controller routes and module provider are behind `TODO(#1)` comments waiting for real client credentials.
+42 and Google OAuth are wired through Passport strategies, provider-specific
+guards, controller callbacks, single-use Redis state, and HTTP-only auth
+cookies. Real client credentials are supplied through Vault; see
+`docs/oauth-setup.md`. Tokens are never stored in browser storage.
 
 ---
 
@@ -286,20 +302,46 @@ JWT-protected request:
 
 ### User
 
-| Column     | Type              | Notes                                |
-| ---------- | ----------------- | ------------------------------------ |
-| id         | int (PK)          | auto-increment                       |
-| fortyTwoId | string (unique)   | `"dev-<username>"` for dev logins    |
-| username   | string (unique)   |                                      |
-| email      | string (unique)   |                                      |
-| avatar     | string (nullable) | URL to avatar image                  |
-| level      | int               | default 1                            |
-| xp         | int               | default 0                            |
-| turtleName | string (nullable) | display name; falls back to username |
-| shellSkin  | string            | default `"base"`                     |
-| createdAt  | timestamp         |                                      |
-| updatedAt  | timestamp         |                                      |
-| profile    | Profile           | one-to-one, eager-loaded             |
+| Column           | Type              | Notes                                      |
+| ---------------- | ----------------- | ------------------------------------------ |
+| id               | int (PK)          | auto-increment                             |
+| username         | string (unique)   | progress-account display handle            |
+| avatar           | string (nullable) | URL to avatar image                        |
+| level            | int               | default 1                                  |
+| xp               | int               | default 0                                  |
+| coins            | int               | player balance                             |
+| turtleName       | string (nullable) | display name; falls back to username       |
+| shellSkin        | string            | default `"base"`                           |
+| mergedIntoUserId | int (nullable)    | canonical account after consolidation      |
+| createdAt        | timestamp         |                                            |
+| updatedAt        | timestamp         |                                            |
+| profile          | Profile           | one-to-one, eager-loaded                   |
+
+Legacy authentication columns remain temporarily for rolling-deployment
+compatibility. New authentication decisions use `AuthIdentity`.
+
+### AuthIdentity
+
+| Column          | Type            | Notes                                        |
+| --------------- | --------------- | -------------------------------------------- |
+| id              | UUID (PK)       |                                              |
+| userId          | int (FK)        | progress account                             |
+| method          | string          | `shellsmash`, `google`, or `forty_two`       |
+| providerSubject | string nullable | stable Google or 42 subject                  |
+| shellUsername   | string nullable | ShellSmash sign-in name                      |
+| shellEmail      | string nullable | normalised ShellSmash sign-in email          |
+| passwordHash    | string nullable | private salted scrypt hash                   |
+
+The database enforces one identity per user and method, and global uniqueness
+for provider subjects, ShellSmash usernames, and ShellSmash emails.
+
+### AccountLinkConflict
+
+Pending conflicts retain the initiating and linked user IDs, the method that
+created the conflict, and the eventual resolution. A partial unique index and
+transactional advisory locks prevent concurrent conflicts for the same
+account. Completed rows retain the final user ID for idempotent retries and
+auditability.
 
 ### Profile
 
@@ -374,7 +416,7 @@ Run from the repo root (where `.env` lives).
 | `make up`                   | Build and start all services in production mode       |
 | `make dev`                  | Start with `docker-compose.override.yml` (hot-reload) |
 | `make down`                 | Stop and remove containers                            |
-| `make re`                   | Full rebuild — equivalent to `down` then `up`         |
+| `make re`                   | Full rebuild and recreation via `down` then `up`; persistent volumes are preserved |
 | `make fclean`               | Remove containers, volumes, and images                |
 | `make logs SERVICE=backend` | Tail logs for a specific service                      |
 | `make ps`                   | Show running container status                         |
@@ -396,7 +438,8 @@ All variables live in `.env` at the repo root. Key ones to know during developme
 | `JWT_SECRET`                | `changeme_jwt_secret`   | Signs all JWTs — use a strong random string in production       |
 | `POSTGRES_*`                | see `.env`              | Database credentials                                            |
 | `VITE_API_URL`              | `https://localhost/api` | API base URL injected into the Vite build                       |
-| `FORTYTWO_CLIENT_ID/SECRET` | empty                   | 42 OAuth credentials — leave empty until keys are obtained      |
+| `FORTYTWO_CLIENT_ID/SECRET` | Vault                   | 42 OAuth credentials                                             |
+| `GOOGLE_CLIENT_ID/SECRET`   | Vault                   | Google OAuth credentials                                         |
 | `DOMAIN_NAME`               | `localhost`             | Used by Nginx server_name in production                         |
 
 > **Never commit real secrets.** `.env` is listed in `.gitignore`. Use `.env.example` as the committed template.

@@ -32,7 +32,7 @@ import { Slingshot } from "../../shared/mechanics/slingshot";
 import { buildReturnButton } from "../../shared/mechanics/hud";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
-import { showCardDropPopup } from "../../shared/card-drop-popup";
+import { showCardDropPopup } from "../../features/cards";
 import { THEME } from "../../shared/theme";
 import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import { api } from "../../features/hub/api";
@@ -100,14 +100,14 @@ import {
 	PLAYER_HEX_COLOURS,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
-import { hudPlayerLabel } from "../../shared/player-labels";
+import { displayUsername, hudPlayerLabel } from "../../shared/player-labels";
 import { resolveReplayWinnerSide } from "../common/localReplay";
 import {
 	ArenaBallTrailRuntime,
 	buildCommonLocalReplayParticipantContext,
 	buildBambooBashLocalReplaySnapshot,
 	CommonGameSceneHost,
-	LocalReplayRuntime,
+	ReplayCaptureRuntime,
 	resolvePlayerTrailEffects,
 	SceneSocketChannel,
 	SlingshotLaunchRuntime,
@@ -251,13 +251,14 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 	private ballWasMoving = false;
 
 	ballTrails = new ArenaBallTrailRuntime();
-	private readonly localReplay = new LocalReplayRuntime<
+	private readonly localReplay = new ReplayCaptureRuntime<
 		BambooBashSnapshot,
 		BambooBashSnapshot["phase"]
 	>({
 		gameId: "bamboo-bash",
 		captureStepMs: REPLAY_CAPTURE_STEP_MS,
-		shouldSkip: () => this.online.isActive,
+		shouldSkip: () =>
+			this.online.isActive || this.registry.get("replayEnabled") === false,
 		buildSnapshot: (phaseOverride) =>
 			this.createLocalReplaySnapshot(phaseOverride),
 	});
@@ -468,8 +469,10 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		if (this.online.isActive) {
 			this.online.init();
 			this.online.createStatusText();
-			if (this.online.snapshot?.phase === "active")
-				this.online.startOnlineCountdown();
+			if (this.online.snapshot?.phase === "active") {
+				if (this.online.hasMovingProjection) this.online.resumeOnlinePlay();
+				else this.online.startOnlineCountdown();
+			}
 		} else {
 			this.localReplay.startCapture();
 			this.startCountdown();
@@ -581,7 +584,12 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 
 	private updateBambooBash(delta: number): void {
 		if (!this.online.isActive) this.localReplay.addElapsed(delta);
-		if (!this.running) return;
+		if (!this.running) {
+			// A rejoining client may still be in its UI countdown while the server
+			// has an active trajectory. Keep rendering the authoritative projection.
+			if (this.online.isActive) this.online.update(delta);
+			return;
+		}
 
 		// Countdown. Online rounds use the server-provided deadline so simultaneous
 		// games end together even if clients loaded the scene at slightly different times.
@@ -597,8 +605,12 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			if (this.localParticipants.length > 0) this.updateHudText();
 			this.powerSidePanel?.refresh();
 		}
-		if (!this.isLocalVersus() && this.timeLeftMs <= 0) {
+		if (!this.online.isActive && !this.isLocalVersus() && this.timeLeftMs <= 0) {
 			notifyGameRuleRoundComplete(this.buildGameRuleHooks());
+			return;
+		}
+		if (this.online.isActive) {
+			this.online.update(delta);
 			return;
 		}
 
@@ -739,6 +751,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 
 		participant.activePower = PowerType.NONE;
 		this.powerSidePanel?.hide();
+		this.localReplay.recordEvent("action:start");
 		this.localReplay.captureFrame(true);
 	}
 
@@ -894,7 +907,6 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 
 		api.submitGameResult("bamboo-bash", "completed")
 			.then((result) => {
-				console.info("[BambooBash] progression:", result);
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
 				showCardDropPopup(this, result.cardDrop);
 			})
@@ -981,8 +993,8 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 					label: `P${player.side + 1}`,
 					detail:
 						player.side === this.online.side
-							? `${player.username} (You)`
-							: player.username,
+							? `${displayUsername(player.username)} (You)`
+							: displayUsername(player.username),
 					score: snapshot.score[player.side] ?? 0,
 					color: PLAYER_HEX_COLOURS[
 						player.side % PLAYER_HEX_COLOURS.length
@@ -2134,7 +2146,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		];
 	}
 
-	private addScoreEvent(label: string, value: string): void {
+	public addScoreEvent(label: string, value: string): void {
 		this.scoreEvents.unshift(`${label}\t${value}`);
 		this.scoreEvents = this.scoreEvents.slice(0, SCORE_LOG_LIMIT);
 		this.updateSidePanels();

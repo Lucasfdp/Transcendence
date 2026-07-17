@@ -64,10 +64,14 @@ Evidence:
 - Online status via sockets: `backend/src/modules/presence/`. Coarse presence transitions (offline↔online, online↔in-game) are pushed live to a user's online friends via `presence:changed` from `matchmaking.gateway.ts` (`broadcastPresence`), and the Social modal patches the friend list in place (`frontend/src/features/social/presence.ts::patchFriendPresence`) — Decision 3.
 - DM and group chat (friends-only, with persistent history, GIF sending via Klipy): `backend/src/modules/chat/`. The chat WebSocket glue in `matchmaking.gateway.ts` (`chat:send` / `chat:send-gif` / `chat:read` handlers, per-conversation room joins on connect, unread-inbox push) was restored in the 2026-07-07 social audit. UI in the "Messages" section of the Social modal (`frontend/src/pages/HomePage.tsx`), with id-cursor older-message pagination (Bug B6), REST unread hydration across hub→game→hub (Bug B1), scroll anchoring (Bug B2), and a draft-restore on rejected sends (Bug B8).
 - Group ownership & member management (Decision 1/2): the owner can kick (`DELETE /chat/conversations/:id/members/:userId`), rename (`PATCH /chat/conversations/:id`), and delete (`DELETE /chat/conversations/:id`) a group; ownership transfers to the most senior remaining member when the owner leaves; a `GET /chat/conversations/:id/members` endpoint backs the member-list + add-member UI. Kicked/deleted members are notified live via `chat:removed`; renames patch open clients via `chat:conversation-updated`.
+- GIF search/send (2026-07-17 fix): `GifService` (`backend/src/modules/chat/gif.service.ts`) now trusts all three of Klipy's documented CDN hosts (`static`/`static1`/`static2.klipy.com`) instead of just one — the single-host allowlist was silently dropping most search results and causing "GIF provider returned an unexpected format" on send. A missing `KLIPY_APP_KEY` now throws `ServiceUnavailableException` (503) instead of a generic 500, and the frontend (`HomePage.tsx`) tracks a distinct `gifSearchError` state so a real failure reads "GIF search is unavailable right now." instead of the misleading "No gifs found." The reverse-proxy CSP `img-src` (`infra/reverse-proxy/conf/default.conf.template`) now allows all three hosts. A "Powered by KLIPY" attribution line was added to the picker per Klipy's API usage guidelines.
+- Social modal redesign (2026-07-17): the modal is now a two-pane layout mirroring the replay page (`.hub-modal__social-grid`, cloned from `.hub-modal__replays`) — a left sidebar with a pinned friend-code/add-friend block and a `Friends | Chats | Requests` tab strip (Requests shows a pending-count badge), and a right pane holding the open chat thread (or an empty state) so switching sidebar tabs no longer unmounts an open thread. Friend rows show a mini `ShellPortrait` (`shell-portrait--mini`, 2.2rem) with the presence dot overlaid on the portrait corner; conversation/request rows are unchanged (avatars are friends-only per product decision). "New group" no longer requires closing the open thread first, and shows "Add some friends first — groups are friends-only." instead of a dead disabled button when the user has no friends yet.
+- Hardening alongside the redesign: raw HTTP error text (e.g. a bare "Unauthorized" banner) is no longer shown for modal-level failures — a shared `describeModalError` helper routes any 401 to `/auth` with friendly copy and preserves user-worded 4xx messages otherwise. The live `friend:removed` handler now no-ops while the Social modal has never been opened and guards against a burst of removals firing concurrent refetches.
 
 Validation:
-- Backend: full Jest suite green (`cd backend && npm run test`) — chat/friends/reports/matchmaking-gateway suites cover every owner action (happy / non-owner 403 / non-group 404 / self-kick 400 / transfer selection / delete cleanup), the presence fan-out (happy / guest short-circuit / non-fatal error), and the Part B fixes.
-- Frontend: pure helpers under `frontend/src/features/{chat,social}` have vitest coverage (`isNearBottom`, `patchFriendPresence`, conversation ops). The `HomePage.tsx` UI has no runner and was validated manually per `CLAUDE.md` (two accounts across friend request/accept, DM + gif + unread badges across hub→game→hub, group create/add/kick/rename/leave/delete, block/unblock, presence transitions).
+- Backend: full Jest suite green (`cd backend && npm run test`, all 65 spec files) — chat/friends/reports/matchmaking-gateway suites cover every owner action (happy / non-owner 403 / non-group 404 / self-kick 400 / transfer selection / delete cleanup), the presence fan-out (happy / guest short-circuit / non-fatal error), the Part B fixes, and the new `gif.service.spec.ts` cases (all three trusted CDN hosts, lookalike-host rejection, malformed-URL rejection, `getBySlug` on a `static1` item, 503 on missing app key).
+- `tsc --noEmit` clean for both `backend/` and `frontend/` on every touched file (remaining errors are pre-existing and unrelated — Phaser scene canvas typings, an untyped `passport-google-oauth20` module, etc.).
+- Frontend: pure helpers under `frontend/src/features/{chat,social}` have vitest coverage (`isNearBottom`, `patchFriendPresence`, conversation ops); `ShellPortrait.test.tsx` now also covers the `mini` size. The `HomePage.tsx` UI has no runner and was previously validated manually per `CLAUDE.md` (two accounts across friend request/accept, DM + gif + unread badges across hub→game→hub, group create/add/kick/rename/leave/delete, block/unblock, presence transitions) — **the 2026-07-17 redesign + GIF fix still needs a fresh manual pass** (GIF search/send/render both directions with a real `KLIPY_APP_KEY`, tab switching with a thread open, requests badge, mini avatars incl. fallbacks, mobile ≤1100px single-column + back button, block/report/invite from the new Friends tab) plus a `cd frontend && npm run test:run` run on the user's Mac — the sandbox can't run either. See `docs/social-tab-redesign-and-gif-fix-plan-2026-07-17.md` §6 for the checklist; that document stays in `docs/` (not moved to `docs/old_docs/`) until this manual pass is done.
 
 See `docs/social-module-completion-plan-2026-07-11.md` for the completion work order and `docs/social-page-bug-audit-2026-07-07.md` for the prior audit.
 
@@ -180,7 +184,7 @@ Missing for completion:
 ## User Management
 
 ### Major: Standard user management and authentication
-Status: `In progress`
+Status: `Done`
 
 Requirement breakdown:
 - Update profile.
@@ -190,14 +194,34 @@ Requirement breakdown:
 
 Evidence:
 - Local auth, guest, and OAuth in `backend/src/modules/auth/`
+- Local registration validates and stores a unique email address, while local
+  login accepts either email or username.
+- Profile exposes ShellSmash, Google, and 42 connected-account controls.
+  Authentication identities are separate from progress, legacy credentials
+  are migrated, and a persistent two-preview conflict flow retains exactly one
+  account's progress while preserving moderation and antifraud records.
 - Editable profile and avatar upload in `backend/src/modules/users/users.controller.ts`
+- Avatar uploads are persisted in a dedicated Docker volume and served through
+  `/api/uploads/`. The profile editor supports upload, replacement, and removal;
+  a reusable Shell Portrait uses the equipped shell as the visible default in
+  the hub header, profile editor, and social profile cards. Broken custom-image
+  URLs also fall back to the equipped shell.
+- Firefox headless validation on 17 July 2026 covered the shell fallback,
+  real image upload and delivery, removal back to the equipped shell, desktop
+  layout, compact landscape layout, and the existing portrait-orientation guard.
 - Friends and online status in `friends` and `presence`
-- Profile viewable from `HomePage`
+- Profile editor in `HomePage`, with a separate protected public profile route at
+  `/profile/:username` for the current player and other authenticated users.
+- Public profile navigation is available from the Hub header and each friend row
+  in Social without changing the existing player-card editor action.
+- Full acceptance evidence is recorded in
+  `docs/user-management-acceptance.md` (65 frontend files / 368 tests, 65 backend
+  suites / 878 tests, both production builds, two-account Firefox matrix,
+  persistence across a volume-preserving `make re`, and healthy Docker services).
 
 Missing for completion:
-- Validate that the profile page and complete avatar flow work well in the UI.
-- Confirm consistent default avatar in all cases.
-- Still marked as `pending` in `docs/modules.md`, so should not be claimed as closed yet.
+- Nothing essential to claim the module. Portraits in every compact chat and
+  ranking row are deliberately outside the closure criteria.
 
 ### Minor: Game statistics and match history
 Status: `Done`
@@ -213,6 +237,7 @@ Evidence:
 - `backend/src/modules/leaderboard/`
 - `backend/src/modules/achievements/`
 - Replays and match history in `backend/src/modules/matchmaking/replay.service.ts`
+- 2026-07-15 rankings hardening pass (see `docs/old_docs/rankings-bug-audit-2026-07-15.md`): added the missing `user_ratings` migration and its unique constraint, closed the client-forgeable overall-leaderboard endpoint, fixed ranked draws never updating ratings, made match-finish reward persistence idempotent at the DB level, added stable tie-break ordering and dev-account exclusion to both leaderboard queries, and reworked the Rankings modal to show fetch errors, refetch on open, and the caller's own rank.
 
 Missing for completion:
 - Should review history coverage for all exposed games.
@@ -221,14 +246,16 @@ Missing for completion:
 Status: `Done`
 
 Requirement breakdown:
-- Remote OAuth with providers like Google, GitHub, or 42.
+- Remote OAuth with providers such as Google or 42.
 
 Evidence:
-- 42 and GitHub flows implemented in `backend/src/modules/auth/`
+- 42 and Google flows implemented in `backend/src/modules/auth/`
+- Both providers use expiring, single-use OAuth state in Redis and can be linked
+  or unlinked from Profile without relying on email-address matches.
 - OAuth UI in `frontend/src/components/auth/OAuthButtons.tsx`
 
 Missing for completion:
-- Multiple frontend buttons do not imply functional backend; claiming this module requires real working providers, but avoid advertising unimplemented providers.
+- End-to-end validation still requires real credentials for both providers.
 
 ## Cybersecurity
 
@@ -274,12 +301,83 @@ Requirement breakdown:
 Evidence:
 - `matchmaking.gateway.ts`, `room.service.ts`, `gameSocket.ts`
 - Rejoin, away, abandon, and reconnect timeout implemented.
+- Bell Clash online matches now use a dedicated server-authoritative physics
+  stream: fixed-step source-space simulation, immediate launch plus 30 Hz
+  physics projections, backend collisions/powers/scoring, velocity-aware
+  snapshot interpolation, explicit reconnect/spectator projection, and
+  authoritative replay frames. Two-player plus spectator Firefox headless
+  validation covered simultaneous shots, second-shot rearming, round transition,
+  rejoin, and responsive relayout on 2026-07-13.
+- Bamboo Bash now uses the same separated authoritative projection channel:
+  fixed-step source-space projectile movement, bamboo growth/spawning, pickup
+   collection, collisions, scoring, and timed round completion are server-owned.
+   Browser inputs are limited to bounded launches; transform, bamboo-hit, pickup,
+   and round-score reports are rejected. Client rendering uses buffered physics
+   projections rather than locally stepping the match. An accepted launch now
+   emits the authoritative physics projection immediately rather than the legacy
+   client throw event. Score and pickup pop-ups are driven by server-confirmed
+   events, with the initial projection used as a deduplication baseline after a
+   reconnect; two-client manual validation confirmed both feedback paths on
+   2026-07-14. Lobby re-entry now waits for a newly emitted snapshot and physics
+   projection before recreating the game scene, avoiding stale lobby state during
+   a live trajectory. A re-entry with moving entities resumes immediately, and
+   physics projections continue rendering during any remaining UI countdown;
+   it also requests projections briefly until a newer physics sequence confirms
+   stream continuity. Phaser scene teardown now removes the projection listener
+   on both shutdown and game destruction, preventing a stale re-entry scene from
+   throwing before its replacement receives the stream. Two-client manual tests
+   confirmed leave/re-entry during live play and subsequent launches in Bamboo
+   Bash and Bell Clash on 2026-07-14. Automated backend (59 suites / 827 tests),
+   frontend (48 files / 289 tests), and build validation passed; initial two-client
+   and power-up checks are positive, while the full validation matrix remains pending.
 
 Missing for completion:
-- Complete the manual two-client validation matrix for Kame Knock, Bell Clash,
-  Bamboo Bash, and Shell Curl after the 2026-07-12 recovery from the partial
-  server-authoritative experiment. It must cover launch input, full-screen
-  resize, settlement, reconnect, spectator entry, and replay capture.
+- Bell Clash and Bamboo Bash manual multiplayer validation, including live
+  re-entry, has completed successfully. Replay-specific checks are maintained
+  separately while replay work proceeds on another branch.
+- The initial Kame Knock visual pass, including the idle opponent shell, turn
+  cleanup, and server-projected pickups, was manually validated successfully on
+  2026-07-14. The power-up, scoring, live re-entry, full-match, results,
+  history, and reward paths were also manually validated successfully. Kame
+  Knock relies exclusively on the server for projectile movement, collisions,
+  pickups, scoring, and turn settlement; its dedicated physics and engine tests
+   cover those authority boundaries.
+- Temple Curling now uses the separated server-authoritative projection channel:
+  fixed-step source-space balls, walls, bumpers, shell collisions, the eight
+  active selected powers, settlement, turns, ends, and house scoring are owned
+  by the backend. The browser sends only bounded launch intent and renders
+  interpolated `game:physics-state` projections; client `settled` reports are
+  rejected. Rejoin uses a fresh physics request, while the projection frames
+  remain compatible with replay capture. Curling now uses the same ball
+  vocabulary as the other games across turn state, HUD state, physics, powers,
+  replay, and online projection code. Its moving physics ticks no longer emit
+  lifecycle snapshots, and the public projection now excludes internal physics
+  fields and historical trails. All authoritative game clients share an
+  adaptive, bounded interpolation timeline and Curling removes every visual and
+  trail resource when the authoritative world removes an entity. Focused
+  backend physics/engine/gateway tests, the full frontend and backend suites,
+  and both production builds passed on 2026-07-15.
+- Temple Curling also keeps the local aiming proxy separate from authoritative
+  entities, prevents aiming while a release is pending, and restores the
+  selected power when a launch is rejected. A follow-up on 2026-07-15 fixed the
+  late empty-projection race that removed the initial aiming shell, aligned its
+  empty-selection power handling with the active eight-power roster, and made
+  exactly tied closest shells produce a blank end in both online and local
+  scoring. Power-enabled ends now also expose three server-owned pickups whose
+  collection and effect are resolved by authoritative physics and projected to
+  every client. The shared rematch UI now replaces duplicate lifecycle
+  listeners and carries the initial authoritative physics state into every
+  game's rematch. Kame Knock avoids rebuilding unchanged targets, pickups, HUD
+  panels, and slingshot state for every projection frame.
+- Complete Kame Knock spectator entry during live play and responsive relayout
+  validation before claiming its rollout complete.
+- Complete the manual two-client Temple Curling matrix, including the eight
+  powers, full matches, re-entry, spectators, responsive relayout, and 3–5
+  player matches, before claiming its rollout complete.
+- Follow-up remote validation under the original network conditions found Bell
+  Clash and Kame Knock responsive with powers enabled. Temple Curling retained
+  additional gameplay issues after the ghost-ball cleanup; those are deferred
+  to a dedicated follow-up before its multiplayer rollout can be completed.
 
 ### Major: Multiplayer game with more than two players
 Status: `In progress`
@@ -427,7 +525,7 @@ Missing for completion:
 ## Modules of Choice
 
 ### Major: Replay mode
-Status: `Done`
+Status: `In progress`
 
 Requirement breakdown:
 - Must be substantial, relevant to the project, and justifiable as a major.
@@ -435,10 +533,40 @@ Requirement breakdown:
 Evidence:
 - Replay and event persistence in migrations and entities.
 - Replay API in `backend/src/modules/matchmaking/matches.controller.ts`
-- Visualization in `frontend/src/pages/HomePage.tsx`
+- Shared contract, encoder, capture runtime, controller, and viewer in
+  `frontend/src/games/common/replay/`.
+- Shared Phaser visualisation in `frontend/src/games/common/ReplayScene.ts`.
+- Replay contract v2 migration in
+  `backend/src/migrations/20260714000000-unify-replay-contract-v2.ts`.
+- Power-up matches are excluded at local capture, online capture, import,
+  persistence, and listing boundaries.
+- Automated replay tests cover accumulator remainder, keyframes, deltas,
+  reconstruction, temporal seeking, stable final state, pre-roll, and the
+  power-up import/capture restrictions.
+
+Validation completed on 14 July 2026:
+- Frontend production build passed.
+- Frontend Vitest suite passed: 47 files and 290 tests.
+- Backend production build passed.
+- Backend replay, matchmaking gateway, game-session, and private-lobby suites
+  passed: 68 tests.
+- The complete backend suite passed 787 tests in the sandbox; its five
+  loopback Redis health tests were rerun outside the restricted sandbox and
+  passed, giving 792 passing tests overall.
+- `make re` completed, the replay v2 database columns were verified, and all
+  services reported healthy through `make health`.
+- The continuous replay trail repair passed 38 targeted trail, replay, and
+  visual tests across 11 files, followed by a successful frontend production
+  build. The shared renderer now covers Shell Curl, Bamboo Bash, Kame Knock,
+  and Bell Clash with runtime-matched width, colour, and alpha progression.
+- The manual gameplay and frame-budget matrix remains outstanding, so Replay
+  Mode and Multiplayer 3+ remain `In progress`.
 
 Missing for completion:
-- Document final justification also in `README.md` for evaluation.
+- Complete and execute the replay v2 acceptance matrix in
+  `docs/replay-system-unification-plan.md`.
+- Complete the manual one-to-five-player and rendering-budget matrix before
+  changing this status to `Done`.
 
 ## Module Boundary Rule
 This document, together with `AGENTS.md`, defines the functional boundaries of the project. The agent must not propose, implement, or extend functionality outside these chosen modules except upon explicit user request.

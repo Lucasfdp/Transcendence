@@ -8,12 +8,16 @@ DOMAIN_NAME="${DOMAIN_NAME:-localhost}"
 HTTPS_PORT="${HTTPS_PORT:-42424}"
 PUBLIC_HTTP_ORIGIN="https://${DOMAIN_NAME}:${HTTPS_PORT}"
 PUBLIC_WS_ORIGIN="wss://${DOMAIN_NAME}:${HTTPS_PORT}"
-export DOMAIN_NAME HTTPS_PORT PUBLIC_HTTP_ORIGIN PUBLIC_WS_ORIGIN
+SECURE_ORIGIN="${PUBLIC_HTTP_ORIGIN}"
+export DOMAIN_NAME HTTPS_PORT PUBLIC_HTTP_ORIGIN PUBLIC_WS_ORIGIN SECURE_ORIGIN
 TEMPLATE_PATH="/etc/nginx/templates/default.conf.template"
 TARGET_PATH="/etc/nginx/conf.d/default.conf"
+HTTPS_REQUIRED_TEMPLATE="/usr/share/nginx/html/https-required.html.template"
+HTTPS_REQUIRED_PAGE="/usr/share/nginx/html/https-required.html"
 
 mkdir -p "${SSL_DIR}"
 envsubst '${DOMAIN_NAME} ${HTTPS_PORT} ${PUBLIC_HTTP_ORIGIN} ${PUBLIC_WS_ORIGIN}' < "${TEMPLATE_PATH}" > "${TARGET_PATH}"
+envsubst '${SECURE_ORIGIN}' < "${HTTPS_REQUIRED_TEMPLATE}" > "${HTTPS_REQUIRED_PAGE}"
 
 cat > /etc/nginx/modsec/main.conf <<'EOF'
 Include /etc/nginx/modsec/modsecurity.conf

@@ -4,6 +4,10 @@
  * Auth is cookie-based (httpOnly auth_token set by the backend).
  * All calls use credentials: 'include' — no Authorization header, no localStorage.
  * Non-GET requests attach X-CSRF-Token from the csrf_token cookie.
+ *
+ * This module owns Hub domain contracts and operations only. The generic
+ * fetch/CSRF/retry/upload transport lives in services/api/apiClient — see
+ * that module for the shared behaviour this client builds on.
  */
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
@@ -189,84 +193,7 @@ export async function apiFetch<T>(
 	return res.json() as Promise<T>;
 }
 
-async function apiUploadFile<T>(
-	path: string,
-	formData: FormData,
-): Promise<T> {
-	const headers = withCsrfHeader({}, "POST");
-	let res: Response;
-	try {
-		res = await fetch(`${API_BASE}${path}`, {
-			method: "POST",
-			headers,
-			credentials: "include",
-			body: formData,
-		});
-	} catch (err) {
-		throw new NetworkError(
-			`Network request failed for ${path}: ${String(err)}`,
-		);
-	}
-	if (!res.ok) {
-		const message = await readErrorMessage(res, `${res.status} on ${path}`);
-		if (isCsrfFailure(res, message)) {
-			await fetchCsrfToken();
-			res = await fetch(`${API_BASE}${path}`, {
-				method: "POST",
-				headers: withCsrfHeader({}, "POST"),
-				credentials: "include",
-				body: formData,
-			});
-			if (!res.ok) {
-				throw new AuthError(
-					res.status,
-					await readErrorMessage(res, `${res.status} on ${path}`),
-				);
-			}
-		} else {
-			throw new AuthError(res.status, message);
-		}
-	}
-	// Mirror apiFetch's empty-body guard (Bug Audit L2): works today because
-	// avatar upload always returns JSON, but any future empty-body upload
-	// response (e.g. a 204) would otherwise throw a JSON parse error here.
-	if (res.status === 204) return {} as T;
-	return res.json() as Promise<T>;
-}
-
-async function readErrorMessage(
-	res: Response,
-	fallback: string,
-): Promise<string> {
-	const contentType = res.headers.get("content-type") ?? "";
-
-	if (contentType.includes("application/json")) {
-		try {
-			const body = (await res.json()) as {
-				message?: string | string[];
-				error?: string;
-			};
-			if (Array.isArray(body.message) && body.message.length > 0) {
-				return body.message.join(", ");
-			}
-			if (typeof body.message === "string" && body.message.trim()) {
-				return body.message;
-			}
-			if (typeof body.error === "string" && body.error.trim()) {
-				return body.error;
-			}
-		} catch {
-			return fallback;
-		}
-	}
-
-	try {
-		const text = await res.text();
-		return text.trim() || fallback;
-	} catch {
-		return fallback;
-	}
-}
+export { AuthError, NetworkError };
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -305,6 +232,24 @@ export interface User {
 	};
 }
 
+export interface PublicUserView {
+	id: number;
+	username: string;
+	turtleName: string | null;
+	shellSkin: string;
+	avatar: string | null;
+	level: number;
+	isOnline: boolean;
+	mostPlayedGame: MostPlayedGame | null;
+	profile: {
+		totalWins: number;
+		totalLosses: number;
+		gamesPlayed: number;
+		tag: string | null;
+		showcasedAchievements: string[] | null;
+	} | null;
+}
+
 export interface ProgressionResult {
 	xpGained: number;
 	coinsGained: number;
@@ -315,285 +260,6 @@ export interface ProgressionResult {
 	unlockedAchievements: Achievement[];
 	/** Cosmetic card awarded for completing the match, or null if none. */
 	cardDrop: PackPull | null;
-}
-
-// ── Shell Cards (collectible binder) ─────────────────────────────────────────
-
-export type CardRarity = "stone" | "bronze" | "jade" | "gold";
-export type CardFamily =
-	| "power_shell"
-	| "shrine"
-	| "shell_skin"
-	| "character";
-
-export interface CardView {
-	id: string;
-	family: CardFamily;
-	rarity: CardRarity;
-	name: string;
-	flavor: string;
-	sourceRef: string;
-	imageUrl?: string;
-	owned: boolean;
-	count: number;
-	foilCount: number;
-	/** Always ≤ foilCount — prismatic is a rarer state layered on foil, gold-only. */
-	prismaticCount: number;
-}
-
-export interface CardSetProgress {
-	family: CardFamily;
-	owned: number;
-	total: number;
-}
-
-export interface BinderView {
-	cards: CardView[];
-	sets: CardSetProgress[];
-	totals: { owned: number; total: number };
-	packTiers: PackTierView[];
-}
-
-/** Stable identifiers for the purchasable pack tiers, cheapest to priciest. */
-export type PackTierId = "basic" | "deluxe" | "legendary";
-
-/**
- * One purchasable pack tier, fully transparent: price, rarity odds (mirrors
- * the backend's own display copy — sums to 1), foil chance, and an optional
- * guaranteed minimum rarity for one slot in the pack.
- */
-export interface PackTierView {
-	id: PackTierId;
-	name: string;
-	priceCoins: number;
-	rarityOdds: Record<CardRarity, number>;
-	foilChance: number;
-	guaranteedMinRarity?: CardRarity;
-}
-
-export interface PackPull {
-	card: Omit<CardView, "owned" | "count" | "foilCount" | "prismaticCount">;
-	foil: boolean;
-	/** Always implies `foil: true`. */
-	prismatic: boolean;
-	isNew: boolean;
-}
-
-export interface PackResult {
-	pulls: PackPull[];
-	coins: number;
-}
-
-// ── Fortune Wheel (the gambling den) ─────────────────────────────────────────
-
-export interface WheelSegment {
-	id: string;
-	label: string;
-	multiplier: number;
-	weight: number;
-}
-
-export interface WheelSegmentView extends WheelSegment {
-	/** Probability of landing here = weight / total weight. */
-	probability: number;
-}
-
-export interface WheelView {
-	segments: WheelSegmentView[];
-	/** Weighted-average return-to-player (1.0 = net-neutral, no house edge). */
-	rtp: number;
-	freeStake: number;
-	minWager: number;
-	maxWager: number;
-	coins: number;
-	freeSpinAvailable: boolean;
-}
-
-/** Which gambling-den game a spin belongs to. */
-export type CasinoGame = "wheel" | "flip" | "monte" | "slots" | "dice" | "drop";
-
-/** Provably-fair data the player can recompute to verify a spin. */
-export interface SpinFairness {
-	serverSeed: string;
-	serverSeedHash: string;
-	clientSeed: string;
-	nonce: number;
-	/** The first roll in [0, 1) — equals `rolls[0]`. */
-	roll: number;
-	/** Every roll drawn for this spin (one per reel; single-roll games = [roll]). */
-	rolls: number[];
-}
-
-/** Generic outcome of any resolved spin (shared by every game). */
-export interface SpinResolution {
-	game: CasinoGame;
-	mode: "free" | "wagered";
-	/** Stable id of the resolved outcome (e.g. "x2", "heads", "shell-1"). */
-	outcomeId: string;
-	multiplier: number;
-	stake: number;
-	paid: number;
-	payout: number;
-	net: number;
-	coins: number;
-	fairness: SpinFairness;
-}
-
-/** A resolved Fortune Wheel spin: the generic resolution plus its segment. */
-export interface SpinResult extends SpinResolution {
-	segment: WheelSegment;
-}
-
-// ── Shell Flip ───────────────────────────────────────────────────────────────
-
-/** A called/landed shell side. */
-export type FlipSide = "heads" | "tails";
-
-/** Shell Flip layout: multiplier, RTP, bounds and the player's balance. */
-export interface FlipConfig {
-	multiplier: number;
-	rtp: number;
-	minWager: number;
-	maxWager: number;
-	coins: number;
-}
-
-// ── Three-Shell Monte ────────────────────────────────────────────────────────
-
-/** Three-Shell Monte layout: risk tiers, default, RTP, bounds and balance. */
-export interface MonteConfig {
-	shellOptions: number[];
-	defaultShells: number;
-	rtp: number;
-	minWager: number;
-	maxWager: number;
-	coins: number;
-	/** A round already in progress (stake debited, not resolved) — for resume. */
-	activeRound?: MonteRoundStart | null;
-}
-
-/** A single visible swap of two slot positions. */
-export type MonteSwap = [number, number];
-
-/**
- * A started round. Carries the ball's START slot (shown in the preview) and the
- * shape/timeline of the shuffle — but never the winning slot or the swaps
- * themselves, which are streamed just-in-time and recomputed server-side.
- */
-export interface MonteRoundStart {
-	roundId: string;
-	cupIds: string[];
-	ballStartSlot: number;
-	stepCount: number;
-	stepDurations: number[];
-	shuffleLeadMs: number;
-	totalShuffleMs: number;
-	serverSeedHash: string;
-	commitHash: string;
-	clientSeed: string;
-	nonce: number;
-	stake: number;
-	expiresAt: string;
-	coins: number;
-}
-
-/** Just-in-time swap delivery while the shuffle animates. */
-export interface MonteRoundSteps {
-	roundId: string;
-	steps: { index: number; pair: MonteSwap }[];
-	stepCount: number;
-	ready: boolean;
-}
-
-export interface MonteRoundResolution {
-	roundId: string;
-	game: "monte";
-	mode: "wagered";
-	cupIds: string[];
-	ballStartSlot: number;
-	winningSlot: number;
-	selectedSlot: number;
-	shuffle: MonteSwap[];
-	won: boolean;
-	multiplier: number;
-	stake: number;
-	paid: number;
-	payout: number;
-	net: number;
-	coins: number;
-	fairness: SpinFairness & {
-		commitHash: string;
-	};
-}
-
-// ── Koi Dice ─────────────────────────────────────────────────────────────────
-
-/** A called betting direction. */
-export type DiceDirection = "under" | "over";
-
-/** Koi Dice layout: range, per-direction target bounds, wager bounds and balance. */
-export interface DiceConfig {
-	range: number;
-	minTargetUnder: number;
-	maxTargetUnder: number;
-	minTargetOver: number;
-	maxTargetOver: number;
-	minWager: number;
-	maxWager: number;
-	coins: number;
-}
-
-// ── Shrine Slots ─────────────────────────────────────────────────────────────
-
-/** One reel symbol with its odds and three-of-a-kind payout. */
-export interface SlotSymbolView {
-	id: string;
-	label: string;
-	weight: number;
-	/** Probability of this symbol on one reel. */
-	probability: number;
-	/** Three-of-a-kind payout multiplier. */
-	payout: number;
-}
-
-/** Shrine Slots layout: reel, paytable, RTP, bounds and balance. */
-export interface SlotsView {
-	symbols: SlotSymbolView[];
-	reelCount: number;
-	rtp: number;
-	minWager: number;
-	maxWager: number;
-	coins: number;
-}
-
-// ── Shell Drop (Plinko) ──────────────────────────────────────────────────────
-
-/** One bucket of a Shell Drop board with its odds and payout. */
-export interface PlinkoBucketView {
-	/** Bucket index — count of right moves (0..rows). */
-	index: number;
-	/** Net-neutral payout multiplier (< 1 in the centre, > 1 at the edges). */
-	multiplier: number;
-	/** Probability of landing here. */
-	probability: number;
-}
-
-/** One row-count's full paytable. */
-export interface PlinkoTierView {
-	rows: number;
-	buckets: PlinkoBucketView[];
-	/** Weighted-average return-to-player for this tier (1.0 = net-neutral). */
-	rtp: number;
-}
-
-/** Shell Drop layout: row tiers, paytables, wager bounds and balance. */
-export interface PlinkoView {
-	rowOptions: number[];
-	defaultRows: number;
-	tiers: PlinkoTierView[];
-	minWager: number;
-	maxWager: number;
-	coins: number;
 }
 
 export interface Achievement {
@@ -676,11 +342,7 @@ export interface FriendView {
 
 /** Mirrors the backend ReportCategory union. */
 export type ReportCategory =
-	| "harassment"
-	| "cheating"
-	| "inappropriate_name"
-	| "spam"
-	| "other";
+	"harassment" | "cheating" | "inappropriate_name" | "spam" | "other";
 
 export const REPORT_CATEGORIES: { id: ReportCategory; label: string }[] = [
 	{ id: "harassment", label: "Harassment" },
@@ -790,7 +452,7 @@ export interface OverallLeaderboardEntry {
 	totalWins: number;
 }
 
-export type ReplayContractVersion = 1;
+export type ReplayContractVersion = 2;
 
 export interface ReplayVisualPlayer {
 	side: number;
@@ -844,29 +506,46 @@ export interface ReplayFrameSnapshot {
 }
 
 export interface ReplayFrame {
-	replayVersion?: ReplayContractVersion;
 	seq: number;
-	recordedAt: string;
-	recordedAtMs?: number;
-	tickTs?: number;
-	deltaMs?: number;
-	snapshot: ReplayFrameSnapshot;
+	tMs: number;
+	round: number;
+	state: "pending" | "active" | "finished" | "abandoned";
+	type: "keyframe" | "delta";
+	changes: Record<string, unknown>;
+	removals: string[];
+	/** Reconstructed by ReplayController; never persisted in contract v2. */
+	snapshot?: ReplayFrameSnapshot;
 }
 
 export interface ReplayEvent {
-	replayVersion?: ReplayContractVersion;
-	type: string;
 	seq: number;
-	recordedAt: string;
-	recordedAtMs?: number;
-	tickTs?: number;
+	tMs: number;
+	round: number;
+	type: string;
 	payload: Record<string, unknown>;
+}
+
+export interface ReplayMetadataV2 {
+	contractVersion: 2;
+	origin: "local" | "online";
+	gameId: string;
+	mode: string;
+	participants: ReplayVisualPlayer[];
+	durationMs: number;
+	sampleHz: 20;
+	keyframeIntervalMs: 1000;
+	preRollMs: number;
+	statistics: Record<string, unknown>;
+	powerupsEnabled: false;
 }
 
 export interface ReplaySummary {
 	id: string;
 	matchId: string;
-	replayVersion: ReplayContractVersion | null;
+	replayVersion: ReplayContractVersion;
+	contractVersion: ReplayContractVersion;
+	metadata: ReplayMetadataV2;
+	durationMs: number;
 	gameId: string;
 	mode: string;
 	status: string;
@@ -892,8 +571,8 @@ export interface ReplayImportRequest {
 	createdAt?: string;
 	finishedAt?: string | null;
 	winnerSide?: number | null;
-	playerNames?: string[];
-	playerUserIds?: Array<number | null>;
+	metadata: ReplayMetadataV2;
+	durationMs: number;
 	frames: ReplayFrame[];
 	events?: ReplayEvent[];
 }
@@ -951,6 +630,10 @@ export const api = {
 		return apiUploadFile<{ avatarUrl: string }>("/users/me/avatar", form);
 	},
 
+	/** Remove the uploaded avatar and return to the equipped shell portrait. */
+	clearAvatar: (): Promise<{ ok: boolean }> =>
+		apiFetch<{ ok: boolean }>("/users/me/avatar", { method: "DELETE" }),
+
 	/** Fetch and cache the CSRF token. Call once before any POST/DELETE. */
 	getCsrfToken: (): Promise<string> => fetchCsrfToken(),
 
@@ -960,30 +643,37 @@ export const api = {
 	/** URL to redirect to in order to start the 42 OAuth flow. */
 	loginUrl: (): string => `${API_BASE}/auth/42`,
 
+	/** URL to redirect to in order to start the Google OAuth flow. */
+	googleLoginUrl: (): string => `${API_BASE}/auth/google`,
+
 	/** Create a guest session (httpOnly cookie, 2-hour TTL). */
 	guestLogin: (): Promise<{ ok: boolean }> =>
 		apiFetch<{ ok: boolean }>("/auth/guest", { method: "POST" }),
 
-	/** Create a new local account and log in. Sets httpOnly auth cookie. */
-	register: (username: string, password: string): Promise<{ ok: boolean }> =>
+	/** Create a local account and start its authenticated session. */
+	register: (
+		username: string,
+		email: string,
+		password: string,
+	): Promise<{ ok: boolean }> =>
 		apiFetch<{ ok: boolean }>("/auth/register", {
 			method: "POST",
-			body: JSON.stringify({ username, password }),
+			body: JSON.stringify({ username, email, password }),
 		}),
 
 	/** Log in to an existing local account. Sets httpOnly auth cookie. */
-	login: (username: string, password: string): Promise<{ ok: boolean }> =>
+	login: (identifier: string, password: string): Promise<{ ok: boolean }> =>
 		apiFetch<{ ok: boolean }>("/auth/login", {
 			method: "POST",
-			body: JSON.stringify({ username, password }),
+			body: JSON.stringify({ identifier, password }),
 		}),
 
 	/** Logout — clears the auth cookie. */
 	logout: (): Promise<{ ok: boolean }> =>
 		apiFetch<{ ok: boolean }>("/auth/session", { method: "DELETE" }),
 
-	getUser: (username: string): Promise<User> =>
-		apiFetch<User>(`/users/${username}`),
+	getUser: (username: string): Promise<PublicUserView> =>
+		apiFetch<PublicUserView>(`/users/${encodeURIComponent(username)}`),
 	getAllUsers: (): Promise<User[]> => apiFetch<User[]>("/users"),
 	getMiniGames: (): Promise<MiniGameDefinition[]> =>
 		apiFetch<MiniGameDefinition[]>("/minigames"),
@@ -1000,118 +690,6 @@ export const api = {
 		apiFetch<Cosmetic[]>("/customization/buy", {
 			method: "POST",
 			body: JSON.stringify({ cosmeticId }),
-		}),
-
-	/** Fetch the player's Shell Cards binder (owned + locked + set progress). */
-	getCards: (): Promise<BinderView> => apiFetch<BinderView>("/cards"),
-
-	/** Spend coins to open one card pack of the given tier. Returns the pulls and new balance. */
-	openCardPack: (tierId: PackTierId): Promise<PackResult> =>
-		apiFetch<PackResult>("/cards/packs/open", {
-			method: "POST",
-			body: JSON.stringify({ tierId }),
-		}),
-
-	/** Fetch the Fortune Wheel layout, odds, bounds, balance and free-spin state. */
-	getWheel: (): Promise<WheelView> => apiFetch<WheelView>("/casino/wheel"),
-
-	/** Take the daily free spin. Optional client seed feeds the provable roll. */
-	spinFreeWheel: (clientSeed?: string): Promise<SpinResult> =>
-		apiFetch<SpinResult>("/casino/wheel/free", {
-			method: "POST",
-			body: JSON.stringify({ clientSeed }),
-		}),
-
-	/** Stake coins on a wagered spin. Returns the outcome and new balance. */
-	spinWheel: (stake: number, clientSeed?: string): Promise<SpinResult> =>
-		apiFetch<SpinResult>("/casino/wheel/spin", {
-			method: "POST",
-			body: JSON.stringify({ stake, clientSeed }),
-		}),
-
-	/** Fetch the Shell Flip layout, multiplier, bounds and balance. */
-	getFlip: (): Promise<FlipConfig> => apiFetch<FlipConfig>("/casino/flip"),
-
-	/** Call a shell side and stake coins. Returns the outcome and new balance. */
-	flip: (
-		stake: number,
-		pick: FlipSide,
-		clientSeed?: string,
-	): Promise<SpinResolution> =>
-		apiFetch<SpinResolution>("/casino/flip", {
-			method: "POST",
-			body: JSON.stringify({ stake, pick, clientSeed }),
-		}),
-
-	/** Fetch the Three-Shell Monte layout: risk tiers, RTP, bounds and balance. */
-	getMonte: (): Promise<MonteConfig> => apiFetch<MonteConfig>("/casino/monte"),
-
-	/** Start a committed Three-Shell Monte round. */
-	startMonteRound: (
-		stake: number,
-		clientSeed?: string,
-	): Promise<MonteRoundStart> =>
-		apiFetch<MonteRoundStart>("/casino/monte/rounds", {
-			method: "POST",
-			body: JSON.stringify({ stake, clientSeed }),
-		}),
-
-	/** Poll the just-in-time swaps for an in-flight round. */
-	getMonteSteps: (roundId: string): Promise<MonteRoundSteps> =>
-		apiFetch<MonteRoundSteps>(
-			`/casino/monte/rounds/${encodeURIComponent(roundId)}/steps`,
-		),
-
-	/** Resolve a committed Three-Shell Monte round with the chosen slot. */
-	resolveMonteRound: (
-		roundId: string,
-		selectedSlot: number,
-	): Promise<MonteRoundResolution> =>
-		apiFetch<MonteRoundResolution>(
-			`/casino/monte/rounds/${encodeURIComponent(roundId)}/resolve`,
-			{
-				method: "POST",
-				body: JSON.stringify({ selectedSlot }),
-			},
-		),
-
-	/** Fetch the Shrine Slots reel, paytable, RTP, bounds and balance. */
-	getSlots: (): Promise<SlotsView> => apiFetch<SlotsView>("/casino/slots"),
-
-	/** Stake coins and spin the reels. Returns the outcome and new balance. */
-	spinSlots: (stake: number, clientSeed?: string): Promise<SpinResolution> =>
-		apiFetch<SpinResolution>("/casino/slots", {
-			method: "POST",
-			body: JSON.stringify({ stake, clientSeed }),
-		}),
-
-	/** Fetch the Koi Dice layout: range, target bounds, wager bounds and balance. */
-	getDice: (): Promise<DiceConfig> => apiFetch<DiceConfig>("/casino/dice"),
-
-	/** Bet a direction/target and stake coins. Returns the outcome and new balance. */
-	dice: (
-		stake: number,
-		direction: DiceDirection,
-		target: number,
-		clientSeed?: string,
-	): Promise<SpinResolution> =>
-		apiFetch<SpinResolution>("/casino/dice", {
-			method: "POST",
-			body: JSON.stringify({ stake, direction, target, clientSeed }),
-		}),
-
-	/** Fetch the Shell Drop layout: row tiers, paytables, bounds and balance. */
-	getPlinko: (): Promise<PlinkoView> => apiFetch<PlinkoView>("/casino/plinko"),
-
-	/** Pick a risk tier and stake coins. Returns the outcome and new balance. */
-	dropPlinko: (
-		stake: number,
-		rows?: number,
-		clientSeed?: string,
-	): Promise<SpinResolution> =>
-		apiFetch<SpinResolution>("/casino/plinko", {
-			method: "POST",
-			body: JSON.stringify({ stake, rows, clientSeed }),
 		}),
 
 	/**
@@ -1315,14 +893,19 @@ export const api = {
 		conversationId: number,
 		body: string,
 	): Promise<ChatMessageView> =>
-		apiFetch<ChatMessageView>(`/chat/conversations/${conversationId}/messages`, {
-			method: "POST",
-			body: JSON.stringify({ body }),
-		}),
+		apiFetch<ChatMessageView>(
+			`/chat/conversations/${conversationId}/messages`,
+			{
+				method: "POST",
+				body: JSON.stringify({ body }),
+			},
+		),
 
 	/** Search gifs via the backend's Klipy proxy. An empty/blank query returns []. */
 	searchGifs: (query: string): Promise<GifSearchResult[]> =>
-		apiFetch<GifSearchResult[]>(`/chat/gifs/search?q=${encodeURIComponent(query)}`),
+		apiFetch<GifSearchResult[]>(
+			`/chat/gifs/search?q=${encodeURIComponent(query)}`,
+		),
 
 	/**
 	 * Send a gif message over REST. The live path is the `chat:send-gif`
@@ -1333,14 +916,19 @@ export const api = {
 		conversationId: number,
 		slug: string,
 	): Promise<ChatMessageView> =>
-		apiFetch<ChatMessageView>(`/chat/conversations/${conversationId}/messages/gif`, {
-			method: "POST",
-			body: JSON.stringify({ slug }),
-		}),
+		apiFetch<ChatMessageView>(
+			`/chat/conversations/${conversationId}/messages/gif`,
+			{
+				method: "POST",
+				body: JSON.stringify({ slug }),
+			},
+		),
 
 	/** List a group's members (participant-only). Backs the member-list UI (Decision 2). */
 	getGroupMembers: (conversationId: number): Promise<GroupMemberView[]> =>
-		apiFetch<GroupMemberView[]>(`/chat/conversations/${conversationId}/members`),
+		apiFetch<GroupMemberView[]>(
+			`/chat/conversations/${conversationId}/members`,
+		),
 
 	/** Add a friend to an existing group. Caller must be a participant and a friend of userId. */
 	addGroupMember: (conversationId: number, userId: number): Promise<void> =>
@@ -1351,9 +939,12 @@ export const api = {
 
 	/** Owner-only: remove a member from a group (Decision 1). */
 	kickGroupMember: (conversationId: number, userId: number): Promise<void> =>
-		apiFetch<void>(`/chat/conversations/${conversationId}/members/${userId}`, {
-			method: "DELETE",
-		}),
+		apiFetch<void>(
+			`/chat/conversations/${conversationId}/members/${userId}`,
+			{
+				method: "DELETE",
+			},
+		),
 
 	/** Owner-only: rename a group (Decision 1). */
 	renameGroupChat: (conversationId: number, name: string): Promise<void> =>
@@ -1420,13 +1011,17 @@ export const api = {
 	getOverallLeaderboard: (
 		scope: LeaderboardScope = "global",
 	): Promise<OverallLeaderboardEntry[]> =>
-		apiFetch<OverallLeaderboardEntry[]>(`/leaderboard/overall?scope=${scope}`),
+		apiFetch<OverallLeaderboardEntry[]>(
+			`/leaderboard/overall?scope=${scope}`,
+		),
 
 	getMyReplays: (): Promise<ReplaySummary[]> =>
 		apiFetch<ReplaySummary[]>("/matches/replays/me"),
 
 	getReplay: (matchId: string): Promise<ReplayDetail> =>
-		apiFetch<ReplayDetail>(`/matches/${encodeURIComponent(matchId)}/replay`),
+		apiFetch<ReplayDetail>(
+			`/matches/${encodeURIComponent(matchId)}/replay`,
+		),
 
 	importReplay: (payload: ReplayImportRequest): Promise<ReplaySummary> =>
 		apiFetch<ReplaySummary>("/matches/replays/import", {
@@ -1435,12 +1030,18 @@ export const api = {
 		}),
 
 	saveReplay: (matchId: string): Promise<ReplaySummary> =>
-		apiFetch<ReplaySummary>(`/matches/${encodeURIComponent(matchId)}/replay/save`, {
-			method: "POST",
-		}),
+		apiFetch<ReplaySummary>(
+			`/matches/${encodeURIComponent(matchId)}/replay/save`,
+			{
+				method: "POST",
+			},
+		),
 
 	unsaveReplay: (matchId: string): Promise<ReplaySummary> =>
-		apiFetch<ReplaySummary>(`/matches/${encodeURIComponent(matchId)}/replay/save`, {
-			method: "DELETE",
-		}),
+		apiFetch<ReplaySummary>(
+			`/matches/${encodeURIComponent(matchId)}/replay/save`,
+			{
+				method: "DELETE",
+			},
+		),
 };

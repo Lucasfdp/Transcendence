@@ -13,8 +13,8 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Match } from "./entities/match.entity";
+import { ReplayImportDto } from "./dto/replay-import.dto";
 import {
-	ReplayImportInput,
 	ReplayDetailView,
 	ReplayService,
 	ReplaySummaryView,
@@ -65,7 +65,7 @@ export class MatchesController {
 
 	@Post("replays/import")
 	importReplay(
-		@Body() body: ReplayImportInput,
+		@Body() body: ReplayImportDto,
 		@Request() req: { user: { id: number } },
 	): Promise<ReplaySummaryView> {
 		return this.replayService.importSingleplayerReplayForUser(req.user, body);

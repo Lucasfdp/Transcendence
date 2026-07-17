@@ -12,7 +12,7 @@ export interface SocketUser {
 	isGuest: boolean;
 }
 
-export type ReplayContractVersion = 1;
+export type ReplayContractVersion = 2;
 
 export interface QueueJoinPayload {
 	gameId: string;
@@ -104,6 +104,7 @@ export interface CurlingSnapshot {
 	totalEnds: number;
 	score: number[];
 	endScores: Array<Array<number | null>>;
+	usedPowersBySide?: string[][];
 	map: GameMap;
 	players: SnapshotPlayer[];
 	objects: Array<{
@@ -132,6 +133,53 @@ export interface CurlingSnapshot {
 	entities: ReplayFrameSnapshotEntity[];
 	activeBallId: number | null;
 	winnerSide: number | null;
+}
+
+export interface ShellCurlPhysicsEntity {
+	id: number;
+	shotNumber: number;
+	primary: boolean;
+	ownerSide: number;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	radius: number;
+	rotation: number;
+	angularVelocity: number;
+	power: string;
+	stopped: boolean;
+	alpha: number;
+	ghostCollisionAvailable: boolean;
+	frozen?: boolean;
+	ghostAvailable?: boolean;
+	phantomHidden?: boolean;
+	stopPowerApplied?: boolean;
+	boomerangTravel?: number;
+	boomerangLimit?: number;
+	boomerangFlipped?: boolean;
+	trail?: Array<{ x: number; y: number }>;
+}
+
+export interface ShellCurlPhysicsPickup {
+	id: number;
+	type: string;
+	x: number;
+	y: number;
+	radius: number;
+}
+
+export interface ShellCurlPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: ShellCurlPhysicsEntity[];
+	pickups: ShellCurlPhysicsPickup[];
+	scoreEvents: [];
+	pickupEvents: ArenaPhysicsPickupEvent[];
+	nextEntityId: number;
+	nextPickupId: number;
+	nextPickupEventId: number;
 }
 
 export interface BallSnapshotData {
@@ -302,6 +350,117 @@ export interface BellClashSnapshot {
 	winnerSide: number | null;
 }
 
+export interface BellClashPhysicsEntity {
+	id: number;
+	ownerSide: number;
+	shotNumber: number;
+	primary: boolean;
+	x: number;
+	y: number;
+	vx: number;
+	vy: number;
+	radius: number;
+	rotation: number;
+	angularVelocity: number;
+	power: string;
+	stopped: boolean;
+	alpha: number;
+	ghostCollisionAvailable: boolean;
+}
+
+export interface BellClashPhysicsPickup {
+	id: number;
+	type: string;
+	x: number;
+	y: number;
+	radius: number;
+}
+
+export interface BellClashScoreEvent {
+	id: number;
+	side: number;
+	points: number;
+	zoneKind: "red" | "yellow" | "green" | "neutral";
+}
+
+export interface ArenaPhysicsPickupEvent {
+	id: number;
+	side: number;
+	type: string;
+	x: number;
+	y: number;
+}
+
+export interface BellClashPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: BellClashPhysicsEntity[];
+	pickups: BellClashPhysicsPickup[];
+	scoreEvents: BellClashScoreEvent[];
+	pickupEvents?: ArenaPhysicsPickupEvent[];
+	nextEntityId: number;
+	nextPickupId: number;
+	nextScoreEventId: number;
+	nextPickupEventId?: number;
+	bellCooldownMs: number[];
+}
+
+export interface BambooBashPhysicsEntity extends BellClashPhysicsEntity {}
+
+export interface BambooBashPhysicsPickup extends BellClashPhysicsPickup {}
+
+export interface BambooBashScoreEvent {
+	id: number;
+	side: number;
+	points: number;
+	bambooId: number;
+}
+
+export interface BambooBashPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: BambooBashPhysicsEntity[];
+	pickups: BambooBashPhysicsPickup[];
+	scoreEvents: BambooBashScoreEvent[];
+	pickupEvents?: ArenaPhysicsPickupEvent[];
+	nextEntityId: number;
+	nextPickupId: number;
+	nextScoreEventId: number;
+	nextPickupEventId?: number;
+}
+
+export interface KameKnockPhysicsEntity extends BellClashPhysicsEntity {
+	turnNumber?: number;
+}
+
+export interface KameKnockPhysicsState {
+	matchId: string;
+	physicsSeq: number;
+	serverTime: number;
+	entities: KameKnockPhysicsEntity[];
+	pickups: BellClashPhysicsPickup[];
+	scoreEvents: Array<{
+		id: number;
+		side: number;
+		targetId: number;
+		targetKind: "daruma" | "crate" | "drum";
+		points: number;
+		combo: number;
+		perfect: boolean;
+		x: number;
+		y: number;
+	}>;
+	pickupEvents?: ArenaPhysicsPickupEvent[];
+	nextEntityId: number;
+	nextPickupId: number;
+	nextScoreEventId: number;
+	nextPickupEventId?: number;
+	combo: number;
+	settledProjectionPending: boolean;
+}
+
 export type GameSnapshot =
 	| CurlingSnapshot
 	| BambooBashSnapshot
@@ -328,29 +487,31 @@ export interface MatchRoom {
 	spectators: Map<string, SocketUser>;
 	seq: number;
 	state: GameSnapshot;
+	physicsState?: BellClashPhysicsState | BambooBashPhysicsState | KameKnockPhysicsState | ShellCurlPhysicsState;
+	replayEnabled: boolean;
+	replayDisabledReason: "powerups-enabled" | null;
 	rewardsGranted?: boolean;
 	rematchReadyUserIds?: Set<number>;
 	rematchLeftUserIds?: Set<number>;
 	rematchStartedMatchId?: string;
 	replayFrames: Array<{
-		replayVersion?: ReplayContractVersion;
 		seq: number;
-		recordedAt: string;
-		recordedAtMs: number;
-		tickTs: number;
-		deltaMs: number;
-		snapshot: Record<string, unknown>;
+		tMs: number;
+		round: number;
+		state: "pending" | "active" | "finished" | "abandoned";
+		type: "keyframe" | "delta";
+		changes: Record<string, unknown>;
+		removals: string[];
 	}>;
 	replayEvents: Array<{
-		replayVersion?: ReplayContractVersion;
-		type: string;
 		seq: number;
-		recordedAt: string;
-		recordedAtMs: number;
-		tickTs: number;
+		tMs: number;
+		round: number;
+		type: string;
 		payload: Record<string, unknown>;
 	}>;
-	replayLastCapturedSeq: number | null;
 	replayStartedAt: number | null;
-	replayLastRecordedAt: number | null;
+	replayLastSampleAt: number | null;
+	replayLastKeyframeAt: number | null;
+	replayLastSnapshot: Record<string, unknown> | null;
 }

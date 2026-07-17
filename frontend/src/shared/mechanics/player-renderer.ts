@@ -7,6 +7,7 @@ interface PlayerVisualState {
 	r: number;
 	vx?: number;
 	vy?: number;
+	alpha?: number;
 }
 
 interface PlayerRollState {
@@ -68,14 +69,16 @@ export function drawIngamePlayerTexture(
 		.setPosition(state.x, state.y)
 		.setDepth(depth)
 		.setRotation(0)
-		.setDisplaySize(state.r * 2, state.r * 2);
+		.setDisplaySize(state.r * 2, state.r * 2)
+		.setAlpha(state.alpha ?? 1);
 
 	shell
 		.setVisible(true)
 		.setPosition(state.x, state.y)
 		.setDepth(depth + 0.01)
 		.setRotation(isRetracted ? shell.rotation : 0)
-		.setDisplaySize(state.r * 2, state.r * 2);
+		.setDisplaySize(state.r * 2, state.r * 2)
+		.setAlpha(state.alpha ?? 1);
 	return true;
 }
 

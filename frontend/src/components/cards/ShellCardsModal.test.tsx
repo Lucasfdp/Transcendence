@@ -1,15 +1,28 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ShellCardsModal } from "./ShellCardsModal";
-import { api, type BinderView } from "../../features/hub/api";
+import { api } from "../../features/hub/api";
+import { cardsApi, type BinderView } from "../../features/cards";
 
 vi.mock("../../features/hub/api", () => ({
 	api: {
-		getCards: vi.fn(),
 		getCsrfToken: vi.fn(),
-		openCardPack: vi.fn(),
 	},
 }));
+
+vi.mock("../../features/cards", async () => {
+	const actual =
+		await vi.importActual<typeof import("../../features/cards")>(
+			"../../features/cards",
+		);
+	return {
+		...actual,
+		cardsApi: {
+			getCards: vi.fn(),
+			openCardPack: vi.fn(),
+		},
+	};
+});
 
 function makeBinder(): BinderView {
 	return {
@@ -82,7 +95,7 @@ function makeBinder(): BinderView {
 
 describe("ShellCardsModal filters", () => {
 	it("should show only gold cards when the gold rarity chip is selected", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		render(<ShellCardsModal coins={500} onCoinsChange={() => undefined} />);
 
 		await screen.findByText("Golden Blitz");
@@ -93,7 +106,7 @@ describe("ShellCardsModal filters", () => {
 	});
 
 	it("should clear the rarity filter when 'All' is reselected", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		render(<ShellCardsModal coins={500} onCoinsChange={() => undefined} />);
 
 		await screen.findByText("Golden Blitz");
@@ -105,7 +118,7 @@ describe("ShellCardsModal filters", () => {
 	});
 
 	it("should show only unowned cards when missing-only is toggled on", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		render(<ShellCardsModal coins={500} onCoinsChange={() => undefined} />);
 
 		await screen.findByText("Golden Blitz");
@@ -117,7 +130,7 @@ describe("ShellCardsModal filters", () => {
 	});
 
 	it("should show a no-match message when filters exclude every card", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		render(<ShellCardsModal coins={500} onCoinsChange={() => undefined} />);
 
 		await screen.findByText("Golden Blitz");
@@ -128,7 +141,7 @@ describe("ShellCardsModal filters", () => {
 	});
 
 	it("should reorder cards gold-first when sorting rarity high to low", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		render(<ShellCardsModal coins={500} onCoinsChange={() => undefined} />);
 
 		await screen.findByText("Golden Blitz");
@@ -147,9 +160,9 @@ describe("ShellCardsModal filters", () => {
 
 describe("ShellCardsModal pack opening", () => {
 	it("should show a rarity badge on a freshly revealed card once it's tapped", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		vi.mocked(api.getCsrfToken).mockResolvedValue("token");
-		vi.mocked(api.openCardPack).mockResolvedValue({
+		vi.mocked(cardsApi.openCardPack).mockResolvedValue({
 			coins: 400,
 			pulls: [
 				{
@@ -188,9 +201,9 @@ describe("ShellCardsModal pack opening", () => {
 	});
 
 	it("should tag a freshly revealed prismatic pull distinctly from a plain foil pull", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		vi.mocked(api.getCsrfToken).mockResolvedValue("token");
-		vi.mocked(api.openCardPack).mockResolvedValue({
+		vi.mocked(cardsApi.openCardPack).mockResolvedValue({
 			coins: 400,
 			pulls: [
 				{
@@ -232,7 +245,7 @@ describe("ShellCardsModal pack opening", () => {
 
 describe("ShellCardsModal pack tiers", () => {
 	it("should show each pack tier with its own price and afford-state", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		render(<ShellCardsModal coins={200} onCoinsChange={() => undefined} />);
 
 		await screen.findByText("Golden Blitz");
@@ -249,7 +262,7 @@ describe("ShellCardsModal pack tiers", () => {
 	});
 
 	it("should disable a tier's button when coins are insufficient for that tier specifically, even if other tiers are affordable", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		render(<ShellCardsModal coins={450} onCoinsChange={() => undefined} />);
 
 		await screen.findByText("Golden Blitz");
@@ -265,10 +278,10 @@ describe("ShellCardsModal pack tiers", () => {
 		).toBeDisabled();
 	});
 
-	it("should call api.openCardPack with the clicked tier's id", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+	it("should call cardsApi.openCardPack with the clicked tier's id", async () => {
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		vi.mocked(api.getCsrfToken).mockResolvedValue("token");
-		vi.mocked(api.openCardPack).mockResolvedValue({ coins: 100, pulls: [] });
+		vi.mocked(cardsApi.openCardPack).mockResolvedValue({ coins: 100, pulls: [] });
 
 		render(<ShellCardsModal coins={500} onCoinsChange={() => undefined} />);
 		await screen.findByText("Golden Blitz");
@@ -278,7 +291,7 @@ describe("ShellCardsModal pack tiers", () => {
 		);
 
 		await waitFor(() =>
-			expect(api.openCardPack).toHaveBeenCalledWith("deluxe"),
+			expect(cardsApi.openCardPack).toHaveBeenCalledWith("deluxe"),
 		);
 	});
 });
@@ -286,7 +299,7 @@ describe("ShellCardsModal pack tiers", () => {
 // ── Bug Audit L2: coin balance shown inside the modal ──────────────────────
 describe("ShellCardsModal coin balance", () => {
 	it("should show the current coin balance next to the Collection counter", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		render(<ShellCardsModal coins={734} onCoinsChange={() => undefined} />);
 
 		await screen.findByText("Golden Blitz");
@@ -298,11 +311,11 @@ describe("ShellCardsModal coin balance", () => {
 // ── Bug Audit M1: purchase vs binder-refresh error handling ────────────────
 describe("ShellCardsModal pack-open error handling", () => {
 	it("should keep the reveal and not show the purchase-failure message when only the binder refresh fails", async () => {
-		vi.mocked(api.getCards)
+		vi.mocked(cardsApi.getCards)
 			.mockResolvedValueOnce(makeBinder()) // initial load
 			.mockRejectedValueOnce(new Error("network blip")); // post-purchase refresh
 		vi.mocked(api.getCsrfToken).mockResolvedValue("token");
-		vi.mocked(api.openCardPack).mockResolvedValue({
+		vi.mocked(cardsApi.openCardPack).mockResolvedValue({
 			coins: 400,
 			pulls: [
 				{
@@ -347,9 +360,9 @@ describe("ShellCardsModal pack-open error handling", () => {
 	});
 
 	it("should surface the server's own message when the purchase itself fails", async () => {
-		vi.mocked(api.getCards).mockResolvedValue(makeBinder());
+		vi.mocked(cardsApi.getCards).mockResolvedValue(makeBinder());
 		vi.mocked(api.getCsrfToken).mockResolvedValue("token");
-		vi.mocked(api.openCardPack).mockRejectedValue(
+		vi.mocked(cardsApi.openCardPack).mockRejectedValue(
 			new Error("Not enough coins"),
 		);
 
@@ -368,13 +381,13 @@ describe("ShellCardsModal pack-open error handling", () => {
 // ── Bug Audit M4: retry after a failed initial binder load ─────────────────
 describe("ShellCardsModal failed initial load", () => {
 	it("should reload the binder when Retry is clicked after a failed load", async () => {
-		vi.mocked(api.getCards)
+		vi.mocked(cardsApi.getCards)
 			.mockRejectedValueOnce(new Error("db down"))
 			.mockResolvedValueOnce(makeBinder());
-		// api.getCards is a shared mock across this whole test file (no
+		// cardsApi.getCards is a shared mock across this whole test file (no
 		// resetMocks configured), so assert the *delta* in call count rather
 		// than an absolute total.
-		const callsBeforeRetry = vi.mocked(api.getCards).mock.calls.length;
+		const callsBeforeRetry = vi.mocked(cardsApi.getCards).mock.calls.length;
 
 		render(<ShellCardsModal coins={500} onCoinsChange={() => undefined} />);
 
@@ -384,7 +397,7 @@ describe("ShellCardsModal failed initial load", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
 		expect(await screen.findByText("Golden Blitz")).toBeInTheDocument();
-		expect(vi.mocked(api.getCards).mock.calls.length).toBe(
+		expect(vi.mocked(cardsApi.getCards).mock.calls.length).toBe(
 			callsBeforeRetry + 2,
 		);
 	});

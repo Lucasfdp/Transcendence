@@ -2,7 +2,7 @@
  * shared/mechanics/ball-powers.ts — shell power effects for ball-physics games.
  *
  * Applies a PowerType's launch-time effect to a BallState. Parallel to
- * PowerDef.onApply() (which operates on StoneState for curling).
+ * PowerDef.onApply() (which operates on CurlingBallState for Shell Curl).
  *
  * Usage:
  *   applyBallPower(this.activePower, this.ball, this.arena);

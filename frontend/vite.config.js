@@ -27,7 +27,8 @@ export default defineConfig(({ mode }) => ({
 		force: true, // always clear the pre-bundle cache on startup
 		hmr: {
 			protocol: "wss",
-			host: "localhost",
+			// Do not pin localhost: remote browsers must reconnect through the
+			// hostname used to load the page, not through their own local stack.
 			clientPort: 42424,
 		},
 		watch: {

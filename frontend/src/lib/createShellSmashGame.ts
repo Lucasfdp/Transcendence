@@ -28,6 +28,8 @@ export interface ShellSmashStartData {
 	localMode?: "solo" | "versus";
 	localPlayerCount?: number;
 	localPowerupsEnabled?: boolean;
+	replayEnabled: boolean;
+	replayDisabledReason: "powerups-enabled" | null;
 	onlineMatch?: OnlineMatchContext;
 }
 
@@ -37,6 +39,7 @@ export function createShellSmashGame(
 ): Phaser.Game {
 	const config: Phaser.Types.Core.GameConfig = {
 		type: Phaser.AUTO,
+		banner: false,
 		width: window.innerWidth,
 		height: window.innerHeight,
 		backgroundColor: "rgba(0,0,0,0)",
@@ -46,7 +49,10 @@ export function createShellSmashGame(
 			postBoot: (game) => {
 				configureInitialScene(game, initialScene);
 				if (!initialScene) return;
-				window.setTimeout(() => game.scene.start(initialScene.targetScene), 0);
+				window.setTimeout(
+					() => game.scene.start(initialScene.targetScene),
+					0,
+				);
 			},
 		},
 		scene: [
@@ -83,7 +89,12 @@ function configureInitialScene(
 	game.registry.set("localPlayerCount", initialScene.localPlayerCount ?? 1);
 	game.registry.set(
 		"localPowerupsEnabled",
-		initialScene.localPowerupsEnabled ?? true,
+		initialScene.localPowerupsEnabled ?? false,
+	);
+	game.registry.set("replayEnabled", initialScene.replayEnabled);
+	game.registry.set(
+		"replayDisabledReason",
+		initialScene.replayDisabledReason,
 	);
 	if (initialScene.onlineMatch) {
 		game.registry.set("onlineMatch", initialScene.onlineMatch);

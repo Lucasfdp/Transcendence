@@ -373,13 +373,14 @@ holds for every owned card.
 
 ### Frontend shape (Prismatic additions)
 
-- `features/hub/api.ts` — `CardView.prismaticCount`, `PackPull.prismatic`.
-- `components/cards/ShellCardsModal.tsx` — `prismaticBadgeText()` and
-  `shineBadgeText()` (picks prismatic-or-foil-or-none, never both);
-  `CardSlot` and `CardLightbox` add an `is-prismatic` class alongside
-  `is-foil`; `CardLightbox` adds the `.hub-cards__lightbox-prismatic` layer
-  gated on `rarity === "gold" && prismaticCount > 0`; `RevealOverlay`'s tag
-  shows "✵ Prismatic" in place of "✦ foil" for a prismatic pull.
+- `features/cards/contracts.ts` — `CardView.prismaticCount`, `PackPull.prismatic` (moved from `features/hub/api.ts` — see `docs/frontend-cards-and-gambling-migration-phases.md`).
+- `components/cards/CardSlot.tsx` — `prismaticBadgeText()` and
+  `shineBadgeText()` (picks prismatic-or-foil-or-none, never both), now
+  exported for `CardLightbox` to reuse; `CardSlot` and `CardLightbox` add an
+  `is-prismatic` class alongside `is-foil`; `CardLightbox` adds the
+  `.hub-cards__lightbox-prismatic` layer gated on
+  `rarity === "gold" && prismaticCount > 0`; `RevealOverlay`'s tag shows
+  "✵ Prismatic" in place of "✦ foil" for a prismatic pull.
 - `styles/global.css` — `.hub-cards__card.is-prismatic::after` (a faster,
   rainbow-hued shimmer overriding the plain foil sweep) and
   `.hub-cards__lightbox-prismatic` (an additional conic-gradient layer atop

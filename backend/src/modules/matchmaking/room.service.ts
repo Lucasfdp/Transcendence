@@ -33,6 +33,7 @@ export class RoomService {
 				connected: true,
 			}));
 		const engine = this.engines.get(gameId);
+		const powerupsEnabled = options.powerupsEnabled ?? false;
 
 		const room: MatchRoom = {
 			matchId,
@@ -48,15 +49,18 @@ export class RoomService {
 					gameId,
 					mode,
 					players,
-					powerupsEnabled: options.powerupsEnabled ?? false,
+					powerupsEnabled,
 				},
 				roomPlayers,
 			),
 			replayFrames: [],
 			replayEvents: [],
-			replayLastCapturedSeq: null,
+			replayEnabled: !powerupsEnabled,
+			replayDisabledReason: powerupsEnabled ? "powerups-enabled" : null,
 			replayStartedAt: null,
-			replayLastRecordedAt: null,
+			replayLastSampleAt: null,
+			replayLastKeyframeAt: null,
+			replayLastSnapshot: null,
 		};
 
 		this.rooms.set(matchId, room);
@@ -70,7 +74,9 @@ export class RoomService {
 	}
 
 	getActiveRooms(): MatchRoom[] {
-		return [...this.rooms.values()].filter((room) => room.status === "active");
+		return [...this.rooms.values()].filter(
+			(room) => room.status === "active",
+		);
 	}
 
 	getRoomForUser(userId: number): MatchRoom | null {
@@ -113,9 +119,7 @@ export class RoomService {
 		return room;
 	}
 
-	getUserMatchStatus(
-		userId: number,
-	): {
+	getUserMatchStatus(userId: number): {
 		room: MatchRoom;
 		side: number;
 		reconnectExpiresAt: number | null;

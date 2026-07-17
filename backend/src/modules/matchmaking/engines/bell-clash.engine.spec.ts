@@ -48,13 +48,37 @@ function makeRoom(powerupsEnabled = true): MatchRoom {
 		state,
 		replayFrames: [],
 		replayEvents: [],
-		replayLastCapturedSeq: null,
+		replayEnabled: true,
+		replayDisabledReason: null,
 		replayStartedAt: null,
-		replayLastRecordedAt: null,
+		replayLastSampleAt: null,
+		replayLastKeyframeAt: null,
+		replayLastSnapshot: null,
 	};
 }
 
 describe("BellClashEngine", () => {
+	function releaseAndSettle(
+		engine: BellClashEngine,
+		room: MatchRoom,
+		userId: number,
+	): void {
+		const state = room.state as BellClashSnapshot;
+		expect(
+			engine.handleInput(room, userId, {
+				matchId: room.matchId,
+				action: "release",
+				payload: {
+					roundNumber: state.roundNumber,
+					vx: 0,
+					vy: 0,
+					power: "none",
+				},
+			}),
+		).toBe(room);
+		engine.advanceSimulation(room, 1000 / 30);
+	}
+
 	it("rejects powers when powerups are disabled", () => {
 		const engine = new BellClashEngine();
 		const room = makeRoom(false);
@@ -97,6 +121,13 @@ describe("BellClashEngine", () => {
 		});
 
 		expect(state.balls[0]?.power).toBe("giant");
+		for (let step = 0; step < 600; step++) {
+			engine.advanceSimulation(room, 1000 / 30);
+			if (room.physicsState?.entities.every((entity) => entity.stopped)) break;
+		}
+		expect(room.physicsState?.entities.every((entity) => entity.stopped)).toBe(
+			true,
+		);
 
 		engine.handleInput(room, 1, {
 			matchId: room.matchId,
@@ -112,6 +143,53 @@ describe("BellClashEngine", () => {
 		});
 
 		expect(state.balls[0]?.power).toBe("none");
+	});
+
+	it("rejects client-authored scoring", () => {
+		const engine = new BellClashEngine();
+		const room = makeRoom();
+		const state = room.state as BellClashSnapshot;
+		engine.start(room);
+
+		const result = engine.handleInput(room, 1, {
+			matchId: room.matchId,
+			action: "bell:hit",
+			payload: { roundNumber: 1, points: 10_000 },
+		});
+
+		expect(result).toBeNull();
+		expect(state.liveRoundScores).toEqual([0, 0]);
+	});
+
+	it("rejects launch speeds outside the slingshot envelope", () => {
+		const engine = new BellClashEngine();
+		const room = makeRoom();
+		engine.start(room);
+
+		const result = engine.handleInput(room, 1, {
+			matchId: room.matchId,
+			action: "release",
+			payload: { roundNumber: 1, x: 0, y: 0, vx: 50_000, vy: 0 },
+		});
+
+		expect(result).toBeNull();
+		expect(room.physicsState?.entities).toHaveLength(0);
+	});
+
+	it("advances the round only after every final shot is settled", () => {
+		const engine = new BellClashEngine();
+		const room = makeRoom(false);
+		const state = room.state as BellClashSnapshot;
+		engine.start(room);
+
+		for (let shot = 0; shot < 3; shot++) releaseAndSettle(engine, room, 1);
+		expect(state.roundNumber).toBe(1);
+		expect(state.roundScores).toEqual([null, null]);
+
+		for (let shot = 0; shot < 3; shot++) releaseAndSettle(engine, room, 2);
+		expect(state.roundNumber).toBe(2);
+		expect(state.shotCounts).toEqual([0, 0]);
+		expect(room.physicsState?.entities).toHaveLength(0);
 	});
 
 });

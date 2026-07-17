@@ -22,6 +22,7 @@ export class FortyTwoAuthGuard extends AuthGuard("42") {
 		const host = req.headers.host ?? "localhost";
 		return {
 			callbackURL: `${proto}://${host}/api/auth/42/callback`,
+			state: typeof req.query.state === "string" ? req.query.state : "",
 		};
 	}
 

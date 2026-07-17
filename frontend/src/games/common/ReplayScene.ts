@@ -14,6 +14,7 @@ import type {
 	ReplayFrameSnapshotEntity,
 } from "../../services/network/gameSocket";
 import { ARENA_01 } from "../../shared/arenas/arena01";
+import { PLAYER_COLOUR_VALUES } from "../../shared/game-ui";
 import {
 	type ArenaPixels,
 	layoutOvalArenaSkin,
@@ -32,12 +33,16 @@ import {
 	drawIceSheet,
 	rectArenaPlayableToScreenInRect,
 } from "../../shared/mechanics/rect-arena";
+import { drawClassicPlayerTrail } from "../../shared/mechanics/player-trails";
 import {
 	drawIngamePlayerTexture,
 	hideIngamePlayerTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
-import { type CurlingBallState, drawCurlingBall } from "../../shared/mechanics/ball";
+import {
+	type CurlingBallState,
+	drawCurlingBall,
+} from "../../shared/mechanics/ball";
 import { type PowerType } from "../../shared/mechanics/power-system";
 import { THEME } from "../../shared/theme";
 import { ResponsiveScene } from "../../shared/responsive-scene";
@@ -47,7 +52,7 @@ import {
 	lerpNumber,
 	simulateReplayProjectile,
 } from "../../shared/mechanics/physics";
-import { ReplayController } from "./ReplayController";
+import { ReplayController, type ResolvedReplayFrame } from "./ReplayController";
 import {
 	REPLAY_BACKGROUND_TEXTURES,
 	resolveActiveReplayBackground,
@@ -217,6 +222,7 @@ export class ReplayScene extends ResponsiveScene {
 
 	update(_time: number, delta: number): void {
 		if (this.autoAdvance) this.controller?.update(delta);
+		if (this.controller?.getState().playing) this.needsRender = true;
 		if (!this.needsRender) return;
 		this.renderCurrentState();
 	}
@@ -344,11 +350,12 @@ export class ReplayScene extends ResponsiveScene {
 	}
 
 	private renderCurlingReplay(
-		frame: ReplayFrame,
-		nextFrame: ReplayFrame | null,
+		frame: ResolvedReplayFrame,
+		nextFrame: ResolvedReplayFrame | null,
 		progress: number,
 	): void {
 		if (!this.curlArena) return;
+		progress = canInterpolateFrames(frame, nextFrame) ? progress : 0;
 
 		const snapshot = frame.snapshot as unknown as CurlingSnapshot;
 		const nextSnapshot = nextFrame?.snapshot as unknown as
@@ -408,22 +415,24 @@ export class ReplayScene extends ResponsiveScene {
 
 		const balls = [...rendered.values()].sort((a, b) => a.id - b.id);
 		for (const ball of balls) {
-			this.drawTrailLine(
+			drawClassicPlayerTrail(
+				this.trailGfx,
 				ball.trail,
-				PLAYER_COLOURS[ball.side % PLAYER_COLOURS.length] ??
+				PLAYER_COLOUR_VALUES[ball.side % PLAYER_COLOUR_VALUES.length] ??
 					THEME.gold,
-				0.3,
+				{ scale: this.curlArena.scale },
 			);
 			this.drawCurlingBallActor(ball);
 		}
 	}
 
 	private renderBambooReplay(
-		frame: ReplayFrame,
-		nextFrame: ReplayFrame | null,
+		frame: ResolvedReplayFrame,
+		nextFrame: ResolvedReplayFrame | null,
 		progress: number,
 	): void {
 		if (!this.arena) return;
+		progress = canInterpolateFrames(frame, nextFrame) ? progress : 0;
 		const snapshot = frame.snapshot as unknown as BambooBashSnapshot;
 		const nextSnapshot = nextFrame?.snapshot as unknown as
 			| BambooBashSnapshot
@@ -452,21 +461,25 @@ export class ReplayScene extends ResponsiveScene {
 			nextSnapshot?.entities,
 			progress,
 		)) {
-			this.drawTrailDots(
+			drawClassicPlayerTrail(
+				this.trailGfx,
 				projectile.trail,
-				PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ??
-					THEME.gold,
+				PLAYER_COLOUR_VALUES[
+					projectile.side % PLAYER_COLOUR_VALUES.length
+				] ?? THEME.gold,
+				{ scale: this.arena.scale },
 			);
 			this.drawProjectileActor("bamboo", projectile);
 		}
 	}
 
 	private renderKameReplay(
-		frame: ReplayFrame,
-		nextFrame: ReplayFrame | null,
+		frame: ResolvedReplayFrame,
+		nextFrame: ResolvedReplayFrame | null,
 		progress: number,
 	): void {
 		if (!this.arena) return;
+		progress = canInterpolateFrames(frame, nextFrame) ? progress : 0;
 		const snapshot = frame.snapshot as unknown as KameKnockSnapshot;
 		const nextSnapshot = nextFrame?.snapshot as unknown as
 			| KameKnockSnapshot
@@ -508,21 +521,25 @@ export class ReplayScene extends ResponsiveScene {
 		}
 
 		for (const projectile of visibleProjectiles) {
-			this.drawTrailDots(
+			drawClassicPlayerTrail(
+				this.trailGfx,
 				projectile.trail,
-				PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ??
-					THEME.gold,
+				PLAYER_COLOUR_VALUES[
+					projectile.side % PLAYER_COLOUR_VALUES.length
+				] ?? THEME.gold,
+				{ scale: this.arena.scale },
 			);
 			this.drawProjectileActor("kame", projectile);
 		}
 	}
 
 	private renderBellReplay(
-		frame: ReplayFrame,
-		nextFrame: ReplayFrame | null,
+		frame: ResolvedReplayFrame,
+		nextFrame: ResolvedReplayFrame | null,
 		progress: number,
 	): void {
 		if (!this.arena) return;
+		progress = canInterpolateFrames(frame, nextFrame) ? progress : 0;
 		const snapshot = frame.snapshot as unknown as BellClashSnapshot;
 		const nextSnapshot = nextFrame?.snapshot as unknown as
 			| BellClashSnapshot
@@ -539,10 +556,13 @@ export class ReplayScene extends ResponsiveScene {
 			nextSnapshot?.entities,
 			progress,
 		)) {
-			this.drawTrailDots(
+			drawClassicPlayerTrail(
+				this.trailGfx,
 				projectile.trail,
-				PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ??
-					THEME.gold,
+				PLAYER_COLOUR_VALUES[
+					projectile.side % PLAYER_COLOUR_VALUES.length
+				] ?? THEME.gold,
+				{ scale: this.arena.scale },
 			);
 			this.drawProjectileActor("bell", projectile);
 		}
@@ -729,7 +749,7 @@ export class ReplayScene extends ResponsiveScene {
 		this.bgObjects = [];
 	}
 
-	private renderReplayBackground(frame: ReplayFrame): void {
+	private renderReplayBackground(frame: ResolvedReplayFrame): void {
 		const snapshot = frame.snapshot as ReplayFrameSnapshot;
 		const activeSide = resolveActiveReplaySide(
 			snapshot,
@@ -926,10 +946,7 @@ export class ReplayScene extends ResponsiveScene {
 			);
 			const simulated = simulateReplayProjectile(
 				initial,
-				Math.max(
-					0,
-					playbackTimeMs - new Date(event.recordedAt).getTime(),
-				),
+				Math.max(0, playbackTimeMs - event.tMs),
 				this.arena!,
 			);
 			return {
@@ -1081,37 +1098,6 @@ export class ReplayScene extends ResponsiveScene {
 	private bellRadius(): number {
 		return this.arena ? 150 * this.arena.scale : 0;
 	}
-
-	private drawTrailDots(trail: ReplayTrailPoint[], colour: number): void {
-		const count = trail.length;
-		for (let index = 0; index < count; index++) {
-			const point = trail[index];
-			const alpha = 0.08 + (index / Math.max(1, count)) * 0.38;
-			this.trailGfx.fillStyle(colour, alpha);
-			this.trailGfx.fillCircle(point.x, point.y, 3.2);
-		}
-	}
-
-	private drawTrailLine(
-		trail: ReplayTrailPoint[],
-		colour: number,
-		alphaBase: number,
-	): void {
-		if (trail.length < 2) return;
-		for (let index = 1; index < trail.length; index++) {
-			this.trailGfx.lineStyle(
-				2.5,
-				colour,
-				alphaBase + (index / trail.length) * 0.28,
-			);
-			this.trailGfx.lineBetween(
-				trail[index - 1].x,
-				trail[index - 1].y,
-				trail[index].x,
-				trail[index].y,
-			);
-		}
-	}
 }
 
 function parsePowerType(value: string | undefined): PowerType | undefined {
@@ -1119,7 +1105,20 @@ function parsePowerType(value: string | undefined): PowerType | undefined {
 }
 
 function isLegacyReplayFrame(frame: ReplayFrame): boolean {
-	return frame.replayVersion === undefined || frame.replayVersion === null;
+	return frame.type !== "keyframe" && frame.type !== "delta";
+}
+
+function canInterpolateFrames(
+	frame: ReplayFrame,
+	nextFrame: ReplayFrame | null,
+): boolean {
+	return Boolean(
+		nextFrame &&
+		frame.round === nextFrame.round &&
+		frame.state === nextFrame.state &&
+		!frame.removals.length &&
+		!nextFrame.removals.length,
+	);
 }
 
 interface ReplayBallWithKey extends BallSnapshotData {

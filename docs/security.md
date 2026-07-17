@@ -6,7 +6,10 @@ Security considerations for the ft_transcendence Docker infrastructure.
 
 ## TLS / HTTPS
 
-The project enforces HTTPS exclusively. HTTP requests receive a 301 redirect.
+The project enforces HTTPS exclusively. A plain HTTP request sent to the
+published TLS port receives a branded `426 Upgrade Required` page with a link
+back to the secure ShellSmash entrance. Nginx handles this response locally via
+its internal `497` status, before any request can reach the frontend or backend.
 
 ### Self-signed certificates (development)
 
@@ -133,6 +136,42 @@ The Nginx configuration sets the following security headers on all responses:
 | Separate network zones                | frontend_network / backend_network isolation |
 | Non-root processes                    | All app containers run as unprivileged users |
 | Minimal OS packages                   | Alpine images; only install what is needed   |
+
+---
+
+## Authentication Identities And Account Linking
+
+Authentication methods are stored separately from player progress in
+`auth_identities`. Each persistent user may have at most one `shellsmash`, one
+`google`, and one `forty_two` identity. ShellSmash email addresses are
+normalised to lower case and passwords are stored only as salted scrypt hashes.
+Provider subjects, password hashes, and ShellSmash email addresses are never
+included in account previews.
+
+The migration `20260716000000-create-auth-identities-account-conflicts` copies
+legacy password, Google, and 42 identifiers into the new table without removing
+the old columns. This permits a rolling deployment and keeps existing JWTs
+valid. Local and WebSocket authentication resolve old user IDs through pending
+conflicts and completed merges before authorising application operations.
+
+All account-link mutations require a valid JWT, the double-submit CSRF token,
+and a per-IP rate-limit allowance. Removing the final authentication method is
+rejected. ShellSmash accounts are never linked by an email match: an existing
+account can only be linked after its password has been verified.
+
+Google and 42 authorisation requests carry 256 bits of random `state`. The
+state payload is stored in Redis for ten minutes and consumed atomically with
+`GETDEL` at callback time, which makes it expiring and single-use. A Redis
+failure fails the OAuth flow closed.
+
+Account consolidation locks the conflict, both users, and their identities in
+one database transaction. Duplicate methods must be removed first, and a
+consolidation is rejected while either account is queued or has a pending or
+active match. The selected account's progress is retained without combining
+balances or inventories. Reports, match history, messages, and casino audit
+records remain attached to an internal tombstone for moderation and antifraud
+purposes; user-facing progress and social membership belonging to the discarded
+account are removed.
 
 ---
 

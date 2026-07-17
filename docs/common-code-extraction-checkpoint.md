@@ -241,7 +241,7 @@ This now centralises:
 - The scenes keep their game-specific scoring, online/local state handling,
   round advancement, and projectile settlement logic local.
 - `shell-curl` keeps `TurnManager` as the authority for ends, hammer,
-  stones left, score, and phase; `GameRuleHooks` is only the shared
+  balls left, score, and phase; `GameRuleHooks` is only the shared
   boundary into HUD state.
 - The shared layer now has a stable contract for future rule-flow
   extraction without introducing a base scene.
@@ -398,7 +398,7 @@ This now centralises:
 - replay player metadata construction from registry user and shell skins
 - replay participant context construction for player metadata, player names,
   and local replay user lookup
-- replay projectile and stone entity list mapping
+- replay projectile and curling ball entity list mapping
 - `api.importReplay` success and failure logging through a shared callback
   boundary
 - pending replay persistence ownership and wait/reset handling
@@ -408,7 +408,7 @@ This now centralises:
   capture/persistence runtime composition behind a single
   `LocalReplayRuntime`
 - normalised arena projectile replay snapshot construction
-- normalised curling stone replay snapshot construction
+- normalised curling ball replay snapshot construction
 - per-game local replay snapshot assembly for Bamboo Bash, Kame Knock, Bell
   Clash, and Shell Curl through common-owned builders
 - descriptor-driven replay world-object serialisation for Bamboo Bash
@@ -426,7 +426,7 @@ This now centralises:
 - The four audited games no longer implement repeated
   `buildLocalReplayPlayers()` metadata helpers.
 - The four audited games now route replay entity list construction through
-  common projectile or stone entity helpers instead of mapping directly in
+  common projectile or curling ball entity helpers instead of mapping directly in
   scene snapshots.
 - Local replay persistence now goes through
   `LocalReplayPersistenceRuntime`, while scenes still provide their
@@ -605,7 +605,7 @@ This is deliberate rather than remaining extraction debt:
 - Replay entity list mapping now goes through common helpers, and replay world
   object mapping is descriptor-driven for the obstacle families that already
   expose descriptors.
-- Projectile and stone replay entities remain state-driven because they are
+- Projectile and curling ball replay entities remain state-driven because they are
   launch actors, not obstacle descriptors.
 
 The final Phase 8 outcome is primarily architectural: replay ownership,
@@ -707,7 +707,7 @@ Status: `Completed`
 ### Scope
 
 Phase 10 continued the shared projectile extraction by moving arena-ball
-stepping/power-ball application into `ArenaPowerRuntime` and curling-stone
+stepping/power-ball application into `ArenaPowerRuntime` and curling-ball
 power flow into `CurlingPowerRuntime`.
 
 This phase deliberately kept scoring, collision consequences, stopped-power
@@ -737,11 +737,11 @@ projectile power runtimes are no longer scene-owned.
 - Added `frontend/src/shared/mechanics/curling-power-runtime.test.ts`.
 - Replaced Shell Curl direct `PowerRegistry.get(...).onApply/onUpdate/onCollide/onStop`
   usage with `CurlingPowerRuntime`.
-- Replaced Shell Curl direct stone-stone collision resolution with
+- Replaced Shell Curl direct ball-ball collision resolution with
   `CurlingPowerRuntime.resolveCollisions()`.
-- Moved Shell Curl splitter and mirror stone materialisation out of
+- Moved Shell Curl splitter and mirror ball materialisation out of
   `ShellCurlScene` and into the shared curling runtime; the scene now only
-  attaches graphics/trails for runtime-created stones.
+  attaches graphics/trails for runtime-created balls.
 
 ### Line Count Impact
 
@@ -790,7 +790,7 @@ Results:
 Phase 10 is closed as the first shared projectile update/power lifecycle pass
 across all four audited games. Main arena balls and auxiliary power balls now
 share the same stepping path, and power application/spawn registration is owned
-by `ArenaPowerRuntime`. Shell Curl now routes stone power application, stepping,
+by `ArenaPowerRuntime`. Shell Curl now routes ball power application, stepping,
 power hooks, splitter spawning, and mirror spawning through
 `CurlingPowerRuntime`.
 

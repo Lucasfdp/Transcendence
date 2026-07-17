@@ -160,7 +160,7 @@ export class ScoreHud {
 			currentEnd: state.currentEnd,
 			phase: state.phase,
 			score: state.score,
-			stonesLeft: state.stonesLeft,
+			ballsLeft: state.ballsLeft,
 			playerCount,
 			labels,
 			status,
@@ -250,7 +250,7 @@ export class ScoreHud {
 		const slotW = w / playerCount;
 
 		for (let team = 0; team < playerCount; team++) {
-			const count = state.stonesLeft[team] ?? 0;
+			const count = state.ballsLeft[team] ?? 0;
 			const colour = this.playerColour(team);
 			const totalW = count * BALL_DOT_GAP;
 			const startX =

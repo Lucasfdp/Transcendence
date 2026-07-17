@@ -53,7 +53,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
 		exp: number;
 	}> {
 		// Guests may be cleaned up — treat missing record as session expired.
-		const user = await this.usersService.findById(payload.sub);
+		const user = await this.usersService.findCanonicalById(payload.sub);
 		if (!user)
 			throw new UnauthorizedException(
 				"Session expired or user not found",

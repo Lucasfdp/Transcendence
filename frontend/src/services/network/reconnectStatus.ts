@@ -1,4 +1,5 @@
 import type { GameSnapshot } from "./gameSocket";
+import { displayUsername } from "../../shared/player-labels";
 
 export function formatReconnectStatus(
 	snapshot: GameSnapshot | null | undefined,
@@ -21,5 +22,5 @@ export function formatReconnectStatus(
 	);
 	if (player.side === localSide)
 		return `You are disconnected. Forfeit in ${remaining}s`;
-	return `${player.username || `P${player.side + 1}`} disconnected. Forfeit in ${remaining}s`;
+	return `${displayUsername(player.username) || `P${player.side + 1}`} disconnected. Forfeit in ${remaining}s`;
 }

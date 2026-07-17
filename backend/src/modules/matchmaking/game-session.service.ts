@@ -65,7 +65,15 @@ export class GameSessionService implements OnModuleInit {
 	}
 
 	advanceSimulation(room: MatchRoom, elapsedMs: number): boolean {
-		return this.engines.get(room.gameId).advanceSimulation?.(room, elapsedMs) ?? false;
+		return (
+			this.engines
+				.get(room.gameId)
+				.advanceSimulation?.(room, elapsedMs) ?? false
+		);
+	}
+
+	captureReplayFrame(room: MatchRoom, logicalStepMs: number): void {
+		this.replayService.captureFrame(room, false, logicalStepMs);
 	}
 
 	async startIfReady(matchId: string): Promise<MatchRoom | null> {
@@ -89,12 +97,15 @@ export class GameSessionService implements OnModuleInit {
 		if (room.status !== "finished" && room.status !== "abandoned") return;
 		const finished =
 			this.roomService.finish(
-			room.matchId,
-			room.state.winnerSide,
-			room.status === "abandoned",
-		) ?? room;
+				room.matchId,
+				room.state.winnerSide,
+				room.status === "abandoned",
+			) ?? room;
 		this.cleanupEngineRoomState(finished);
-		await this.persistFinishedRoom(finished, finished.status === "abandoned");
+		await this.persistFinishedRoom(
+			finished,
+			finished.status === "abandoned",
+		);
 	}
 
 	async abandon(
@@ -104,7 +115,11 @@ export class GameSessionService implements OnModuleInit {
 		const winnerSide = this.engines
 			.get(room.gameId)
 			.abandon(room, abandonedPlayer);
-		const finished = this.roomService.finish(room.matchId, winnerSide, true);
+		const finished = this.roomService.finish(
+			room.matchId,
+			winnerSide,
+			true,
+		);
 		if (finished) {
 			this.cleanupEngineRoomState(finished);
 			await this.persistFinishedRoom(finished, true);
@@ -125,66 +140,112 @@ export class GameSessionService implements OnModuleInit {
 		const winnerUserId =
 			winnerSide === null
 				? null
-				: room.players.find((player) => player.side === winnerSide)?.user.id ??
-					null;
+				: (room.players.find((player) => player.side === winnerSide)
+						?.user.id ?? null);
 
 		try {
-			await this.dataSource.transaction(async (manager) => {
-				const matchRepo = manager.getRepository(Match);
-				const matchPlayerRepo = manager.getRepository(MatchPlayer);
-				const ratingRepo = manager.getRepository(UserRating);
+			const alreadyPersisted = await this.dataSource.transaction(
+				async (manager) => {
+					const matchRepo = manager.getRepository(Match);
+					const matchPlayerRepo = manager.getRepository(MatchPlayer);
+					const ratingRepo = manager.getRepository(UserRating);
 
-				await matchRepo.update(room.matchId, {
-					status: abandoned ? "abandoned" : "finished",
-					winnerUserId,
-					winnerSide,
-					finishedAt: new Date(),
-				});
-
-				for (const player of room.players) {
-					const outcome =
-						winnerSide === null
-							? "draw"
-							: player.side === winnerSide
-								? "win"
-								: abandoned
-									? "abandoned"
-									: "loss";
-					await matchPlayerRepo.update(
-						{ matchId: room.matchId, userId: player.user.id },
-						{ outcome },
+					// Rankings Bug Audit M4: scope the UPDATE to the match's own
+					// current status instead of writing it unconditionally. The
+					// in-memory `room.rewardsGranted` guard above is only set
+					// *after* this transaction (and replay persistence) succeed,
+					// so a duplicate re-entry into finish/abandon (double
+					// disconnect, gateway retry, or — after a process restart —
+					// a freshly rehydrated room object that never carried the
+					// flag) could otherwise re-run this whole transaction and
+					// double-apply XP/coins/Elo. Scoping to `WHERE status =
+					// 'active'` makes "already rewarded" a durable, atomically
+					// checked DB fact (0 rows affected) instead of a
+					// process-local boolean.
+					const matchUpdate = await matchRepo.update(
+						{ id: room.matchId, status: "active" },
+						{
+							status: abandoned ? "abandoned" : "finished",
+							winnerUserId,
+							winnerSide,
+							finishedAt: new Date(),
+						},
 					);
-				}
+					if (!matchUpdate.affected) return true;
 
-				if (!abandoned) {
-					// Reward eligibility is based on the recorded match outcome, not
-					// the player's live socket state. A win/loss/draw was already
-					// persisted to `match_players` above for every player in this
-					// (non-abandoned) match, so a socket that blips right as the
-					// final scoring input lands must not cost the player their
-					// XP/coins/card drop (Bug Audit M6). Abandon-driven forfeits are
-					// handled separately via `abandon()` with `abandoned = true`.
 					for (const player of room.players) {
-						const user = await this.usersService.findById(player.user.id);
-						if (!user || user.isGuest) continue;
-						await this.gameResultsService.submitResult(user, {
-							gameId: room.gameId,
-							outcome:
-								winnerSide === null
-									? "draw"
-									: player.side === winnerSide
-										? "win"
-										: "loss",
-						});
+						const outcome =
+							winnerSide === null
+								? "draw"
+								: player.side === winnerSide
+									? "win"
+									: abandoned
+										? "abandoned"
+										: "loss";
+						await matchPlayerRepo.update(
+							{ matchId: room.matchId, userId: player.user.id },
+							{ outcome },
+						);
 					}
-				}
 
-				if (room.mode === "ranked" && winnerSide !== null) {
-					await this.applyEloRatings(room, winnerSide, ratingRepo);
-				}
-			});
-			await this.replayService.persistReplayForRoom(room);
+					if (!abandoned) {
+						// Reward eligibility is based on the recorded match outcome,
+						// not the player's live socket state. A win/loss/draw was
+						// already persisted to `match_players` above for every
+						// player in this (non-abandoned) match, so a socket that
+						// blips right as the final scoring input lands must not
+						// cost the player their XP/coins/card drop (Bug Audit M6).
+						// Abandon-driven forfeits are handled separately via
+						// `abandon()` with `abandoned = true`.
+						for (const player of room.players) {
+							const user = await this.usersService.findById(
+								player.user.id,
+							);
+							if (!user || user.isGuest) continue;
+							await this.gameResultsService.submitResult(user, {
+								gameId: room.gameId,
+								outcome:
+									winnerSide === null
+										? "draw"
+										: player.side === winnerSide
+											? "win"
+											: "loss",
+							});
+						}
+					}
+
+					// Rankings Bug Audit M3: this used to require `winnerSide !==
+					// null`, so a ranked draw skipped rating updates entirely —
+					// `draws` never incremented on `user_ratings` and the match had
+					// zero rating impact. The only way `winnerSide === null` and
+					// `abandoned` are both true is `resolveAbandonWinner` finding no
+					// single remaining leader (Bug Audit out-of-scope note: abandon
+					// forfeits must keep applying Elo, so that case is deliberately
+					// excluded here — unchanged from before). A genuine draw
+					// (`!abandoned`) now reaches `applyEloRatings`, which scores it
+					// 0.5 for every player per the standard Elo formula.
+					if (
+						room.mode === "ranked" &&
+						(winnerSide !== null || !abandoned)
+					) {
+						await this.applyEloRatings(
+							room,
+							winnerSide,
+							ratingRepo,
+						);
+					}
+					return false;
+				},
+			);
+
+			// Set the durable guard immediately after the transaction commits —
+			// before replay persistence, which is a plain insert (not
+			// idempotent). A replay failure below must never risk rewards being
+			// re-applied on a retry (Rankings Bug Audit M4).
 			room.rewardsGranted = true;
+			if (alreadyPersisted) return;
+
+			await this.replayService.persistReplayForRoom(room);
 			// Fires only after the outcome is fully persisted (statuses, rewards,
 			// ratings, replay) so listeners can trust what they read. Listener
 			// errors are contained inside MatchLifecycleEvents.emit.
@@ -204,13 +265,22 @@ export class GameSessionService implements OnModuleInit {
 
 	private async applyEloRatings(
 		room: MatchRoom,
-		winnerSide: number,
+		winnerSide: number | null,
 		ratingRepo: Repository<UserRating>,
 	): Promise<void> {
 		const ratings: UserRating[] = [];
 		for (const player of room.players) {
+			// Rankings Bug Audit L6: locked so a concurrent finish/abandon
+			// re-entry for the same player+game can't read-modify-write the same
+			// row out from under this one. A user can only be in one active room
+			// at a time (`matchmaking.service.ts`), so cross-match races are
+			// already prevented at the app layer — this lock is belt-and-braces
+			// alongside the M4 transaction guard and H1's unique constraint,
+			// which converts a duplicate-insert race into a constraint error
+			// instead of a silent duplicate row.
 			let rating = await ratingRepo.findOne({
 				where: { userId: player.user.id, gameId: room.gameId },
+				lock: { mode: "pessimistic_write" },
 			});
 			if (!rating) {
 				rating = ratingRepo.create({
@@ -231,21 +301,33 @@ export class GameSessionService implements OnModuleInit {
 		for (let i = 0; i < room.players.length; i++) {
 			const player = room.players[i];
 			const rating = ratings[i];
-			const won = player.side === winnerSide;
-			const score = won ? 1 : 0;
 			const playerRating = preMatchRatings[i];
 
 			const opponentRatings = preMatchRatings.filter((_, j) => j !== i);
+			// Rankings Bug Audit L5: unreachable today (`MIN_PLAYERS = 2` in
+			// matchmaking.service.ts), but a future solo/practice ranked mode
+			// reaching this method with a single player would otherwise divide
+			// by zero below and persist a NaN rating.
+			if (opponentRatings.length === 0) continue;
 			const opponentRating =
 				opponentRatings.reduce((sum, r) => sum + r, 0) /
 				opponentRatings.length;
 
+			// Rankings Bug Audit M3: a draw (`winnerSide === null`) is scored 0.5
+			// per the standard Elo formula — previously this method was never
+			// even called for a ranked draw (see the caller's guard), so `draws`
+			// never incremented and rating never moved for a drawn ranked match.
+			const won = winnerSide !== null && player.side === winnerSide;
+			const score = winnerSide === null ? 0.5 : won ? 1 : 0;
+
 			const expected =
-				1 / (1 + Math.pow(10, (opponentRating - playerRating) / ELO_SCALE));
+				1 /
+				(1 + Math.pow(10, (opponentRating - playerRating) / ELO_SCALE));
 			const delta = Math.round(ELO_K * (score - expected));
 			rating.rating = Math.max(0, playerRating + delta);
 
-			if (won) rating.wins += 1;
+			if (winnerSide === null) rating.draws += 1;
+			else if (won) rating.wins += 1;
 			else rating.losses += 1;
 
 			await ratingRepo.save(rating);
