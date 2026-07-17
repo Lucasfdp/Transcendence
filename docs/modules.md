@@ -10,7 +10,7 @@ Minor server-side rendering
 Minor PWA
 Minor reusable components (pending)
 Minor support additional browsers (pending)
-Major user management (pending)
+Major user management (completed)
 Minor game statistics
 Minor OAuth
 Major WAF & Vaults

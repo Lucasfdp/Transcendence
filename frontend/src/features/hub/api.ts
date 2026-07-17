@@ -59,6 +59,24 @@ export interface User {
 	};
 }
 
+export interface PublicUserView {
+	id: number;
+	username: string;
+	turtleName: string | null;
+	shellSkin: string;
+	avatar: string | null;
+	level: number;
+	isOnline: boolean;
+	mostPlayedGame: MostPlayedGame | null;
+	profile: {
+		totalWins: number;
+		totalLosses: number;
+		gamesPlayed: number;
+		tag: string | null;
+		showcasedAchievements: string[] | null;
+	} | null;
+}
+
 export interface ProgressionResult {
 	xpGained: number;
 	coinsGained: number;
@@ -481,8 +499,8 @@ export const api = {
 	logout: (): Promise<{ ok: boolean }> =>
 		apiFetch<{ ok: boolean }>("/auth/session", { method: "DELETE" }),
 
-	getUser: (username: string): Promise<User> =>
-		apiFetch<User>(`/users/${username}`),
+	getUser: (username: string): Promise<PublicUserView> =>
+		apiFetch<PublicUserView>(`/users/${encodeURIComponent(username)}`),
 	getAllUsers: (): Promise<User[]> => apiFetch<User[]>("/users"),
 	getMiniGames: (): Promise<MiniGameDefinition[]> =>
 		apiFetch<MiniGameDefinition[]>("/minigames"),
