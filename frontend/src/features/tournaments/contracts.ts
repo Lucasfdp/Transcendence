@@ -82,13 +82,26 @@ export type TournamentIntentName =
 	| "LeaveGamblingIntent"
 	| "EndTurnIntent";
 
-/** The one live intent (Vertical Slice): the active player asks to roll. */
+/** The active player asks to roll (PLAYER_TURNS). */
 export interface RollDiceIntent {
 	name: "RollDiceIntent";
 }
 
+/** The round's minigame winner takes the bet (GAMBLING_PHASE, SPEC-016). */
+export interface StartGamblingIntent {
+	name: "StartGamblingIntent";
+}
+
+/** The round's minigame winner declines the bet (GAMBLING_PHASE, SPEC-016). */
+export interface LeaveGamblingIntent {
+	name: "LeaveGamblingIntent";
+}
+
 /** Union of the intents a client may send today; grows per phase. */
-export type TournamentIntent = RollDiceIntent;
+export type TournamentIntent =
+	| RollDiceIntent
+	| StartGamblingIntent
+	| LeaveGamblingIntent;
 
 /** Payload of the `tournament:intent` message. */
 export interface TournamentIntentEnvelope {
@@ -142,6 +155,8 @@ export interface TournamentParticipantSummary {
 	 * (SPEC-038 / seams-audit ruling #1).
 	 */
 	ready: boolean;
+	/** CPU participant (server-driven; always ready). */
+	isBot: boolean;
 }
 
 /** Full lobby state — enough to hydrate the entry UI after a refresh. */
@@ -219,8 +234,10 @@ export interface TournamentPlayerStateSummary {
 	points: number;
 	/** Current board tile; null before INITIALIZING placed the player. */
 	tileId: string | null;
-	/** Connected to the tournament room right now. */
+	/** Connected to the tournament room right now (always true for CPUs). */
 	connected: boolean;
+	/** CPU participant — turns/gambling decided server-side. */
+	isBot: boolean;
 }
 
 /**
@@ -251,6 +268,21 @@ export interface TournamentSnapshotV1 {
 		unlocked: number;
 		required: number;
 	};
+	/**
+	 * The open Gambling decision (SPEC-016) — everyone watches it live
+	 * (SPEC-039 "Tiempo de espectador"); null when no session is open.
+	 * `deadlineAt` is the ms-epoch decision deadline (30 s).
+	 */
+	gambling: {
+		winnerId: number;
+		cost: number;
+		winChance: number;
+		deadlineAt: number;
+	} | null;
+	/** The running round minigame's match id (SPEC-015); null when none. */
+	minigameMatchId: string | null;
+	/** The champion once the tournament resolves (SPEC-021); null until then. */
+	winnerUserId: number | null;
 }
 
 /**
@@ -295,3 +327,5 @@ export type JoinTournamentByPinResponse = TournamentLobbyState;
 export type LeaveTournamentResponse = TournamentLobbyState;
 /** POST /tournaments/:id/start — creator only; status becomes `active`. */
 export type StartTournamentResponse = TournamentLobbyState;
+/** POST /tournaments/:id/add-cpu — creator only; seats a CPU participant. */
+export type AddTournamentCpuResponse = TournamentLobbyState;

@@ -114,16 +114,28 @@ export class TournamentGateway implements OnGatewayInit, OnGatewayDisconnect {
 			return { accepted: false, reason: "not_participant" };
 		}
 
-		// The only live intent (Vertical Slice). Unknown intents are rejected —
-		// clients can only REQUEST catalogued actions (SPEC-022 "Cliente
-		// modificado → rechazar").
-		if (body.intent?.name !== "RollDiceIntent") {
-			return { accepted: false, reason: "unknown_intent" };
+		// Only catalogued intents are routed (SPEC-022 "Cliente modificado →
+		// rechazar"); the Runtime re-validates phase/actor for each.
+		switch (body.intent?.name) {
+			case "RollDiceIntent": {
+				const result = runtime.handleRollDice(userId);
+				return result.status === "ok"
+					? { accepted: true }
+					: { accepted: false, reason: result.reason };
+			}
+			case "StartGamblingIntent": {
+				const result = runtime.handleStartGambling(userId);
+				return result.status === "ok"
+					? { accepted: true }
+					: { accepted: false, reason: result.reason };
+			}
+			case "LeaveGamblingIntent": {
+				runtime.handleLeaveGambling(userId);
+				return { accepted: true };
+			}
+			default:
+				return { accepted: false, reason: "unknown_intent" };
 		}
-		const result = runtime.handleRollDice(userId);
-		return result.status === "ok"
-			? { accepted: true }
-			: { accepted: false, reason: result.reason };
 	}
 
 	@SubscribeMessage(TOURNAMENT_WS_MESSAGES.LEAVE)

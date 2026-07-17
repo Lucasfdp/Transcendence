@@ -21,6 +21,14 @@ export interface GameEngineCreateContext {
 
 export interface GameEngine {
 	readonly gameId: string;
+	/**
+	 * Seatable player-count bounds. Previously implicit (the queue seats 2–5
+	 * everywhere); made explicit so programmatic orchestrators (e.g. the
+	 * Tournament module) can build their candidate catalog from the registry
+	 * instead of duplicating a game list.
+	 */
+	readonly minPlayers: number;
+	readonly maxPlayers: number;
 	createInitialState(
 		context: GameEngineCreateContext,
 		roomPlayers: RoomPlayer[],

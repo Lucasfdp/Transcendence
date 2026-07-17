@@ -35,6 +35,8 @@ type KameKnockTarget = KameKnockSnapshot["targets"][number];
 @Injectable()
 export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 	readonly gameId = "kame-knock";
+	readonly minPlayers = 2;
+	readonly maxPlayers = 5;
 	private readonly roundTargetSets = new Map<string, KameKnockTarget[][]>();
 
 	createInitialState(

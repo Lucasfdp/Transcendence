@@ -265,6 +265,9 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 		return { runtime, clock, events };
 	}
 
+	/** Round boundaries route through the async MINIGAME skip — settle it. */
+	const settle = (): Promise<void> => new Promise((r) => setImmediate(r));
+
 	it("start() enters PLAYER_TURNS and opens the first turn for turnOrder[0]", () => {
 		const { runtime } = makeInteractive();
 		runtime.start();
@@ -307,7 +310,7 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[0]);
 	});
 
-	it("four resolved turns close the round: MINIGAME(skip) → CHECK_KEY_ITEMS → round 2", () => {
+	it("four resolved turns close the round: MINIGAME(skip) → CHECK_KEY_ITEMS → round 2", async () => {
 		const { runtime, events } = makeInteractive();
 		runtime.start();
 		const order = deriveTurnOrder("seed-a", [...PARTICIPANT_IDS]);
@@ -315,6 +318,7 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 		for (const playerId of order) {
 			expect(runtime.handleRollDice(playerId)).toEqual({ status: "ok" });
 		}
+		await settle();
 
 		// Round 1 finished and round 2 re-entered PLAYER_TURNS with turnOrder[0].
 		expect(events.some((e) => e.name === "RoundFinished" && e.round === 1)).toBe(true);
@@ -323,16 +327,18 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[0]);
 	});
 
-	it("idle players are auto-rolled by the turn timeout; an unattended run reaches DEFEAT", () => {
+	it("idle players are auto-rolled by the turn timeout; an unattended run reaches DEFEAT", async () => {
 		const settings = makeSettings({ maxRound: 2 });
 		const { runtime, clock, events } = makeInteractive(settings);
 		runtime.start();
 
 		// Nobody ever sends an intent: every turn resolves via the roll timeout.
-		// 2 rounds × 4 turns; each advance fires the pending auto-roll.
+		// 2 rounds × 4 turns; each advance fires the pending auto-roll (round
+		// boundaries settle through the async MINIGAME skip).
 		const turnMs = settings.timeouts.turnSeconds * 1000;
 		for (let i = 0; i < 8; i++) {
 			clock.advance(turnMs);
+			await settle();
 		}
 
 		expect(runtime.isTerminal).toBe(true);
@@ -363,7 +369,7 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 		expect(runtime.currentPhase).toBe("PLAYER_TURNS");
 	});
 
-	it("interactive mode stays deterministic: no Math.random / Date.now", () => {
+	it("interactive mode stays deterministic: no Math.random / Date.now", async () => {
 		const randomSpy = jest.spyOn(Math, "random");
 		const dateNowSpy = jest.spyOn(Date, "now");
 		const settings = makeSettings({ maxRound: 1 });
@@ -371,9 +377,300 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 		runtime.start();
 		for (let i = 0; i < 4; i++) {
 			clock.advance(settings.timeouts.turnSeconds * 1000);
+			await settle();
 		}
 		expect(runtime.isTerminal).toBe(true);
 		expect(randomSpy).not.toHaveBeenCalled();
 		expect(dateNowSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SPEC-015/016/020/021)", () => {
+	beforeEach(() => {
+		jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "debug").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "verbose").mockImplementation(() => undefined);
+	});
+	afterEach(() => jest.restoreAllMocks());
+
+	const settle = (): Promise<void> => new Promise((r) => setImmediate(r));
+
+	/**
+	 * A scripted minigame platform: every launch immediately finishes with the
+	 * given winner (first seated player by default). Exercises the REAL
+	 * SPEC-015 coordinator inside the engines — only the platform is fake.
+	 */
+	function makePorts(pickWinner: (playerIds: readonly number[]) => number | null) {
+		let matchSeq = 0;
+		const listeners = new Set<(s: import("../minigame/minigame.types").MinigameLifecycleSignal) => void>();
+		return {
+			launcher: {
+				launch: async (request: import("../minigame/minigame.types").MinigameLaunchRequest) => {
+					const matchId = `match-${++matchSeq}`;
+					const winnerId = pickWinner(request.playerIds);
+					// Deliver the result on the next tick, after the coordinator
+					// subscribed its wait.
+					setImmediate(() => {
+						for (const l of [...listeners]) {
+							l({
+								type: "finished",
+								matchId,
+								result: {
+									matchId,
+									winnerId,
+									outcomes: new Map(
+										request.playerIds.map((id) => [
+											id,
+											id === winnerId ? "win" : winnerId === null ? "draw" : "loss",
+										]),
+									),
+								},
+							});
+						}
+					});
+					return { status: "launched" as const, matchId };
+				},
+			},
+			lifecycle: {
+				subscribe: (l: (s: import("../minigame/minigame.types").MinigameLifecycleSignal) => void) => {
+					listeners.add(l);
+					return () => listeners.delete(l);
+				},
+			},
+			catalog: { candidates: () => ["kame-knock"] },
+		};
+	}
+
+	function makeFullRuntime(options: {
+		pickWinner: (playerIds: readonly number[]) => number | null;
+		maxRound?: number;
+	}) {
+		const clock = new ManualClock(1_000);
+		const snapshots: TournamentRuntimeSnapshot[] = [];
+		const runtime = new TournamentRuntime({
+			tournamentId: TOURNAMENT_ID,
+			seed: "seed-a",
+			participantIds: PARTICIPANT_IDS,
+			settings: makeSettings({ maxRound: options.maxRound ?? 15 }),
+			clock,
+			onSnapshot: (s) => snapshots.push(s),
+			interactiveTurns: true,
+			minigamePorts: makePorts(options.pickWinner),
+		});
+		const events: AnyTournamentEvent[] = [];
+		runtime.events.onAny((e) => events.push(e));
+		return { runtime, clock, events, snapshots };
+	}
+
+	/** Roll all four turns of the current round and settle the round close. */
+	async function playRound(runtime: TournamentRuntime): Promise<void> {
+		const order = [...runtime.playOrder];
+		for (const playerId of order) {
+			runtime.handleRollDice(playerId);
+		}
+		await settle();
+		await settle();
+	}
+
+	it("a completed round runs a REAL minigame and opens GAMBLING for its winner", async () => {
+		const { runtime, events } = makeFullRuntime({
+			pickWinner: (ids) => ids[0],
+		});
+		runtime.start();
+		await playRound(runtime);
+
+		expect(events.some((e) => e.name === "MinigameFinished")).toBe(true);
+		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
+		const opened = events.find((e) => e.name === "GamblingOpened");
+		expect(opened?.playerId).toBe(runtime.playOrder[0]);
+		expect(opened?.payload).toMatchObject({
+			cost: TOURNAMENT_SETTINGS_V1.gambling.cost,
+			winChance: TOURNAMENT_SETTINGS_V1.gambling.baseWinChance,
+		});
+		// The minigame winner got the outcome points through the real Economy.
+		const winner = runtime.playOrder[0];
+		expect(
+			runtime.gameEngines.economy.getBalance(winner),
+		).toBeGreaterThan(TOURNAMENT_SETTINGS_V1.initialPoints);
+	});
+
+	it("declining the bet (LeaveGamblingIntent) resumes the round loop", async () => {
+		const { runtime } = makeFullRuntime({ pickWinner: (ids) => ids[0] });
+		runtime.start();
+		await playRound(runtime);
+		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
+
+		runtime.handleLeaveGambling(runtime.playOrder[0]);
+		await settle();
+
+		// Round 2 is live again.
+		expect(runtime.currentPhase).toBe("PLAYER_TURNS");
+		expect(runtime.currentRound).toBe(2);
+	});
+
+	it("the 30s gambling timeout abandons the decision and the round continues", async () => {
+		const { runtime, clock } = makeFullRuntime({ pickWinner: (ids) => ids[0] });
+		runtime.start();
+		await playRound(runtime);
+		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
+
+		clock.advance(TOURNAMENT_SETTINGS_V1.timeouts.gamblingDecisionSeconds * 1000);
+		await settle();
+
+		expect(runtime.currentPhase).toBe("PLAYER_TURNS");
+		expect(runtime.currentRound).toBe(2);
+	});
+
+	it("plays the WHOLE game: four gambling wins → Boss → sudden death → VICTORY with a champion", async () => {
+		// Same winner every minigame; gambling always wins (roll 0 via a
+		// deterministic fairness is not injectable here, so we bet with enough
+		// points and force wins by betting until unlocked — instead, unlock via
+		// direct engine access is forbidden; so: use winChance 1 by riding pity?
+		// Cleanest: the winner bets every round with winChance from settings —
+		// to make it deterministic we grant a fairness stub through the engines
+		// options... not exposed at runtime level. So this test drives the FLOW
+		// by having the winner bet and, when the bet loses, letting rounds loop
+		// — bounded by maxRound 60 with pity reaching 1.0 by round 13
+		// (0.4 + 0.05×12). Determinism: the casino fairness uses crypto seeds,
+		// so we assert the INVARIANT (the game always terminates in VICTORY or
+		// DEFEAT with consistent state), not a fixed round count.
+		const { runtime, clock, events, snapshots } = makeFullRuntime({
+			pickWinner: (ids) => ids[0],
+			maxRound: 60,
+		});
+		runtime.start();
+
+		const winner = runtime.playOrder[0];
+		for (let round = 0; round < 60 && !runtime.isTerminal; round++) {
+			if (runtime.currentPhase === "PLAYER_TURNS") {
+				await playRound(runtime);
+			}
+			if (runtime.currentPhase === "GAMBLING_PHASE") {
+				runtime.handleStartGambling(winner);
+				await settle();
+				await settle();
+			}
+			// Endgame phases resolve themselves (boss sync + sudden death via the
+			// same scripted minigame platform).
+			await settle();
+			// Points for the next bet: idle advance is not needed — the winner
+			// earns minigame points every round; top up via the timeout path if
+			// a bet was rejected for funds.
+			if (
+				runtime.currentPhase === "GAMBLING_PHASE"
+			) {
+				runtime.handleLeaveGambling(winner);
+				await settle();
+			}
+		}
+
+		expect(runtime.isTerminal).toBe(true);
+		const finished = events.find((e) => e.name === "TournamentFinished");
+		expect(finished).toBeDefined();
+
+		if (runtime.winner !== null) {
+			// VICTORY path: the whole endgame chain fired in order.
+			const names = events.map((e) => e.name);
+			for (const expected of [
+				"AllKeyItemsUnlocked",
+				"BossSpawned",
+				"BossIntroCompleted",
+				"FinalChallengeStarted",
+				"VictoryConditionReached",
+				"ShellGranted",
+				"FinalChallengeFinished",
+				"RewardsGranted",
+				"TournamentFinished",
+			]) {
+				expect(names).toContain(expected);
+			}
+			// The champion is the SUDDEN-DEATH winner (the scripted platform
+			// crowns the first seated player — the sudden death seats the
+			// roster, so that is participant 10, not necessarily the round
+			// winner) and is persisted in the final snapshot; the leaderboard
+			// froze with the Shell holder first.
+			expect(runtime.winner).toBe(runtime.gameEngines.shell.getHolderId());
+			expect(runtime.winner).toBe(PARTICIPANT_IDS[0]);
+			expect(finished?.payload).toEqual({ winnerUserId: runtime.winner });
+			const last = snapshots[snapshots.length - 1];
+			expect(last.machine.phase).toBe("FINISHED");
+			expect(last.winnerUserId).toBe(runtime.winner);
+			expect(runtime.gameEngines.leaderboard.serialize().frozen).toBe(true);
+		} else {
+			// DEFEAT path (only possible if every bet lost for 60 rounds —
+			// astronomically unlikely once pity caps winChance at 1.0 by round 13,
+			// since a capped bet ALWAYS wins). Reaching here means the pity math
+			// broke: fail loudly.
+			throw new Error("expected a VICTORY within the pity-capped bound");
+		}
+	}, 20_000);
+});
+
+describe("TournamentRuntime — CPU participants (CPU v2)", () => {
+	beforeEach(() => {
+		jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "debug").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "verbose").mockImplementation(() => undefined);
+	});
+	afterEach(() => jest.restoreAllMocks());
+
+	const settle = (): Promise<void> => new Promise((r) => setImmediate(r));
+
+	it("a CPU participant rolls its own turn after the clock delay (before the timeout)", async () => {
+		const clock = new ManualClock(1_000);
+		const runtime = new TournamentRuntime({
+			tournamentId: TOURNAMENT_ID,
+			seed: "seed-a",
+			participantIds: PARTICIPANT_IDS,
+			settings: makeSettings(),
+			clock,
+			onSnapshot: () => undefined,
+			interactiveTurns: true,
+			botPlayerIds: PARTICIPANT_IDS, // an all-CPU table
+		});
+		const events: AnyTournamentEvent[] = [];
+		runtime.events.onAny((e) => events.push(e));
+		runtime.start();
+
+		const first = runtime.gameEngines.turnSystem.activePlayerId;
+		expect(first).not.toBeNull();
+
+		// 1.5s (the bot delay) — far below the 30s roll timeout — resolves the
+		// turn and hands the baton to the next CPU.
+		clock.advance(1_500);
+		await settle();
+
+		const finished = events.filter((e) => e.name === "PlayerTurnFinished");
+		expect(finished).toHaveLength(1);
+		expect(finished[0].payload).toMatchObject({ autoResolved: false }); // a real roll, not the timeout
+		expect(runtime.gameEngines.turnSystem.activePlayerId).not.toBe(first);
+	});
+
+	it("an all-CPU tournament plays itself: rounds progress with no human input", async () => {
+		const clock = new ManualClock(1_000);
+		const runtime = new TournamentRuntime({
+			tournamentId: TOURNAMENT_ID,
+			seed: "seed-a",
+			participantIds: PARTICIPANT_IDS,
+			settings: makeSettings({ maxRound: 2 }),
+			clock,
+			onSnapshot: () => undefined,
+			interactiveTurns: true,
+			botPlayerIds: PARTICIPANT_IDS,
+		});
+		runtime.start();
+
+		// 2 rounds × 4 CPU turns at 1.5s each (+ async round closes).
+		for (let i = 0; i < 8; i++) {
+			clock.advance(1_500);
+			await settle();
+		}
+
+		expect(runtime.isTerminal).toBe(true); // DEFEAT at maxRound (no key items)
+		expect(runtime.currentPhase).toBe("FINISHED");
 	});
 });

@@ -1,8 +1,12 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { FriendsModule } from "../friends/friends.module";
+import { MatchmakingModule } from "../matchmaking/matchmaking.module";
+import { Match } from "../matchmaking/entities/match.entity";
+import { MatchPlayer } from "../matchmaking/entities/match-player.entity";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { PresenceModule } from "../presence/presence.module";
+import { Profile } from "../profiles/entities/profile.entity";
 import { User } from "../users/entities/user.entity";
 import { Tournament } from "./entities/tournament.entity";
 import { TournamentMatch } from "./entities/tournament-match.entity";
@@ -14,6 +18,7 @@ import {
 } from "./runtime/tournament-runtime.service";
 import { TournamentGateway } from "./tournament.gateway";
 import { TournamentLobbyService } from "./tournament-lobby.service";
+import { TournamentMinigameAdapter } from "./tournament-minigame.adapter";
 import { TournamentSyncService } from "./tournament-sync.service";
 import { TournamentsController } from "./tournaments.controller";
 import { TournamentsService } from "./tournaments.service";
@@ -51,8 +56,12 @@ import { TournamentsService } from "./tournaments.service";
 			TournamentParticipant,
 			TournamentMatch,
 			User,
+			Profile,
+			Match,
+			MatchPlayer,
 		]),
 		FriendsModule,
+		MatchmakingModule,
 		NotificationsModule,
 		PresenceModule,
 	],
@@ -63,6 +72,7 @@ import { TournamentsService } from "./tournaments.service";
 		TournamentRuntimeService,
 		TournamentSyncService,
 		TournamentGateway,
+		TournamentMinigameAdapter,
 		{
 			provide: TOURNAMENT_RUNTIME_CLOCK_FACTORY,
 			useValue: () => new SystemClock(),

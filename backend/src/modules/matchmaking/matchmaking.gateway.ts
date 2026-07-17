@@ -485,7 +485,21 @@ export class MatchmakingGateway
 	): Promise<GameInputAck> {
 		const user = this.resolveSocketUser(socket);
 		if (!user) return { accepted: false, reason: "invalid-input" };
-		const room = this.sessions.handleInput(user.id, payload);
+		return this.handleUserInput(user.id, payload);
+	}
+
+	/**
+	 * The ONE game-input pipeline (engine dispatch + per-game throw broadcasts
+	 * + replay capture + end-of-match settlement). PUBLIC so server-side
+	 * players (the tournament's CPU stand-ins, BotPlayerService) submit moves
+	 * through exactly the same validation and side-effects as human sockets —
+	 * never a parallel path.
+	 */
+	async handleUserInput(
+		userId: number,
+		payload: GameInputPayload,
+	): Promise<GameInputAck> {
+		const room = this.sessions.handleInput(userId, payload);
 		if (!room) return { accepted: false, reason: "invalid-input" };
 
 		if (
@@ -523,7 +537,7 @@ export class MatchmakingGateway
 			"roundNumber" in room.state
 		) {
 			const player = room.players.find(
-				(candidate) => candidate.user.id === user.id,
+				(candidate) => candidate.user.id === userId,
 			);
 			if (player) {
 				const state = room.state as BambooBashSnapshot;
@@ -561,7 +575,7 @@ export class MatchmakingGateway
 			"roundNumber" in room.state
 		) {
 			const player = room.players.find(
-				(candidate) => candidate.user.id === user.id,
+				(candidate) => candidate.user.id === userId,
 			);
 			const pickupId = Math.floor(Number(payload.payload?.pickupId));
 			const state = room.state as BambooBashSnapshot;
@@ -591,7 +605,7 @@ export class MatchmakingGateway
 			"turnNumber" in room.state
 		) {
 			const player = room.players.find(
-				(candidate) => candidate.user.id === user.id,
+				(candidate) => candidate.user.id === userId,
 			);
 			if (player) {
 				const ball =
@@ -631,7 +645,7 @@ export class MatchmakingGateway
 			"shotCounts" in room.state
 		) {
 			const player = room.players.find(
-				(candidate) => candidate.user.id === user.id,
+				(candidate) => candidate.user.id === userId,
 			);
 			if (player) {
 				const ball =
@@ -1285,10 +1299,15 @@ export class MatchmakingGateway
 	 * match room (leaving `leaveMatchId` first if given), force-ready everyone,
 	 * start the session, broadcast the fresh state, and notify each player via
 	 * `eventName` with the standard {matchId, side, gameId, snapshot} payload.
+	 *
+	 * PUBLIC because it is the platform's single server-initiated launch rail:
+	 * the Tournament module (SPEC-015 "Match Creation") starts its minigames
+	 * through it with the `tournament:minigame-start` notification instead of
+	 * duplicating this socket-join/force-ready/start sequence.
 	 */
-	private async startServerInitiatedMatch(
+	async startServerInitiatedMatch(
 		room: MatchRoom,
-		eventName: "lobby:matched" | "match:rematch-start",
+		eventName: "lobby:matched" | "match:rematch-start" | "tournament:minigame-start",
 		leaveMatchId?: string,
 	): Promise<MatchRoom> {
 		this.syncRoomPresence(room);

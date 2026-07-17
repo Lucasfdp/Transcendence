@@ -11,6 +11,7 @@ import { PresenceModule } from "../presence/presence.module";
 import { ShellsModule } from "../shells/shells.module";
 import { UsersModule } from "../users/users.module";
 import { ArenaSimulationService } from "./arena-simulation.service";
+import { BotPlayerService } from "./bot-player.service";
 import { Match } from "./entities/match.entity";
 import { MatchPlayer } from "./entities/match-player.entity";
 import { MatchReplay } from "./entities/match-replay.entity";
@@ -73,13 +74,22 @@ import { RoomService } from "./room.service";
 		ReplayService,
 		GameSessionService,
 		MatchmakingGateway,
+		// Server-side CPU players for bot seats (today: tournament stand-ins).
+		BotPlayerService,
 		// Backs the per-user socket chat-send rate limit (Bug Audit M7); the
 		// gateway injects it as @Optional() so tests can omit it.
 		RateLimiterService,
 	],
-	// Exported so future orchestrators outside this module (e.g. a tournament
-	// module) can create matches and observe their lifecycle without reaching
-	// into matchmaking internals.
-	exports: [MatchFactoryService, MatchLifecycleEvents],
+	// Exported so orchestrators outside this module (the tournament module)
+	// can create matches, observe their lifecycle, launch server-initiated
+	// matches through the one launch rail (MatchmakingGateway) and build their
+	// game catalog from the one engine registry — without reaching into
+	// matchmaking internals.
+	exports: [
+		MatchFactoryService,
+		MatchLifecycleEvents,
+		MatchmakingGateway,
+		GameEngineRegistry,
+	],
 })
 export class MatchmakingModule {}

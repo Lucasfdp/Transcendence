@@ -75,7 +75,26 @@ export class AchievementsService {
 		return {
 			user,
 			gameStats: new Map(rows.map((row) => [row.gameId, row])),
+			tournamentsWon: await this.countTournamentsWon(user.id),
 		};
+	}
+
+	/**
+	 * Tournaments won, read off the persisted `tournaments.winnerUserId`
+	 * (SPEC-037/D10 champion badge). Raw query on purpose: the achievements
+	 * module needs one count, not a dependency on the tournaments module.
+	 */
+	private async countTournamentsWon(userId: number): Promise<number> {
+		try {
+			const rows: { count: string }[] = await this.dataSource.query(
+				`SELECT COUNT(*) AS count FROM "tournaments" WHERE "winnerUserId" = $1 AND "status" = 'finished'`,
+				[userId],
+			);
+			return Number(rows[0]?.count ?? 0);
+		} catch {
+			// Fresh database without the tournaments table yet: no wins.
+			return 0;
+		}
 	}
 
 	private async findUnlockedByUser(

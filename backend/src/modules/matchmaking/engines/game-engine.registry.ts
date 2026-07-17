@@ -29,4 +29,13 @@ export class GameEngineRegistry {
 			throw new BadRequestException(`Unsupported gameId: ${gameId}`);
 		return engine;
 	}
+
+	/**
+	 * Every registered engine — the platform's single game catalog, exposed so
+	 * programmatic orchestrators (e.g. the Tournament module) never duplicate
+	 * a game-id list.
+	 */
+	list(): GameEngine[] {
+		return [...this.engines.values()];
+	}
 }

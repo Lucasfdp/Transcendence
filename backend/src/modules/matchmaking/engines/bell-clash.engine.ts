@@ -28,6 +28,8 @@ const TWO_PI = Math.PI * 2;
 @Injectable()
 export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 	readonly gameId = "bell-clash";
+	readonly minPlayers = 2;
+	readonly maxPlayers = 5;
 
 	createInitialState(
 		context: GameEngineCreateContext,

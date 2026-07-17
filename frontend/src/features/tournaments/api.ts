@@ -9,6 +9,7 @@
 
 import { apiFetch } from "../hub/api";
 import type {
+	AddTournamentCpuResponse,
 	CreateTournamentResponse,
 	GetTournamentResponse,
 	JoinTournamentByPinResponse,
@@ -45,6 +46,12 @@ export const tournamentApi = {
 	/** POST /tournaments/:id/start — creator only; needs a full lobby. */
 	start: (id: string): Promise<StartTournamentResponse> =>
 		apiFetch<StartTournamentResponse>(`/tournaments/${id}/start`, {
+			method: "POST",
+		}),
+
+	/** POST /tournaments/:id/add-cpu — creator seats a CPU participant. */
+	addCpu: (id: string): Promise<AddTournamentCpuResponse> =>
+		apiFetch<AddTournamentCpuResponse>(`/tournaments/${id}/add-cpu`, {
 			method: "POST",
 		}),
 };

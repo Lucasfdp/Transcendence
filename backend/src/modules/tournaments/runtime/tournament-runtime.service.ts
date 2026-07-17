@@ -15,6 +15,11 @@
  */
 
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
+import { DataSource } from "typeorm";
+import { User } from "../../users/entities/user.entity";
+import { lockUserForUpdate } from "../../users/user-lock.util";
+import { TOURNAMENT_CHAMPION_COINS } from "../tournaments.constants";
+import { TournamentMinigameAdapter } from "../tournament-minigame.adapter";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
@@ -98,6 +103,14 @@ export class TournamentRuntimeService {
 		@Optional()
 		@Inject(TOURNAMENT_RUNTIME_CLOCK_FACTORY)
 		clockFactory?: TournamentClockFactory,
+		// Optional so unit specs need no matchmaking wiring; production always
+		// provides it via TournamentsModule → real minigames per round.
+		@Optional()
+		private readonly minigameAdapter?: TournamentMinigameAdapter,
+		// Optional so unit specs need no live DataSource; required for the
+		// persistent champion prize (SPEC-037/D10) in production.
+		@Optional()
+		private readonly dataSource?: DataSource,
 	) {
 		this.clockFactory = clockFactory ?? ((): TournamentClock => new SystemClock());
 		// v1 catalog (SPEC-024/025): the only configId new tournaments stamp
@@ -153,6 +166,19 @@ export class TournamentRuntimeService {
 			// PLAYER_TURNS drives real board turns from client intents, with the
 			// Turn System's roll timeout keeping unattended games progressing.
 			interactiveTurns: true,
+			// CPU participants seated in the lobby (CPU v2): the Runtime plays
+			// their board turns and gambling decisions.
+			botPlayerIds: lobby.botUserIds ?? [],
+			// The socket-bound SPEC-015 adapter (launch/lifecycle/reconcile/catalog
+			// over the real platform); absent in unit tests ⇒ inert minigames.
+			minigamePorts: this.minigameAdapter
+				? {
+						launcher: this.minigameAdapter,
+						lifecycle: this.minigameAdapter,
+						reconciler: this.minigameAdapter,
+						catalog: this.minigameAdapter,
+				  }
+				: undefined,
 			onSnapshot: (snapshot) => {
 				this.enqueueSnapshotWrite(tournamentId, () =>
 					this.applySnapshot(tournament, lobby, snapshot),
@@ -220,11 +246,12 @@ export class TournamentRuntimeService {
 		tournament.status = mapping.status;
 		if (mapping.status === "finished") {
 			tournament.finishedAt = new Date();
-			// Phase 1 only reaches FINISHED via the DEFEAT branch — BOSS_EVENT /
-			// FINAL_CHALLENGE / VICTORY / REWARDS are unimplemented stubs, so
-			// there is never a winner to record yet (SPEC-001 DEFEAT: "winnerUserId
-			// queda nulo").
-			tournament.winnerUserId = null;
+			// The champion once VICTORY resolved (SPEC-021), or null on the
+			// collective-DEFEAT exit (SPEC-001 DEFEAT: "winnerUserId queda nulo").
+			tournament.winnerUserId = snapshot.winnerUserId;
+			if (snapshot.winnerUserId !== null) {
+				await this.grantChampionReward(tournament, snapshot.winnerUserId);
+			}
 		} else if (mapping.status === "cancelled") {
 			tournament.finishedAt = new Date();
 		}
@@ -241,6 +268,47 @@ export class TournamentRuntimeService {
 
 		if (mapping.terminal) {
 			this.runtimes.delete(tournament.id);
+		}
+	}
+
+	/**
+	 * The persistent champion prize (SPEC-037/D10): 500 coins to the winner,
+	 * exactly once per tournament (idempotency marker inside `state`), under
+	 * `lockUserForUpdate` so concurrent coin writers never race. The durable
+	 * champion badge is the `tournament-champion` achievement, unlocked by the
+	 * platform's normal lazy evaluation off `tournaments.winnerUserId`. A
+	 * failed grant is logged and NEVER breaks the snapshot write.
+	 */
+	private async grantChampionReward(
+		tournament: Tournament,
+		winnerId: number,
+	): Promise<void> {
+		const state = (tournament.state ?? {}) as Record<string, unknown>;
+		if (state.championReward !== undefined || !this.dataSource) {
+			return;
+		}
+		try {
+			await this.dataSource.transaction(async (manager) => {
+				const user = await lockUserForUpdate(manager, winnerId);
+				user.coins += TOURNAMENT_CHAMPION_COINS;
+				await manager.getRepository(User).save(user);
+			});
+			tournament.state = {
+				...state,
+				championReward: {
+					userId: winnerId,
+					coins: TOURNAMENT_CHAMPION_COINS,
+					grantedAt: new Date().toISOString(),
+				},
+			};
+			this.logger.log(
+				`Champion reward granted: ${TOURNAMENT_CHAMPION_COINS} coins to user ${winnerId} (tournament ${tournament.id})`,
+			);
+		} catch (err) {
+			this.logger.error(
+				`Failed to grant champion reward for tournament ${tournament.id}`,
+				err instanceof Error ? err.stack : String(err),
+			);
 		}
 	}
 
