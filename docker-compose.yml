@@ -87,6 +87,7 @@ services:
         volumes:
             - logs:/var/log/backend
             - backend_vault_rendered:/vault/secrets:ro
+            - uploads_data:/app/uploads
         networks:
             - frontend_network
             - backend_network
@@ -120,6 +121,7 @@ services:
             - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-https://localhost:42424/api/auth/google/callback}
             - VAULT_ENV_FILE=/vault/secrets/backend.env
             - SECRETS_WAIT_TIMEOUT=${SECRETS_WAIT_TIMEOUT:-120}
+            - UPLOADS_DIR=/app/uploads
         healthcheck:
             test:
                 [
@@ -485,6 +487,7 @@ volumes:
     db_data:
     redis_data:
     monitoring_data:
+    uploads_data:
     logs:
     vault_data:
     backend_vault_rendered:

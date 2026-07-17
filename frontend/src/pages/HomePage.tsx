@@ -7,12 +7,11 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ChangeEvent, CSSProperties, ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
 import { NineSliceButton } from "../components/common/NineSliceButton";
 import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
-import { WorkInProgressNotice } from "../components/common/WorkInProgressNotice";
 import { ShellCardsModal } from "../components/cards/ShellCardsModal";
 import { FortuneWheelModal } from "../components/gambling/FortuneWheelModal";
 import { KoiDiceModal } from "../components/gambling/KoiDiceModal";
@@ -51,6 +50,7 @@ import {
 	type User,
 } from "../features/hub/api";
 import { TURTLE_TAGS } from "../shared/turtle-tags";
+import { accountDisplayName, displayUsername } from "../shared/player-labels";
 import {
 	disconnectGameSocket,
 	getGameSocket,
@@ -92,6 +92,7 @@ import {
 } from "../features/social/presence";
 import { useToast } from "../features/social/toast/ToastContext";
 import { ConnectedAccounts } from "../features/account-links/ConnectedAccounts";
+import { ShellPortrait } from "../features/profile/ShellPortrait";
 
 type AchievementFilter = "all" | "unlocked" | "locked";
 
@@ -654,6 +655,7 @@ function HomeMenu(): JSX.Element {
 		| null
 	>(null);
 	const [profileSaving, setProfileSaving] = useState(false);
+	const [avatarSaving, setAvatarSaving] = useState(false);
 	const [profileSuccess, setProfileSuccess] = useState("");
 	const [profileTurtleName, setProfileTurtleName] = useState("");
 	const [profileShowcasedAchievements, setProfileShowcasedAchievements] = useState<(string | null)[]>([null, null, null]);
@@ -1574,6 +1576,49 @@ function HomeMenu(): JSX.Element {
 		}
 	};
 
+	const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		event.target.value = "";
+		if (!file || avatarSaving) return;
+
+		const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+		if (!allowedTypes.has(file.type) || file.size > 2 * 1024 * 1024) {
+			setModalError("Choose a JPEG, PNG, WebP, or GIF image up to 2 MB.");
+			return;
+		}
+
+		setAvatarSaving(true);
+		setModalError("");
+		setProfileSuccess("");
+		try {
+			await api.getCsrfToken();
+			const { avatarUrl } = await api.uploadAvatar(file);
+			setPlayer((current) => current ? { ...current, avatar: avatarUrl } : current);
+			setProfileSuccess("Portrait updated.");
+		} catch (err: unknown) {
+			setModalError(err instanceof Error ? err.message : "Portrait upload failed.");
+		} finally {
+			setAvatarSaving(false);
+		}
+	};
+
+	const handleAvatarClear = async () => {
+		if (avatarSaving) return;
+		setAvatarSaving(true);
+		setModalError("");
+		setProfileSuccess("");
+		try {
+			await api.getCsrfToken();
+			await api.clearAvatar();
+			setPlayer((current) => current ? { ...current, avatar: null } : current);
+			setProfileSuccess("Equipped shell restored as your portrait.");
+		} catch (err: unknown) {
+			setModalError(err instanceof Error ? err.message : "Could not reset portrait.");
+		} finally {
+			setAvatarSaving(false);
+		}
+	};
+
 	const handleBackgroundAlterAction = async (
 		background: Cosmetic,
 		alter: Cosmetic,
@@ -2482,7 +2527,7 @@ function HomeMenu(): JSX.Element {
 
 	if (isLoading) return <RouteLoading />;
 
-	const playerName = player?.turtleName ?? player?.username ?? "Player";
+	const playerName = accountDisplayName(player);
 	const friendStats = friendCounts(friends);
 	const filteredFriends = friends
 		? filterFriends(friends, friendSearchQuery)
@@ -2638,31 +2683,40 @@ function HomeMenu(): JSX.Element {
 						type="button"
 						onClick={() => void openProfile()}
 					>
-						<span className="hub-page__player-name-row">
-							<strong className="menu-page__player-name">{playerName}</strong>
-							{currentTag ? (
-								<span className="hub-page__player-tag">
-									{currentTag.emoji} {currentTag.label}
+						<ShellPortrait
+							avatar={player?.avatar}
+							shellSkin={player?.shellSkin}
+							displayName={playerName}
+							level={player?.level ?? 1}
+							size="small"
+						/>
+						<span className="hub-page__player-copy">
+							<span className="hub-page__player-name-row">
+								<strong className="menu-page__player-name">{playerName}</strong>
+								{currentTag ? (
+									<span className="hub-page__player-tag">
+										{currentTag.emoji} {currentTag.label}
+									</span>
+								) : null}
+							</span>
+							<span className="hub-page__player-meta">
+								Lvl {player?.level ?? 1} · {getShellSkinDisplayName(player?.shellSkin)} · ⬡ {player?.coins ?? 0}
+							</span>
+							{player?.mostPlayedGame ? (
+								<span className="hub-page__most-played">
+									🐢 {player.mostPlayedGame.gameName} · {player.mostPlayedGame.gamesPlayed} {player.mostPlayedGame.gamesPlayed === 1 ? "match" : "matches"} · {player.mostPlayedGame.winRate}% wins
+								</span>
+							) : null}
+							{showcasedAchievements.length > 0 ? (
+								<span className="hub-page__player-badges">
+									{showcasedAchievements.map((a) => (
+										<span key={a.id} className="hub-page__player-badge">
+											{a.title}
+										</span>
+									))}
 								</span>
 							) : null}
 						</span>
-						<span className="hub-page__player-meta">
-							Lvl {player?.level ?? 1} · {getShellSkinDisplayName(player?.shellSkin)} · ⬡ {player?.coins ?? 0}
-						</span>
-						{player?.mostPlayedGame ? (
-							<span className="hub-page__most-played">
-								🐢 {player.mostPlayedGame.gameName} · {player.mostPlayedGame.gamesPlayed} {player.mostPlayedGame.gamesPlayed === 1 ? "match" : "matches"} · {player.mostPlayedGame.winRate}% wins
-							</span>
-						) : null}
-						{showcasedAchievements.length > 0 ? (
-							<span className="hub-page__player-badges">
-								{showcasedAchievements.map((a) => (
-									<span key={a.id} className="hub-page__player-badge">
-										{a.title}
-									</span>
-								))}
-							</span>
-						) : null}
 					</button>
 
 					<div className="hub-page__clock-wrap">
@@ -3442,11 +3496,44 @@ function HomeMenu(): JSX.Element {
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					{profileSuccess ? <p className="hub-modal__success">{profileSuccess}</p> : null}
 					<div className="hub-modal__profile">
-						<WorkInProgressNotice
-							featureName="Avatar"
-							title="Customisable turtle coming soon"
-							description="Your teammate is building turtle avatar customisation. Check back once it's ready."
-						/>
+						<section className="hub-modal__portrait-editor" aria-labelledby="portrait-heading">
+							<ShellPortrait
+								avatar={player?.avatar}
+								shellSkin={player?.shellSkin}
+								displayName={profileTurtleName.trim() || playerName}
+								level={player?.level ?? 1}
+								size="large"
+							/>
+							<div className="hub-modal__portrait-copy">
+								<span className="hub-modal__portrait-kicker">Dojo portrait</span>
+								<h3 id="portrait-heading">{profileTurtleName.trim() || playerName}</h3>
+								<p>
+									Your equipped {getShellSkinDisplayName(player?.shellSkin).toLowerCase()} is your default portrait. Add a custom image whenever you want.
+								</p>
+								<div className="hub-modal__portrait-actions">
+									<label className="hub-modal__portrait-upload">
+										{avatarSaving ? "Updating…" : player?.avatar ? "Replace image" : "Choose image"}
+										<input
+											type="file"
+											accept="image/jpeg,image/png,image/webp,image/gif"
+											disabled={avatarSaving}
+											onChange={(event) => void handleAvatarUpload(event)}
+										/>
+									</label>
+									{player?.avatar ? (
+										<button
+											type="button"
+											className="hub-modal__portrait-reset"
+											disabled={avatarSaving}
+											onClick={() => void handleAvatarClear()}
+										>
+											Use equipped shell
+										</button>
+									) : null}
+								</div>
+								<small>JPEG, PNG, WebP, or GIF · 2 MB maximum</small>
+							</div>
+						</section>
 						<label className="hub-modal__field-label" htmlFor="turtle-name-input">
 							Turtle name
 						</label>
@@ -3456,7 +3543,7 @@ function HomeMenu(): JSX.Element {
 							type="text"
 							maxLength={32}
 							value={profileTurtleName}
-							placeholder={player?.username ?? ""}
+							placeholder={displayUsername(player?.username)}
 							onChange={(e) => setProfileTurtleName(e.target.value)}
 						/>
 						<span className="hub-modal__field-label">Your dojo tag</span>
@@ -4957,7 +5044,9 @@ function ReplayListSection({
 							<li key={replay.matchId} className="hub-modal__replay-item">
 								<div className="hub-modal__replay-copy">
 									<strong>{getReplayGameLabel(replay.gameId)}</strong>
-									<small>{replay.playerNames.join(" vs ")}</small>
+									<small>
+										{replay.playerNames.map(displayUsername).join(" vs ")}
+									</small>
 									<small>{formatReplayDate(replay.finishedAt)}</small>
 								</div>
 								<div className="hub-modal__replay-actions">

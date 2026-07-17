@@ -90,6 +90,35 @@ describe("UsersService", () => {
 		});
 	});
 
+	describe("avatar persistence", () => {
+		it("stores a public API URL for a newly uploaded avatar", async () => {
+			const user = { ...mockUser, avatar: null } as User;
+			usersRepo.findOne!.mockResolvedValue(user);
+			usersRepo.save!.mockResolvedValue(user);
+
+			await expect(service.updateAvatar(user.id, "kame.png")).resolves.toEqual({
+				avatarUrl: "/api/uploads/avatars/kame.png",
+			});
+			expect(user.avatar).toBe("/api/uploads/avatars/kame.png");
+			expect(usersRepo.save).toHaveBeenCalledWith(user);
+		});
+
+		it("removes the uploaded avatar and persists the fallback state", async () => {
+			const user = {
+				...mockUser,
+				avatar: "/api/uploads/avatars/kame.png",
+			} as User;
+			usersRepo.findOne!.mockResolvedValue(user);
+			usersRepo.save!.mockResolvedValue(user);
+
+			await expect(service.clearAvatar(user.id)).resolves.toEqual({
+				ok: true,
+			});
+			expect(user.avatar).toBe("");
+			expect(usersRepo.save).toHaveBeenCalledWith(user);
+		});
+	});
+
 	// ── findByFortyTwoId ──────────────────────────────────────────────────────
 
 	describe("findByFortyTwoId", () => {

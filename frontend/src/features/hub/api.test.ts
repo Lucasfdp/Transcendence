@@ -66,4 +66,13 @@ describe("hub API contracts", () => {
 		expect(request.body).toBeInstanceOf(FormData);
 		expect((request.body as FormData).get("avatar")).toBe(avatar);
 	});
+
+	it("clears an uploaded avatar through the current-user endpoint", async () => {
+		await api.clearAvatar();
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/users/me/avatar",
+			expect.objectContaining({ method: "DELETE" }),
+		);
+	});
 });

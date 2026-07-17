@@ -2,6 +2,7 @@ import {
 	BadRequestException,
 	Body,
 	Controller,
+	Delete,
 	Get,
 	InternalServerErrorException,
 	Logger,
@@ -19,7 +20,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { diskStorage } from "multer";
-import { extname } from "path";
+import { extname, join } from "path";
 import { randomUUID } from "crypto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { FriendsService } from "../friends/friends.service";
@@ -45,6 +46,10 @@ const ALLOWED_IMAGE_MIMES = [
 
 /** Max avatar file size: 2 MB. */
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+const AVATAR_UPLOAD_DIR = join(
+	process.env.UPLOADS_DIR ?? join(process.cwd(), "uploads"),
+	"avatars",
+);
 
 export type LbPeriod = "all" | "monthly" | "weekly";
 export type LbScope = "global" | "friends";
@@ -169,15 +174,14 @@ export class UsersController {
 	// ── POST /api/users/me/avatar ────────────────────────────────────────────────
 	//
 	// Accepts a single multipart file under the field name "avatar".
-	// Writes to ./uploads/avatars/ (mounted as a Docker volume).
-	// Nginx serves /uploads/ as a static directory —
-	// see infra/reverse-proxy/conf/default.conf.template
+	// Writes to the persistent uploads volume. Nest serves it through
+	// /api/uploads/, which is already routed by the reverse proxy.
 
 	@Post("me/avatar")
 	@UseInterceptors(
 		FileInterceptor("avatar", {
 			storage: diskStorage({
-				destination: "./uploads/avatars",
+				destination: AVATAR_UPLOAD_DIR,
 				filename: (_req, file, cb) => {
 					const ext = extname(file.originalname);
 					cb(null, `${randomUUID()}${ext}`);
@@ -204,6 +208,13 @@ export class UsersController {
 			);
 		}
 		return this.usersService.updateAvatar(req.user.id, file.filename);
+	}
+
+	@Delete("me/avatar")
+	clearAvatar(
+		@Request() req: { user: { id: number } },
+	): Promise<{ ok: boolean }> {
+		return this.usersService.clearAvatar(req.user.id);
 	}
 
 	// ── GET /api/users/leaderboard ───────────────────────────────────────────────

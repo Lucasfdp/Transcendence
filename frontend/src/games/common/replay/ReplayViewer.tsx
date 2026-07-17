@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { useEffect, useRef } from "react";
 import type { ReplayDetail } from "../../../features/hub/api";
+import { displayUsername } from "../../../shared/player-labels";
 import { ReplayController } from "../ReplayController";
 import { ReplayScene } from "../ReplayScene";
 
@@ -194,8 +195,9 @@ export function ReplayViewer({
 									.slice(0, 5)
 									.map((score, index) => (
 										<span key={`replay-score-${index}`}>
-											{replay.metadata.participants[index]
-												?.username ?? `P${index + 1}`}
+											{displayUsername(
+												replay.metadata.participants[index]?.username,
+											) || `P${index + 1}`}
 											: {score}
 										</span>
 									))

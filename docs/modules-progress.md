@@ -197,12 +197,21 @@ Evidence:
   are migrated, and a persistent two-preview conflict flow retains exactly one
   account's progress while preserving moderation and antifraud records.
 - Editable profile and avatar upload in `backend/src/modules/users/users.controller.ts`
+- Avatar uploads are persisted in a dedicated Docker volume and served through
+  `/api/uploads/`. The profile editor supports upload, replacement, and removal;
+  a reusable Shell Portrait uses the equipped shell as the visible default in
+  the hub header, profile editor, and social profile cards. Broken custom-image
+  URLs also fall back to the equipped shell.
+- Firefox headless validation on 17 July 2026 covered the shell fallback,
+  real image upload and delivery, removal back to the equipped shell, desktop
+  layout, compact landscape layout, and the existing portrait-orientation guard.
 - Friends and online status in `friends` and `presence`
 - Profile viewable from `HomePage`
 
 Missing for completion:
-- Validate that the profile page and complete avatar flow work well in the UI.
-- Confirm consistent default avatar in all cases.
+- Validate the avatar flow with a persistent non-guest account across a full
+  container restart and decide whether to extend portraits to every compact
+  social, chat, and ranking row.
 - Still marked as `pending` in `docs/modules.md`, so should not be claimed as closed yet.
 
 ### Minor: Game statistics and match history

@@ -25,7 +25,11 @@ describe("UsersController — getLeaderboard period filtering (Bug Audit H2)", (
 			getFriendIds: jest.fn().mockResolvedValue([]),
 		} as unknown as jest.Mocked<FriendsService>;
 
-		controller = new UsersController(usersService, presence, friendsService);
+		controller = new UsersController(
+			usersService,
+			presence,
+			friendsService,
+		);
 	});
 
 	it("scopes both wins and gamesPlayed to matches inside the requested window", async () => {
@@ -166,5 +170,25 @@ describe("UsersController — getUser public whitelist (Bug Audit H2)", () => {
 		await expect(controller.getUser("ghost")).rejects.toThrow(
 			NotFoundException,
 		);
+	});
+});
+
+describe("UsersController — current user avatar", () => {
+	it("clears the authenticated user's uploaded avatar", async () => {
+		const usersService = {
+			clearAvatar: jest.fn().mockResolvedValue({ ok: true }),
+		} as unknown as jest.Mocked<UsersService>;
+		const controller = new UsersController(
+			usersService,
+			{} as PresenceService,
+			{} as FriendsService,
+		);
+
+		await expect(
+			controller.clearAvatar({ user: { id: 7 } }),
+		).resolves.toEqual({
+			ok: true,
+		});
+		expect(usersService.clearAvatar).toHaveBeenCalledWith(7);
 	});
 });

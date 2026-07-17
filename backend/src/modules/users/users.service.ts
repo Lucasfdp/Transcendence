@@ -380,8 +380,7 @@ export class UsersService {
 	 * Persist a newly-uploaded avatar filename and return the public URL.
 	 * The filename is the UUID-prefixed name written to disk by multer's diskStorage.
 	 *
-	 * Nginx serves /uploads/ as a static directory —
-	 * see infra/reverse-proxy/conf/default.conf.template
+	 * Nest serves the persistent uploads volume through /api/uploads/.
 	 */
 	async updateAvatar(
 		userId: number,
@@ -393,7 +392,7 @@ export class UsersService {
 				throw new NotFoundException(`User ${userId} not found`);
 			}
 
-			const avatarUrl = `/uploads/avatars/${filename}`;
+			const avatarUrl = `/api/uploads/avatars/${filename}`;
 			user.avatar = avatarUrl;
 			await this.usersRepo.save(user);
 
@@ -406,6 +405,22 @@ export class UsersService {
 				throw err;
 			}
 			throw new InternalServerErrorException("Failed to update avatar");
+		}
+	}
+
+	async clearAvatar(userId: number): Promise<{ ok: boolean }> {
+		try {
+			const user = await this.findById(userId);
+			if (!user) {
+				throw new NotFoundException(`User ${userId} not found`);
+			}
+
+			user.avatar = "";
+			await this.usersRepo.save(user);
+			return { ok: true };
+		} catch (err) {
+			if (err instanceof NotFoundException) throw err;
+			throw new InternalServerErrorException("Failed to clear avatar");
 		}
 	}
 
