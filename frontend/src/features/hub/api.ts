@@ -10,6 +10,8 @@
  * that module for the shared behaviour this client builds on.
  */
 
+import { apiUploadFile, readErrorMessage } from "../../services/api/apiClient";
+
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 // ── Typed errors ───────────────────────────────────────────────────────────────

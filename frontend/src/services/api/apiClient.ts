@@ -237,7 +237,7 @@ export async function apiUploadFile<T>(
 	return res.json() as Promise<T>;
 }
 
-async function readErrorMessage(
+export async function readErrorMessage(
 	res: Response,
 	fallback: string,
 ): Promise<string> {
