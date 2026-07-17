@@ -11,12 +11,14 @@
  * broadcast, replay capture and end-of-match settlement applies unchanged. A
  * bot cannot do anything a modified human client could not.
  *
- * Since every game's scoring is client-reported (the engines trust the acting
- * client's hit/settle reports), a bot IS its own client: it reports plausible
- * outcomes drawn from the same value ranges real clients produce
- * (bell zones 50–200/hit, kame `target.points × combo`, bamboo stage points,
- * curling settled stone positions scored server-side). Skill knobs live in
- * BOT_SKILL below — a future balance pass tunes them (D2/F8).
+ * The engines are server-authoritative: the ONLY input a client (and therefore
+ * a bot) can send is `release` with a launch velocity — the fixed server
+ * simulation resolves travel, collisions, hits, scoring and round/turn
+ * completion. A bot's whole game is therefore aiming: it picks a target point,
+ * adds gaussian scatter, and converts the aim distance into a launch speed
+ * using the same friction model the physics integrates (per-frame factor `f`
+ * over 16.67 ms frames makes a shot travel ≈ v0 · 0.01667 / (1 − f) units).
+ * Skill knobs live in BOT_SKILL below — a future balance pass tunes them (D2/F8).
  *
  * If a human reconnects mid-match, `RoomService.reconnect` replaces the seat's
  * socketId with the real one — the `bot:` prefix disappears and the driver
@@ -36,9 +38,9 @@ import {
 	GameInputPayload,
 	KameKnockSnapshot,
 	MatchRoom,
+	ReplayFrameSnapshotEntity,
 	RoomPlayer,
 } from "./matchmaking.types";
-import { getArenaBallSpawn } from "./replay-state.helpers";
 import { RoomService } from "./room.service";
 
 /** Socket-id prefix marking a server-driven seat. */
@@ -48,42 +50,56 @@ export const BOT_SOCKET_PREFIX = "bot:";
 export const isBotSeat = (player: RoomPlayer): boolean =>
 	player.socketId.startsWith(BOT_SOCKET_PREFIX);
 
-/** Driver cadence; per-action pacing is randomized per step (human-ish). */
+/** Driver cadence; per-action pacing is randomized per throw (human-ish). */
 const BOT_TICK_MS = 400;
 
 /**
  * Skill/pacing knobs (single tuning surface for the balance pass).
- * Values are grounded in what real clients produce.
+ * Aim scatter is in source-space pixels of each game's physics sheet.
  */
 const BOT_SKILL = {
-	/** Delay before a bot acts on a new obligation (ms, min..max jitter). */
+	/** Delay between a bot's throws (ms, min..max jitter). */
 	actDelayMs: [1200, 2600] as const,
-	/** Delay between a throw and its reported result (ms). */
-	resolveDelayMs: [700, 1400] as const,
-	/** temple-curling: stddev of the settled stone around the button (norm.). */
-	curlingSigma: 0.055,
-	/** kame-knock: chance a throw breaks the aimed target. */
-	kameHitChance: 0.55,
-	/** bell-clash: chance a shot lands a zone at all. */
-	bellHitChance: 0.7,
-	/** bell-clash: per-hit points as real zones yield (50/100/150/200). */
-	bellPoints: [50, 100, 150, 200] as const,
-	/** bamboo-bash: chance each throw fells the aimed bamboo. */
-	bambooHitChance: 0.6,
+	/** Retry delay after the engine rejects an input (ms). */
+	rejectRetryMs: 800,
+	/** temple-curling: aim scatter around the button (px). */
+	curlingSigmaPx: 60,
+	/** kame-knock: aim scatter around the chosen target (px). */
+	kameSigmaPx: 55,
+	/** bell-clash: aim scatter around the bell centre (px). */
+	bellSigmaPx: 45,
+	/** bamboo-bash: aim scatter around the chosen bamboo (px). */
+	bambooSigmaPx: 55,
+	/** Multiplicative jitter on every computed launch speed. */
+	speedJitter: [0.9, 1.12] as const,
 } as const;
 
-/** Curling geometry (mirror of shell-curl.engine.ts constants). */
-const CURL_HOUSE = { x: (1570 - 380) / 1570, y: 0.5 };
-
-type SeatStage = "idle" | "released" | "reported";
+/**
+ * Geometry/friction mirrors of the server physics (shell-curl-physics.ts and
+ * the shared arena physics of kame/bell/bamboo). Travel seconds = the
+ * closed-form distance a shot covers per unit of launch speed under the
+ * per-frame friction factor: 0.01667 / (1 − f).
+ */
+const CURL = {
+	sheetW: 1570,
+	sheetH: 880,
+	deliveryX: 90,
+	deliveryY: 440,
+	houseX: 1190,
+	houseY: 440,
+	travelSeconds: 0.01667 / (1 - 0.99),
+} as const;
+const ARENA = {
+	rx: 705,
+	ry: 491,
+	travelSeconds: 0.01667 / (1 - 0.985),
+	bellSpawnRadius: 320,
+	bambooSpawnRadius: 0.22 * 705,
+} as const;
+const MAX_LAUNCH_SPEED = 5_000;
 
 interface SeatPlan {
-	stage: SeatStage;
 	nextActionAt: number;
-	/** kame: the target this throw aims at. */
-	targetId: number | null;
-	/** bell/bamboo per-round bookkeeping key to detect round rollover. */
-	roundKey: string;
 }
 
 const randomBetween = (range: readonly [number, number]): number =>
@@ -94,6 +110,20 @@ const gaussian = (): number => {
 	const u = Math.max(Math.random(), 1e-9);
 	const v = Math.random();
 	return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+};
+
+/** Launch velocity that lands `[dx, dy]` away under the friction model. */
+const launchVelocity = (
+	dx: number,
+	dy: number,
+	travelSeconds: number,
+): { vx: number; vy: number } => {
+	const distance = Math.max(1, Math.hypot(dx, dy));
+	const speed = Math.min(
+		MAX_LAUNCH_SPEED * 0.9,
+		(distance / travelSeconds) * randomBetween(BOT_SKILL.speedJitter),
+	);
+	return { vx: (dx / distance) * speed, vy: (dy / distance) * speed };
 };
 
 @Injectable()
@@ -174,30 +204,44 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 		let plan = this.plans.get(key);
 		if (!plan) {
 			plan = {
-				stage: "idle",
 				nextActionAt: Date.now() + randomBetween(BOT_SKILL.actDelayMs),
-				targetId: null,
-				roundKey: "",
 			};
 			this.plans.set(key, plan);
 		}
 		return plan;
 	}
 
-	private send(
+	private async release(
 		player: RoomPlayer,
 		room: MatchRoom,
-		action: GameInputPayload["action"],
+		plan: SeatPlan,
+		now: number,
 		payload: Record<string, unknown>,
-	): Promise<unknown> {
-		return this.gateway.handleUserInput(player.user.id, {
+	): Promise<void> {
+		const ack = (await this.gateway.handleUserInput(player.user.id, {
 			matchId: room.matchId,
-			action,
+			action: "release",
 			payload,
-		} as GameInputPayload);
+		} as GameInputPayload)) as { accepted?: boolean } | undefined;
+		plan.nextActionAt =
+			now +
+			(ack?.accepted
+				? randomBetween(BOT_SKILL.actDelayMs)
+				: BOT_SKILL.rejectRetryMs);
 	}
 
-	// ── temple-curling (turn-based; server scores the settled stones) ────────
+	/** The seat's own projectile as the server last broadcast it (normalized). */
+	private ownEntity(
+		state: { entities: ReplayFrameSnapshotEntity[] },
+		side: number,
+	): ReplayFrameSnapshotEntity | null {
+		return (
+			state.entities.find((candidate) => candidate.ownerSide === side) ??
+			null
+		);
+	}
+
+	// ── temple-curling (turn-based; server physics scores the stones) ────────
 
 	private async playCurling(
 		room: MatchRoom,
@@ -206,73 +250,23 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 		now: number,
 	): Promise<void> {
 		const state = room.state as CurlingSnapshot;
-		if (state.phase !== "active" || state.currentTurn !== player.side) {
-			plan.stage = "idle";
+		if (state.phase !== "active" || state.currentTurn !== player.side)
 			return;
-		}
+		// The engine rejects a release while any stone still slides.
+		if (state.activeBallId !== null) return;
 
-		const hasOwnStone = state.objects.some(
-			(object) => object.id === state.turnNumber,
+		const targetX = CURL.houseX + gaussian() * BOT_SKILL.curlingSigmaPx;
+		const targetY =
+			CURL.houseY + gaussian() * BOT_SKILL.curlingSigmaPx * 1.5;
+		const { vx, vy } = launchVelocity(
+			targetX - CURL.deliveryX,
+			targetY - CURL.deliveryY,
+			CURL.travelSeconds,
 		);
-
-		if (plan.stage === "idle" && !hasOwnStone) {
-			// Aim at the button; the velocity only drives spectator animation —
-			// the settled report below is what the engine scores.
-			const aimX = CURL_HOUSE.x + gaussian() * BOT_SKILL.curlingSigma;
-			const aimY = CURL_HOUSE.y + gaussian() * BOT_SKILL.curlingSigma;
-			await this.send(player, room, "release", {
-				vx: (aimX - 90 / 1570) * 1.6,
-				vy: (aimY - 0.5) * 1.6,
-				power: "none",
-			});
-			plan.stage = "released";
-			plan.targetId = state.turnNumber;
-			plan.nextActionAt = now + randomBetween(BOT_SKILL.resolveDelayMs) + 900;
-			return;
-		}
-
-		if (plan.stage === "released" || hasOwnStone) {
-			// Report the settled board: previous stones stay where they were,
-			// the new stone lands near the button with skill noise.
-			const settledX = Math.min(
-				1,
-				Math.max(0, CURL_HOUSE.x + gaussian() * BOT_SKILL.curlingSigma),
-			);
-			const settledY = Math.min(
-				1,
-				Math.max(0, CURL_HOUSE.y + gaussian() * BOT_SKILL.curlingSigma * 1.5),
-			);
-			const objects = state.objects.map((object) =>
-				object.id === state.turnNumber
-					? {
-							id: object.id,
-							side: object.side,
-							x: settledX,
-							y: settledY,
-							vx: 0,
-							vy: 0,
-							stopped: true,
-						}
-					: {
-							id: object.id,
-							side: object.side,
-							x: object.x,
-							y: object.y,
-							vx: 0,
-							vy: 0,
-							stopped: true,
-						},
-			);
-			await this.send(player, room, "settled", {
-				turnNumber: state.turnNumber,
-				objects,
-			});
-			plan.stage = "idle";
-			plan.nextActionAt = now + randomBetween(BOT_SKILL.actDelayMs);
-		}
+		await this.release(player, room, plan, now, { vx, vy, power: "none" });
 	}
 
-	// ── kame-knock (turn-based; client-reported target hits) ─────────────────
+	// ── kame-knock (turn-based; shots launch from the arena centre) ──────────
 
 	private async playKameKnock(
 		room: MatchRoom,
@@ -281,59 +275,28 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 		now: number,
 	): Promise<void> {
 		const state = room.state as KameKnockSnapshot;
-		if (state.phase !== "active" || state.currentTurn !== player.side) {
-			plan.stage = "idle";
+		if (state.phase !== "active" || state.currentTurn !== player.side)
 			return;
-		}
+		if (state.activeTurnNumber !== null) return;
 
-		if (plan.stage === "idle" && state.activeTurnNumber === null) {
-			// Aim at the highest-value breakable target still standing.
-			const target = [...state.targets]
-				.filter((candidate) => candidate.breakable)
-				.sort((a, b) => b.points - a.points)[0];
-			plan.targetId = target?.id ?? null;
-			const spawn = getArenaBallSpawn(state, player.side);
-			await this.send(player, room, "release", {
-				roundNumber: state.roundNumber,
-				turnNumber: state.turnNumber,
-				x: spawn.x,
-				y: spawn.y,
-				vx: ((target?.nx ?? 0) - spawn.x) * 2,
-				vy: ((target?.ny ?? 0) - spawn.y) * 2,
-			});
-			plan.stage = "released";
-			plan.nextActionAt = now + randomBetween(BOT_SKILL.resolveDelayMs);
-			return;
-		}
-
-		if (plan.stage === "released" && state.activeTurnNumber === state.turnNumber) {
-			if (plan.targetId !== null && Math.random() < BOT_SKILL.kameHitChance) {
-				await this.send(player, room, "target:hit", {
-					roundNumber: state.roundNumber,
-					turnNumber: state.turnNumber,
-					targetId: plan.targetId,
-					combo: 1,
-					perfect: false,
-				});
-			}
-			plan.stage = "reported";
-			plan.nextActionAt = now + randomBetween(BOT_SKILL.resolveDelayMs);
-			return;
-		}
-
-		if (plan.stage === "reported" && state.activeTurnNumber === state.turnNumber) {
-			await this.send(player, room, "settled", {
-				roundNumber: state.roundNumber,
-				turnNumber: state.turnNumber,
-				stopped: true,
-			});
-			plan.stage = "idle";
-			plan.targetId = null;
-			plan.nextActionAt = now + randomBetween(BOT_SKILL.actDelayMs);
-		}
+		// Aim at the highest-value breakable target still standing.
+		const target = [...state.targets]
+			.filter((candidate) => candidate.breakable)
+			.sort((a, b) => b.points - a.points)[0];
+		const targetX =
+			(target?.nx ?? 0) * ARENA.rx + gaussian() * BOT_SKILL.kameSigmaPx;
+		const targetY =
+			(target?.ny ?? 0) * ARENA.ry + gaussian() * BOT_SKILL.kameSigmaPx;
+		const { vx, vy } = launchVelocity(targetX, targetY, ARENA.travelSeconds);
+		await this.release(player, room, plan, now, {
+			roundNumber: state.roundNumber,
+			turnNumber: state.turnNumber,
+			vx,
+			vy,
+		});
 	}
 
-	// ── bell-clash (simultaneous shots; client-reported zone points) ─────────
+	// ── bell-clash (simultaneous shots at the centre bell) ───────────────────
 
 	private async playBellClash(
 		room: MatchRoom,
@@ -343,56 +306,38 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 	): Promise<void> {
 		const state = room.state as BellClashSnapshot;
 		if (state.phase !== "active") return;
-		const roundKey = `bell:${state.roundNumber}`;
-		if (plan.roundKey !== roundKey) {
-			plan.roundKey = roundKey;
-			plan.stage = "idle";
-		}
 		if (state.roundScores[player.side] !== null) return; // round locked in
+		if ((state.shotCounts[player.side] ?? 0) >= state.shotsPerRound) return;
 
-		const shots = state.shotCounts[player.side] ?? 0;
-
-		if (shots >= state.shotsPerRound) {
-			await this.send(player, room, "round:score", {
-				roundNumber: state.roundNumber,
-			});
-			plan.nextActionAt = now + randomBetween(BOT_SKILL.actDelayMs);
-			return;
-		}
-
-		if (plan.stage === "idle") {
-			const spawn = getArenaBallSpawn(state, player.side);
-			// Fling toward the bell at the arena center.
-			await this.send(player, room, "release", {
-				roundNumber: state.roundNumber,
-				x: spawn.x,
-				y: spawn.y,
-				vx: -spawn.x * 1.5,
-				vy: -spawn.y * 1.5,
-			});
-			plan.stage = "released";
-			plan.nextActionAt = now + randomBetween(BOT_SKILL.resolveDelayMs);
-			return;
-		}
-
-		if (plan.stage === "released") {
-			if (Math.random() < BOT_SKILL.bellHitChance) {
-				const points =
-					BOT_SKILL.bellPoints[
-						Math.floor(Math.random() * BOT_SKILL.bellPoints.length)
-					];
-				await this.send(player, room, "bell:hit", {
-					roundNumber: state.roundNumber,
-					points,
-					zoneKind: "yellow",
-				});
-			}
-			plan.stage = "idle";
-			plan.nextActionAt = now + randomBetween(BOT_SKILL.actDelayMs);
-		}
+		// Re-shots launch from where the previous shell stopped; the first shot
+		// of a round launches from the seat's rim spawn (engine-side formula).
+		const own = this.ownEntity(state, player.side);
+		if (own && !own.stopped) return;
+		const spawnAngle =
+			-Math.PI / 2 +
+			(player.side / Math.max(1, room.players.length)) * Math.PI * 2;
+		const originX = own
+			? own.x * ARENA.rx
+			: Math.cos(spawnAngle) * ARENA.bellSpawnRadius;
+		const originY = own
+			? own.y * ARENA.ry
+			: Math.sin(spawnAngle) * ARENA.bellSpawnRadius;
+		const targetX = gaussian() * BOT_SKILL.bellSigmaPx;
+		const targetY = gaussian() * BOT_SKILL.bellSigmaPx;
+		// Overshoot past the bell so the impact rings it instead of dying short.
+		const { vx, vy } = launchVelocity(
+			(targetX - originX) * 1.4,
+			(targetY - originY) * 1.4,
+			ARENA.travelSeconds,
+		);
+		await this.release(player, room, plan, now, {
+			roundNumber: state.roundNumber,
+			vx,
+			vy,
+		});
 	}
 
-	// ── bamboo-bash (simultaneous timed round; client-reported fells) ────────
+	// ── bamboo-bash (timed round; server clock locks the scores in) ──────────
 
 	private async playBambooBash(
 		room: MatchRoom,
@@ -402,51 +347,39 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 	): Promise<void> {
 		const state = room.state as BambooBashSnapshot;
 		if (state.phase !== "active") return;
-		const roundKey = `bamboo:${state.roundNumber}`;
-		if (plan.roundKey !== roundKey) {
-			plan.roundKey = roundKey;
-			plan.stage = "idle";
-		}
 		if (state.roundScores[player.side] !== null) return; // round locked in
 
-		// Round clock elapsed: lock in the accumulated live score.
-		if (state.roundEndsAt !== null && now >= state.roundEndsAt) {
-			await this.send(player, room, "round:score", {
-				roundNumber: state.roundNumber,
-				score: state.liveRoundScores[player.side] ?? 0,
-			});
-			plan.nextActionAt = now + randomBetween(BOT_SKILL.actDelayMs);
-			return;
-		}
+		const own = this.ownEntity(state, player.side);
+		if (own && !own.stopped) return;
 
-		if (plan.stage === "idle") {
-			// Aim at the ripest bamboo (highest stage = most points).
-			const bamboo = [...state.bamboos].sort((a, b) => b.stage - a.stage)[0];
-			plan.targetId = bamboo?.id ?? null;
-			const spawn = getArenaBallSpawn(state, player.side);
-			await this.send(player, room, "release", {
-				roundNumber: state.roundNumber,
-				x: spawn.x,
-				y: spawn.y,
-				vx: ((bamboo?.nx ?? 0) - spawn.x) * 2,
-				vy: ((bamboo?.ny ?? 0) - spawn.y) * 2,
-			});
-			plan.stage = "released";
-			plan.nextActionAt = now + randomBetween(BOT_SKILL.resolveDelayMs);
-			return;
-		}
-
-		if (plan.stage === "released") {
-			if (plan.targetId !== null && Math.random() < BOT_SKILL.bambooHitChance) {
-				await this.send(player, room, "bamboo:hit", {
-					roundNumber: state.roundNumber,
-					bambooId: plan.targetId,
-					stopped: true,
-				});
-			}
-			plan.stage = "idle";
-			plan.targetId = null;
-			plan.nextActionAt = now + randomBetween(BOT_SKILL.actDelayMs);
-		}
+		// Aim at the ripest bamboo (highest stage = most points).
+		const bamboo = [...state.bamboos].sort((a, b) => b.stage - a.stage)[0];
+		const sideCount = Math.max(1, room.players.length);
+		const spawnAngle =
+			sideCount === 2
+				? player.side === 0
+					? Math.PI
+					: 0
+				: -Math.PI / 2 + (player.side / sideCount) * Math.PI * 2;
+		const originX = own
+			? own.x * ARENA.rx
+			: Math.cos(spawnAngle) * ARENA.bambooSpawnRadius;
+		const originY = own
+			? own.y * ARENA.ry
+			: Math.sin(spawnAngle) * ARENA.bambooSpawnRadius;
+		const targetX =
+			(bamboo?.nx ?? 0) * ARENA.rx + gaussian() * BOT_SKILL.bambooSigmaPx;
+		const targetY =
+			(bamboo?.ny ?? 0) * ARENA.ry + gaussian() * BOT_SKILL.bambooSigmaPx;
+		const { vx, vy } = launchVelocity(
+			targetX - originX,
+			targetY - originY,
+			ARENA.travelSeconds,
+		);
+		await this.release(player, room, plan, now, {
+			roundNumber: state.roundNumber,
+			vx,
+			vy,
+		});
 	}
 }

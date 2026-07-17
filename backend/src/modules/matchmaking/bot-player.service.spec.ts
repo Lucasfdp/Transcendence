@@ -4,9 +4,12 @@
  * The strongest guarantee we can give: two bot seats play every one of the
  * four arena games THROUGH the real engine (`handleInput` validation and turn
  * gating included) all the way to a finished match with a winner decided by
- * the engine's own scoring. The gateway is faked down to its engine-dispatch
- * core (the per-game broadcast blocks are presentation), Date.now is virtual
- * so the pacing delays and round clocks elapse instantly.
+ * the server-authoritative physics. The gateway is faked down to its
+ * engine-dispatch core (the per-game broadcast blocks are presentation), the
+ * loop advances the engines' fixed simulation exactly like
+ * ArenaSimulationService's 30 Hz timer, and Date.now is virtual — kept in step
+ * with the simulated time — so pacing delays and round clocks elapse
+ * instantly.
  */
 
 import { Logger } from "@nestjs/common";
@@ -52,22 +55,36 @@ function makeHarness(gameId: string) {
 	} as unknown as MatchmakingGateway;
 
 	const bots = new BotPlayerService(rooms, gateway);
-	return { room, bots };
+	return { room, registry, bots };
 }
+
+/** Simulated wall-clock per loop step, advanced in ArenaSimulationService-sized ticks. */
+const STEP_MS = 700;
+const SIMULATION_TICK_MS = 1_000 / 30;
 
 /**
  * Build the room UNDER virtual time (round clocks capture Date.now at start),
- * then tick until the match finishes (or bail).
+ * then tick until the match finishes (or bail). Each step lets the bots act,
+ * then advances the server physics by the same amount of simulated time so
+ * `physics.serverTime` keeps pace with the virtual Date.now.
  */
 async function playToCompletion(gameId: string, maxSteps = 2000): Promise<ReturnType<typeof makeHarness>> {
 	let virtualNow = 1_000_000;
 	const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => virtualNow);
 	try {
 		const harness = makeHarness(gameId);
+		const engine = harness.registry.get(gameId);
 		for (let step = 0; step < maxSteps; step++) {
 			if (harness.room.status !== "active") return harness;
-			virtualNow += 700;
+			virtualNow += STEP_MS;
 			await harness.bots.tick();
+			for (
+				let elapsed = 0;
+				elapsed < STEP_MS && harness.room.status === "active";
+				elapsed += SIMULATION_TICK_MS
+			) {
+				engine.advanceSimulation?.(harness.room, SIMULATION_TICK_MS);
+			}
 		}
 		throw new Error(
 			`bots did not finish ${harness.room.gameId} within ${maxSteps} steps ` +
