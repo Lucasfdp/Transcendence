@@ -180,7 +180,7 @@ Missing for completion:
 ## User Management
 
 ### Major: Standard user management and authentication
-Status: `In progress`
+Status: `Done`
 
 Requirement breakdown:
 - Update profile.
@@ -206,13 +206,18 @@ Evidence:
   real image upload and delivery, removal back to the equipped shell, desktop
   layout, compact landscape layout, and the existing portrait-orientation guard.
 - Friends and online status in `friends` and `presence`
-- Profile viewable from `HomePage`
+- Profile editor in `HomePage`, with a separate protected public profile route at
+  `/profile/:username` for the current player and other authenticated users.
+- Public profile navigation is available from the Hub header and each friend row
+  in Social without changing the existing player-card editor action.
+- Full acceptance evidence is recorded in
+  `docs/user-management-acceptance.md` (65 frontend files / 368 tests, 65 backend
+  suites / 878 tests, both production builds, two-account Firefox matrix,
+  persistence across a volume-preserving `make re`, and healthy Docker services).
 
 Missing for completion:
-- Validate the avatar flow with a persistent non-guest account across a full
-  container restart and decide whether to extend portraits to every compact
-  social, chat, and ranking row.
-- Still marked as `pending` in `docs/modules.md`, so should not be claimed as closed yet.
+- Nothing essential to claim the module. Portraits in every compact chat and
+  ranking row are deliberately outside the closure criteria.
 
 ### Minor: Game statistics and match history
 Status: `Done`

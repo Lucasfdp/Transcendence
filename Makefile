@@ -216,8 +216,8 @@ fclean: down
 	docker system prune -f
 	@echo "$(YELLOW)Full cleanup complete.$(RESET)"
 
-## re: Rebuild everything from scratch (equivalent to fclean + up)
-re: fclean up
+## re: Rebuild and recreate every service while preserving persistent volumes
+re: down up
 
 # ==============================================================================
 # OPTIONAL / DEVELOPER TARGETS

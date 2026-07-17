@@ -40,6 +40,7 @@ import {
 	NotificationView,
 	OverallLeaderboardEntry,
 	PendingView,
+	type PublicUserView,
 	RANKED_GAMES,
 	REPORT_CATEGORIES,
 	type ReportCategory,
@@ -93,6 +94,8 @@ import {
 import { useToast } from "../features/social/toast/ToastContext";
 import { ConnectedAccounts } from "../features/account-links/ConnectedAccounts";
 import { ShellPortrait } from "../features/profile/ShellPortrait";
+import { PlayerProfilePreview } from "../features/profile/PlayerProfilePreview";
+import { ViewProfileLink } from "../features/profile/ViewProfileLink";
 
 type AchievementFilter = "all" | "unlocked" | "locked";
 
@@ -658,6 +661,7 @@ function HomeMenu(): JSX.Element {
 	const [avatarSaving, setAvatarSaving] = useState(false);
 	const [profileSuccess, setProfileSuccess] = useState("");
 	const [profileTurtleName, setProfileTurtleName] = useState("");
+	const [profileDojoTagId, setProfileDojoTagId] = useState<string | null>(null);
 	const [profileShowcasedAchievements, setProfileShowcasedAchievements] = useState<(string | null)[]>([null, null, null]);
 	const accountLinkReturnHandled = useRef(false);
 	const [replays, setReplays] = useState<ReplaySummary[] | null>(null);
@@ -734,9 +738,11 @@ function HomeMenu(): JSX.Element {
 	const [hoveredFriendUsername, setHoveredFriendUsername] = useState<
 		string | null
 	>(null);
-	const [hoveredProfile, setHoveredProfile] = useState<User | null>(null);
+	const [hoveredProfile, setHoveredProfile] = useState<PublicUserView | null>(null);
 	const [hoveredProfileLoading, setHoveredProfileLoading] = useState(false);
-	const profileCardCache = useRef(createProfileCardCache<User>()).current;
+	const profileCardCache = useRef(
+		createProfileCardCache<PublicUserView>(),
+	).current;
 	const [blockConfirmUserId, setBlockConfirmUserId] = useState<number | null>(
 		null,
 	);
@@ -1430,6 +1436,7 @@ function HomeMenu(): JSX.Element {
 
 	const openProfile = async () => {
 		setProfileTurtleName(player?.turtleName ?? "");
+		setProfileDojoTagId(player?.profile?.tag ?? null);
 		setProfileSuccess("");
 		setModalError("");
 		setShowcasePickerSlot(null);
@@ -1443,6 +1450,14 @@ function HomeMenu(): JSX.Element {
 				setAchievements(loaded);
 			} catch {
 				// Non-fatal — showcase picker will show a loading message.
+			}
+		}
+
+		if (!cosmetics) {
+			try {
+				setCosmetics(await api.getCustomization());
+			} catch {
+				// Non-fatal — the tag selector remains unavailable until the next open.
 			}
 		}
 
@@ -1562,6 +1577,7 @@ function HomeMenu(): JSX.Element {
 			setShowcasePickerSlot(null);
 			const updates: Parameters<typeof api.updateProfile>[0] = {};
 			if (profileTurtleName.trim()) updates.turtleName = profileTurtleName.trim();
+			updates.tag = profileDojoTagId;
 			updates.showcasedAchievements = profileShowcasedAchievements.filter(
 				(id): id is string => id !== null,
 			);
@@ -2593,6 +2609,10 @@ function HomeMenu(): JSX.Element {
 					</>
 				) : (
 					<>
+						<ViewProfileLink
+							className="hub-modal__social-profile-link"
+							username={friend.username}
+						/>
 						<button
 							type="button"
 							className="hub-modal__social-message-btn"
@@ -2651,6 +2671,15 @@ function HomeMenu(): JSX.Element {
 	const currentTag = profileTagId
 		? (TURTLE_TAGS.find((t) => t.id === profileTagId) ?? null)
 		: null;
+	const selectedProfileTag = profileDojoTagId
+		? (TURTLE_TAGS.find((tag) => tag.id === profileDojoTagId) ?? null)
+		: null;
+	const unlockedProfileTags = (cosmetics ?? [])
+		.filter((cosmetic) => cosmetic.type === "dojo_tag" && cosmetic.owned)
+		.flatMap((cosmetic) => {
+			const tag = TURTLE_TAGS.find((candidate) => candidate.id === cosmetic.id);
+			return tag ? [tag] : [];
+		});
 
 	const showcasedIds = player?.profile?.showcasedAchievements ?? [];
 	const showcasedAchievements = showcasedIds
@@ -2678,11 +2707,12 @@ function HomeMenu(): JSX.Element {
 			{showCycleBackdrop ? <CycleBackdrop now={displayedNow} /> : null}
 			<div className="menu-page__shell hub-page__shell">
 				<header className="menu-page__topbar hub-page__topbar">
-					<button
-						className="hub-page__player-card"
-						type="button"
-						onClick={() => void openProfile()}
-					>
+					<div className="hub-page__player-area">
+						<button
+							className="hub-page__player-card"
+							type="button"
+							onClick={() => void openProfile()}
+						>
 						<ShellPortrait
 							avatar={player?.avatar}
 							shellSkin={player?.shellSkin}
@@ -2717,7 +2747,16 @@ function HomeMenu(): JSX.Element {
 								</span>
 							) : null}
 						</span>
-					</button>
+						</button>
+						{player?.username ? (
+							<ViewProfileLink
+								className="hub-page__profile-link"
+								username={player.username}
+							>
+								View public profile
+							</ViewProfileLink>
+						) : null}
+					</div>
 
 					<div className="hub-page__clock-wrap">
 						<button
@@ -3487,8 +3526,8 @@ function HomeMenu(): JSX.Element {
 
 			{activeModal === "profile" ? (
 				<HubModal
-					title="Edit Profile"
-					variant="wide"
+					title="Profile"
+					variant="profile"
 					onClose={() => {
 						setActiveModal(null);
 					}}
@@ -3496,79 +3535,97 @@ function HomeMenu(): JSX.Element {
 					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
 					{profileSuccess ? <p className="hub-modal__success">{profileSuccess}</p> : null}
 					<div className="hub-modal__profile">
-						<section className="hub-modal__portrait-editor" aria-labelledby="portrait-heading">
-							<ShellPortrait
-								avatar={player?.avatar}
-								shellSkin={player?.shellSkin}
-								displayName={profileTurtleName.trim() || playerName}
-								level={player?.level ?? 1}
-								size="large"
-							/>
-							<div className="hub-modal__portrait-copy">
-								<span className="hub-modal__portrait-kicker">Dojo portrait</span>
-								<h3 id="portrait-heading">{profileTurtleName.trim() || playerName}</h3>
-								<p>
-									Your equipped {getShellSkinDisplayName(player?.shellSkin).toLowerCase()} is your default portrait. Add a custom image whenever you want.
-								</p>
-								<div className="hub-modal__portrait-actions">
-									<label className="hub-modal__portrait-upload">
-										{avatarSaving ? "Updating…" : player?.avatar ? "Replace image" : "Choose image"}
+						<div className="hub-modal__profile-layout">
+							<section
+								className="hub-modal__profile-controls"
+								aria-labelledby="profile-customisation-heading"
+							>
+								<div className="hub-modal__section-heading">
+									<span>Profile customisation</span>
+									<h3 id="profile-customisation-heading">Build your player card</h3>
+								</div>
+
+								<div className="hub-modal__profile-fields">
+									<label htmlFor="turtle-name-input">
+										<span className="hub-modal__field-label">Turtle name</span>
 										<input
-											type="file"
-											accept="image/jpeg,image/png,image/webp,image/gif"
-											disabled={avatarSaving}
-											onChange={(event) => void handleAvatarUpload(event)}
+											id="turtle-name-input"
+											className="hub-modal__field-input"
+											type="text"
+											maxLength={32}
+											value={profileTurtleName}
+											placeholder={displayUsername(player?.username)}
+											onChange={(e) => setProfileTurtleName(e.target.value)}
 										/>
 									</label>
-									{player?.avatar ? (
-										<button
-											type="button"
-											className="hub-modal__portrait-reset"
-											disabled={avatarSaving}
-											onClick={() => void handleAvatarClear()}
+									<label htmlFor="dojo-tag-select">
+										<span className="hub-modal__field-label">Dojo tag</span>
+										<select
+											id="dojo-tag-select"
+											className="hub-modal__field-input hub-modal__field-select"
+											value={profileDojoTagId ?? ""}
+											disabled={cosmetics === null}
+											onChange={(event) =>
+												setProfileDojoTagId(event.target.value || null)
+											}
 										>
-											Use equipped shell
-										</button>
-									) : null}
+											<option value="">No dojo tag</option>
+											{unlockedProfileTags.map((tag) => (
+												<option key={tag.id} value={tag.id}>
+													{tag.emoji} {tag.label}
+												</option>
+											))}
+										</select>
+									</label>
 								</div>
-								<small>JPEG, PNG, WebP, or GIF · 2 MB maximum</small>
-							</div>
-						</section>
-						<label className="hub-modal__field-label" htmlFor="turtle-name-input">
-							Turtle name
-						</label>
-						<input
-							id="turtle-name-input"
-							className="hub-modal__field-input"
-							type="text"
-							maxLength={32}
-							value={profileTurtleName}
-							placeholder={displayUsername(player?.username)}
-							onChange={(e) => setProfileTurtleName(e.target.value)}
-						/>
-						<span className="hub-modal__field-label">Your dojo tag</span>
-						<div className="hub-modal__current-tag">
-							{currentTag ? (
-								<span className="hub-modal__tag-chip hub-modal__tag-chip--selected">
-									<span className="hub-modal__tag-chip-emoji">{currentTag.emoji}</span>
-									<span className="hub-modal__tag-chip-label">{currentTag.label}</span>
-								</span>
-							) : (
-								<span className="hub-panel__muted">No dojo tag selected.</span>
-							)}
-							<small>Choose and unlock dojo tags from Customisation.</small>
-						</div>
-						<span className="hub-modal__field-label">Achievement showcase</span>
-						<div className="hub-modal__showcase-slots">
-							{profileShowcasedAchievements.map((achievementId, slotIdx) => {
-								const achievement = achievementId
-									? achievements?.find((a) => a.id === achievementId)
-									: null;
-								const isOpen = showcasePickerSlot === slotIdx;
-								const unlockedAchievements =
-									achievements?.filter((a) => a.unlocked) ?? [];
 
-								return (
+								<div className="hub-modal__portrait-editor" aria-labelledby="portrait-heading">
+									<ShellPortrait
+										avatar={player?.avatar}
+										shellSkin={player?.shellSkin}
+										displayName={profileTurtleName.trim() || playerName}
+										level={player?.level ?? 1}
+										size="medium"
+									/>
+									<div className="hub-modal__portrait-copy">
+										<span className="hub-modal__portrait-kicker">Portrait</span>
+										<h3 id="portrait-heading">Choose your image</h3>
+										<div className="hub-modal__portrait-actions">
+											<label className="hub-modal__portrait-upload">
+												{avatarSaving ? "Updating…" : player?.avatar ? "Replace image" : "Choose image"}
+												<input
+													type="file"
+													accept="image/jpeg,image/png,image/webp,image/gif"
+													disabled={avatarSaving}
+													onChange={(event) => void handleAvatarUpload(event)}
+												/>
+											</label>
+											{player?.avatar ? (
+												<button
+													type="button"
+													className="hub-modal__portrait-reset"
+													disabled={avatarSaving}
+													onClick={() => void handleAvatarClear()}
+												>
+													Use equipped shell
+												</button>
+											) : null}
+										</div>
+										<small>JPEG, PNG, WebP, or GIF · 2 MB maximum</small>
+									</div>
+								</div>
+
+								<span className="hub-modal__field-label">Achievement showcase</span>
+								<div className="hub-modal__showcase-slots">
+									{profileShowcasedAchievements.map((achievementId, slotIdx) => {
+										const achievement = achievementId
+											? achievements?.find((a) => a.id === achievementId)
+											: null;
+										const isOpen = showcasePickerSlot === slotIdx;
+										const unlockedAchievements =
+											achievements?.filter((a) => a.unlocked) ?? [];
+
+										return (
 									<div
 										key={slotIdx}
 										className="hub-modal__showcase-slot-wrapper"
@@ -3653,18 +3710,49 @@ function HomeMenu(): JSX.Element {
 											</div>
 										) : null}
 									</div>
-								);
-							})}
-						</div>
+										);
+									})}
+								</div>
 
-						<button
-							className="hub-modal__save-button"
-							type="button"
-							disabled={profileSaving}
-							onClick={() => void handleProfileSave()}
-						>
-							{profileSaving ? "Saving…" : "Save changes"}
-						</button>
+								<button
+									className="hub-modal__save-button"
+									type="button"
+									disabled={profileSaving}
+									onClick={() => void handleProfileSave()}
+								>
+									{profileSaving ? "Saving…" : "Save changes"}
+								</button>
+							</section>
+
+							<PlayerProfilePreview
+								displayName={profileTurtleName.trim() || playerName}
+								avatar={player?.avatar}
+								shellSkin={player?.shellSkin}
+								level={player?.level ?? 1}
+								tag={selectedProfileTag}
+								achievements={profileShowcasedAchievements.map((achievementId) =>
+									achievementId
+										? achievements?.find(
+												(achievement) => achievement.id === achievementId,
+											) ?? null
+										: null,
+								)}
+								statistics={[
+									{
+										label: "Matches",
+										value: player?.profile?.gamesPlayed ?? 0,
+									},
+									{
+										label: "Wins",
+										value: player?.profile?.totalWins ?? 0,
+									},
+									{
+										label: "Gold earned",
+										value: player?.profile?.totalCoinsEarned ?? 0,
+									},
+								]}
+							/>
+						</div>
 						<ConnectedAccounts />
 					</div>
 				</HubModal>
@@ -4939,7 +5027,7 @@ function HubModal({
 	onClose: () => void;
 	children: ReactNode;
 	headerAddon?: ReactNode;
-	variant?: "default" | "wide";
+	variant?: "default" | "wide" | "profile";
 }): JSX.Element {
 	const titleId = useId();
 	const panelRef = useRef<HTMLElement>(null);
@@ -4998,7 +5086,7 @@ function HubModal({
 				onClick={onClose}
 			/>
 			<section
-				className={`hub-modal__panel${variant === "wide" ? " hub-modal__panel--wide" : ""}`}
+				className={`hub-modal__panel${variant !== "default" ? " hub-modal__panel--wide" : ""}${variant === "profile" ? " hub-modal__panel--profile" : ""}`}
 				ref={panelRef}
 				tabIndex={-1}
 			>

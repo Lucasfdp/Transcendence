@@ -13,7 +13,7 @@ Shell Smash (ft_transcendence) is a sumo-turtle multiplayer gaming hub served en
 5. [Redis](#5-redis)
 6. [Frontend (Phaser 3 + Vite)](#6-frontend-phaser-3--vite)
 7. [Hub Scene](#7-hub-scene)
-8. [Profile Panel](#8-profile-panel)
+8. [Profiles](#8-profiles)
 9. [Authentication Flow](#9-authentication-flow)
 10. [Data Models](#10-data-models)
 11. [Mini-Games Registry](#11-mini-games-registry)
@@ -102,7 +102,10 @@ HTTP-only cookie.
 **UsersModule** (`backend/src/modules/users/`)  
 CRUD over the `users` table.
 
-- `UsersController` — JWT-guarded routes: `GET /api/users`, `GET /api/users/:username`, `GET /api/users/me`.
+- `UsersController` — JWT-guarded routes for the strict public user view,
+  current-user profile updates, avatar upload/removal and leaderboards. Public
+  profile data is served by `GET /api/users/:username` without returning the
+  `User` entity or private account fields.
 - `UsersService` — `findById`, `findByFortyTwoId`, `findByGoogleId`,
   `findByUsername`, `create` (also creates a linked Profile row), and `findAll`.
 - `UserAccountActivityService` — process-local queue markers used to prevent an
@@ -179,7 +182,7 @@ The main hub world. See [§7 Hub Scene](#7-hub-scene).
 
 | File                               | Purpose                                                                                                                                                                                                      |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `frontend/src/features/hub/api.ts` | Typed wrappers around `fetch` — all API calls go through `apiFetch()` which attaches the JWT Bearer token automatically. Exports `api.getMe()`, `api.getAllUsers()`, `api.getMiniGames()`, `api.devLogin()`. |
+| `frontend/src/features/hub/api.ts` | Typed wrappers around the shared cookie/CSRF-aware API transport, including private current-user and strict `PublicUserView` contracts. |
 | `frontend/src/shared/theme.ts`     | Central colour palette (warm Japanese-temple: deep charcoal background, gold accents, muted red). All Phaser graphics calls reference `THEME.*` constants so colours are changed in one place.               |
 | `public/assets/hub-background.png` | Optional background image. If missing or failed to load, the procedural night-sky scene renders as a full fallback.                                                                                          |
 
@@ -237,7 +240,9 @@ Rendered by `drawHUD()` when a user is logged in. A 56 px tall translucent bar a
 - XP progress bar with numeric label
 - Dojo Rankings leaderboard (bottom-right, top 5 by XP)
 
-**Clicking anywhere in the left ~220 px of the HUD** (the avatar + name area) opens/closes the Profile Panel. A gold glow ring around the avatar indicates hover.
+The player card opens the profile editor. A separate accessible link opens the
+current player's public `/profile/:username` page, so the existing editor action
+is unchanged.
 
 ### Login Prompt
 
@@ -245,26 +250,21 @@ Rendered by `drawLoginPrompt()` when no user is authenticated. Shows the Shell S
 
 ---
 
-## 8. Profile Panel
+## 8. Profiles
 
-**File:** `frontend/src/features/hub/ProfilePanel.ts`
+The React profile editor lives in `frontend/src/pages/HomePage.tsx`. It updates
+the turtle name, an unlocked dojo tag, three showcased achievements and the
+custom avatar while rendering a live `PlayerProfilePreview`. Connected account
+controls remain in the same fixed desktop modal.
 
-A 320×490 px Phaser `Container` that slides in below the HUD on the left side. All art is drawn with `Graphics` primitives — no external textures required.
+`frontend/src/pages/ProfilePage.tsx` implements the protected
+`/profile/:username` route. It loads the strict public endpoint independently of
+Hub state and displays the player's identity, `ShellPortrait`, level, online
+state, dojo tag, showcased achievements, match record and most-played game.
+Loading, missing, network, malformed-response and empty-data states are explicit.
 
-**Sections (top to bottom):**
-
-1. Panel background — dark charcoal with a rounded gold border and subtle inner accent ring.
-2. Avatar frame — gold ring with layered glow halos, dark inner fill.
-3. Turtle placeholder art — top-down sumo turtle: oval shell body with hex-grid pattern, head, eyes with highlight dots, two side flippers. Fully procedural.
-4. 42 badge — small gold-bordered circle at the bottom-right of the avatar ring.
-5. Player name (uppercase) + level badge circle.
-6. Shell skin subtitle.
-7. XP bar — track + fill + numeric label.
-8. Stats row — three equal cards for Wins, Losses, and Games Played.
-9. Bio text (italic, word-wrapped).
-10. Close button — full-width, inverts to gold on hover.
-
-**API:** `show()`, `hide()` (both animated with Phaser tweens), `toggle()`, `isOpen()`, `destroy()`. Created lazily the first time the avatar area is clicked.
+Social friend rows include a separate `View profile` link. Compact Social hover
+cards continue to provide a quick summary without exposing private account data.
 
 ---
 
@@ -416,7 +416,7 @@ Run from the repo root (where `.env` lives).
 | `make up`                   | Build and start all services in production mode       |
 | `make dev`                  | Start with `docker-compose.override.yml` (hot-reload) |
 | `make down`                 | Stop and remove containers                            |
-| `make re`                   | Full rebuild — equivalent to `down` then `up`         |
+| `make re`                   | Full rebuild and recreation via `down` then `up`; persistent volumes are preserved |
 | `make fclean`               | Remove containers, volumes, and images                |
 | `make logs SERVICE=backend` | Tail logs for a specific service                      |
 | `make ps`                   | Show running container status                         |

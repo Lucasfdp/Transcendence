@@ -34,6 +34,15 @@ describe("hub API contracts", () => {
 		);
 	});
 
+	it("encodes usernames when requesting a public profile", async () => {
+		await api.getUser("turtle rival");
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/users/turtle%20rival",
+			expect.objectContaining({ credentials: "include" }),
+		);
+	});
+
 	it("sends friend requests using the expected endpoint and payload", async () => {
 		await api.sendFriendRequest("rival");
 
