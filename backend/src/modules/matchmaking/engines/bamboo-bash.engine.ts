@@ -42,6 +42,8 @@ const POWER_POOL = [
 @Injectable()
 export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 	readonly gameId = "bamboo-bash";
+	readonly minPlayers = 2;
+	readonly maxPlayers = 5;
 
 	createInitialState(
 		context: GameEngineCreateContext,

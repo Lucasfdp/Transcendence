@@ -4,6 +4,8 @@ import { UserGameStats } from "../game-results/entities/user-game-stats.entity";
 export interface AchievementContext {
 	user: User;
 	gameStats: Map<string, UserGameStats>;
+	/** Tournaments won (The Parrot's Shell champion count, SPEC-037/D10). */
+	tournamentsWon: number;
 }
 
 export type AchievementReward =
@@ -164,6 +166,26 @@ const gamePlayedAchievements = (
 		isUnlocked: reaches(gameProgress(gameId, "gamesPlayed", target)),
 	}));
 
+/**
+ * Tournament champion (SPEC-037/D10): win a Tournament and claim THE PARROT'S
+ * SHELL. The 500-coin champion prize is granted directly by the Tournament
+ * module when the win is recorded (idempotent, `lockUserForUpdate`); this
+ * achievement is the durable badge, unlocked by the platform's normal lazy
+ * evaluation off the persisted `tournaments.winnerUserId`.
+ */
+const tournamentChampionAchievement: AchievementDefinition = {
+	id: "tournament-champion",
+	title: "The Parrot's Shell",
+	description: "Win a Tournament and claim THE PARROT'S SHELL.",
+	unlockDescription: "Tournament won — THE PARROT'S SHELL is yours.",
+	reward: noReward("Champion of The Parrot's Shell"),
+	progress: (ctx: AchievementContext) => ({
+		current: Math.min(ctx.tournamentsWon, 1),
+		target: 1,
+	}),
+	isUnlocked: (ctx: AchievementContext): boolean => ctx.tournamentsWon >= 1,
+};
+
 export const ACHIEVEMENTS: AchievementDefinition[] = [
 	...matchAchievements(),
 	...levelAchievements(),
@@ -172,4 +194,5 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
 	...gamePlayedAchievements("bamboo-bash", "Bamboo Bash"),
 	...gamePlayedAchievements("bell-clash", "Bell Clash"),
 	...gamePlayedAchievements("temple-curling", "Temple Curling"),
+	tournamentChampionAchievement,
 ];

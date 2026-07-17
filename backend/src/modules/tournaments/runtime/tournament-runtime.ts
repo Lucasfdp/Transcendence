@@ -44,6 +44,12 @@ import { TournamentStateMachine } from "../state-machine/tournament-state-machin
 import { TournamentStateMachineSnapshot } from "../state-machine/tournament-state.interface";
 import { deriveTurnOrder } from "../turn-order.util";
 import {
+	MinigameCatalogPort,
+	MinigameLauncherPort,
+	MinigameLifecyclePort,
+	MinigameReconcilerPort,
+} from "../minigame/minigame.types";
+import {
 	TournamentEngines,
 	TournamentEnginesSnapshot,
 	createTournamentEngines,
@@ -73,6 +79,8 @@ export interface TournamentRuntimeSnapshot {
 	readonly participantIds: readonly number[];
 	readonly turnOrder: readonly number[];
 	readonly settingsId: string;
+	/** The champion once VICTORY resolves (SPEC-021); null until/unless then. */
+	readonly winnerUserId: number | null;
 	/** Per-tournament engine state (SPEC-001 "Datos mantenidos"): economy,
 	 * rules, leaderboard, inventory, rewards — wired at construction (F2). */
 	readonly engines: TournamentEnginesSnapshot;
@@ -105,13 +113,31 @@ export interface TournamentRuntimeOptions {
 	 * Interactive mode (Vertical Slice, SPEC-022): PLAYER_TURNS drives REAL board
 	 * turns through the Turn System — one turn per player in TurnOrder, resolved
 	 * by a RollDiceIntent (`handleRollDice`) or the Turn System's own roll
-	 * timeout/disconnect auto-resolution — then the round continues MINIGAME
-	 * (Phase-1 skip) → CHECK_KEY_ITEMS → next round / DEFEAT automatically.
+	 * timeout/disconnect auto-resolution — then the round continues MINIGAME →
+	 * GAMBLING → CHECK_KEY_ITEMS → next round / endgame automatically.
 	 * When false (default), the Runtime keeps the deterministic Phase-1
 	 * simulation API (`advancePhase`/`runToCompletion`) — the two modes are
 	 * mutually exclusive by construction.
 	 */
 	readonly interactiveTurns?: boolean;
+	/**
+	 * Live platform ports for the round minigame (SPEC-015), forwarded to the
+	 * engine composition. Absent ⇒ inert defaults (the round's minigame is
+	 * skipped/cancelled cleanly — the Phase-1 behaviour).
+	 */
+	readonly minigamePorts?: {
+		readonly launcher?: MinigameLauncherPort;
+		readonly lifecycle?: MinigameLifecyclePort;
+		readonly reconciler?: MinigameReconcilerPort;
+		readonly catalog?: MinigameCatalogPort;
+	};
+	/**
+	 * CPU participants (CPU v2, from the lobby record): in interactive mode
+	 * the Runtime plays their board turns (delayed roll via the injected
+	 * clock — deterministic) and their gambling decision (bet when the stake
+	 * is affordable, else pass). Humans and bots share every validation path.
+	 */
+	readonly botPlayerIds?: readonly number[];
 }
 
 /** Result of a RollDiceIntent forwarded to the Runtime (SPEC-022 validation). */
@@ -127,8 +153,28 @@ export type RollDiceIntentResult =
 				| "turn_in_progress";
 	  };
 
+/** Result of a StartGamblingIntent (SPEC-016/SPEC-022 validation). */
+export type GamblingIntentResult =
+	| { readonly status: "ok" }
+	| {
+			readonly status: "rejected";
+			readonly reason:
+				| "not_in_gambling_phase"
+				| "no_session"
+				| "not_winner"
+				| "insufficient_points"
+				| "error";
+	  };
+
 /** Safety bound for `runToCompletion` — see the method's doc comment. */
 const DEFAULT_MAX_RUN_STEPS = 1000;
+
+/** Backoff before re-entering a stalled Final Challenge (SPEC-021). */
+const FINAL_CHALLENGE_RETRY_MS = 30_000;
+
+/** Human-ish pause before a CPU participant acts (deterministic clock delay). */
+const BOT_TURN_DELAY_MS = 1_500;
+const BOT_GAMBLING_DELAY_MS = 2_500;
 
 export class TournamentRuntime {
 	private readonly bus: TournamentEventBus;
@@ -151,6 +197,10 @@ export class TournamentRuntime {
 	private readonly interactive: boolean;
 	/** Index into `turnOrder` of the turn being played (interactive mode). */
 	private turnIndex = 0;
+	/** The champion once VICTORY resolves (SPEC-021); null until then. */
+	private winnerUserId: number | null = null;
+	/** CPU participants whose board/gambling decisions this Runtime plays. */
+	private readonly botPlayerIds: ReadonlySet<number>;
 
 	constructor(options: TournamentRuntimeOptions) {
 		this.tournamentId = options.tournamentId;
@@ -187,6 +237,10 @@ export class TournamentRuntime {
 			clock: this.clock,
 			logger: this.logger,
 			getRound: () => this.round,
+			minigameLauncher: options.minigamePorts?.launcher,
+			minigameLifecycle: options.minigamePorts?.lifecycle,
+			minigameReconciler: options.minigamePorts?.reconciler,
+			minigameCatalog: options.minigamePorts?.catalog,
 		});
 
 		// Persistence hook (see file header): one subscription covers every
@@ -200,10 +254,54 @@ export class TournamentRuntime {
 		// turn (intent, timeout or disconnect) hands the baton to the next player
 		// or closes the round. Subscribed once; inert unless interactive.
 		this.interactive = options.interactiveTurns ?? false;
+		this.botPlayerIds = new Set(options.botPlayerIds ?? []);
 		if (this.interactive) {
 			this.bus.on("PlayerTurnFinished", () => {
 				this.onInteractiveTurnFinished();
 			});
+			// GamblingFinished fires on EVERY close (bet won/lost, abandon,
+			// timeout — SPEC-016), so one subscription resumes the round.
+			this.bus.on("GamblingFinished", () => {
+				if (this.machine.currentPhase === "GAMBLING_PHASE") {
+					this.enterCheckKeyItems();
+				}
+			});
+		}
+		// CPU participants (CPU v2): decide through the SAME intent entry
+		// points as humans, after a clock delay (deterministic under a
+		// ManualClock; human-ish pacing under the SystemClock).
+		if (this.interactive && this.botPlayerIds.size > 0) {
+			this.bus.on("PlayerTurnStarted", (event) => {
+				const playerId = event.playerId;
+				if (playerId === null || !this.botPlayerIds.has(playerId)) {
+					return;
+				}
+				this.clock.schedule(BOT_TURN_DELAY_MS, () => {
+					this.handleRollDice(playerId);
+				});
+			});
+			this.bus.on("GamblingOpened", (event) => {
+				const winnerId = event.playerId;
+				if (winnerId === null || !this.botPlayerIds.has(winnerId)) {
+					return;
+				}
+				this.clock.schedule(BOT_GAMBLING_DELAY_MS, () => {
+					this.decideBotGambling(winnerId);
+				});
+			});
+		}
+	}
+
+	/** CPU gambling policy: bet whenever the stake is affordable, else pass. */
+	private decideBotGambling(winnerId: number): void {
+		if (this.machine.currentPhase !== "GAMBLING_PHASE") {
+			return; // session already closed (timeout raced the delay)
+		}
+		const balance = this.engines.economy.getBalance(winnerId) ?? 0;
+		if (balance >= this.settings.gambling.cost) {
+			this.handleStartGambling(winnerId);
+		} else {
+			this.handleLeaveGambling(winnerId);
 		}
 	}
 
@@ -246,6 +344,16 @@ export class TournamentRuntime {
 	/** `settings.maxRound` (SPEC-024) — exposed for the visible snapshot. */
 	get maxRound(): number {
 		return this.settings.maxRound;
+	}
+
+	/** The champion once VICTORY resolves (SPEC-021); null until/unless then. */
+	get winner(): number | null {
+		return this.winnerUserId;
+	}
+
+	/** CPU participants (CPU v2) — exposed for the wire snapshot. */
+	get botPlayers(): ReadonlySet<number> {
+		return this.botPlayerIds;
 	}
 
 	// ── Lifecycle ─────────────────────────────────────────────────────────
@@ -306,12 +414,43 @@ export class TournamentRuntime {
 	}
 
 	/**
+	 * StartGamblingIntent (SPEC-016 "Flujo"): the round's minigame winner asks
+	 * to bet. Valid only during GAMBLING_PHASE; the engine re-validates the
+	 * caller (only the session winner may bet) and resolves provably fair.
+	 */
+	handleStartGambling(playerId: number): GamblingIntentResult {
+		if (!this.interactive || this.machine.currentPhase !== "GAMBLING_PHASE") {
+			return { status: "rejected", reason: "not_in_gambling_phase" };
+		}
+		const result = this.engines.gambling.bet(playerId);
+		if (result.status === "won" || result.status === "lost") {
+			return { status: "ok" };
+		}
+		return { status: "rejected", reason: result.reason };
+	}
+
+	/**
+	 * LeaveGamblingIntent (SPEC-016): the winner declines. The engine ignores
+	 * non-winners; closing emits GamblingFinished which resumes the round.
+	 */
+	handleLeaveGambling(playerId: number): void {
+		if (this.interactive && this.machine.currentPhase === "GAMBLING_PHASE") {
+			this.engines.gambling.abandon(playerId);
+		}
+	}
+
+	/**
 	 * A participant disconnected (SPEC-005 "Desconexión" / SPEC-023): if it is
-	 * their turn, the Turn System auto-resolves it immediately; otherwise a
-	 * no-op. Synchronization concerns (rooms, snapshots) stay in the gateway.
+	 * their turn, the Turn System auto-resolves it immediately; if they hold
+	 * the open gambling decision, it closes as abandoned (SPEC-016
+	 * "Desconexión"); otherwise a no-op. Synchronization concerns (rooms,
+	 * snapshots) stay in the gateway.
 	 */
 	handlePlayerDisconnect(playerId: number): void {
 		this.engines.turnSystem.handleDisconnect(playerId);
+		if (this.machine.currentPhase === "GAMBLING_PHASE") {
+			this.engines.gambling.abandon(playerId);
+		}
 	}
 
 	/**
@@ -458,17 +597,158 @@ export class TournamentRuntime {
 	}
 
 	/**
-	 * Closes the round after the last turn: MINIGAME stays the documented
-	 * Phase-1 "omitted" skip (the socket-bound minigame adapter is a later
-	 * integration), then CHECK_KEY_ITEMS loops the round or exits via DEFEAT.
-	 * A continuing round re-enters PLAYER_TURNS immediately.
+	 * Closes the round after the last turn (SPEC-001 round pipeline): MINIGAME
+	 * runs through the SPEC-015 coordinator (real matches when the socket
+	 * adapter is wired; a clean skip/cancel otherwise), its winner gets the
+	 * GAMBLING_PHASE decision (SPEC-016), then CHECK_KEY_ITEMS loops the
+	 * round, opens the endgame, or exits via DEFEAT.
 	 */
 	private finishInteractiveRound(): void {
 		this.machine.requestTransition("MINIGAME");
+		void this.runMinigamePhase();
+	}
+
+	/**
+	 * MINIGAME (SPEC-015): one match per round with every seated player. The
+	 * coordinator owns selection/launch/wait/watchdog and awards the outcome
+	 * points itself; the Runtime only routes the resulting winner. Skipped or
+	 * cancelled minigames continue the round with no winner (SPEC-001).
+	 */
+	private async runMinigamePhase(): Promise<void> {
+		let winnerId: number | null = null;
+		try {
+			const result = await this.engines.minigame.run([...this.turnOrder], this.round);
+			if (result.status === "completed") {
+				winnerId = result.winnerId;
+			}
+		} catch (error) {
+			this.logger.error("minigame phase failed; continuing round with no winner", {
+				metadata: { error: error instanceof Error ? error.message : String(error) },
+			});
+		}
+		if (this.machine.isTerminal) {
+			return; // cancelled while the match ran
+		}
+		if (winnerId !== null) {
+			this.enterGambling(winnerId);
+			return;
+		}
+		this.enterCheckKeyItems();
+	}
+
+	/**
+	 * GAMBLING_PHASE (SPEC-016): the round's minigame winner may bet points
+	 * for a Key Item. The win probability is base + pity per elapsed round
+	 * (SPEC-024 `gambling`), computed HERE (the Runtime owns pity, never the
+	 * engine). The phase closes through the engine's own bet/abandon/timeout —
+	 * all of which emit GamblingFinished, which resumes the round.
+	 */
+	private enterGambling(winnerId: number): void {
+		this.machine.requestTransition("GAMBLING_PHASE");
+		const gambling = this.settings.gambling;
+		const winChance = Math.min(
+			1,
+			gambling.baseWinChance +
+				gambling.pityIncrementPerRound * Math.max(0, this.round - 1),
+		);
+		const opened = this.engines.gambling.open(winnerId, winChance, this.round);
+		if (opened.status !== "opened") {
+			// No locked Key Items remain (or a session raced): nothing to bet on.
+			this.enterCheckKeyItems();
+		}
+	}
+
+	/**
+	 * CHECK_KEY_ITEMS (SPEC-001/SPEC-017): all Key Items unlocked → the
+	 * endgame (BOSS_EVENT); otherwise loop the round or exit via the D3
+	 * anti-stall DEFEAT.
+	 */
+	private enterCheckKeyItems(): void {
 		this.machine.requestTransition("CHECK_KEY_ITEMS");
+		if (this.engines.keyItems.isComplete()) {
+			this.enterBossEvent();
+			return;
+		}
 		if (this.resolveCheckKeyItems()) {
 			this.beginPlayerTurns();
 		}
+	}
+
+	// ── Endgame (SPEC-020/021, F5 engines driven live) ────────────────────
+
+	/**
+	 * BOSS_EVENT (SPEC-020): the Boss spawns (guarded by Key Item completion,
+	 * which CHECK_KEY_ITEMS just verified), activates its Rules and hands over
+	 * its Final Challenge. The Boss is a synchronous orchestrator, so the
+	 * machine proceeds to FINAL_CHALLENGE immediately after the intro.
+	 */
+	private enterBossEvent(): void {
+		this.machine.requestTransition("BOSS_EVENT");
+		const spawn = this.engines.boss.spawn(this.round);
+		if (spawn.status === "rejected") {
+			// Structurally unreachable (the gate was just checked); never stall.
+			this.logger.error("boss spawn rejected after key-item completion");
+			if (this.resolveCheckKeyItems()) {
+				this.beginPlayerTurns();
+			}
+			return;
+		}
+		this.machine.requestTransition("FINAL_CHALLENGE");
+		void this.runFinalChallenge(false);
+	}
+
+	/**
+	 * FINAL_CHALLENGE (SPEC-021): sudden death through the SAME minigame
+	 * pipeline until a unique winner takes THE PARROT'S SHELL. A stalled
+	 * challenge (minigame could not run) stays ACTIVE per SPEC-021 "Error
+	 * interno" and is retried through the injected clock.
+	 */
+	private async runFinalChallenge(resume: boolean): Promise<void> {
+		try {
+			const result = resume
+				? await this.engines.finalChallenge.resume()
+				: await this.engines.finalChallenge.start();
+			if (this.machine.isTerminal) {
+				return;
+			}
+			if (result.status === "finished") {
+				this.completeVictory(result.winnerId);
+				return;
+			}
+			if (result.status === "stalled") {
+				this.logger.warn("final challenge stalled; retrying", {
+					metadata: { reason: result.reason },
+				});
+				this.clock.schedule(FINAL_CHALLENGE_RETRY_MS, () => {
+					void this.runFinalChallenge(true);
+				});
+			}
+		} catch (error) {
+			this.logger.error("final challenge crashed; retrying", {
+				metadata: { error: error instanceof Error ? error.message : String(error) },
+			});
+			this.clock.schedule(FINAL_CHALLENGE_RETRY_MS, () => {
+				void this.runFinalChallenge(true);
+			});
+		}
+	}
+
+	/**
+	 * VICTORY → REWARDS → FINISHED (SPEC-001/SPEC-021 "Victoria"): the Shell
+	 * holder is the champion. The Boss removes its Rules, the machine walks
+	 * the terminal pipeline and TournamentFinished carries the winner — the
+	 * persistence layer records `winnerUserId` and grants the persistent
+	 * rewards (SPEC-037/D10) off this snapshot.
+	 */
+	private completeVictory(winnerId: number): void {
+		this.engines.boss.finish(this.round);
+		this.winnerUserId = winnerId;
+		this.machine.setActivePlayer(null);
+		this.machine.requestTransition("VICTORY");
+		this.machine.requestTransition("REWARDS");
+		this.emitRuntimeEvent("RewardsGranted", { round: this.round });
+		this.emitRuntimeEvent("TournamentFinished", { winnerUserId: winnerId });
+		this.machine.requestTransition("FINISHED");
 	}
 
 	/**
@@ -493,6 +773,7 @@ export class TournamentRuntime {
 			participantIds: [...this.participantIds],
 			turnOrder: [...this.turnOrder],
 			settingsId: this.settings.id,
+			winnerUserId: this.winnerUserId,
 			engines: this.engines.serialize(),
 		};
 	}

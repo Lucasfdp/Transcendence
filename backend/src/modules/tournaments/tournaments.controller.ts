@@ -18,6 +18,7 @@ import {
 	JoinTournamentByPinDto,
 } from "./dto/tournaments.dto";
 import {
+	AddTournamentCpuResponse,
 	CreateTournamentResponse,
 	GetTournamentResponse,
 	InviteTournamentResponse,
@@ -111,6 +112,17 @@ export class TournamentsController {
 		@Param("id", ParseUUIDPipe) id: string,
 	): Promise<JoinTournamentResponse> {
 		return this.lobbyService.joinByInvite(id, req.user.id);
+	}
+
+	/** POST /api/tournaments/:id/add-cpu — creator seats a CPU participant. */
+	@Post(":id/add-cpu")
+	@HttpCode(200)
+	@UseGuards(CsrfGuard)
+	addCpu(
+		@Request() req: AuthedRequest,
+		@Param("id", ParseUUIDPipe) id: string,
+	): Promise<AddTournamentCpuResponse> {
+		return this.lobbyService.addCpu(id, req.user.id);
 	}
 
 	/** POST /api/tournaments/:id/leave — leave pre-start (creator cancels). */

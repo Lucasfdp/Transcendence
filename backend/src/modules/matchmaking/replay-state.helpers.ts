@@ -80,7 +80,8 @@ function getBellSpawn(side: number, snapshot: BellClashSnapshot): {
 	};
 }
 
-function getArenaBallSpawn(
+/** Exported for server-side players (BotPlayerService) — plausible throw origins. */
+export function getArenaBallSpawn(
 	snapshot: ArenaBallSnapshot,
 	side: number,
 ): { x: number; y: number } {

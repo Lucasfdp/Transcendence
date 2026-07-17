@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { randomBytes } from "crypto";
-import { DataSource, EntityManager, In, Repository } from "typeorm";
+import { DataSource, EntityManager, In, Like, Repository } from "typeorm";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PresenceService } from "../presence/presence.service";
 import { User } from "../users/entities/user.entity";
@@ -28,6 +28,8 @@ import {
 	TournamentStartingPayload,
 } from "./tournaments.contracts";
 import {
+	TOURNAMENT_BOT_EMAIL_DOMAIN,
+	TOURNAMENT_BOT_NAMES,
 	TOURNAMENT_DEFAULT_CONFIG_ID,
 	TOURNAMENT_LOBBY_EXPIRY_MS,
 	TOURNAMENT_PLAYERS,
@@ -59,6 +61,13 @@ export interface TournamentLobbyRecord {
 	 * exposed as null to clients.
 	 */
 	seatsAssigned: boolean;
+	/**
+	 * CPU participants seated by the creator (CPU v2). Absent on records
+	 * persisted before the feature — treat as []. The Runtime drives these
+	 * seats (board turns + gambling policy); the minigame adapter seats them
+	 * as `bot:` stand-ins automatically (they are never online).
+	 */
+	botUserIds?: number[];
 }
 
 const PIN_GENERATION_MAX_ATTEMPTS = 20;
@@ -255,6 +264,121 @@ export class TournamentLobbyService {
 		const state = this.toLobbyState(tournament, record, participants);
 		this.pushLobbyUpdate(state, "TournamentInviteSent");
 		return state;
+	}
+
+	/**
+	 * POST /tournaments/:id/add-cpu — the creator seats a CPU participant
+	 * (CPU v2, user-approved SPEC-038 extension). A bot is a pooled user row
+	 * on the reserved bot email domain, marked in `record.botUserIds`: the
+	 * Runtime plays its board turns/gambling and the minigame adapter seats
+	 * it as a `bot:` stand-in (it is never online). Same locked critical
+	 * section as `join()` so a CPU can never overfill the lobby.
+	 */
+	async addCpu(
+		tournamentId: string,
+		requesterUserId: number,
+	): Promise<TournamentLobbyState> {
+		const tournament = await this.loadTournament(tournamentId);
+		const record = this.getLobbyRecord(tournament);
+		await this.assertOpenLobby(tournament, record);
+		if (record.creatorUserId !== requesterUserId) {
+			throw new ForbiddenException("Only the lobby creator can add a CPU");
+		}
+
+		const botUser = await this.acquireBotUser();
+
+		const { tournament: locked, record: lockedRecord, participants, cause } =
+			await this.withLockedTournament(tournament.id, async (manager, lockedTournament) => {
+				const lockedRecord = this.getLobbyRecord(lockedTournament);
+				const lockedParticipants = await this.loadParticipants(
+					lockedTournament.id,
+					manager,
+				);
+				if (lockedParticipants.length >= TOURNAMENT_PLAYERS) {
+					throw new ConflictException("This lobby is already full");
+				}
+				if (lockedParticipants.some((p) => p.userId === botUser.id)) {
+					throw new ConflictException("This CPU is already in the lobby");
+				}
+
+				const participantRepo = manager.getRepository(TournamentParticipant);
+				await participantRepo.save(
+					participantRepo.create({
+						tournamentId: lockedTournament.id,
+						userId: botUser.id,
+						seat: lockedParticipants.length,
+					}),
+				);
+				lockedRecord.botUserIds = [
+					...(lockedRecord.botUserIds ?? []),
+					botUser.id,
+				];
+
+				let all = await this.loadParticipants(lockedTournament.id, manager);
+				let cause: TournamentLobbyEventName = "TournamentPlayerJoined";
+				if (all.length === TOURNAMENT_PLAYERS) {
+					all = await this.assignSeats(lockedTournament, lockedRecord, all, manager);
+					cause = "TournamentLobbyCompleted";
+				}
+				await this.persistLobbyRecord(lockedTournament, lockedRecord, manager);
+
+				return {
+					tournament: lockedTournament,
+					record: lockedRecord,
+					participants: all,
+					cause,
+				};
+			});
+
+		const state = this.toLobbyState(locked, lockedRecord, participants);
+		this.pushLobbyUpdate(state, cause);
+		return state;
+	}
+
+	/**
+	 * A free bot user row: pooled by the reserved email domain (unreachable
+	 * via registration/OAuth — a real account can never be picked), skipping
+	 * bots already seated in a pending/active tournament; created on demand
+	 * with a collision-suffixed display name.
+	 */
+	private async acquireBotUser(): Promise<User> {
+		const bots = await this.userRepo.find({
+			where: { email: Like(`%@${TOURNAMENT_BOT_EMAIL_DOMAIN}`) },
+		});
+		for (const bot of bots) {
+			const busy = await this.participantRepo.count({
+				where: {
+					userId: bot.id,
+					tournament: { status: In(["pending", "active"]) },
+				},
+				relations: ["tournament"],
+			});
+			if (busy === 0) {
+				return bot;
+			}
+		}
+
+		// Pool exhausted: mint a new bot account.
+		const baseName =
+			TOURNAMENT_BOT_NAMES[bots.length % TOURNAMENT_BOT_NAMES.length];
+		for (let attempt = 0; attempt < 10; attempt++) {
+			const suffix = attempt === 0 && bots.length < TOURNAMENT_BOT_NAMES.length
+				? ""
+				: ` ${bots.length + attempt + 1}`;
+			try {
+				return await this.userRepo.save(
+					this.userRepo.create({
+						username: `${baseName}${suffix}`,
+						email: `cpu-${Date.now()}-${attempt}@${TOURNAMENT_BOT_EMAIL_DOMAIN}`,
+						isGuest: false,
+					}),
+				);
+			} catch (err) {
+				// Unique-violation on the username: try the next suffix.
+				if ((err as { code?: string })?.code !== "23505") throw err;
+			}
+		}
+		throw new ConflictException("Could not allocate a CPU player");
 	}
 
 	/** POST /tournaments/:id/join — accept an invitation. */
@@ -762,22 +886,28 @@ export class TournamentLobbyService {
 		record: TournamentLobbyRecord,
 		participants: TournamentParticipant[],
 	): TournamentLobbyState {
+		const botIds = new Set(record.botUserIds ?? []);
 		return {
 			id: tournament.id,
 			status: tournament.status,
 			pin: record.pin,
 			creatorUserId: record.creatorUserId,
-			participants: participants.map((participant) => ({
-				userId: participant.userId,
-				username: participant.user?.username ?? "",
-				seat: record.seatsAssigned ? participant.seat : null,
-				// Phase 0 approximation of "connected to the lobby room":
-				// coarse presence. Room-level readiness arrives with the
-				// gameplay gateway in later phases.
-				ready:
-					participant.userId !== null &&
-					this.presence.isOnline(participant.userId),
-			})),
+			participants: participants.map((participant) => {
+				const isBot =
+					participant.userId !== null && botIds.has(participant.userId);
+				return {
+					userId: participant.userId,
+					username: participant.user?.username ?? "",
+					seat: record.seatsAssigned ? participant.seat : null,
+					// Phase 0 approximation of "connected to the lobby room":
+					// coarse presence. CPUs are server-driven ⇒ always ready.
+					ready:
+						isBot ||
+						(participant.userId !== null &&
+							this.presence.isOnline(participant.userId)),
+					isBot,
+				};
+			}),
 			createdAt: tournament.createdAt.toISOString(),
 			expiresAt: record.expiresAt,
 		};

@@ -43,6 +43,8 @@ const ACTIVE_POWERS = new Set([
 @Injectable()
 export class ShellCurlEngine extends BaseEngine implements GameEngine {
 	readonly gameId = "temple-curling";
+	readonly minPlayers = MIN_PLAYERS;
+	readonly maxPlayers = MAX_PLAYERS;
 
 	createInitialState(
 		context: GameEngineCreateContext,

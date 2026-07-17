@@ -131,6 +131,10 @@ export function TournamentLobbyModal({
 		if (!lobby) return;
 		void run(() => tournamentApi.start(lobby.id));
 	};
+	const handleAddCpu = () => {
+		if (!lobby) return;
+		void run(() => tournamentApi.addCpu(lobby.id));
+	};
 	const handleLeave = () => {
 		if (!lobby) {
 			onClose();
@@ -260,13 +264,29 @@ export function TournamentLobbyModal({
 								<ul style={playerList}>
 									{lobby.participants.map((p, i) => (
 										<li key={p.userId ?? `slot-${i}`} style={playerItem}>
-											<span>{p.username}</span>
-											<span style={mutedLabel}>{p.ready ? "connected" : "…"}</span>
+											<span>
+												{p.isBot ? "🤖 " : ""}
+												{p.username}
+											</span>
+											<span style={mutedLabel}>
+												{p.isBot ? "CPU" : p.ready ? "connected" : "…"}
+											</span>
 										</li>
 									))}
 									{Array.from({ length: LOBBY_CAPACITY - lobby.participants.length }).map((_, i) => (
-										<li key={`empty-${i}`} style={{ ...playerItem, opacity: 0.4 }}>
-											<span>Waiting for a player…</span>
+										<li key={`empty-${i}`} style={{ ...playerItem, opacity: 0.55 }}>
+											<span style={{ opacity: 0.7 }}>Waiting for a player…</span>
+											{i === 0 && (
+												<button
+													type="button"
+													style={addCpuBtn}
+													disabled={busy}
+													onClick={handleAddCpu}
+													title="Creator only: fill this seat with a CPU player"
+												>
+													+ Add CPU
+												</button>
+											)}
 										</li>
 									))}
 								</ul>
@@ -360,6 +380,16 @@ const secondaryBtn: CSSProperties = {
 	border: "1px solid rgba(255,255,255,0.25)",
 	background: "transparent",
 	color: "inherit",
+	fontWeight: 600,
+	cursor: "pointer",
+};
+const addCpuBtn: CSSProperties = {
+	padding: "4px 10px",
+	borderRadius: 8,
+	border: "1px solid rgba(255,255,255,0.35)",
+	background: "rgba(255,255,255,0.08)",
+	color: "inherit",
+	fontSize: 12,
 	fontWeight: 600,
 	cursor: "pointer",
 };

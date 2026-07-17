@@ -15,6 +15,7 @@
 
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 
 import { getGameSocket } from "../../services/network/gameSocket";
 import { api } from "../hub/api";
@@ -47,6 +48,7 @@ export function TournamentBoardView({
 	/** Presentation-only clock tick for the turn countdown. */
 	const [nowMs, setNowMs] = useState(() => Date.now());
 	const seqRef = useRef(-1);
+	const navigate = useNavigate();
 
 	// Who am I (gates the Roll button — the SERVER re-validates every intent).
 	useEffect(() => {
@@ -87,6 +89,20 @@ export function TournamentBoardView({
 		};
 	}, [tournamentId]);
 
+	// The server launched this round's minigame with us seated (SPEC-015):
+	// ride the platform's existing auto-join rail into the arena. Coming back
+	// to the hub after the match, the Tournament button re-opens this board.
+	useEffect(() => {
+		const socket = getGameSocket();
+		const onMinigameStart = (data: { matchId: string; gameId: string }) => {
+			navigate(`/play/${data.gameId}`, { state: { autoJoinMatch: true } });
+		};
+		socket.on("tournament:minigame-start", onMinigameStart);
+		return () => {
+			socket.off("tournament:minigame-start", onMinigameStart);
+		};
+	}, [navigate]);
+
 	// 500 ms countdown tick — purely presentational (SPEC-022 "Latencia").
 	useEffect(() => {
 		const timer = window.setInterval(() => setNowMs(Date.now()), 500);
@@ -104,6 +120,28 @@ export function TournamentBoardView({
 		);
 	};
 
+	// Leaving mid-match exits the VIEW, not the tournament (SPEC-023 owns
+	// abandonment semantics): the server keeps playing — the leaver's turns
+	// auto-resolve (SPEC-005) — and reopening the Tournament button rejoins
+	// the room with the current snapshot (SPEC-022 reconnection).
+	const leaveMatch = () => {
+		const confirmed = window.confirm(
+			"Leave the match view? The tournament keeps running — your turns will " +
+				"be rolled automatically, and you can rejoin from the Tournament button.",
+		);
+		if (confirmed) onExit();
+	};
+
+	const sendIntent = (name: "StartGamblingIntent" | "LeaveGamblingIntent") => {
+		getGameSocket().emit(
+			TOURNAMENT_WS_MESSAGES.INTENT,
+			{ tournamentId, intent: { name } },
+			(_ack: TournamentIntentAck) => {
+				/* the next snapshot renders the outcome */
+			},
+		);
+	};
+
 	const phase = snapshot?.phase ?? null;
 	const isTerminal =
 		phase === "FINISHED" || phase === "DEFEAT" || phase === "CANCELLED";
@@ -115,6 +153,15 @@ export function TournamentBoardView({
 	const countdownSeconds =
 		snapshot?.turnDeadlineAt != null
 			? Math.max(0, Math.ceil((snapshot.turnDeadlineAt - nowMs) / 1000))
+			: null;
+	const gambling = snapshot?.gambling ?? null;
+	const gamblingSeconds =
+		gambling !== null
+			? Math.max(0, Math.ceil((gambling.deadlineAt - nowMs) / 1000))
+			: null;
+	const champion =
+		snapshot?.winnerUserId != null
+			? snapshot.players.find((p) => p.userId === snapshot.winnerUserId) ?? null
 			: null;
 
 	return createPortal(
@@ -187,12 +234,14 @@ export function TournamentBoardView({
 								{isTerminal ? (
 									<>
 										<div style={{ fontSize: 30 }}>
-											{phase === "CANCELLED" ? "🚫" : "🏁"}
+											{phase === "CANCELLED" ? "🚫" : champion ? "🏆" : "💀"}
 										</div>
 										<div style={{ fontWeight: 700 }}>
 											{phase === "CANCELLED"
 												? "Cancelled"
-												: "Tournament over"}
+												: champion
+													? `${champion.username} claims THE PARROT'S SHELL!`
+													: "Collective defeat — the Shell stays hidden"}
 										</div>
 									</>
 								) : (
@@ -201,13 +250,12 @@ export function TournamentBoardView({
 											Round {snapshot.round} / {snapshot.maxRound}
 										</div>
 										<div style={{ fontWeight: 700, fontSize: 14 }}>
-											{snapshot.phase === "PLAYER_TURNS"
-												? activePlayerName(snapshot)
-												: snapshot.phase}
+											{phaseLabel(snapshot)}
 										</div>
-										{countdownSeconds !== null && (
-											<div style={mutedLabel}>{countdownSeconds}s</div>
-										)}
+										{snapshot.phase === "PLAYER_TURNS" &&
+											countdownSeconds !== null && (
+												<div style={mutedLabel}>{countdownSeconds}s</div>
+											)}
 									</>
 								)}
 							</div>
@@ -231,6 +279,7 @@ export function TournamentBoardView({
 									>
 										<span style={{ ...tokenStyle, background: seatColor(p.seat) }} />
 										<span style={{ flex: 1 }}>
+											{p.isBot ? "🤖 " : ""}
 											{p.username}
 											{p.userId === myUserId ? " (you)" : ""}
 										</span>
@@ -243,21 +292,70 @@ export function TournamentBoardView({
 								Key Items: {snapshot.keyItems.unlocked} / {snapshot.keyItems.required}
 							</div>
 
+							{/* Gambling decision (SPEC-016): the winner decides; everyone
+							    else watches live (SPEC-039 "Tiempo de espectador"). */}
+							{gambling && (
+								<div style={gamblingBox}>
+									{gambling.winnerId === myUserId ? (
+										<>
+											<div style={{ fontWeight: 700 }}>
+												🎰 You won the minigame!
+											</div>
+											<div style={mutedLabel}>
+												Bet {gambling.cost} points for a Key Item —{" "}
+												{Math.round(gambling.winChance * 100)}% chance ·{" "}
+												{gamblingSeconds}s
+											</div>
+											<div style={{ display: "flex", gap: 8 }}>
+												<button
+													type="button"
+													style={{ ...primaryBtn, marginTop: 4, flex: 1 }}
+													onClick={() => sendIntent("StartGamblingIntent")}
+												>
+													Gamble
+												</button>
+												<button
+													type="button"
+													style={{ ...secondaryBtn, marginTop: 4, flex: 1 }}
+													onClick={() => sendIntent("LeaveGamblingIntent")}
+												>
+													Pass
+												</button>
+											</div>
+										</>
+									) : (
+										<div style={mutedLabel}>
+											🎰{" "}
+											{snapshot.players.find(
+												(p) => p.userId === gambling.winnerId,
+											)?.username ?? "The winner"}{" "}
+											is deciding whether to gamble for a Key Item…{" "}
+											{gamblingSeconds}s
+										</div>
+									)}
+								</div>
+							)}
+
 							{!isTerminal && (
-								<button
-									type="button"
-									style={{
-										...primaryBtn,
-										opacity: isMyTurn ? 1 : 0.45,
-										cursor: isMyTurn ? "pointer" : "default",
-									}}
-									disabled={!isMyTurn}
-									onClick={rollDice}
-								>
-									{isMyTurn
-										? `🎲 Roll the dice${countdownSeconds !== null ? ` (${countdownSeconds}s)` : ""}`
-										: "Waiting for your turn…"}
-								</button>
+								<>
+									<button
+										type="button"
+										style={{
+											...primaryBtn,
+											opacity: isMyTurn ? 1 : 0.45,
+											cursor: isMyTurn ? "pointer" : "default",
+										}}
+										disabled={!isMyTurn}
+										onClick={rollDice}
+									>
+										{isMyTurn
+											? `🎲 Roll the dice${countdownSeconds !== null ? ` (${countdownSeconds}s)` : ""}`
+											: "Waiting for your turn…"}
+									</button>
+									<button type="button" style={leaveMatchBtn} onClick={leaveMatch}>
+										Leave match
+									</button>
+								</>
 							)}
 							{isTerminal && (
 								<button type="button" style={primaryBtn} onClick={onExit}>
@@ -278,6 +376,29 @@ function activePlayerName(snapshot: TournamentSnapshotV1): string {
 		(p) => p.userId === snapshot.activePlayerId,
 	);
 	return active ? `${active.username}'s turn` : "…";
+}
+
+/** Human phase label for the board center (presentation only, SPEC-022). */
+function phaseLabel(snapshot: TournamentSnapshotV1): string {
+	switch (snapshot.phase) {
+		case "PLAYER_TURNS":
+			return activePlayerName(snapshot);
+		case "MINIGAME":
+			return "🎮 Minigame in progress…";
+		case "GAMBLING_PHASE":
+			return "🎰 Gambling…";
+		case "CHECK_KEY_ITEMS":
+			return "🔑 Checking Key Items…";
+		case "BOSS_EVENT":
+			return "🦜 The Parrot King rises!";
+		case "FINAL_CHALLENGE":
+			return "⚔️ FINAL CHALLENGE — sudden death!";
+		case "VICTORY":
+		case "REWARDS":
+			return "🏆 Victory!";
+		default:
+			return snapshot.phase;
+	}
 }
 
 // ── Provisional inline styles (self-contained; replaced by Phase 7) ──────────
@@ -395,4 +516,24 @@ const secondaryBtn: CSSProperties = {
 	border: "1px solid rgba(255,255,255,0.35)",
 	background: "transparent",
 	color: "#fff",
+};
+const gamblingBox: CSSProperties = {
+	marginTop: 6,
+	padding: "10px 12px",
+	borderRadius: 10,
+	border: "1px solid rgba(241,196,15,0.5)",
+	background: "rgba(241,196,15,0.1)",
+	display: "flex",
+	flexDirection: "column",
+	gap: 6,
+};
+const leaveMatchBtn: CSSProperties = {
+	marginTop: 4,
+	padding: "8px 12px",
+	borderRadius: 10,
+	border: "1px solid rgba(220,60,60,0.55)",
+	background: "transparent",
+	color: "#ff9a9a",
+	fontSize: 13,
+	cursor: "pointer",
 };

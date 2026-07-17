@@ -188,14 +188,19 @@ export class TournamentSyncService {
 			}));
 
 		const players: TournamentPlayerStateSummary[] = runtime.playOrder.map(
-			(userId, seat) => ({
-				userId,
-				username: usernames.get(userId) ?? `player-${userId}`,
-				seat,
-				points: engines.economy.getBalance(userId) ?? 0,
-				tileId: engines.board.getPosition(userId) ?? null,
-				connected: connected.has(userId),
-			}),
+			(userId, seat) => {
+				const isBot = runtime.botPlayers.has(userId);
+				return {
+					userId,
+					username: usernames.get(userId) ?? `player-${userId}`,
+					seat,
+					points: engines.economy.getBalance(userId) ?? 0,
+					tileId: engines.board.getPosition(userId) ?? null,
+					// CPUs are server-driven — never "disconnected".
+					connected: isBot || connected.has(userId),
+					isBot,
+				};
+			},
 		);
 
 		const activeTurn = engines.turnSystem.getActiveTurn();
@@ -216,6 +221,25 @@ export class TournamentSyncService {
 				unlocked: engines.keyItems.getUnlockedCount(),
 				required: engines.keyItems.getRequired(),
 			},
+			gambling: this.gamblingView(runtime),
+			minigameMatchId: engines.minigame.serialize().pendingMatchId,
+			winnerUserId: runtime.winner,
+		};
+	}
+
+	/** The open gambling session as everyone may see it (SPEC-016/039). */
+	private gamblingView(
+		runtime: TournamentRuntime,
+	): TournamentSnapshotV1["gambling"] {
+		const session = runtime.gameEngines.gambling.serialize().session;
+		if (!session) {
+			return null;
+		}
+		return {
+			winnerId: session.winnerId,
+			cost: session.cost,
+			winChance: session.winChance,
+			deadlineAt: session.deadlineAt,
 		};
 	}
 }
