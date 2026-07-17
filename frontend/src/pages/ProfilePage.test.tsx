@@ -33,8 +33,10 @@ const publicUser: PublicUserView = {
 	username: "kame",
 	turtleName: "Kame Master",
 	shellSkin: "dragon",
+	hubBackground: "sunset_bg",
 	avatar: null,
 	level: 12,
+	accountAgeDays: 198,
 	isOnline: true,
 	mostPlayedGame: {
 		gameId: "bamboo-bash",
@@ -46,6 +48,7 @@ const publicUser: PublicUserView = {
 		totalWins: 10,
 		totalLosses: 3,
 		gamesPlayed: 13,
+		totalCoinsEarned: 12500,
 		tag: "shell-first",
 		showcasedAchievements: ["first-win"],
 	},
@@ -96,8 +99,18 @@ describe("ProfilePage", () => {
 		expect(screen.getByText("🛡️ Shell First")).toBeInTheDocument();
 		expect(screen.getByText("First Victory")).toBeInTheDocument();
 		expect(screen.getByText("Bamboo Bash")).toBeInTheDocument();
-		expect(screen.getByText("Losses")).toBeInTheDocument();
+		expect(screen.getByText("Total matches")).toBeInTheDocument();
+		expect(screen.getByText("Gold earned")).toBeInTheDocument();
+		expect(screen.getByText("12,500")).toBeInTheDocument();
+		expect(screen.getByText("Account age")).toBeInTheDocument();
+		expect(screen.getByText("198 days")).toBeInTheDocument();
+		expect(screen.getByText("Total losses")).toBeInTheDocument();
+		expect(screen.getByLabelText("Player card preview")).toHaveClass(
+			"profile-preview--with-background",
+			"profile-preview--sunset",
+		);
 		expect(screen.getByRole("img", { name: "Kame Master's shell portrait" })).toBeInTheDocument();
+		expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
 	});
 
 	it("uses safe placeholders for no tag, no matches, and unknown achievement IDs", async () => {
@@ -119,7 +132,9 @@ describe("ProfilePage", () => {
 		expect(await screen.findByRole("heading", { name: "kame" })).toBeInTheDocument();
 		expect(screen.getByText("No dojo tag")).toBeInTheDocument();
 		expect(screen.getAllByText("Empty showcase slot")).toHaveLength(3);
-		expect(screen.getByText("No matches played yet.")).toBeInTheDocument();
+		expect(screen.getByText("No games yet")).toBeInTheDocument();
+		expect(screen.getByText("12,500")).toBeInTheDocument();
+		expect(screen.getByText("198 days")).toBeInTheDocument();
 		expect(screen.getByText("Offline")).toBeInTheDocument();
 	});
 

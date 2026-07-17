@@ -486,6 +486,7 @@ Evidence:
 - Achievements
 - Leaderboards
 - XP/level and progression
+- Compact XP progress in the hub player card and detailed progress in the private profile preview.
 - Visual achievement popups
 
 Missing for completion:

@@ -233,16 +233,21 @@ On click: if the game is `available` and its scene is registered, the scene star
 
 ### HUD Bar
 
-Rendered by `drawHUD()` when a user is logged in. A 56 px tall translucent bar at the top of the screen shows:
+Rendered by the React hub page when a user is logged in. The player area at the
+top of the screen shows:
 
-- Avatar circle (gold ring + turtle silhouette placeholder)
-- Player name and level
-- XP progress bar with numeric label
-- Dojo Rankings leaderboard (bottom-right, top 5 by XP)
+- The uploaded avatar or equipped shell portrait, with a level badge.
+- The player name, dojo tag, equipped shell and coin balance.
+- A compact XP progress bar with a numeric label; narrow layouts retain the bar
+  while hiding the numbers.
+- The most-played game summary when available. Selected achievements remain in
+  the profile rather than duplicating them in this compact player area.
 
 The player card opens the profile editor. A separate accessible link opens the
 current player's public `/profile/:username` page, so the existing editor action
-is unchanged.
+is unchanged. The private profile preview repeats the detailed XP bar, while the
+public profile deliberately omits XP with the rest of the private progression
+data.
 
 ### Login Prompt
 

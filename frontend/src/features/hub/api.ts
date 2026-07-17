@@ -237,14 +237,17 @@ export interface PublicUserView {
 	username: string;
 	turtleName: string | null;
 	shellSkin: string;
+	hubBackground: string;
 	avatar: string | null;
 	level: number;
+	accountAgeDays: number;
 	isOnline: boolean;
 	mostPlayedGame: MostPlayedGame | null;
 	profile: {
 		totalWins: number;
 		totalLosses: number;
 		gamesPlayed: number;
+		totalCoinsEarned: number;
 		tag: string | null;
 		showcasedAchievements: string[] | null;
 	} | null;

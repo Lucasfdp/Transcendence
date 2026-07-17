@@ -95,6 +95,7 @@ import {
 } from "../features/social/presence";
 import { useToast } from "../features/social/toast/ToastContext";
 import { ConnectedAccounts } from "../features/account-links/ConnectedAccounts";
+import { ExperienceProgress } from "../features/profile/ExperienceProgress";
 import { ShellPortrait } from "../features/profile/ShellPortrait";
 import { PlayerProfilePreview } from "../features/profile/PlayerProfilePreview";
 import { ViewProfileLink } from "../features/profile/ViewProfileLink";
@@ -216,18 +217,6 @@ function getCosmeticDisplayDescription(cosmetic: Cosmetic): string {
 		return "The plain starter shell. No special colour, no decoration, just the shell every player begins with.";
 	}
 	return cosmetic.description;
-}
-
-function getShellSkinDisplayName(shellSkin: string | null | undefined): string {
-	if (!shellSkin || shellSkin === "base") return "Default Shell";
-	if (shellSkin === "dragon") return "Dragon Shell";
-	if (shellSkin === "bamboo") return "Bamboo Shell";
-	if (shellSkin === "purple") return "Purple Shell";
-	return shellSkin
-		.split(/[-_]/)
-		.filter(Boolean)
-		.map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-		.join(" ");
 }
 
 function getAchievementProgress(achievement: Achievement): {
@@ -2777,10 +2766,6 @@ function HomeMenu(): JSX.Element {
 			return tag ? [tag] : [];
 		});
 
-	const showcasedIds = player?.profile?.showcasedAchievements ?? [];
-	const showcasedAchievements = showcasedIds
-		.map((id) => achievements?.find((a) => a.id === id) ?? null)
-		.filter((a): a is Achievement => a !== null);
 	const unlockedAchievementCount =
 		achievements?.filter((achievement) => achievement.unlocked).length ?? 0;
 	const totalAchievementCount = achievements?.length ?? 0;
@@ -2825,21 +2810,14 @@ function HomeMenu(): JSX.Element {
 									</span>
 								) : null}
 							</span>
-							<span className="hub-page__player-meta">
-								Lvl {player?.level ?? 1} · {getShellSkinDisplayName(player?.shellSkin)} · ⬡ {player?.coins ?? 0}
-							</span>
+							<ExperienceProgress
+								level={player?.level ?? 1}
+								xp={player?.xp ?? 0}
+								compact
+							/>
 							{player?.mostPlayedGame ? (
 								<span className="hub-page__most-played">
 									🐢 {player.mostPlayedGame.gameName} · {player.mostPlayedGame.gamesPlayed} {player.mostPlayedGame.gamesPlayed === 1 ? "match" : "matches"} · {player.mostPlayedGame.winRate}% wins
-								</span>
-							) : null}
-							{showcasedAchievements.length > 0 ? (
-								<span className="hub-page__player-badges">
-									{showcasedAchievements.map((a) => (
-										<span key={a.id} className="hub-page__player-badge">
-											{a.title}
-										</span>
-									))}
 								</span>
 							) : null}
 						</span>
@@ -3644,16 +3622,14 @@ function HomeMenu(): JSX.Element {
 													onChange={(event) => void handleAvatarUpload(event)}
 												/>
 											</label>
-											{player?.avatar ? (
-												<button
-													type="button"
-													className="hub-modal__portrait-reset"
-													disabled={avatarSaving}
-													onClick={() => void handleAvatarClear()}
-												>
-													Use equipped shell
-												</button>
-											) : null}
+											<button
+												type="button"
+												className="hub-modal__portrait-reset"
+												disabled={avatarSaving || !player?.avatar}
+												onClick={() => void handleAvatarClear()}
+											>
+												Use equipped shell
+											</button>
 										</div>
 										<small>JPEG, PNG, WebP, or GIF · 2 MB maximum</small>
 									</div>
@@ -3773,6 +3749,7 @@ function HomeMenu(): JSX.Element {
 								avatar={player?.avatar}
 								shellSkin={player?.shellSkin}
 								level={player?.level ?? 1}
+								xp={player?.xp ?? 0}
 								tag={selectedProfileTag}
 								achievements={profileShowcasedAchievements.map((achievementId) =>
 									achievementId

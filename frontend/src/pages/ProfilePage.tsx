@@ -10,6 +10,8 @@ import { PlayerProfilePreview } from "../features/profile/PlayerProfilePreview";
 import { accountDisplayName, displayUsername } from "../shared/player-labels";
 import { TURTLE_TAGS } from "../shared/turtle-tags";
 
+const PROFILE_NUMBER_FORMAT = new Intl.NumberFormat("en-GB");
+
 type ProfileState =
 	| { status: "loading" }
 	| { status: "loaded"; user: PublicUserView; achievements: Achievement[] }
@@ -23,8 +25,10 @@ function isPublicUserView(value: unknown): value is PublicUserView {
 		typeof user.username !== "string" ||
 		(user.turtleName !== null && typeof user.turtleName !== "string") ||
 		typeof user.shellSkin !== "string" ||
+		typeof user.hubBackground !== "string" ||
 		(user.avatar !== null && typeof user.avatar !== "string") ||
 		typeof user.level !== "number" ||
+		typeof user.accountAgeDays !== "number" ||
 		typeof user.isOnline !== "boolean" ||
 		(user.mostPlayedGame !== null &&
 			(!user.mostPlayedGame ||
@@ -43,6 +47,7 @@ function isPublicUserView(value: unknown): value is PublicUserView {
 		typeof profile.totalWins === "number" &&
 		typeof profile.totalLosses === "number" &&
 		typeof profile.gamesPlayed === "number" &&
+		typeof profile.totalCoinsEarned === "number" &&
 		(profile.tag === null || typeof profile.tag === "string") &&
 		(profile.showcasedAchievements === null ||
 			(Array.isArray(profile.showcasedAchievements) &&
@@ -140,28 +145,41 @@ export function ProfilePage(): JSX.Element {
 					avatar={user.avatar}
 					shellSkin={user.shellSkin}
 					level={user.level}
+					backgroundId={user.hubBackground}
 					tag={tag ?? (profile?.tag ? { emoji: "🥋", label: profile.tag } : null)}
 					achievements={showcasedAchievements}
 					statistics={[
-						{ label: "Matches", value: profile?.gamesPlayed ?? 0 },
-						{ label: "Wins", value: profile?.totalWins ?? 0 },
-						{ label: "Losses", value: profile?.totalLosses ?? 0 },
+						{ label: "Total matches", value: profile?.gamesPlayed ?? 0 },
+						{ label: "Total wins", value: profile?.totalWins ?? 0 },
+						{ label: "Total losses", value: profile?.totalLosses ?? 0 },
 					]}
 				/>
 
 				<section
 					className="public-profile-page__game"
-					aria-label="Most-played game"
+					aria-label="Most-played game statistics"
 				>
-					<span>Most played</span>
-					{user.mostPlayedGame ? (
-						<p>
-							<strong>{user.mostPlayedGame.gameName}</strong>
-							{` · ${user.mostPlayedGame.gamesPlayed} matches · ${user.mostPlayedGame.winRate}% wins`}
-						</p>
-					) : (
-						<p>No matches played yet.</p>
-					)}
+					<article>
+						<span>Most-played game</span>
+						<strong>
+							{user.mostPlayedGame?.gameName ?? "No games yet"}
+						</strong>
+					</article>
+					<article>
+						<span>Gold earned</span>
+						<strong>
+							{PROFILE_NUMBER_FORMAT.format(
+								profile?.totalCoinsEarned ?? 0,
+							)}
+						</strong>
+					</article>
+					<article>
+						<span>Account age</span>
+						<strong>
+							{PROFILE_NUMBER_FORMAT.format(user.accountAgeDays)}{" "}
+							{user.accountAgeDays === 1 ? "day" : "days"}
+						</strong>
+					</article>
 				</section>
 			</div>
 		</main>

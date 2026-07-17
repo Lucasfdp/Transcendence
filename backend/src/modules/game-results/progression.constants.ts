@@ -16,9 +16,8 @@ export const COINS_PER_COMPLETED = 20;
  *   Level 2 → needs 2 000 XP to reach level 3.
  *   …and so on.
  *
- * IMPORTANT: the frontend ProfilePanel.ts XP-bar max uses the same formula:
- *   `(user.level ?? 1) * 1000`
- * Keep both in sync — if you change this formula, update ProfilePanel too.
+ * IMPORTANT: the frontend ExperienceProgress XP-bar max uses the same formula.
+ * Keep both in sync if this progression curve changes.
  */
 export function xpForNextLevel(currentLevel: number): number {
 	return currentLevel * 1_000;

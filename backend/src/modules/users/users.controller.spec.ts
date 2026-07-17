@@ -91,10 +91,13 @@ describe("UsersController — getUser public whitelist (Bug Audit H2)", () => {
 		xp: 4200,
 		turtleName: "KameMaster",
 		shellSkin: "dragon",
+		hubBackground: "sunset_bg",
+		hubBackgroundAlter: "sunset_cycle_bg",
 		avatar: "a.png",
 		level: 12,
 		isGuest: false,
 		lastSeenAt: new Date("2026-07-01T00:00:00Z"),
+		createdAt: new Date("2026-01-01T00:00:00Z"),
 		profile: Object.assign(
 			{},
 			{
@@ -131,20 +134,29 @@ describe("UsersController — getUser public whitelist (Bug Audit H2)", () => {
 			string,
 			unknown
 		>;
+		const accountAgeDays = Math.max(
+			0,
+			Math.floor(
+				(Date.now() - fullUser.createdAt.getTime()) / 86_400_000,
+			),
+		);
 
 		expect(result).toEqual({
 			id: 7,
 			username: "kame",
 			turtleName: "KameMaster",
 			shellSkin: "dragon",
+			hubBackground: "sunset_bg",
 			avatar: "a.png",
 			level: 12,
+			accountAgeDays,
 			isOnline: true,
 			mostPlayedGame: { gameName: "Bamboo Bash", winRate: 77 },
 			profile: {
 				totalWins: 10,
 				totalLosses: 3,
 				gamesPlayed: 13,
+				totalCoinsEarned: 500,
 				tag: "brawler",
 				showcasedAchievements: ["first_win"],
 			},
@@ -158,6 +170,8 @@ describe("UsersController — getUser public whitelist (Bug Audit H2)", () => {
 			"coins",
 			"xp",
 			"lastSeenAt",
+			"createdAt",
+			"hubBackgroundAlter",
 			"isGuest",
 		]) {
 			expect(result).not.toHaveProperty(leaked);

@@ -81,14 +81,17 @@ export interface PublicUserView {
 	username: string;
 	turtleName: string | null;
 	shellSkin: string;
+	hubBackground: string;
 	avatar: string | null;
 	level: number;
+	accountAgeDays: number;
 	isOnline: boolean;
 	mostPlayedGame: MostPlayedGame | null;
 	profile: {
 		totalWins: number;
 		totalLosses: number;
 		gamesPlayed: number;
+		totalCoinsEarned: number;
 		tag: string | null;
 		showcasedAchievements: string[] | null;
 	} | null;
@@ -306,8 +309,15 @@ export class UsersController {
 			username: user.username,
 			turtleName: user.turtleName ?? null,
 			shellSkin: user.shellSkin,
+			hubBackground: user.hubBackground,
 			avatar: user.avatar ?? null,
 			level: user.level,
+			accountAgeDays: Math.max(
+				0,
+				Math.floor(
+					(Date.now() - user.createdAt.getTime()) / 86_400_000,
+				),
+			),
 			isOnline: this.presence.isOnline(user.id),
 			mostPlayedGame,
 			profile: user.profile
@@ -315,6 +325,7 @@ export class UsersController {
 						totalWins: user.profile.totalWins,
 						totalLosses: user.profile.totalLosses,
 						gamesPlayed: user.profile.gamesPlayed,
+						totalCoinsEarned: user.profile.totalCoinsEarned,
 						tag: user.profile.tag,
 						showcasedAchievements: user.profile.showcasedAchievements,
 					}
