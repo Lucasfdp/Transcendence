@@ -100,7 +100,7 @@ import {
 	PLAYER_HEX_COLOURS,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
-import { hudPlayerLabel } from "../../shared/player-labels";
+import { displayUsername, hudPlayerLabel } from "../../shared/player-labels";
 import { resolveReplayWinnerSide } from "../common/localReplay";
 import {
 	ArenaBallTrailRuntime,
@@ -993,8 +993,8 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 					label: `P${player.side + 1}`,
 					detail:
 						player.side === this.online.side
-							? `${player.username} (You)`
-							: player.username,
+							? `${displayUsername(player.username)} (You)`
+							: displayUsername(player.username),
 					score: snapshot.score[player.side] ?? 0,
 					color: PLAYER_HEX_COLOURS[
 						player.side % PLAYER_HEX_COLOURS.length

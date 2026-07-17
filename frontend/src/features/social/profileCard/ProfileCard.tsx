@@ -1,3 +1,6 @@
+import { ShellPortrait } from "../../profile/ShellPortrait";
+import { accountDisplayName } from "../../../shared/player-labels";
+
 /**
  * Presentational hover/focus profile card. Pure — takes the fetched user (or
  * null) and a loading flag as props so it can be tested without the
@@ -5,6 +8,10 @@
  */
 
 export interface ProfileCardUser {
+	username?: string;
+	turtleName?: string | null;
+	avatar?: string | null;
+	shellSkin?: string | null;
 	level: number;
 	profile?: {
 		totalWins: number;
@@ -33,7 +40,10 @@ export function ProfileCard({ user, loading }: ProfileCardProps): JSX.Element {
 
 	if (!user) {
 		return (
-			<div className="hub-profile-card hub-profile-card--error" role="status">
+			<div
+				className="hub-profile-card hub-profile-card--error"
+				role="status"
+			>
 				Could not load profile.
 			</div>
 		);
@@ -42,10 +52,25 @@ export function ProfileCard({ user, loading }: ProfileCardProps): JSX.Element {
 	const wins = user.profile?.totalWins ?? 0;
 	const losses = user.profile?.totalLosses ?? 0;
 	const tag = user.profile?.tag ?? null;
+	const displayName = accountDisplayName(user);
 
 	return (
 		<div className="hub-profile-card" role="status">
-			<p className="hub-profile-card__level">Level {user.level}</p>
+			<div className="hub-profile-card__identity">
+				<ShellPortrait
+					avatar={user.avatar}
+					shellSkin={user.shellSkin}
+					displayName={displayName}
+					level={user.level}
+					size="small"
+				/>
+				<div>
+					<strong>{displayName}</strong>
+					<p className="hub-profile-card__level">
+						Level {user.level}
+					</p>
+				</div>
+			</div>
 			{tag ? <p className="hub-profile-card__tag">{tag}</p> : null}
 			<p className="hub-profile-card__most-played">
 				{user.mostPlayedGame

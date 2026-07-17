@@ -151,11 +151,7 @@ export interface FriendView {
 
 /** Mirrors the backend ReportCategory union. */
 export type ReportCategory =
-	| "harassment"
-	| "cheating"
-	| "inappropriate_name"
-	| "spam"
-	| "other";
+	"harassment" | "cheating" | "inappropriate_name" | "spam" | "other";
 
 export const REPORT_CATEGORIES: { id: ReportCategory; label: string }[] = [
 	{ id: "harassment", label: "Harassment" },
@@ -442,6 +438,10 @@ export const api = {
 		form.append("avatar", file);
 		return apiUploadFile<{ avatarUrl: string }>("/users/me/avatar", form);
 	},
+
+	/** Remove the uploaded avatar and return to the equipped shell portrait. */
+	clearAvatar: (): Promise<{ ok: boolean }> =>
+		apiFetch<{ ok: boolean }>("/users/me/avatar", { method: "DELETE" }),
 
 	/** Fetch and cache the CSRF token. Call once before any POST/DELETE. */
 	getCsrfToken: (): Promise<string> => fetchCsrfToken(),

@@ -3,6 +3,8 @@ import { Logger, ValidationPipe } from "@nestjs/common";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { json, urlencoded } from "express";
+import { mkdirSync } from "fs";
+import { join } from "path";
 import { AppModule } from "./app.module";
 import { MetricsInterceptor } from "./modules/metrics/metrics.interceptor";
 import { MetricsService } from "./modules/metrics/metrics.service";
@@ -15,6 +17,10 @@ async function bootstrap() {
 	app.set("trust proxy", 1);
 	app.use(json({ limit: "10mb" }));
 	app.use(urlencoded({ extended: true, limit: "10mb" }));
+	const uploadsDirectory =
+		process.env.UPLOADS_DIR ?? join(process.cwd(), "uploads");
+	mkdirSync(join(uploadsDirectory, "avatars"), { recursive: true });
+	app.useStaticAssets(uploadsDirectory, { prefix: "/api/uploads/" });
 
 	// Global validation pipe
 	app.useGlobalPipes(

@@ -22,6 +22,7 @@ import {
 } from "../../services/network/gameSocket";
 import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
 import { THEME } from "../../shared/theme";
+import { displayUsername } from "../../shared/player-labels";
 import { drawShellCurlBallTrails, drawShellCurlBumpers } from "./ShellCurlView";
 import { destroyIngamePlayerTexture } from "../../shared/mechanics/player-renderer";
 import {
@@ -517,8 +518,8 @@ export class ShellCurlOnlineController {
 						label: `P${player.side + 1}`,
 						detail:
 							player.side === this.side
-								? `${player.username} (You)`
-								: player.username,
+								? `${displayUsername(player.username)} (You)`
+								: displayUsername(player.username),
 						score: snapshot.score[player.side] ?? 0,
 						color: this.scene.playerHexColour(player.side),
 					})),
