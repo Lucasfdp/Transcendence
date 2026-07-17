@@ -306,24 +306,6 @@ const GAME_ROUTES: Record<
 	},
 };
 
-const GAME_BUTTON_IMAGES: Record<string, string> = {
-	"bamboo-bash": "/assets/ui/gamesButtons/bambooBashButton.png",
-	"bell-clash": "/assets/ui/gamesButtons/bellClashButton.png",
-	"kame-knock": "/assets/ui/gamesButtons/kameKnockButton.png",
-	"oni-dodge": "/assets/ui/gamesButtons/oniDodgeButton.png",
-	"river-rush": "/assets/ui/gamesButtons/riverRushButton.png",
-	"temple-curling": "/assets/ui/gamesButtons/templeCurlingButton.png",
-};
-
-const GAMBIT_BUTTON_IMAGES: Record<string, string> = {
-	casino: "/assets/ui/gamesButtons/fortuneWheelButton.png",
-	dice: "/assets/ui/gamesButtons/koiDiceButton.png",
-	drop: "/assets/ui/gamesButtons/shellDropButton.png",
-	flip: "/assets/ui/gamesButtons/shellFlipButton.png",
-	monte: "/assets/ui/gamesButtons/threeShellMonteButton.png",
-	slots: "/assets/ui/gamesButtons/shrineSlotsButton.png",
-};
-
 type RgbColor = { r: number; g: number; b: number };
 type CycleStar = {
 	left: string;
@@ -1344,7 +1326,6 @@ function HomeMenu(): JSX.Element {
 				id,
 				name: apiGame?.name ?? meta.label,
 				description: apiGame?.description ?? meta.description,
-				buttonImage: GAME_BUTTON_IMAGES[id],
 				available:
 					meta.available === true || apiGame?.status === "available",
 			};
@@ -1356,7 +1337,6 @@ function HomeMenu(): JSX.Element {
 				id: game.id,
 				name: game.name,
 				description: game.description,
-				buttonImage: GAME_BUTTON_IMAGES[game.id],
 				available: game.status === "available",
 			}));
 
@@ -2923,6 +2903,8 @@ function HomeMenu(): JSX.Element {
 							className={`hub-notif-bell${isNotifDrawerOpen ? " is-open" : ""}`}
 							type="button"
 							aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+							aria-expanded={isNotifDrawerOpen}
+							aria-controls="hub-notif-drawer"
 							onClick={() => setIsNotifDrawerOpen((o) => !o)}
 						>
 							🔔
@@ -3062,13 +3044,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("casino")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.casino}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Fortune Wheel</span>
+												<span className="hub-game-card__title">Fortune Wheel</span>
 												<small>Wager coins at the gambling den</small>
 											</button>
 											<button
@@ -3076,13 +3052,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("flip")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.flip}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Shell Flip</span>
+												<span className="hub-game-card__title">Shell Flip</span>
 												<small>Call a shell, double or nothing</small>
 											</button>
 											<button
@@ -3090,13 +3060,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("monte")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.monte}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Three-Shell Monte</span>
+												<span className="hub-game-card__title">Three-Shell Monte</span>
 												<small>Find the pearl, pay up to 5×</small>
 											</button>
 											<button
@@ -3104,13 +3068,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("slots")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.slots}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Shrine Slots</span>
+												<span className="hub-game-card__title">Shrine Slots</span>
 												<small>Spin three reels for the jackpot</small>
 											</button>
 											<button
@@ -3118,13 +3076,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("dice")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.dice}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Koi Dice</span>
+												<span className="hub-game-card__title">Koi Dice</span>
 												<small>Set your own odds, under or over</small>
 											</button>
 											<button
@@ -3132,13 +3084,7 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												onClick={() => setActiveModal("drop")}
 											>
-												<img
-													className="hub-game-card__image"
-													src={GAMBIT_BUTTON_IMAGES.drop}
-													alt=""
-													aria-hidden="true"
-												/>
-												<span className="sr-only">Shell Drop</span>
+												<span className="hub-game-card__title">Shell Drop</span>
 												<small>Drop a shell through the pegs</small>
 											</button>
 										</>
@@ -3150,23 +3096,8 @@ function HomeMenu(): JSX.Element {
 													className={`hub-game-card hub-game-card--${game.id}`}
 													to={`/play/${game.id}`}
 												>
-													{game.buttonImage ? (
-														<>
-															<img
-																className="hub-game-card__image"
-																src={game.buttonImage}
-																alt=""
-																aria-hidden="true"
-															/>
-															<span className="sr-only">{game.name}</span>
-															<small>{game.description}</small>
-														</>
-													) : (
-														<>
-															<span>{game.name}</span>
-															<small>{game.description}</small>
-														</>
-													)}
+													<span className="hub-game-card__title">{game.name}</span>
+													<small>{game.description}</small>
 												</Link>
 											) : (
 												<button
@@ -3182,23 +3113,8 @@ function HomeMenu(): JSX.Element {
 																})
 													}
 												>
-													{game.buttonImage ? (
-														<>
-															<img
-																className="hub-game-card__image"
-																src={game.buttonImage}
-																alt=""
-																aria-hidden="true"
-															/>
-															<span className="sr-only">{game.name}</span>
-															<small>{game.description}</small>
-														</>
-													) : (
-														<>
-															<span>{game.name}</span>
-															<small>Coming soon</small>
-														</>
-													)}
+													<span className="hub-game-card__title">{game.name}</span>
+													<small>{game.description}</small>
 												</button>
 											),
 										)
@@ -3299,7 +3215,19 @@ function HomeMenu(): JSX.Element {
 
 			{/* Notification drawer */}
 			{isNotifDrawerOpen && (
-				<div className="hub-notif-drawer" role="dialog" aria-label="Notifications">
+				<>
+					<button
+						className="hub-notif-drawer__backdrop"
+						type="button"
+						aria-label="Close notifications"
+						onClick={() => setIsNotifDrawerOpen(false)}
+					/>
+					<div
+						id="hub-notif-drawer"
+						className="hub-notif-drawer"
+						role="dialog"
+						aria-label="Notifications"
+					>
 					<div className="hub-notif-drawer__header">
 						<h3>Notifications</h3>
 						{unreadCount > 0 && (
@@ -3433,7 +3361,8 @@ function HomeMenu(): JSX.Element {
 							))}
 						</ul>
 					)}
-				</div>
+					</div>
+				</>
 			)}
 
 			{infoModal ? (
