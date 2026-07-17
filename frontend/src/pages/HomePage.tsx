@@ -3003,7 +3003,13 @@ function HomeMenu(): JSX.Element {
 									type="button"
 									onClick={handleReturnToModeSelector}
 								>
-									Back to mode selector
+									<img
+										className="hub-page__mode-back-button-image"
+										src="/assets/ui/backButton.png"
+										alt=""
+										aria-hidden="true"
+									/>
+									<span>Back to mode selector</span>
 								</button>
 							</div>
 						)}

@@ -1892,30 +1892,45 @@ input {
 }
 
 .hub-page__mode-back-button {
+	position: relative;
+	display: grid;
+	place-items: center;
 	align-self: center;
-	padding: 0.6rem 1.35rem;
-	border: 1px solid rgba(123, 183, 111, 0.58);
-	border-radius: 0.86rem;
-	background:
-		linear-gradient(180deg, rgba(33, 37, 24, 0.88), rgba(8, 18, 11, 0.94)),
-		rgba(7, 10, 16, 0.88);
-	color: #d8ff9f;
+	width: min(17rem, 100%);
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: #d9ddc2;
 	font-family: var(--blowbrush-font);
-	font-size: 1rem;
+	font-size: clamp(0.78rem, 1.6vw, 0.95rem);
 	font-weight: 700;
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
 	cursor: pointer;
-	box-shadow:
-		0 8px 22px rgba(0, 0, 0, 0.28),
-		0 0 18px rgba(120, 255, 130, 0.1),
-		inset 0 0 0 1px rgba(202, 204, 142, 0.08);
 	transition:
 		transform 160ms ease,
-		border-color 160ms ease,
-		background 160ms ease,
-		color 160ms ease,
-		box-shadow 160ms ease;
+		color 160ms ease;
+}
+
+.hub-page__mode-back-button-image {
+	display: block;
+	grid-area: 1 / 1;
+	width: 100%;
+	height: auto;
+	filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.3));
+	transition: filter 160ms ease;
+}
+
+.hub-page__mode-back-button span {
+	position: relative;
+	grid-area: 1 / 1;
+	z-index: 1;
+	padding: 0 2.7rem;
+	line-height: 1.05;
+	text-align: center;
+	text-shadow:
+		0 2px 0 rgba(8, 18, 11, 0.9),
+		0 0 8px rgba(216, 255, 159, 0.18);
 }
 
 .hub-panel__button + .hub-panel__button {
@@ -2008,15 +2023,14 @@ input {
 
 .hub-page__mode-back-button:hover {
 	transform: translateY(-1px);
-	border-color: rgba(216, 255, 159, 0.82);
-	background:
-		linear-gradient(180deg, rgba(43, 52, 28, 0.92), rgba(10, 28, 14, 0.96)),
-		rgba(7, 10, 16, 0.92);
 	color: #eaffc8;
-	box-shadow:
-		0 10px 26px rgba(0, 0, 0, 0.32),
-		0 0 22px rgba(120, 255, 130, 0.18),
-		inset 0 0 0 1px rgba(216, 255, 159, 0.1);
+}
+
+.hub-page__mode-back-button:hover .hub-page__mode-back-button-image {
+	filter:
+		brightness(1.12)
+		drop-shadow(0 10px 14px rgba(0, 0, 0, 0.34))
+		drop-shadow(0 0 10px rgba(120, 255, 130, 0.12));
 }
 
 .hub-page__game-grid {
