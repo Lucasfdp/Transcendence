@@ -35,6 +35,16 @@ export class TournamentParticipant {
 	@Column({ type: "int", default: 0 })
 	finalPoints: number;
 
+	/**
+	 * True once the player quit the match for good ("Leave match"): they are
+	 * removed from the tournament, can never rejoin it, and — unlike a mere
+	 * disconnect — no longer count as "in a tournament", so they may create or
+	 * join a new one right away. A disconnect never sets this (it stays
+	 * reconnectable).
+	 */
+	@Column({ type: "boolean", default: false })
+	hasLeft: boolean;
+
 	@Column({ nullable: true })
 	outcome: string | null;
 }

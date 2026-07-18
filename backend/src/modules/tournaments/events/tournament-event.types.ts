@@ -717,14 +717,46 @@ export interface MinigameStartedPayload {
 
 /**
  * The match finished and its result reached the Tournament (SPEC-015
- * "Resultado"). `winnerId` is the single winner, or null on a tie (`tie: true`,
- * SPEC-015 "Desempates": no round winner ⇒ Gambling is skipped).
+ * "Resultado"). `winnerId` is the single winner; a tie is first settled by the
+ * tie-break roulette (MinigameTieBreakStarted), so `winnerId: null`/`tie: true`
+ * only remain for degenerate ties with no candidates ⇒ Gambling is skipped.
  */
 export interface MinigameFinishedPayload {
 	readonly minigameId: string;
 	readonly matchId: string;
 	readonly winnerId: number | null;
 	readonly tie: boolean;
+}
+
+/**
+ * The pre-launch confirmation gate opened ("MINIGAME TIME!", SPEC-015 v2):
+ * the minigame is selected and every human must confirm before the match
+ * launches; `deadlineAt` is the hard cap so absent players never block.
+ */
+export interface MinigameLaunchGateOpenedPayload {
+	readonly minigameId: string;
+	readonly playerIds: readonly number[];
+	readonly deadlineAt: number;
+}
+
+/** A player confirmed the launch (pressed "Let's go!"). */
+export interface MinigameLaunchConfirmedPayload {
+	readonly minigameId: string;
+	readonly readyCount: number;
+}
+
+/**
+ * The round's minigame tied and the tie-break roulette opened (SPEC-015
+ * "Desempates", v2): a seeded pick among `playerIds` decides the winner —
+ * `winnerId` is already final; the roulette is presentation. The coordinator
+ * holds the round until `resolveAt` so every client can play the spin.
+ */
+export interface MinigameTieBreakStartedPayload {
+	readonly minigameId: string;
+	readonly matchId: string;
+	readonly playerIds: readonly number[];
+	readonly winnerId: number;
+	readonly resolveAt: number;
 }
 
 /**
@@ -999,6 +1031,9 @@ export interface TournamentEventPayloadMap {
 	MinigameLoading: MinigameLoadingPayload;
 	MinigameStarted: MinigameStartedPayload;
 	MinigameFinished: MinigameFinishedPayload;
+	MinigameLaunchGateOpened: MinigameLaunchGateOpenedPayload;
+	MinigameLaunchConfirmed: MinigameLaunchConfirmedPayload;
+	MinigameTieBreakStarted: MinigameTieBreakStartedPayload;
 	MinigameCancelled: MinigameCancelledPayload;
 	// Owner: Gambling Integration (SPEC-016)
 	GamblingOpened: GamblingOpenedPayload;

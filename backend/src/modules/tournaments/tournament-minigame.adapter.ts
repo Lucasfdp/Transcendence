@@ -109,6 +109,7 @@ export class TournamentMinigameAdapter
 				gameId: request.minigameId,
 				mode: "casual",
 				players,
+				tournamentId: request.tournamentId,
 			});
 			await this.matchmakingGateway.startServerInitiatedMatch(
 				room,
@@ -148,6 +149,24 @@ export class TournamentMinigameAdapter
 		});
 	}
 
+	/**
+	 * Tear down an in-flight tournament minigame over the platform (e.g. its
+	 * tournament was cancelled because no real players are left). Idempotent —
+	 * the gateway no-ops if the match is already finished/abandoned.
+	 */
+	async abortMatch(matchId: string, reason: string): Promise<void> {
+		await this.matchmakingGateway.abortMatch(matchId, reason);
+	}
+
+	/**
+	 * Hand a quitter's live minigame seat to a CPU stand-in so the in-flight
+	 * arena match plays on for the remaining seats (no disconnect-forfeit, no
+	 * extra loss — the tournament layer already recorded the quit as one).
+	 */
+	convertSeatToBot(matchId: string, userId: number): void {
+		this.matchmakingGateway.convertSeatToBot(matchId, userId);
+	}
+
 	// ── MinigameReconcilerPort ───────────────────────────────────────────────
 
 	async reconcile(matchId: string): Promise<MinigameFinalResult | null> {
@@ -166,7 +185,15 @@ export class TournamentMinigameAdapter
 				winnerId = row.userId;
 			}
 		}
-		return { matchId, winnerId, outcomes };
+		// Durable rows carry no scores — on a reconciled tie, every drawn player
+		// is a tie-break candidate (the coordinator's roulette settles it).
+		const tiedPlayerIds =
+			winnerId === null
+				? [...outcomes.entries()]
+						.filter(([, outcome]) => outcome === "draw")
+						.map(([userId]) => userId)
+				: undefined;
+		return { matchId, winnerId, outcomes, tiedPlayerIds };
 	}
 
 	// ── Internals ────────────────────────────────────────────────────────────
@@ -215,6 +242,34 @@ export class TournamentMinigameAdapter
 				isWinner ? "win" : winnerSide === null ? "draw" : "loss",
 			);
 		}
-		return { matchId: room.matchId, winnerId, outcomes };
+		return {
+			matchId: room.matchId,
+			winnerId,
+			outcomes,
+			tiedPlayerIds: winnerId === null ? this.tiedTopScorers(room) : undefined,
+		};
+	}
+
+	/**
+	 * The players tied for the TOP score on a winnerless match — the tie-break
+	 * roulette's candidates (SPEC-015 "Desempates", v2). Every minigame engine
+	 * keeps a per-side `state.score: number[]`; if a future game does not, the
+	 * fallback (undefined ⇒ everyone tied) keeps the tie-break well-defined.
+	 */
+	private tiedTopScorers(room: MatchRoom): readonly number[] | undefined {
+		const score = (room.state as { score?: unknown }).score;
+		if (
+			!Array.isArray(score) ||
+			score.length === 0 ||
+			!score.every((value) => typeof value === "number")
+		) {
+			return undefined;
+		}
+		const sideScore = (side: number): number =>
+			typeof score[side] === "number" ? score[side] : Number.NEGATIVE_INFINITY;
+		const best = Math.max(...room.players.map((p) => sideScore(p.side)));
+		return room.players
+			.filter((p) => sideScore(p.side) === best)
+			.map((p) => p.user.id);
 	}
 }

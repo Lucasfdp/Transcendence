@@ -7,6 +7,7 @@ import { ProfilePage } from "../pages/ProfilePage";
 import { ProtectedRoute } from "./ProtectedRoute";
 
 const GamePage = React.lazy(() => import("./GamePage"));
+const TournamentPage = React.lazy(() => import("./TournamentPage"));
 
 export function AppRoutes(): JSX.Element {
 	return (
@@ -34,6 +35,14 @@ export function AppRoutes(): JSX.Element {
 					element={
 						<ProtectedRoute>
 							<GamePage />
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="/tournament/:tournamentId"
+					element={
+						<ProtectedRoute>
+							<TournamentPage />
 						</ProtectedRoute>
 					}
 				/>

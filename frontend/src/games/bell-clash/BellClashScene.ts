@@ -26,6 +26,7 @@ import {
 	isBallMoving,
 } from "../../shared/mechanics/ball";
 import { buildReturnButton } from "../../shared/mechanics/hud";
+import { runStartCountdown } from "../../shared/mechanics/start-countdown";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
@@ -456,6 +457,29 @@ export class BellClashScene
 		if (this.online.isActive) this.online.init();
 		else this.localReplay.startCapture();
 
+		// "3, 2, 1, GO!" — every game opens with the shared countdown, and play
+		// is HELD until it ends: `running` gates update() and onLaunch(), so no
+		// ball can move or be launched before GO. Skipped when rejoining a
+		// match that already has scores on the board.
+		const onlineSnap = this.online.snapshot;
+		const midGame =
+			onlineSnap !== null &&
+			(onlineSnap.roundNumber > 1 ||
+				onlineSnap.score.some((points) => points > 0));
+		if (
+			!midGame &&
+			(!this.online.isActive || onlineSnap?.phase === "active")
+		) {
+			this.running = false;
+			runStartCountdown(this, {
+				depth: DEPTH_OVERLAY,
+				onComplete: () => {
+					if (this.overlay) return; // ended while counting down
+					this.running = true;
+				},
+			});
+		}
+
 		this.enableResponsive(); // relayout on resize/zoom (see ResponsiveScene)
 	}
 
@@ -561,6 +585,13 @@ export class BellClashScene
 	// ── Launch handler ────────────────────────────────────────────────────────────
 
 	private onLaunch(): void {
+		// Held (start countdown / game over): swallow the release — the
+		// slingshot already stamped a velocity on the ball, so zero it.
+		if (!this.running) {
+			this.ball.vx = 0;
+			this.ball.vy = 0;
+			return;
+		}
 		if (this.online.isActive) {
 			if (this.online.spectator) return;
 			const power = this.activePower;

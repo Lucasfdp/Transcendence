@@ -6,17 +6,17 @@
  * flow can be exercised end-to-end. It reuses the shared `wip-modal` shell for a
  * consistent frame; the lobby content is styled inline to stay self-contained.
  *
- * Scope note: a tournament needs 4 players to start, and the in-match gameplay
- * (board/dice/turns) has no client UI yet (that is the Vertical Slice, gated on
- * netcode). So this modal exercises the lobby; after `start` it reports success
- * and that the in-game view is coming soon — it does not render the match.
+ * Scope note: a tournament needs 4 players to start. This modal only covers
+ * the CREATION lobby; the match itself lives at its own endpoint
+ * (`/tournament/:id`, TournamentPage) — once the lobby goes active this modal
+ * closes and navigates there.
  */
 
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 
 import { tournamentApi } from "./api";
-import { TournamentBoardView } from "./TournamentBoardView";
 import type { TournamentLobbyState } from "./contracts";
 
 /** Players required to fill a lobby (backend: TOURNAMENT_PLAYERS). */
@@ -45,6 +45,7 @@ export function TournamentLobbyModal({
 	const [hydrating, setHydrating] = useState(false);
 	const lobbyIdRef = useRef<string | null>(null);
 	lobbyIdRef.current = lobby?.id ?? null;
+	const navigate = useNavigate();
 
 	// On open, ask the backend whether the user is already in a lobby and show it
 	// (survives a refresh / reopen) instead of offering create/join while the user
@@ -84,6 +85,15 @@ export function TournamentLobbyModal({
 			window.removeEventListener("keydown", onKey);
 		};
 	}, [isOpen, onClose]);
+
+	// The match is live: it now has its own endpoint (`/tournament/:id`) —
+	// close this modal and go there. Covers both a fresh `start` and reopening
+	// the Tournament button while already in an active match (getMine hydrate).
+	useEffect(() => {
+		if (!isOpen || !lobby || lobby.status !== "active") return;
+		onClose();
+		navigate(`/tournament/${lobby.id}`);
+	}, [isOpen, lobby, navigate, onClose]);
 
 	// Poll the lobby while it is open and still pending, so joins/leaves by other
 	// players are reflected without a manual refresh.
@@ -176,21 +186,7 @@ export function TournamentLobbyModal({
 	const isActive = lobby?.status === "active";
 	const isCancelled = lobby?.status === "cancelled";
 
-	// The match is live: render the Vertical Slice board view on top. It joins
-	// the tournament room and renders server snapshots (SPEC-022); exiting it
-	// closes this modal too.
-	if (lobby && isActive) {
-		return createPortal(
-			<TournamentBoardView
-				tournamentId={lobby.id}
-				onExit={() => {
-					setLobby(null);
-					onClose();
-				}}
-			/>,
-			document.body,
-		);
-	}
+	if (lobby && isActive) return null;
 
 	return createPortal(
 		<div className="wip-modal" role="dialog" aria-modal="true" aria-labelledby="tlobby-title">
@@ -306,8 +302,8 @@ export function TournamentLobbyModal({
 							</>
 						)}
 
-						{/* status "active" never reaches here — the early return above
-						    renders the TournamentBoardView instead. */}
+						{/* status "active" never reaches here — the redirect effect
+						    navigates to /tournament/:id instead. */}
 						{isCancelled && (
 							<div style={{ textAlign: "center", padding: "12px 0" }}>
 								<div style={{ fontWeight: 700 }}>This lobby was cancelled.</div>

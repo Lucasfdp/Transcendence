@@ -33,13 +33,47 @@ import { EMPTY_MINIGAME_CATALOG } from "./minigame-catalog";
 import {
 	MinigameCatalogPort,
 	MinigameFinalResult,
+	MinigameLaunchGateState,
 	MinigameLauncherPort,
 	MinigameLifecyclePort,
 	MinigameReconcilerPort,
 	MinigameRewardSettings,
 	MinigameRoundResult,
 	MinigameSnapshot,
+	MinigameTieBreakState,
 } from "./minigame.types";
+
+/** Configuration of the pre-launch confirmation gate (SPEC-015 v2). */
+export interface MinigameLaunchGateConfig {
+	/** Minimum hold after the gate opens, even with every confirmation in. */
+	readonly minMs: number;
+	/** Hard deadline: the match launches anyway when it passes. */
+	readonly timeoutMs: number;
+	/** Seats that never need to confirm (CPUs, disconnected humans). */
+	readonly isAutoReady: (playerId: number) => boolean;
+}
+
+/**
+ * How long the tie-break roulette holds the round (SPEC-015 "Desempates", v2):
+ * clients spin for ~4.4 s and reveal the winner; the coordinator resumes after
+ * this window so every client finishes the presentation (and can actually READ
+ * the result, ~3.5 s) before Gambling opens.
+ */
+export const TIE_BREAK_SPIN_MS = 8_000;
+
+/**
+ * Audience gate for the tie-break (SPEC-015 v2): after a tied minigame the
+ * players are still riding the arena's CONTINUE screen back to the board, so
+ * the roulette waits until everyone required is present (or the timeout) —
+ * otherwise the spin would play to an empty room and the result would be gone
+ * before anyone returned.
+ */
+export interface TieBreakGateConfig {
+	/** Spin anyway when this passes (a player who never returns can't block). */
+	readonly arrivalTimeoutMs: number;
+	/** Seats that need no live board (CPUs); connected humans are present. */
+	readonly isPresent: (playerId: number) => boolean;
+}
 
 /** Grants a Reward for a minigame outcome (satisfied by the Reward Resolver). */
 export interface MinigameRewardGranter {
@@ -71,6 +105,19 @@ export interface TournamentMinigameOptions {
 	readonly rewardGranter?: MinigameRewardGranter;
 	readonly makeContext?: MinigameContextFactory;
 	readonly getRound?: () => number;
+	/**
+	 * Pre-launch confirmation gate ("MINIGAME TIME!", SPEC-015 v2): when set,
+	 * the selected minigame waits for every required player's `confirmLaunch`
+	 * (or the deadline) before launching. Absent ⇒ launch immediately (the
+	 * Phase-1 behaviour, and what standalone coordinator tests expect).
+	 */
+	readonly launchGate?: MinigameLaunchGateConfig;
+	/**
+	 * Audience gate for the tie-break roulette: when set, the spin waits for
+	 * every player's board to be present (or the timeout). Absent ⇒ spin
+	 * immediately (standalone coordinator tests).
+	 */
+	readonly tieBreakGate?: TieBreakGateConfig;
 }
 
 /** Inert launcher: nothing to launch ⇒ the round skips its minigame. */
@@ -98,11 +145,27 @@ export class TournamentMinigame {
 	private readonly rewardGranter: MinigameRewardGranter;
 	private readonly makeContext: MinigameContextFactory;
 	private readonly getRound: () => number;
+	private readonly launchGateConfig: MinigameLaunchGateConfig | null;
+	private readonly tieBreakGateConfig: TieBreakGateConfig | null;
+	/** Poked by `notifyPresenceChanged` while the tie-break audience gate waits. */
+	private presenceWaiter: (() => void) | null = null;
 
 	/** Monotonic selection index, namespaced into the seed (part of snapshot). */
 	private selectionCount = 0;
 	/** The match currently awaited (for the snapshot / a single in-flight run). */
 	private pendingMatchId: string | null = null;
+	/** The live tie-break roulette, while one is spinning (part of snapshot). */
+	private tieBreak: MinigameTieBreakState | null = null;
+	/** The live pre-launch gate, while one is open (part of snapshot). */
+	private gateState: {
+		minigameId: string;
+		playerIds: readonly number[];
+		readyPlayerIds: number[];
+		deadlineAt: number;
+		openedAt: number;
+	} | null = null;
+	/** Resolves the gate's hold; null when no gate is open / already closed. */
+	private gateResolve: (() => void) | null = null;
 
 	constructor(options: TournamentMinigameOptions) {
 		this.tournamentId = options.tournamentId;
@@ -120,6 +183,8 @@ export class TournamentMinigame {
 		this.catalog = options.catalog ?? EMPTY_MINIGAME_CATALOG;
 		this.rewardGranter = options.rewardGranter ?? NOOP_GRANTER;
 		this.getRound = options.getRound ?? (() => 0);
+		this.launchGateConfig = options.launchGate ?? null;
+		this.tieBreakGateConfig = options.tieBreakGate ?? null;
 		this.makeContext =
 			options.makeContext ??
 			((input) => ({
@@ -163,6 +228,13 @@ export class TournamentMinigame {
 		const minigameId = this.selectSeeded(candidates);
 		this.emit("MinigameSelected", null, roundNumber, { minigameId });
 
+		// "MINIGAME TIME!" (SPEC-015 v2): hold the launch until every required
+		// player confirmed (or the deadline) — the round never jumps straight
+		// from the last dice roll into the arena.
+		if (this.launchGateConfig) {
+			await this.awaitLaunchGate(minigameId, active, roundNumber);
+		}
+
 		// Launch through the platform (SPEC-015 "Match Creation"): errors cancel.
 		let launch;
 		try {
@@ -192,22 +264,90 @@ export class TournamentMinigame {
 			return this.cancel("no_result", roundNumber, { minigameId, matchId });
 		}
 
-		// Award outcome points to every ACTIVE player through the Reward Resolver
-		// (SPEC-015 "Resultado"; passives/disconnected already excluded).
-		this.awardOutcomePoints(active, result, roundNumber);
+		// A tie never stands in tournament mode (SPEC-015 "Desempates", v2):
+		// a seeded roulette among the tied players decides the round winner.
+		// The winner is final the moment the tie-break opens — the spin the
+		// clients play is pure presentation — and the round HOLDS until
+		// `resolveAt` so everyone watches the roulette land before Gambling.
+		let finalWinnerId = result.winnerId;
+		if (finalWinnerId === null) {
+			const tied = this.tiedCandidates(result, active);
+			if (tied.length >= 2) {
+				finalWinnerId = this.selectTieBreakWinner(tied, roundNumber, matchId);
+				// The players are still riding the arena's CONTINUE screen back
+				// to the board — wait for the audience (or the timeout) so the
+				// spin plays IN SYNC for everyone instead of to an empty room.
+				await this.awaitTieBreakAudience(active);
+				const resolveAt = this.clock.now() + TIE_BREAK_SPIN_MS;
+				this.tieBreak = { playerIds: tied, winnerId: finalWinnerId, resolveAt };
+				this.emit("MinigameTieBreakStarted", finalWinnerId, roundNumber, {
+					minigameId,
+					matchId,
+					playerIds: tied,
+					winnerId: finalWinnerId,
+					resolveAt,
+				});
+				await new Promise<void>((resolve) => {
+					this.clock.schedule(TIE_BREAK_SPIN_MS, resolve);
+				});
+				this.tieBreak = null;
+			}
+		}
 
-		const tie = result.winnerId === null;
-		this.emit("MinigameFinished", result.winnerId, roundNumber, {
+		// Award outcome points to every ACTIVE player through the Reward Resolver
+		// (SPEC-015 "Resultado"; passives/disconnected already excluded). After a
+		// tie-break the roulette winner takes the winner's reward.
+		this.awardOutcomePoints(
+			active,
+			{ ...result, winnerId: finalWinnerId },
+			roundNumber,
+		);
+
+		const tie = finalWinnerId === null;
+		this.emit("MinigameFinished", finalWinnerId, roundNumber, {
 			minigameId,
 			matchId,
-			winnerId: result.winnerId,
+			winnerId: finalWinnerId,
 			tie,
 		});
-		return { status: "completed", minigameId, matchId, winnerId: result.winnerId, tie };
+		return { status: "completed", minigameId, matchId, winnerId: finalWinnerId, tie };
 	}
 
 	getPendingMatchId(): string | null {
 		return this.pendingMatchId;
+	}
+
+	/**
+	 * A player pressed "Let's go!" on the MINIGAME TIME! gate. Rejections are
+	 * harmless (no gate open, not seated, double click); once every required
+	 * player confirmed, the gate closes after its minimum hold and the match
+	 * launches.
+	 */
+	confirmLaunch(
+		playerId: number,
+	):
+		| { status: "ok" }
+		| {
+				status: "rejected";
+				reason: "no_launch_gate" | "not_participant" | "already_ready";
+		  } {
+		const gate = this.gateState;
+		if (!gate) {
+			return { status: "rejected", reason: "no_launch_gate" };
+		}
+		if (!gate.playerIds.includes(playerId)) {
+			return { status: "rejected", reason: "not_participant" };
+		}
+		if (gate.readyPlayerIds.includes(playerId)) {
+			return { status: "rejected", reason: "already_ready" };
+		}
+		gate.readyPlayerIds.push(playerId);
+		this.emit("MinigameLaunchConfirmed", playerId, this.getRound(), {
+			minigameId: gate.minigameId,
+			readyCount: gate.readyPlayerIds.length,
+		});
+		this.maybeCloseGate();
+		return { status: "ok" };
 	}
 
 	serialize(): MinigameSnapshot {
@@ -215,6 +355,15 @@ export class TournamentMinigame {
 			tournamentId: this.tournamentId,
 			selectionCount: this.selectionCount,
 			pendingMatchId: this.pendingMatchId,
+			tieBreak: this.tieBreak,
+			launchGate: this.gateState
+				? {
+						minigameId: this.gateState.minigameId,
+						playerIds: [...this.gateState.playerIds],
+						readyPlayerIds: [...this.gateState.readyPlayerIds],
+						deadlineAt: this.gateState.deadlineAt,
+					}
+				: null,
 		};
 	}
 
@@ -226,6 +375,139 @@ export class TournamentMinigame {
 		this.selectionCount += 1;
 		const index = Math.floor(rng() * candidates.length) % candidates.length;
 		return candidates[index];
+	}
+
+	/**
+	 * Opens the MINIGAME TIME! gate and holds until every required player
+	 * confirmed (plus the minimum beat) or the deadline passed. Auto-ready
+	 * seats (CPUs, disconnected humans) never block; the deadline guarantees
+	 * the round always continues.
+	 */
+	private async awaitLaunchGate(
+		minigameId: string,
+		active: readonly number[],
+		round: number,
+	): Promise<void> {
+		const config = this.launchGateConfig;
+		if (!config) {
+			return;
+		}
+		const openedAt = this.clock.now();
+		const deadlineAt = openedAt + config.timeoutMs;
+		this.gateState = {
+			minigameId,
+			playerIds: [...active],
+			readyPlayerIds: [],
+			deadlineAt,
+			openedAt,
+		};
+		this.emit("MinigameLaunchGateOpened", null, round, {
+			minigameId,
+			playerIds: [...active],
+			deadlineAt,
+		});
+		const deadlineTimer = this.clock.schedule(config.timeoutMs, () => {
+			this.closeGate();
+		});
+		await new Promise<void>((resolve) => {
+			this.gateResolve = resolve;
+			// Every seat may already be auto-ready (all-CPU stretch): the gate
+			// then closes after just the minimum hold.
+			this.maybeCloseGate();
+		});
+		this.clock.cancel(deadlineTimer);
+		this.gateState = null;
+	}
+
+	/**
+	 * A player's board connected (or a seat became a CPU): re-check any
+	 * waiting tie-break audience gate. Cheap no-op when nothing waits.
+	 */
+	notifyPresenceChanged(): void {
+		this.presenceWaiter?.();
+	}
+
+	/** Holds the tie-break until every player is present or the timeout. */
+	private async awaitTieBreakAudience(active: readonly number[]): Promise<void> {
+		const gate = this.tieBreakGateConfig;
+		if (!gate) {
+			return;
+		}
+		const allPresent = (): boolean => active.every((id) => gate.isPresent(id));
+		if (allPresent()) {
+			return;
+		}
+		await new Promise<void>((resolve) => {
+			let finished = false;
+			const finish = (): void => {
+				if (finished) return;
+				finished = true;
+				this.presenceWaiter = null;
+				resolve();
+			};
+			const timer = this.clock.schedule(gate.arrivalTimeoutMs, finish);
+			this.presenceWaiter = () => {
+				if (allPresent()) {
+					this.clock.cancel(timer);
+					finish();
+				}
+			};
+			// A board may have connected between the check above and the waiter
+			// being installed — re-check once so that race can't stall the gate.
+			this.presenceWaiter();
+		});
+	}
+
+	/** Closes the gate once nobody required is missing (min hold respected). */
+	private maybeCloseGate(): void {
+		const gate = this.gateState;
+		const config = this.launchGateConfig;
+		if (!gate || !config || !this.gateResolve) {
+			return;
+		}
+		const pending = gate.playerIds.filter(
+			(id) =>
+				!gate.readyPlayerIds.includes(id) && !config.isAutoReady(id),
+		);
+		if (pending.length > 0) {
+			return;
+		}
+		const remaining = gate.openedAt + config.minMs - this.clock.now();
+		if (remaining <= 0) {
+			this.closeGate();
+		} else {
+			this.clock.schedule(remaining, () => this.closeGate());
+		}
+	}
+
+	private closeGate(): void {
+		const resolve = this.gateResolve;
+		this.gateResolve = null;
+		resolve?.();
+	}
+
+	/**
+	 * Who spins in the tie-break: the platform's tied-for-top-score subset when
+	 * it reported one, otherwise every active player — always intersected with
+	 * `active` so nobody outside the round's seats can win it.
+	 */
+	private tiedCandidates(
+		result: MinigameFinalResult,
+		active: readonly number[],
+	): number[] {
+		const reported = result.tiedPlayerIds?.filter((id) => active.includes(id)) ?? [];
+		return reported.length >= 2 ? reported : [...active];
+	}
+
+	/** Seeded roulette pick (SPEC-000: same seed + same match ⇒ same winner). */
+	private selectTieBreakWinner(
+		tied: readonly number[],
+		round: number,
+		matchId: string,
+	): number {
+		const rng = createSeededRng(`${this.seed}:tiebreak:${round}:${matchId}`);
+		const index = Math.floor(rng() * tied.length) % tied.length;
+		return tied[index];
 	}
 
 	/**

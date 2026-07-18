@@ -63,6 +63,7 @@ import { ScoreHud } from "../../shared/mechanics/score-hud";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
 import { showCardDropPopup } from "../../features/cards";
 import { buildReturnButton } from "../../shared/mechanics/hud";
+import { runStartCountdown } from "../../shared/mechanics/start-countdown";
 import { GAME_INFO_PANEL_DETAILS } from "../../shared/game-info";
 import { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
 import {
@@ -240,6 +241,8 @@ export class ShellCurlScene
 		(ball) => ball.id,
 	);
 	public readonly launchInput: SlingshotLaunchRuntime<CurlingBallState>;
+	/** True while the "3, 2, 1, GO!" opener holds play (no throws before GO). */
+	private startCountdownHold = false;
 	private readonly online: ShellCurlOnlineController;
 
 	public arena!: RectArenaPixels;
@@ -485,13 +488,37 @@ export class ShellCurlScene
 		// Defer beginTurn() by one tick — this.scene.isActive() returns false
 		// during create() (scene is CREATING, not yet RUNNING), so the guard
 		// inside beginTurn() would bail immediately if called synchronously here.
+		// "3, 2, 1, GO!" — every game opens with the shared countdown, and play
+		// is HELD until it ends: local games only begin their first turn at GO,
+		// and onLaunch() swallows releases while the hold is up (online aim may
+		// arm from a snapshot mid-countdown, but no stone can be thrown).
+		// Skipped when rejoining a match where stones were already thrown.
+		const onlineSnap = this.online.snapshot;
+		const midGame = onlineSnap !== null && onlineSnap.turnNumber > 0;
+		const showCountdown =
+			!midGame && (!this.online.isActive || onlineSnap?.phase === "active");
+
 		this.time.delayedCall(0, () => {
 			if (this.online.isActive) this.online.init();
-			else {
+			else if (!showCountdown) {
 				this.beginTurn();
 				this.localReplay.startCapture();
 			}
 		});
+
+		if (showCountdown) {
+			this.startCountdownHold = true;
+			runStartCountdown(this, {
+				depth: DEPTH_OVERLAY,
+				onComplete: () => {
+					this.startCountdownHold = false;
+					if (!this.online.isActive) {
+						this.beginTurn();
+						this.localReplay.startCapture();
+					}
+				},
+			});
+		}
 
 		this.enableResponsive(); // relayout on resize/zoom (see ResponsiveScene)
 	}
@@ -697,6 +724,8 @@ export class ShellCurlScene
 	}
 
 	private onLaunch(vx: number, vy: number): void {
+		// Held (start countdown): no stone moves before GO.
+		if (this.startCountdownHold) return;
 		if (!this.activeBall || this.turnManager.state.phase !== "aiming")
 			return;
 

@@ -38,8 +38,12 @@ export const tournamentRoomName = (tournamentId: string): string =>
 interface SyncState {
 	readonly runtime: TournamentRuntime;
 	readonly usernames: Map<number, string>;
+	/** Profile pictures resolved with the usernames (roulette slices, HUD). */
+	readonly avatars: Map<number, string | null>;
 	/** userIds with at least one socket in the room right now. */
 	readonly connected: Set<number>;
+	/** userIds who quit the match for good — never reconnectable (tournament:quit). */
+	readonly left: Set<number>;
 	seq: number;
 	/** Coalescing flag: one flush per synchronous event burst. */
 	flushScheduled: boolean;
@@ -72,6 +76,7 @@ export class TournamentSyncService {
 			return;
 		}
 		const usernames = new Map<number, string>();
+		const avatars = new Map<number, string | null>();
 		// `participants` (not `playOrder`): populated from construction, so an
 		// attach before/after `start()` resolves the same usernames.
 		const ids = [...runtime.participants];
@@ -79,13 +84,16 @@ export class TournamentSyncService {
 			const users = await this.userRepo.find({ where: { id: In(ids) } });
 			for (const user of users) {
 				usernames.set(user.id, user.username);
+				avatars.set(user.id, user.avatar ?? null);
 			}
 		}
 
 		const state: SyncState = {
 			runtime,
 			usernames,
+			avatars,
 			connected: new Set(),
+			left: new Set(),
 			seq: 0,
 			flushScheduled: false,
 			unsubscribe: () => undefined,
@@ -131,6 +139,28 @@ export class TournamentSyncService {
 		}
 	}
 
+	/**
+	 * A participant quit the match for good (tournament:quit / "Leave match"):
+	 * they leave the room AND are barred from ever rejoining (`hasLeft`), unlike
+	 * a plain disconnect which stays reconnectable.
+	 */
+	markLeft(tournamentId: string, userId: number): void {
+		const state = this.states.get(tournamentId);
+		if (!state) {
+			return;
+		}
+		state.connected.delete(userId);
+		if (!state.left.has(userId)) {
+			state.left.add(userId);
+			this.scheduleFlush(tournamentId);
+		}
+	}
+
+	/** Whether a participant quit this match for good (blocks reconnection). */
+	hasLeft(tournamentId: string, userId: number): boolean {
+		return this.states.get(tournamentId)?.left.has(userId) ?? false;
+	}
+
 	// ── Internals ────────────────────────────────────────────────────────────
 
 	/** Coalesce a synchronous burst of domain events into ONE broadcast. */
@@ -174,7 +204,7 @@ export class TournamentSyncService {
 		tournamentId: string,
 		state: SyncState,
 	): TournamentSnapshotV1 {
-		const { runtime, usernames, connected } = state;
+		const { runtime, usernames, avatars, connected } = state;
 		const engines = runtime.gameEngines;
 		const phase = runtime.currentPhase;
 
@@ -193,6 +223,7 @@ export class TournamentSyncService {
 				return {
 					userId,
 					username: usernames.get(userId) ?? `player-${userId}`,
+					avatar: avatars.get(userId) ?? null,
 					seat,
 					points: engines.economy.getBalance(userId) ?? 0,
 					tileId: engines.board.getPosition(userId) ?? null,
@@ -204,6 +235,7 @@ export class TournamentSyncService {
 		);
 
 		const activeTurn = engines.turnSystem.getActiveTurn();
+		const minigame = engines.minigame.serialize();
 
 		return {
 			version: 1,
@@ -222,8 +254,25 @@ export class TournamentSyncService {
 				required: engines.keyItems.getRequired(),
 			},
 			gambling: this.gamblingView(runtime),
-			minigameMatchId: engines.minigame.serialize().pendingMatchId,
+			minigameMatchId: minigame.pendingMatchId,
 			winnerUserId: runtime.winner,
+			lastRoll: runtime.lastRoll,
+			lastGamble: runtime.lastGamble,
+			tieBreak: minigame.tieBreak
+				? {
+						playerIds: [...minigame.tieBreak.playerIds],
+						winnerId: minigame.tieBreak.winnerId,
+						resolveAt: minigame.tieBreak.resolveAt,
+					}
+				: null,
+			minigameGate: minigame.launchGate
+				? {
+						minigameId: minigame.launchGate.minigameId,
+						playerIds: [...minigame.launchGate.playerIds],
+						readyPlayerIds: [...minigame.launchGate.readyPlayerIds],
+						deadlineAt: minigame.launchGate.deadlineAt,
+					}
+				: null,
 		};
 	}
 

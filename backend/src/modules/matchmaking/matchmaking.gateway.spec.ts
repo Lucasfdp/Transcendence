@@ -99,6 +99,7 @@ describe("MatchmakingGateway", () => {
 		getRoom: jest.Mock;
 		getActiveRooms: jest.Mock;
 		getUserMatchStatus: jest.Mock;
+		convertSeatToBot: jest.Mock;
 	};
 	let matchmaking: { removeSocket: jest.Mock };
 	let privateLobbies: {
@@ -140,6 +141,7 @@ describe("MatchmakingGateway", () => {
 			getRoom: jest.fn(),
 			getActiveRooms: jest.fn().mockReturnValue([]),
 			getUserMatchStatus: jest.fn().mockReturnValue(null),
+			convertSeatToBot: jest.fn().mockReturnValue(null),
 		};
 		matchmaking = { removeSocket: jest.fn() };
 		privateLobbies = {
@@ -318,6 +320,53 @@ describe("MatchmakingGateway", () => {
 					pickupEvents: [{ id: 5, side: 0, type: "rocket", x: 30, y: 40 }],
 				}),
 			);
+		});
+	});
+
+	describe("convertSeatToBot", () => {
+		it("hands the seat to a CPU, detaches the quitter's sockets, and rebroadcasts state", () => {
+			const room = makeRoom({
+				players: [
+					makePlayer(1, { socketId: "bot:1" }),
+					makePlayer(2, { side: 1 }),
+				],
+			});
+			rooms.convertSeatToBot.mockReturnValue(room);
+			rooms.getRoom.mockReturnValue(room);
+			presence.getSocketIds.mockReturnValue(["sock-live"]);
+			const quitterSocket = {
+				id: "sock-live",
+				data: { user: { id: 1, username: "user1", isGuest: false } },
+				leave: jest.fn(),
+				emit: jest.fn(),
+			};
+			gateway.server = {
+				to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+				sockets: {
+					sockets: new Map([["sock-live", quitterSocket]]),
+				},
+			} as never;
+
+			gateway.convertSeatToBot("match-1", 1);
+
+			expect(rooms.convertSeatToBot).toHaveBeenCalledWith("match-1", 1);
+			// The quitter's live socket leaves the match channel and their
+			// match:status flips to "no match" (the seat is no longer theirs).
+			expect(quitterSocket.leave).toHaveBeenCalledWith("match-1");
+			expect(quitterSocket.emit).toHaveBeenCalledWith("match:status", {
+				inMatch: false,
+			});
+			// The room got a fresh state broadcast.
+			expect(gateway.server.to).toHaveBeenCalledWith("match-1");
+		});
+
+		it("no-ops when the room is gone, resolved, or the user is not seated", () => {
+			rooms.convertSeatToBot.mockReturnValue(null);
+			gateway.server = { to: jest.fn() } as never;
+
+			gateway.convertSeatToBot("match-x", 9);
+
+			expect(gateway.server.to).not.toHaveBeenCalled();
 		});
 	});
 

@@ -42,6 +42,14 @@ export const TOURNAMENT_RUNTIME_CLOCK_FACTORY = Symbol(
 );
 export type TournamentClockFactory = () => TournamentClock;
 
+/**
+ * How long round 1 waits in ROUND_START for every human to reach the board
+ * before the first turn opens anyway (see TournamentRuntimeOptions.
+ * firstTurnsGraceMs). Generous vs the lobby's 2.5s poll + page load; small vs
+ * the 30s turn timeout it protects.
+ */
+const FIRST_TURNS_GRACE_MS = 10_000;
+
 interface PhaseStatusMapping {
 	readonly status: TournamentStatus;
 	/** Whether the Runtime instance must be dropped from the live map. */
@@ -169,6 +177,11 @@ export class TournamentRuntimeService {
 			// CPU participants seated in the lobby (CPU v2): the Runtime plays
 			// their board turns and gambling decisions.
 			botPlayerIds: lobby.botUserIds ?? [],
+			// Hold round 1 in ROUND_START until every human reaches the board
+			// (lobby poll + navigation take a few seconds per client) or this
+			// grace expires — otherwise turn 1 burns against absent players and
+			// the derived turn order looks "skipped" to whoever arrives late.
+			firstTurnsGraceMs: FIRST_TURNS_GRACE_MS,
 			// The socket-bound SPEC-015 adapter (launch/lifecycle/reconcile/catalog
 			// over the real platform); absent in unit tests ⇒ inert minigames.
 			minigamePorts: this.minigameAdapter
@@ -199,11 +212,50 @@ export class TournamentRuntimeService {
 	 * tournaments are not resumed, TournamentsService.onModuleInit already
 	 * cancels them) — the row is flipped directly.
 	 */
+	/**
+	 * A player quit the tournament for good while a minigame was in flight:
+	 * hand their live arena seat to a CPU stand-in so the minigame plays on
+	 * for everyone else. No-op when there is no live runtime, no pending
+	 * minigame, or no adapter (unit tests).
+	 */
+	convertMinigameSeatToBot(tournamentId: string, userId: number): void {
+		const runtime = this.runtimes.get(tournamentId);
+		if (!runtime || !this.minigameAdapter) return;
+		const pendingMatchId =
+			runtime.gameEngines.minigame.serialize().pendingMatchId;
+		if (!pendingMatchId) return;
+		try {
+			this.minigameAdapter.convertSeatToBot(pendingMatchId, userId);
+		} catch (err) {
+			this.logger.error(
+				`Failed to hand minigame ${pendingMatchId} seat of user ${userId} to a CPU`,
+				err instanceof Error ? err.stack : String(err),
+			);
+		}
+	}
+
 	async cancelTournament(tournamentId: string, reason: string): Promise<void> {
 		const runtime = this.runtimes.get(tournamentId);
 		if (runtime) {
+			// Capture the in-flight minigame BEFORE cancelling (the runtime is
+			// dropped from the map once the terminal snapshot lands).
+			const pendingMatchId =
+				runtime.gameEngines.minigame.serialize().pendingMatchId;
 			runtime.cancel(reason);
 			await this.flush(tournamentId);
+			// Tear down the arena match too, so no zombie minigame is left in
+			// limbo waiting on the 10-min watchdog (SPEC-015). Aborting also
+			// unblocks the coordinator's wait; the terminal machine ignores it.
+			if (pendingMatchId && this.minigameAdapter) {
+				try {
+					await this.minigameAdapter.abortMatch(pendingMatchId, reason);
+				} catch (err) {
+					this.logger.error(
+						`Failed to abort minigame ${pendingMatchId} for cancelled tournament ${tournamentId}`,
+						err instanceof Error ? err.stack : String(err),
+					);
+				}
+			}
 			return;
 		}
 

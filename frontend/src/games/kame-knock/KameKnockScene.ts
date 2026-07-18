@@ -26,6 +26,7 @@ import {
 	drawShellBallTexture,
 } from "../../shared/mechanics/ball";
 import { buildReturnButton } from "../../shared/mechanics/hud";
+import { runStartCountdown } from "../../shared/mechanics/start-countdown";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
@@ -470,7 +471,20 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			if (this.online.snapshot?.phase === "active")
 				this.online.startOnlineCountdown();
 		} else {
+			// Local games open with the shared "3, 2, 1, GO!" too (online has
+			// its own gating countdown above). Play is HELD until GO — the
+			// same `running` gate the online countdown uses: update() pauses
+			// and the slingshot only arms once the countdown releases it.
+			this.running = false;
 			this.syncSlingshotForTurn();
+			runStartCountdown(this, {
+				depth: DEPTH_OVERLAY,
+				onComplete: () => {
+					if (this.overlay) return; // ended while counting down
+					this.running = true;
+					this.syncSlingshotForTurn();
+				},
+			});
 		}
 
 		this.enableResponsive(); // relayout on resize/zoom (see ResponsiveScene)

@@ -249,7 +249,10 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 	});
 	afterEach(() => jest.restoreAllMocks());
 
-	function makeInteractive(settings: TournamentSettings = makeSettings()) {
+	function makeInteractive(
+		settings: TournamentSettings = makeSettings(),
+		extra: { firstTurnsGraceMs?: number } = {},
+	) {
 		const clock = new ManualClock(1_000);
 		const runtime = new TournamentRuntime({
 			tournamentId: TOURNAMENT_ID,
@@ -259,6 +262,7 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 			clock,
 			onSnapshot: () => undefined,
 			interactiveTurns: true,
+			...extra,
 		});
 		const events: AnyTournamentEvent[] = [];
 		runtime.events.onAny((e) => events.push(e));
@@ -277,16 +281,19 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(expectedOrder[0]);
 	});
 
-	it("a RollDiceIntent from the active player rolls, moves and hands the turn on", () => {
-		const { runtime, events } = makeInteractive();
+	it("a RollDiceIntent from the active player rolls, moves and hands the turn on after the handoff pause", () => {
+		const { runtime, clock, events } = makeInteractive();
 		runtime.start();
 		const order = deriveTurnOrder("seed-a", [...PARTICIPANT_IDS]);
 
 		expect(runtime.handleRollDice(order[0])).toEqual({ status: "ok" });
 
-		// The turn resolved server-side (roll + move) and the next turn opened.
+		// The turn resolved server-side (roll + move) but the baton only passes
+		// after the handoff pause — the boards are walking the token.
 		expect(events.some((e) => e.name === "DiceRolled")).toBe(true);
 		expect(events.some((e) => e.name === "PlayerMoved")).toBe(true);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBeNull();
+		clock.advance(3_000);
 		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[1]);
 		expect(runtime.gameEngines.board.getPosition(order[0])).toBeDefined();
 	});
@@ -311,12 +318,14 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 	});
 
 	it("four resolved turns close the round: MINIGAME(skip) → CHECK_KEY_ITEMS → round 2", async () => {
-		const { runtime, events } = makeInteractive();
+		const { runtime, clock, events } = makeInteractive();
 		runtime.start();
 		const order = deriveTurnOrder("seed-a", [...PARTICIPANT_IDS]);
 
 		for (const playerId of order) {
 			expect(runtime.handleRollDice(playerId)).toEqual({ status: "ok" });
+			clock.advance(3_000); // handoff pause (token walk presentation)
+			await settle();
 		}
 		await settle();
 
@@ -333,11 +342,12 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 		runtime.start();
 
 		// Nobody ever sends an intent: every turn resolves via the roll timeout.
-		// 2 rounds × 4 turns; each advance fires the pending auto-roll (round
-		// boundaries settle through the async MINIGAME skip).
+		// 2 rounds × 4 turns; each advance fires the pending auto-roll plus the
+		// turn-handoff pause (round boundaries settle through the async
+		// MINIGAME skip).
 		const turnMs = settings.timeouts.turnSeconds * 1000;
 		for (let i = 0; i < 8; i++) {
-			clock.advance(turnMs);
+			clock.advance(turnMs + 3_000);
 			await settle();
 		}
 
@@ -349,17 +359,75 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 		expect(events.filter((e) => e.name === "PlayerTurnFinished")).toHaveLength(8);
 	});
 
-	it("a disconnect of the active player auto-resolves their turn and play continues", () => {
-		const { runtime } = makeInteractive();
+	it("a disconnect of the active player auto-resolves their turn after the grace and play continues", () => {
+		const { runtime, clock } = makeInteractive();
 		runtime.start();
 		const order = deriveTurnOrder("seed-a", [...PARTICIPANT_IDS]);
 
 		runtime.handlePlayerDisconnect(order[0]);
+		// Not yet — the grace protects quick rejoins (StrictMode / navigation).
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[0]);
+		// Grace (3 s) resolves the turn; the handoff pause then opens the next.
+		clock.advance(6_000);
 		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[1]);
 
 		// A disconnect of a NON-active player is a no-op.
 		runtime.handlePlayerDisconnect(order[3]);
+		clock.advance(6_000);
 		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[1]);
+	});
+
+	it("a disconnect followed by a rejoin within the grace does NOT skip the turn", () => {
+		const { runtime, clock } = makeInteractive();
+		runtime.start();
+		const order = deriveTurnOrder("seed-a", [...PARTICIPANT_IDS]);
+
+		// The board's mount cycle (join → leave → join, React StrictMode) or a
+		// quick navigation: the player is back before the grace expires.
+		runtime.handlePlayerConnected(order[0]);
+		runtime.handlePlayerDisconnect(order[0]);
+		runtime.handlePlayerConnected(order[0]);
+		clock.advance(3_000);
+
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[0]);
+	});
+
+	it("round 1 holds in ROUND_START until every human connects, then turn 1 goes to the derived first player", () => {
+		const { runtime } = makeInteractive(makeSettings(), {
+			firstTurnsGraceMs: 10_000,
+		});
+		runtime.start();
+		const order = deriveTurnOrder("seed-a", [...PARTICIPANT_IDS]);
+
+		// Nobody is on the board yet: the turns are held open.
+		expect(runtime.currentPhase).toBe("ROUND_START");
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBeNull();
+
+		// Players arrive one by one; the last arrival opens turn 1 for order[0].
+		for (const id of order.slice(0, -1)) {
+			runtime.handlePlayerConnected(id);
+			expect(runtime.currentPhase).toBe("ROUND_START");
+		}
+		runtime.handlePlayerConnected(order[order.length - 1]);
+
+		expect(runtime.currentPhase).toBe("PLAYER_TURNS");
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[0]);
+	});
+
+	it("round 1's hold expires after the grace even if a player never arrives", () => {
+		const { runtime, clock } = makeInteractive(makeSettings(), {
+			firstTurnsGraceMs: 10_000,
+		});
+		runtime.start();
+		const order = deriveTurnOrder("seed-a", [...PARTICIPANT_IDS]);
+
+		runtime.handlePlayerConnected(order[1]);
+		expect(runtime.currentPhase).toBe("ROUND_START");
+
+		clock.advance(10_000);
+
+		expect(runtime.currentPhase).toBe("PLAYER_TURNS");
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[0]);
 	});
 
 	it("advancePhase() is a guarded no-op in interactive mode (no double-driving)", () => {
@@ -376,7 +444,7 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 		const { runtime, clock } = makeInteractive(settings);
 		runtime.start();
 		for (let i = 0; i < 4; i++) {
-			clock.advance(settings.timeouts.turnSeconds * 1000);
+			clock.advance(settings.timeouts.turnSeconds * 1000 + 3_000);
 			await settle();
 		}
 		expect(runtime.isTerminal).toBe(true);
@@ -464,22 +532,33 @@ describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SP
 		return { runtime, clock, events, snapshots };
 	}
 
-	/** Roll all four turns of the current round and settle the round close. */
-	async function playRound(runtime: TournamentRuntime): Promise<void> {
+	/**
+	 * Roll all four turns of the current round and settle the round close.
+	 * Each roll needs the turn-handoff pause (the boards walk the token), and
+	 * the round close crosses the MINIGAME TIME! gate — every seat here is
+	 * auto-ready (no live boards), so it only holds its minimum beat.
+	 */
+	async function playRound(
+		runtime: TournamentRuntime,
+		clock: ManualClock,
+	): Promise<void> {
 		const order = [...runtime.playOrder];
 		for (const playerId of order) {
 			runtime.handleRollDice(playerId);
+			clock.advance(3_000); // turn handoff
+			await settle();
 		}
+		clock.advance(2_000); // launch-gate minimum hold
 		await settle();
 		await settle();
 	}
 
 	it("a completed round runs a REAL minigame and opens GAMBLING for its winner", async () => {
-		const { runtime, events } = makeFullRuntime({
+		const { runtime, clock, events } = makeFullRuntime({
 			pickWinner: (ids) => ids[0],
 		});
 		runtime.start();
-		await playRound(runtime);
+		await playRound(runtime, clock);
 
 		expect(events.some((e) => e.name === "MinigameFinished")).toBe(true);
 		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
@@ -496,10 +575,37 @@ describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SP
 		).toBeGreaterThan(TOURNAMENT_SETTINGS_V1.initialPoints);
 	});
 
-	it("declining the bet (LeaveGamblingIntent) resumes the round loop", async () => {
-		const { runtime } = makeFullRuntime({ pickWinner: (ids) => ids[0] });
+	it("a resolved bet holds the round for the reveal, with the outcome on the wire", async () => {
+		const { runtime, clock } = makeFullRuntime({ pickWinner: (ids) => ids[0] });
 		runtime.start();
-		await playRound(runtime);
+		await playRound(runtime, clock);
+		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
+		const winner = runtime.playOrder[0];
+
+		expect(runtime.handleStartGambling(winner)).toEqual({ status: "ok" });
+		await settle();
+
+		// Resolved (won OR lost — the casino fairness is crypto-random): the
+		// outcome is recorded for the boards and the round HOLDS in
+		// GAMBLING_PHASE so everyone sees the banner.
+		expect(runtime.lastGamble).toMatchObject({
+			playerId: winner,
+			round: 1,
+			won: expect.any(Boolean),
+		});
+		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
+
+		clock.advance(4_000);
+		await settle();
+		expect(["PLAYER_TURNS", "BOSS_EVENT", "FINAL_CHALLENGE"]).toContain(
+			runtime.currentPhase,
+		);
+	});
+
+	it("declining the bet (LeaveGamblingIntent) resumes the round loop", async () => {
+		const { runtime, clock } = makeFullRuntime({ pickWinner: (ids) => ids[0] });
+		runtime.start();
+		await playRound(runtime, clock);
 		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
 
 		runtime.handleLeaveGambling(runtime.playOrder[0]);
@@ -513,7 +619,7 @@ describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SP
 	it("the 30s gambling timeout abandons the decision and the round continues", async () => {
 		const { runtime, clock } = makeFullRuntime({ pickWinner: (ids) => ids[0] });
 		runtime.start();
-		await playRound(runtime);
+		await playRound(runtime, clock);
 		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
 
 		clock.advance(TOURNAMENT_SETTINGS_V1.timeouts.gamblingDecisionSeconds * 1000);
@@ -545,7 +651,7 @@ describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SP
 		const winner = runtime.playOrder[0];
 		for (let round = 0; round < 60 && !runtime.isTerminal; round++) {
 			if (runtime.currentPhase === "PLAYER_TURNS") {
-				await playRound(runtime);
+				await playRound(runtime, clock);
 			}
 			if (runtime.currentPhase === "GAMBLING_PHASE") {
 				runtime.handleStartGambling(winner);
@@ -553,7 +659,10 @@ describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SP
 				await settle();
 			}
 			// Endgame phases resolve themselves (boss sync + sudden death via the
-			// same scripted minigame platform).
+			// same scripted minigame platform) — advance past the MINIGAME TIME!
+			// gate's minimum hold AND the resolved-bet reveal hold.
+			clock.advance(5_000);
+			await settle();
 			await settle();
 			// Points for the next bet: idle advance is not needed — the winner
 			// earns minigame points every round; top up via the timeout path if
@@ -664,13 +773,53 @@ describe("TournamentRuntime — CPU participants (CPU v2)", () => {
 		});
 		runtime.start();
 
-		// 2 rounds × 4 CPU turns at 1.5s each (+ async round closes).
+		// 2 rounds × 4 CPU turns: 1.5s bot delay + 2.6s turn handoff each
+		// (+ async round closes; the inert minigame skips before its gate).
 		for (let i = 0; i < 8; i++) {
-			clock.advance(1_500);
+			clock.advance(4_500);
 			await settle();
 		}
+		clock.advance(3_000); // the final turn's handoff closes round 2
+		await settle();
 
 		expect(runtime.isTerminal).toBe(true); // DEFEAT at maxRound (no key items)
 		expect(runtime.currentPhase).toBe("FINISHED");
+	});
+
+	it("converts a departed human into a CPU that plays their turns (table started all-human)", async () => {
+		const clock = new ManualClock(1_000);
+		const runtime = new TournamentRuntime({
+			tournamentId: TOURNAMENT_ID,
+			seed: "seed-a",
+			participantIds: PARTICIPANT_IDS,
+			settings: makeSettings(),
+			clock,
+			onSnapshot: () => undefined,
+			interactiveTurns: true,
+			// NB: NO botPlayerIds — the whole table is human at the start.
+		});
+		const events: AnyTournamentEvent[] = [];
+		runtime.events.onAny((e) => events.push(e));
+		runtime.start();
+
+		const departed = runtime.gameEngines.turnSystem.activePlayerId as number;
+		expect(departed).not.toBeNull();
+		expect(runtime.botPlayers.has(departed)).toBe(false);
+
+		// The active player quits for good → replaced by a CPU that takes over
+		// their in-progress turn with a REAL roll (bot delay, below the timeout),
+		// not the anti-stall timeout, and hands the baton on.
+		expect(runtime.humanPlayerCount).toBe(PARTICIPANT_IDS.length);
+		runtime.convertPlayerToBot(departed);
+		expect(runtime.botPlayers.has(departed)).toBe(true);
+		expect(runtime.humanPlayerCount).toBe(PARTICIPANT_IDS.length - 1);
+
+		clock.advance(1_500);
+		await settle();
+
+		const finished = events.filter((e) => e.name === "PlayerTurnFinished");
+		expect(finished).toHaveLength(1);
+		expect(finished[0].payload).toMatchObject({ autoResolved: false });
+		expect(runtime.gameEngines.turnSystem.activePlayerId).not.toBe(departed);
 	});
 });

@@ -22,7 +22,11 @@ import {
 	MinigameLifecycleSignal,
 	MinigameOutcome,
 } from "./minigame.types";
-import { TournamentMinigame, TournamentMinigameOptions } from "./tournament-minigame";
+import {
+	TIE_BREAK_SPIN_MS,
+	TournamentMinigame,
+	TournamentMinigameOptions,
+} from "./tournament-minigame";
 
 const TOURNAMENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const WATCHDOG_MS = 600_000;
@@ -187,8 +191,164 @@ describe("TournamentMinigame (SPEC-015)", () => {
 		expect(granter.grants[1].reward.payload).toMatchObject({ amount: 25, source: "minigame" });
 	});
 
-	it("handles a tie: no winner, everyone gets participant points, Gambling-skippable", async () => {
-		const { mg, events, lifecycle, granter } = makeMinigame();
+	it("MINIGAME TIME! gate holds the launch until every required player confirms", async () => {
+		const { mg, clock, events, launcher, lifecycle } = makeMinigame({
+			launchGate: { minMs: 1_000, timeoutMs: 20_000, isAutoReady: () => false },
+		});
+		const p = mg.run([10, 20]);
+		await tick();
+
+		// The gate is open, nothing launched yet.
+		expect(events.some((e) => e.name === "MinigameLaunchGateOpened")).toBe(true);
+		expect(mg.serialize().launchGate?.playerIds).toEqual([10, 20]);
+		expect(launcher.launches).toHaveLength(0);
+
+		expect(mg.confirmLaunch(10)).toEqual({ status: "ok" });
+		expect(mg.confirmLaunch(10)).toEqual({
+			status: "rejected",
+			reason: "already_ready",
+		});
+		expect(mg.confirmLaunch(99)).toEqual({
+			status: "rejected",
+			reason: "not_participant",
+		});
+		await tick();
+		expect(launcher.launches).toHaveLength(0); // one player still missing
+
+		expect(mg.confirmLaunch(20)).toEqual({ status: "ok" });
+		clock.advance(1_000); // the minimum hold after the last confirmation
+		await tick();
+		expect(launcher.launches).toHaveLength(1);
+		expect(mg.serialize().launchGate).toBeNull();
+
+		lifecycle.emit({
+			type: "finished",
+			matchId: "match-1",
+			result: {
+				matchId: "match-1",
+				winnerId: 10,
+				outcomes: outcomes({ 10: "win", 20: "loss" }),
+			},
+		});
+		const result = await p;
+		expect(result).toMatchObject({ status: "completed", winnerId: 10 });
+	});
+
+	it("MINIGAME TIME! gate deadline launches anyway when someone never confirms", async () => {
+		const { mg, clock, launcher, lifecycle } = makeMinigame({
+			launchGate: {
+				minMs: 1_000,
+				timeoutMs: 20_000,
+				// Player 20 is a CPU seat: only 10's confirmation is required.
+				isAutoReady: (id) => id === 20,
+			},
+		});
+		const p = mg.run([10, 20]);
+		await tick();
+		expect(launcher.launches).toHaveLength(0);
+
+		// Player 10 never clicks; the deadline fires the launch regardless.
+		clock.advance(20_000);
+		await tick();
+		expect(launcher.launches).toHaveLength(1);
+
+		lifecycle.emit({
+			type: "finished",
+			matchId: "match-1",
+			result: {
+				matchId: "match-1",
+				winnerId: 20,
+				outcomes: outcomes({ 10: "loss", 20: "win" }),
+			},
+		});
+		await expect(p).resolves.toMatchObject({ status: "completed", winnerId: 20 });
+	});
+
+	it("a tie opens the tie-break roulette and the seeded winner takes the round", async () => {
+		const { mg, clock, events, lifecycle, granter } = makeMinigame();
+		const p = mg.run([10, 20]);
+		await tick();
+		lifecycle.emit({
+			type: "finished",
+			matchId: "match-1",
+			result: {
+				matchId: "match-1",
+				winnerId: null,
+				outcomes: outcomes({ 10: "draw", 20: "draw" }),
+				tiedPlayerIds: [10, 20],
+			},
+		});
+		await tick();
+
+		// The tie-break is live: the winner is already decided (seeded) and the
+		// round HOLDS so clients can play the roulette spin.
+		const started = events.find((e) => e.name === "MinigameTieBreakStarted");
+		expect(started?.payload).toMatchObject({
+			matchId: "match-1",
+			playerIds: [10, 20],
+		});
+		const spinning = mg.serialize().tieBreak;
+		expect(spinning?.playerIds).toEqual([10, 20]);
+		expect([10, 20]).toContain(spinning?.winnerId);
+
+		clock.advance(TIE_BREAK_SPIN_MS);
+		const result = await p;
+
+		// No tie survives: the roulette's pick wins the round (feeds Gambling)
+		// and takes the winner's reward; the other player keeps participant's.
+		expect(result.status).toBe("completed");
+		if (result.status !== "completed") return;
+		expect(result.tie).toBe(false);
+		expect(result.winnerId).toBe(spinning?.winnerId);
+		expect(mg.serialize().tieBreak).toBeNull();
+		const finished = events.find((e) => e.name === "MinigameFinished");
+		expect(finished?.payload).toMatchObject({ winnerId: result.winnerId, tie: false });
+		const amounts = granter.grants.map((g) => ({
+			playerId: g.playerId,
+			amount: (g.reward.payload as { amount: number }).amount,
+		}));
+		expect(amounts).toContainEqual({ playerId: result.winnerId, amount: 100 });
+		expect(amounts).toContainEqual({
+			playerId: result.winnerId === 10 ? 20 : 10,
+			amount: 25,
+		});
+	});
+
+	it("tie-break spins only among the players tied for the top score", async () => {
+		const { mg, clock, lifecycle } = makeMinigame();
+		const p = mg.run([10, 20, 30]);
+		await tick();
+		lifecycle.emit({
+			type: "finished",
+			matchId: "match-1",
+			result: {
+				matchId: "match-1",
+				winnerId: null,
+				outcomes: outcomes({ 10: "draw", 20: "draw", 30: "draw" }),
+				// The platform reports 10 and 30 tied on top; 20 scored less.
+				tiedPlayerIds: [10, 30],
+			},
+		});
+		await tick();
+
+		const spinning = mg.serialize().tieBreak;
+		expect(spinning?.playerIds).toEqual([10, 30]);
+		clock.advance(TIE_BREAK_SPIN_MS);
+		const result = await p;
+		expect(result.status).toBe("completed");
+		if (result.status !== "completed") return;
+		expect([10, 30]).toContain(result.winnerId);
+		expect(result.winnerId).not.toBe(20);
+	});
+
+	it("tie-break waits for every player's board before spinning (audience gate)", async () => {
+		const present = new Set<number>([10]); // 20 is still on the arena screen
+		const { mg, clock, lifecycle } = makeMinigame({
+			tieBreakGate: {
+				arrivalTimeoutMs: 20_000,
+				isPresent: (id) => present.has(id),
+			},
+		});
 		const p = mg.run([10, 20]);
 		await tick();
 		lifecycle.emit({
@@ -200,15 +360,67 @@ describe("TournamentMinigame (SPEC-015)", () => {
 				outcomes: outcomes({ 10: "draw", 20: "draw" }),
 			},
 		});
-		const result = await p;
+		await tick();
 
-		expect(result).toMatchObject({ status: "completed", winnerId: null, tie: true });
-		const finished = events.find((e) => e.name === "MinigameFinished");
-		expect(finished?.payload).toMatchObject({ winnerId: null, tie: true });
-		expect(granter.grants.map((g) => g.reward.payload)).toEqual([
-			expect.objectContaining({ amount: 25 }),
-			expect.objectContaining({ amount: 25 }),
-		]);
+		// The audience is missing — the roulette must not have started.
+		expect(mg.serialize().tieBreak).toBeNull();
+
+		present.add(20); // their board joined the tournament room
+		mg.notifyPresenceChanged();
+		await tick();
+		expect(mg.serialize().tieBreak).not.toBeNull();
+
+		clock.advance(TIE_BREAK_SPIN_MS);
+		await expect(p).resolves.toMatchObject({ status: "completed" });
+	});
+
+	it("tie-break audience timeout spins anyway (a no-show never blocks)", async () => {
+		const { mg, clock, lifecycle } = makeMinigame({
+			tieBreakGate: { arrivalTimeoutMs: 20_000, isPresent: () => false },
+		});
+		const p = mg.run([10, 20]);
+		await tick();
+		lifecycle.emit({
+			type: "finished",
+			matchId: "match-1",
+			result: {
+				matchId: "match-1",
+				winnerId: null,
+				outcomes: outcomes({ 10: "draw", 20: "draw" }),
+			},
+		});
+		await tick();
+		expect(mg.serialize().tieBreak).toBeNull();
+
+		clock.advance(20_000); // arrival deadline
+		await tick();
+		expect(mg.serialize().tieBreak).not.toBeNull();
+		clock.advance(TIE_BREAK_SPIN_MS);
+		await expect(p).resolves.toMatchObject({ status: "completed" });
+	});
+
+	it("tie-break is deterministic: same seed + same match ⇒ same winner", async () => {
+		const winners: Array<number | null> = [];
+		for (let i = 0; i < 2; i++) {
+			const { mg, clock, lifecycle } = makeMinigame();
+			const p = mg.run([10, 20]);
+			await tick();
+			lifecycle.emit({
+				type: "finished",
+				matchId: "match-1",
+				result: {
+					matchId: "match-1",
+					winnerId: null,
+					outcomes: outcomes({ 10: "draw", 20: "draw" }),
+				},
+			});
+			await tick();
+			clock.advance(TIE_BREAK_SPIN_MS);
+			const result = await p;
+			winners.push(result.status === "completed" ? result.winnerId : null);
+		}
+		expect(winners[0]).not.toBeNull();
+		expect(winners[1]).toBe(winners[0]);
 	});
 
 	it("selects deterministically from the seed (same seed ⇒ same minigame)", async () => {

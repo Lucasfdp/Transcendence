@@ -107,7 +107,7 @@ describe("TournamentSyncService (SPEC-022 snapshot-first)", () => {
 	});
 
 	it("coalesces one whole turn (roll+move+resolve burst) into ONE broadcast, seq monotonic", async () => {
-		const { sync, runtime, emitted } = makeHarness();
+		const { sync, runtime, clock, emitted } = makeHarness();
 		await sync.attach(TOURNAMENT_ID, runtime);
 		runtime.start();
 		await flushMicrotasks();
@@ -121,9 +121,23 @@ describe("TournamentSyncService (SPEC-022 snapshot-first)", () => {
 		expect(emitted.length).toBe(before + 1); // ONE snapshot for the burst
 		const after = emitted[emitted.length - 1].payload;
 		expect(after.seq).toBe(seqBefore + 1);
-		// The turn advanced: the mover left the start tile or gained points, and
-		// the next player holds the active turn.
-		expect(after.snapshot.activePlayerId).toBe(after.snapshot.turnOrder[1]);
+		// The turn resolved; the baton passes only after the handoff pause
+		// (the boards are walking the token), so this snapshot has no active
+		// player yet — the next one carries turnOrder[1].
+		expect(after.snapshot.activePlayerId).toBeNull();
+		// The resolved roll rides the snapshot (dice reveal, SPEC-022): the
+		// board client replays it as value-reveal + token walk.
+		expect(after.snapshot.lastRoll).toEqual({
+			playerId: active,
+			round: 1,
+			value: expect.any(Number),
+			autoResolved: false,
+		});
+
+		clock.advance(3_000); // turn handoff → the next turn opens
+		await flushMicrotasks();
+		const next = emitted[emitted.length - 1].payload.snapshot;
+		expect(next.activePlayerId).toBe(next.turnOrder[1]);
 
 		const seqs = emitted.map((e) => e.payload.seq);
 		expect([...seqs].sort((a, b) => a - b)).toEqual(seqs); // strictly increasing
@@ -166,9 +180,10 @@ describe("TournamentSyncService (SPEC-022 snapshot-first)", () => {
 		runtime.start();
 		await flushMicrotasks();
 
-		// Let every turn time out: 2 rounds × 4 players → DEFEAT → FINISHED.
+		// Let every turn time out (+ the turn-handoff pause each):
+		// 2 rounds × 4 players → DEFEAT → FINISHED.
 		for (let i = 0; i < 8; i++) {
-			clock.advance(TOURNAMENT_SETTINGS_V1.timeouts.turnSeconds * 1000);
+			clock.advance(TOURNAMENT_SETTINGS_V1.timeouts.turnSeconds * 1000 + 3_000);
 			await flushMicrotasks();
 		}
 

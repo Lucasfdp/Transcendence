@@ -418,6 +418,9 @@ export interface ShellCurlPhysicsState {
 export interface OnlineMatchContext {
 	matchId: string;
 	side: number;
+	/** Owning tournament id when this match is a tournament minigame — the
+	 * end-of-match UI routes back to `/tournament/:id` instead of the hub. */
+	tournamentId?: string;
 	spectator?: boolean;
 	rejoining?: boolean;
 	snapshot?: GameSnapshot;

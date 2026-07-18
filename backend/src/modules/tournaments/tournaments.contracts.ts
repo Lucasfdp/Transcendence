@@ -56,6 +56,13 @@ export const TOURNAMENT_WS_MESSAGES = {
 	JOIN: "tournament:join",
 	/** Leave the tournament room (navigating away; not a gameplay abandon). */
 	LEAVE: "tournament:leave",
+	/**
+	 * Quit the match for good (the "Leave match" button): the player is removed
+	 * from the tournament and can NEVER rejoin it — unlike LEAVE/disconnect,
+	 * which only step out of the room and remain reconnectable (SPEC-022). A
+	 * quitter is freed to create/join a new tournament immediately.
+	 */
+	QUIT: "tournament:quit",
 	/** Request a gameplay action; ack = accepted/rejected, never state. */
 	INTENT: "tournament:intent",
 } as const;
@@ -92,6 +99,7 @@ export type TournamentIntentName =
 	| "BuyOfferIntent"
 	| "StartGamblingIntent"
 	| "LeaveGamblingIntent"
+	| "ConfirmMinigameIntent"
 	| "EndTurnIntent";
 
 /** The active player asks to roll (PLAYER_TURNS). */
@@ -109,11 +117,17 @@ export interface LeaveGamblingIntent {
 	name: "LeaveGamblingIntent";
 }
 
+/** "Let's go!" on the MINIGAME TIME! gate (SPEC-015 v2). */
+export interface ConfirmMinigameIntent {
+	name: "ConfirmMinigameIntent";
+}
+
 /** Union of the intents a client may send today; grows per phase. */
 export type TournamentIntent =
 	| RollDiceIntent
 	| StartGamblingIntent
-	| LeaveGamblingIntent;
+	| LeaveGamblingIntent
+	| ConfirmMinigameIntent;
 
 /** Payload of the `tournament:intent` message. */
 export interface TournamentIntentEnvelope {
@@ -136,12 +150,25 @@ export interface TournamentJoinRequest {
 }
 
 /**
+ * Body of `tournament:quit`. Optional: the board's socket is inside the
+ * tournament room, so the server resolves the tournament from the socket. The
+ * in-arena "Leave game" button MUST pass it explicitly — entering the minigame
+ * already LEFT the tournament room, so the socket carries no tournament.
+ */
+export interface TournamentQuitRequest {
+	tournamentId?: string;
+}
+
+/**
  * Ack of `tournament:join`: the current snapshot envelope on success (the
  * reconnection path, SPEC-022), or a rejection reason.
  */
 export type TournamentJoinAck =
 	| { ok: true; envelope: TournamentSnapshotEnvelope }
-	| { ok: false; reason: "not_found" | "not_participant" | "not_running" };
+	| {
+			ok: false;
+			reason: "not_found" | "not_participant" | "not_running" | "left";
+	  };
 
 // ── PIN (architect ruling #2, tournament-platform-seams-audit.md) ─────────────
 
@@ -240,6 +267,8 @@ export interface TournamentTileSummary {
 export interface TournamentPlayerStateSummary {
 	userId: number;
 	username: string;
+	/** Profile picture (as served by the users API); null when unset. */
+	avatar: string | null;
 	/** Fixed seat = position in the turn order (D13). */
 	seat: number;
 	/** Tournament points (Economy wallet), never persistent coins. */
@@ -295,6 +324,76 @@ export interface TournamentSnapshotV1 {
 	minigameMatchId: string | null;
 	/** The champion once the tournament resolves (SPEC-021); null until then. */
 	winnerUserId: number | null;
+	/**
+	 * The most recent resolved dice roll — presentation data: the client
+	 * reveals the value and walks the token to the (already authoritative)
+	 * position in `players`. `(round, playerId)` identifies the roll (one
+	 * turn per player per round); null before the first roll.
+	 */
+	lastRoll: TournamentLastRollSummary | null;
+	/**
+	 * The most recent RESOLVED Key-Item bet (SPEC-016) — presentation data:
+	 * while the phase is still GAMBLING_PHASE with no open session, the round
+	 * is holding so every board can banner this outcome. `(round, playerId)`
+	 * identifies the bet; null before the first resolved bet.
+	 */
+	lastGamble: TournamentGambleOutcomeSummary | null;
+	/**
+	 * The live tie-break roulette (SPEC-015 "Desempates", v2): the round's
+	 * minigame tied, a seeded roulette among `playerIds` decides the winner.
+	 * `winnerId` is already final — clients spin their roulette to land on it
+	 * — and the round resumes at `resolveAt`. Null when no tie-break is live.
+	 */
+	tieBreak: TournamentTieBreakSummary | null;
+	/**
+	 * The live MINIGAME TIME! gate (SPEC-015 v2): the round's minigame is
+	 * selected and waits for every human's "Let's go!" (ConfirmMinigameIntent)
+	 * or the deadline before launching. Null when no gate is open.
+	 */
+	minigameGate: TournamentMinigameGateSummary | null;
+}
+
+/** The live pre-launch confirmation gate as everyone sees it (SPEC-015 v2). */
+export interface TournamentMinigameGateSummary {
+	/** The selected minigame waiting to launch. */
+	minigameId: string;
+	/** Every seated player (CPUs included — they never need to confirm). */
+	playerIds: number[];
+	/** Players who already pressed "Let's go!". */
+	readyPlayerIds: number[];
+	/** ms-epoch hard deadline: the match launches anyway when it passes. */
+	deadlineAt: number;
+}
+
+/** The live tie-break roulette as everyone sees it (SPEC-015 "Desempates"). */
+export interface TournamentTieBreakSummary {
+	/** The tied players — the roulette's slices. */
+	playerIds: number[];
+	/** The seeded winner the roulette lands on. */
+	winnerId: number;
+	/** ms-epoch when the round resumes with the winner. */
+	resolveAt: number;
+}
+
+/** The last resolved Key-Item bet as shown on the board (SPEC-016). */
+export interface TournamentGambleOutcomeSummary {
+	/** The minigame winner who took the bet. */
+	playerId: number;
+	round: number;
+	/** True: a Key Item was unlocked. False: the staked points are gone. */
+	won: boolean;
+	/** Points that were staked. */
+	cost: number;
+}
+
+/** The last resolved dice roll as shown on the board (SPEC-022). */
+export interface TournamentLastRollSummary {
+	playerId: number;
+	round: number;
+	/** The rolled die value. */
+	value: number;
+	/** True when the server resolved the roll (timeout / disconnection). */
+	autoResolved: boolean;
 }
 
 /**

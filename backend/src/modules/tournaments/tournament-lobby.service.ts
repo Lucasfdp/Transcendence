@@ -180,6 +180,9 @@ export class TournamentLobbyService {
 		const rows = await this.participantRepo.find({
 			where: {
 				userId,
+				// Quitters ("Leave match") are out for good: they no longer count
+				// as being in this tournament, so they may join/create a new one.
+				hasLeft: false,
 				tournament: { status: In(["pending", "active"]) },
 			},
 			relations: ["tournament"],
@@ -774,6 +777,9 @@ export class TournamentLobbyService {
 		const rows = await this.participantRepo.find({
 			where: {
 				userId,
+				// Quitters ("Leave match") are out for good: they no longer count
+				// as being in this tournament, so they may join/create a new one.
+				hasLeft: false,
 				tournament: { status: In(["pending", "active"]) },
 			},
 			relations: ["tournament"],
@@ -791,6 +797,40 @@ export class TournamentLobbyService {
 			throw new ConflictException(
 				"You are already in a tournament lobby or game",
 			);
+		}
+	}
+
+	/**
+	 * Mark a participant as having quit the match for good (tournament:quit /
+	 * the "Leave match" button). Persisted so the one-tournament-per-user gate
+	 * (`assertNotInAnotherTournament`) and `getMyLobby` stop counting them in
+	 * this tournament — the player is free to create/join a new one, and can
+	 * never rejoin this one. The quit is recorded as a `forfeit` and counts as
+	 * a loss on the player's overall record (a bare stat bump — no consolation
+	 * XP/coins for quitting). Idempotent-ish: the row update is a no-op if the
+	 * row is gone; the loss is only recorded when the row actually flips (so a
+	 * repeated quit never double-counts).
+	 */
+	async markParticipantLeft(
+		tournamentId: string,
+		userId: number,
+	): Promise<void> {
+		const result = await this.participantRepo.update(
+			// Only the first quit flips the row (hasLeft was false) — this makes
+			// the loss below fire exactly once even on a repeated tournament:quit.
+			{ tournamentId, userId, hasLeft: false },
+			{ hasLeft: true, outcome: "forfeit" },
+		);
+		if (!result.affected) {
+			return;
+		}
+		const profile = await this.profileRepo.findOne({
+			where: { user: { id: userId } },
+		});
+		if (profile) {
+			profile.totalLosses += 1;
+			profile.gamesPlayed += 1;
+			await this.profileRepo.save(profile);
 		}
 	}
 

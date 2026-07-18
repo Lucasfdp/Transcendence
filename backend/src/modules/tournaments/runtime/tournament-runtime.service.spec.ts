@@ -110,17 +110,24 @@ describe("TournamentRuntimeService (SPEC-001/SPEC-023)", () => {
 		await service.startTournament("t-1");
 
 		expect(service.hasRuntime("t-1")).toBe(true);
-		// start() walks to ROUND_START and (interactive mode) into PLAYER_TURNS,
-		// opening the first real turn → row is active, not terminal.
+		// start() walks to ROUND_START and (interactive mode) HOLDS there —
+		// round 1's turns wait for the players to reach the board (or the
+		// first-turns grace) → row is active, not terminal.
 		expect(tournament.status).toBe("active");
 		expect(tournamentRepo.save).toHaveBeenCalled();
 		const state = tournament.state as Record<string, unknown>;
 		expect(state.lobby).toBe(lobby); // untouched
 		expect(state.runtime).toBeDefined();
 		expect((state.runtime as { machine: { phase: string } }).machine.phase).toBe(
-			"PLAYER_TURNS",
+			"ROUND_START",
 		);
-		expect(service.getRuntime("t-1")?.currentPhase).toBe("PLAYER_TURNS");
+		expect(service.getRuntime("t-1")?.currentPhase).toBe("ROUND_START");
+
+		// Every human reaches the board → the first turn opens for the derived
+		// first player (nobody is skipped while still navigating).
+		const runtime = service.getRuntime("t-1");
+		for (const id of [10, 20, 30, 40]) runtime?.handlePlayerConnected(id);
+		expect(runtime?.currentPhase).toBe("PLAYER_TURNS");
 	});
 
 	it("rejects an unknown configId", async () => {

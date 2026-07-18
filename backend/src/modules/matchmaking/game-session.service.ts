@@ -3,12 +3,18 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository } from "typeorm";
 import { GameResultsService } from "../game-results/game-results.service";
 import { UsersService } from "../users/users.service";
+import { Profile } from "../profiles/entities/profile.entity";
 import { Match } from "./entities/match.entity";
 import { MatchPlayer } from "./entities/match-player.entity";
 import { UserRating } from "./entities/user-rating.entity";
 import { GameEngineRegistry } from "./engines/game-engine.registry";
 import { MatchLifecycleEvents } from "./match-lifecycle.events";
-import { GameInputPayload, MatchRoom, RoomPlayer } from "./matchmaking.types";
+import {
+	GameInputPayload,
+	MatchRoom,
+	RoomPlayer,
+	isBotSeat,
+} from "./matchmaking.types";
 import { ReplayService } from "./replay.service";
 import { RoomService } from "./room.service";
 
@@ -122,6 +128,24 @@ export class GameSessionService implements OnModuleInit {
 		);
 		if (finished) {
 			this.cleanupEngineRoomState(finished);
+			// The player who left/forfeited takes the loss on their record.
+			await this.persistFinishedRoom(finished, true, abandonedPlayer);
+		}
+		return finished;
+	}
+
+	/**
+	 * Abort a match with no winner (e.g. a tournament minigame whose tournament
+	 * was cancelled because no real players remain). Recorded as `abandoned`
+	 * with `winnerSide = null` — the same persistence path as a forfeit, so it
+	 * settles cleanly and its `abandoned` lifecycle event unblocks any waiter
+	 * (the tournament minigame coordinator). No per-player XP/coins are granted
+	 * (abandoned path), and a winnerless-abandoned match applies no Elo.
+	 */
+	async abort(room: MatchRoom): Promise<MatchRoom | null> {
+		const finished = this.roomService.finish(room.matchId, null, true);
+		if (finished) {
+			this.cleanupEngineRoomState(finished);
 			await this.persistFinishedRoom(finished, true);
 		}
 		return finished;
@@ -134,6 +158,7 @@ export class GameSessionService implements OnModuleInit {
 	private async persistFinishedRoom(
 		room: MatchRoom,
 		abandoned: boolean,
+		forfeitPlayer?: RoomPlayer,
 	): Promise<void> {
 		if (room.rewardsGranted) return;
 		const winnerSide = room.state.winnerSide;
@@ -186,6 +211,29 @@ export class GameSessionService implements OnModuleInit {
 							{ matchId: room.matchId, userId: player.user.id },
 							{ outcome },
 						);
+					}
+
+					// A player who LEFT/forfeited the match takes a loss on their
+					// overall record (leaving a match counts as a loss). A bare
+					// stat bump — deliberately no consolation XP/coins/card-drop
+					// for quitting. Inside the M4-guarded transition (past the
+					// `affected` check above) so it can never double-count, and
+					// never for a CPU stand-in or a guest.
+					if (
+						abandoned &&
+						forfeitPlayer &&
+						!forfeitPlayer.user.isGuest &&
+						!isBotSeat(forfeitPlayer)
+					) {
+						const profileRepo = manager.getRepository(Profile);
+						const profile = await profileRepo.findOne({
+							where: { user: { id: forfeitPlayer.user.id } },
+						});
+						if (profile) {
+							profile.totalLosses += 1;
+							profile.gamesPlayed += 1;
+							await profileRepo.save(profile);
+						}
 					}
 
 					if (!abandoned) {

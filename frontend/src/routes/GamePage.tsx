@@ -8,6 +8,8 @@ import {
 } from "react-router-dom";
 import { api, type User } from "../features/hub/api";
 import { RETURN_TO_HUB_EVENT } from "../features/hub/ReturnToHubScene";
+import { TOURNAMENT_WS_MESSAGES } from "../features/tournaments/contracts";
+import { TOURNAMENT_QUIT_EVENT } from "../shared/mechanics/hud";
 import type { ShellSmashStartData } from "../lib/createShellSmashGame";
 import { createShellSmashGame } from "../lib/createShellSmashGame";
 import { hubBackgroundClass } from "../shared/backgrounds";
@@ -50,6 +52,7 @@ interface MatchStatusPayload {
 	inMatch: boolean;
 	matchId?: string;
 	gameId?: string;
+	tournamentId?: string;
 	phase?: GameSnapshot["phase"];
 	side?: number;
 	reconnectExpiresAt?: number | null;
@@ -141,13 +144,34 @@ export default function GamePage(): JSX.Element {
 		const host = hostRef.current;
 		if (!host) return;
 
+		// Tournament minigames return to their tournament board, not the hub.
+		const tournamentId = launchData.onlineMatch?.tournamentId;
 		const handleReturnToHub = () =>
-			navigate("/?view=normal", { replace: true });
+			tournamentId
+				? navigate(`/tournament/${tournamentId}`, { replace: true })
+				: navigate("/?view=normal", { replace: true });
 		window.addEventListener(RETURN_TO_HUB_EVENT, handleReturnToHub);
+
+		// The in-arena "LEAVE GAME" button (tournament minigames only, see
+		// buildReturnButton): quit the WHOLE tournament for good — the server
+		// hands both the board seat and this minigame seat to CPUs — and go to
+		// the hub, NOT back to the tournament page. The id travels in the body
+		// because this socket left the tournament room when it entered the
+		// arena.
+		const handleQuitTournament = () => {
+			if (!tournamentId) return;
+			getGameSocket().emit(TOURNAMENT_WS_MESSAGES.QUIT, { tournamentId });
+			navigate("/?view=normal", { replace: true });
+		};
+		window.addEventListener(TOURNAMENT_QUIT_EVENT, handleQuitTournament);
 
 		const game = createShellSmashGame(host, launchData);
 		return () => {
 			window.removeEventListener(RETURN_TO_HUB_EVENT, handleReturnToHub);
+			window.removeEventListener(
+				TOURNAMENT_QUIT_EVENT,
+				handleQuitTournament,
+			);
 			game.destroy(true);
 			host.replaceChildren();
 		};
@@ -558,7 +582,12 @@ function PowerupMatchmakingPanel({
 			GAME_SCENES[activeMatchStatus.gameId ?? ""]?.targetScene;
 		if (!targetScene) return;
 		const socket = getGameSocket();
-		const { matchId, gameId: activeGameId, side } = activeMatchStatus;
+		const {
+			matchId,
+			gameId: activeGameId,
+			side,
+			tournamentId,
+		} = activeMatchStatus;
 		const onRejoinedState = (snapshot: GameSnapshot) => {
 			if (snapshot.matchId !== matchId || snapshot.gameId !== activeGameId) return;
 			socket.off("game:state", onRejoinedState);
@@ -575,6 +604,7 @@ function PowerupMatchmakingPanel({
 						onlineMatch: {
 						matchId,
 						side,
+						tournamentId,
 						rejoining: true,
 							snapshot,
 							physicsState: physicsState ?? undefined,
@@ -590,6 +620,11 @@ function PowerupMatchmakingPanel({
 
 	const abandonActiveMatch = () => {
 		if (!activeMatchStatus) return;
+		const confirmed = window.confirm(
+			"Abandon this match? It counts as a LOSS on your record and your " +
+				"opponent is awarded the win. You can search for a new match afterwards.",
+		);
+		if (!confirmed) return;
 		getGameSocket().emit("match:abandon");
 		setActiveMatchStatus(null);
 		setMessage("Match abandoned. You can search for a new match.");

@@ -37,6 +37,13 @@ export interface MinigameFinalResult {
 	readonly matchId: string;
 	readonly winnerId: number | null;
 	readonly outcomes: ReadonlyMap<number, MinigameOutcome>;
+	/**
+	 * When `winnerId` is null (tie): the players tied for the TOP score, as
+	 * reported by the platform adapter (from the match's per-side scores). The
+	 * coordinator's tie-break roulette picks the round winner among them;
+	 * absent/empty ⇒ every seated player is considered tied.
+	 */
+	readonly tiedPlayerIds?: readonly number[];
 }
 
 /** A coarse lifecycle signal for a specific match, adapted from the platform. */
@@ -107,6 +114,38 @@ export type MinigameRoundResult =
 	| { readonly status: "skipped"; readonly reason: string }
 	| { readonly status: "cancelled"; readonly reason: string };
 
+/**
+ * A live tie-break (SPEC-015 "Desempates", v2): the round's minigame tied, so
+ * a seeded roulette among the tied players decides the winner. The state is
+ * held for the spin's duration so clients can present the roulette; the
+ * winner is decided server-side the moment the tie-break opens.
+ */
+export interface MinigameTieBreakState {
+	/** The tied players — the roulette's slices, in seat order. */
+	readonly playerIds: readonly number[];
+	/** The seeded pick — the roulette lands here on every client. */
+	readonly winnerId: number;
+	/** ms-epoch when the coordinator resumes the round with the winner. */
+	readonly resolveAt: number;
+}
+
+/**
+ * The pre-launch confirmation gate ("MINIGAME TIME!", SPEC-015 v2): after the
+ * round's minigame is selected, every human confirms before the match is
+ * launched. Holds until everyone required confirmed (plus a minimum beat) or
+ * the deadline passes — an absent player never blocks the round.
+ */
+export interface MinigameLaunchGateState {
+	/** The selected minigame waiting to launch. */
+	readonly minigameId: string;
+	/** Every seated player (CPUs included — they never need to confirm). */
+	readonly playerIds: readonly number[];
+	/** Players who already pressed "Let's go!". */
+	readonly readyPlayerIds: readonly number[];
+	/** ms-epoch hard deadline: the match launches anyway when it passes. */
+	readonly deadlineAt: number;
+}
+
 /** JSON-safe snapshot of the Minigame coordinator (SPEC-015). */
 export interface MinigameSnapshot {
 	readonly tournamentId: string;
@@ -114,4 +153,8 @@ export interface MinigameSnapshot {
 	readonly selectionCount: number;
 	/** The match currently awaited, if any. */
 	readonly pendingMatchId: string | null;
+	/** The live tie-break roulette, if one is spinning. */
+	readonly tieBreak: MinigameTieBreakState | null;
+	/** The live pre-launch confirmation gate, if one is open. */
+	readonly launchGate: MinigameLaunchGateState | null;
 }

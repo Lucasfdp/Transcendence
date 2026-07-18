@@ -27,6 +27,7 @@ import {
 	type TournamentSnapshotEnvelope,
 	type TournamentSnapshotV1,
 } from "./contracts";
+import { TieBreakRoulette } from "./TieBreakRoulette";
 
 interface TournamentBoardViewProps {
 	tournamentId: string;
@@ -36,7 +37,66 @@ interface TournamentBoardViewProps {
 /** Provisional seat colors (seat = fixed turn-order position, D13). */
 const SEAT_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f"];
 
+/** Display titles for the minigame ids (MINIGAME TIME! popup). */
+const MINIGAME_TITLES: Record<string, string> = {
+	"temple-curling": "Temple Curling",
+	"bamboo-bash": "Bamboo Bash",
+	"bell-clash": "Bell Clash",
+	"kame-knock": "Kame Knock",
+};
+
+const minigameTitle = (id: string): string => MINIGAME_TITLES[id] ?? id;
+
 const seatColor = (seat: number): string => SEAT_COLORS[seat % SEAT_COLORS.length];
+
+// ── Dice-roll presentation pacing (client-side only, SPEC-022: the server
+//    already resolved the roll — this merely reveals it before settling) ─────
+/** "rolling…" suspense before the value shows. */
+const ROLL_SUSPENSE_MS = 450;
+/** The revealed value holds before the token starts walking. */
+const ROLL_REVEAL_HOLD_MS = 750;
+/** Per-tile hop while the token walks to its resting tile. */
+const TOKEN_STEP_MS = 170;
+
+/** One queued roll reveal (value + where the token must end up). */
+interface RollAnimation {
+	playerId: number;
+	value: number;
+	autoResolved: boolean;
+	targetTileId: string | null;
+}
+
+/** What the dice banner in the board center is currently showing. */
+interface RollBanner {
+	playerId: number;
+	/** null while the "rolling…" suspense plays. */
+	value: number | null;
+	autoResolved: boolean;
+}
+
+/**
+ * The tile-by-tile path from the currently displayed tile to the resting
+ * tile, walking the ring forward in `order`. Falls back to a direct hop when
+ * either end is unknown (fresh join, board edits).
+ */
+function computeStepPath(
+	fromTileId: string | null,
+	toTileId: string | null,
+	tiles: TournamentSnapshotV1["board"]["tiles"],
+): string[] {
+	if (toTileId === null) return [];
+	const ring = [...tiles].sort((a, b) => a.order - b.order);
+	const fromIndex = ring.findIndex((tile) => tile.id === fromTileId);
+	const toIndex = ring.findIndex((tile) => tile.id === toTileId);
+	if (fromIndex === -1 || toIndex === -1) return [toTileId];
+	const path: string[] = [];
+	let index = fromIndex;
+	while (index !== toIndex && path.length <= ring.length) {
+		index = (index + 1) % ring.length;
+		path.push(ring[index].id);
+	}
+	return path;
+}
 
 export function TournamentBoardView({
 	tournamentId,
@@ -47,6 +107,15 @@ export function TournamentBoardView({
 	const [joinError, setJoinError] = useState<string | null>(null);
 	/** Presentation-only clock tick for the turn countdown. */
 	const [nowMs, setNowMs] = useState(() => Date.now());
+	/** Token positions as RENDERED — lag the snapshot while a roll animates. */
+	const [displayedTiles, setDisplayedTiles] = useState<Record<
+		number,
+		string | null
+	> | null>(null);
+	/** The dice banner in the board center (suspense → value → walk). */
+	const [rollBanner, setRollBanner] = useState<RollBanner | null>(null);
+	/** Transient gambling feedback (e.g. "not enough points"). */
+	const [gamblingNotice, setGamblingNotice] = useState<string | null>(null);
 	const seqRef = useRef(-1);
 	const navigate = useNavigate();
 
@@ -67,13 +136,116 @@ export function TournamentBoardView({
 	}, []);
 
 	// Join the tournament room; render only server snapshots (seq-guarded).
+	// Dice rolls are PRESENTED here (suspense → value → token walk) while the
+	// snapshot stays authoritative: only `displayedTiles` lags, and only for
+	// the player whose roll is animating. Everything is effect-local so a
+	// remount (StrictMode) or tournament change resets cleanly.
 	useEffect(() => {
 		const socket = getGameSocket();
+		let prevSnapshot: TournamentSnapshotV1 | null = null;
+		let displayedNow: Record<number, string | null> | null = null;
+		let lastRollKey: string | null = null;
+		const queue: RollAnimation[] = [];
+		let animatingPlayer: number | null = null;
+		let timer: number | null = null;
+		let disposed = false;
+
+		const setTiles = (next: Record<number, string | null>) => {
+			displayedNow = next;
+			setDisplayedTiles(next);
+		};
+		const wait = (ms: number, fn: () => void) => {
+			timer = window.setTimeout(() => {
+				if (!disposed) fn();
+			}, ms);
+		};
+		/** Skip a job without theatrics (used when reveals pile up). */
+		const commitInstant = (job: RollAnimation) => {
+			setTiles({ ...(displayedNow ?? {}), [job.playerId]: job.targetTileId });
+		};
+
+		const pump = () => {
+			if (disposed || animatingPlayer !== null) return;
+			// Falling behind (CPU turns every ~1.5 s): fast-forward the backlog
+			// so the board never drifts more than a couple of rolls behind.
+			while (queue.length > 2) commitInstant(queue.shift() as RollAnimation);
+			const job = queue.shift();
+			if (!job) return;
+			animatingPlayer = job.playerId;
+			setRollBanner({
+				playerId: job.playerId,
+				value: null,
+				autoResolved: job.autoResolved,
+			});
+			wait(ROLL_SUSPENSE_MS, () => {
+				setRollBanner({
+					playerId: job.playerId,
+					value: job.value,
+					autoResolved: job.autoResolved,
+				});
+				wait(ROLL_REVEAL_HOLD_MS, () => {
+					const path = computeStepPath(
+						displayedNow?.[job.playerId] ?? null,
+						job.targetTileId,
+						prevSnapshot?.board.tiles ?? [],
+					);
+					const step = () => {
+						const nextTile = path.shift();
+						if (nextTile === undefined) {
+							setRollBanner(null);
+							animatingPlayer = null;
+							pump();
+							return;
+						}
+						setTiles({ ...(displayedNow ?? {}), [job.playerId]: nextTile });
+						wait(TOKEN_STEP_MS, step);
+					};
+					step();
+				});
+			});
+		};
+
 		const apply = (envelope: TournamentSnapshotEnvelope) => {
 			if (envelope.seq <= seqRef.current) return; // stale — discard
 			seqRef.current = envelope.seq;
-			setSnapshot(envelope.snapshot);
+			const snap = envelope.snapshot;
+			const isFirst = prevSnapshot === null;
+			prevSnapshot = snap;
+			setSnapshot(snap);
+
+			// A roll is identified by (round, playerId): one turn per player per
+			// round. The first snapshot never animates (a rejoin would replay a
+			// stale roll) — it just seeds the displayed positions.
+			const roll = snap.lastRoll;
+			const rollKey = roll ? `${roll.round}:${roll.playerId}` : null;
+			const isNewRoll = rollKey !== null && rollKey !== lastRollKey;
+			if (rollKey !== null) lastRollKey = rollKey;
+			if (!isFirst && isNewRoll && roll) {
+				queue.push({
+					playerId: roll.playerId,
+					value: roll.value,
+					autoResolved: roll.autoResolved,
+					targetTileId:
+						snap.players.find((p) => p.userId === roll.playerId)?.tileId ??
+						null,
+				});
+			}
+
+			// Sync rendered positions for everyone EXCEPT players whose roll is
+			// queued/animating — their token settles when the walk finishes.
+			const pending = new Set(queue.map((job) => job.playerId));
+			if (animatingPlayer !== null) pending.add(animatingPlayer);
+			const next: Record<number, string | null> = {
+				...(displayedNow ?? {}),
+			};
+			for (const p of snap.players) {
+				if (isFirst || !pending.has(p.userId)) next[p.userId] = p.tileId;
+				else if (!(p.userId in next)) next[p.userId] = p.tileId;
+			}
+			setTiles(next);
+			pump();
 		};
+
 		socket.on(TOURNAMENT_WS_EVENTS.SNAPSHOT, apply);
 		socket.emit(
 			TOURNAMENT_WS_MESSAGES.JOIN,
@@ -84,14 +256,19 @@ export function TournamentBoardView({
 			},
 		);
 		return () => {
+			disposed = true;
+			if (timer !== null) window.clearTimeout(timer);
 			socket.off(TOURNAMENT_WS_EVENTS.SNAPSHOT, apply);
 			socket.emit(TOURNAMENT_WS_MESSAGES.LEAVE);
+			setRollBanner(null);
+			setDisplayedTiles(null);
 		};
 	}, [tournamentId]);
 
 	// The server launched this round's minigame with us seated (SPEC-015):
-	// ride the platform's existing auto-join rail into the arena. Coming back
-	// to the hub after the match, the Tournament button re-opens this board.
+	// ride the platform's existing auto-join rail into the arena. When the
+	// minigame ends, its CONTINUE modal routes back to `/tournament/:id`
+	// (the room carries tournamentId; GamePage's return handler redirects).
 	useEffect(() => {
 		const socket = getGameSocket();
 		const onMinigameStart = (data: { matchId: string; gameId: string }) => {
@@ -120,16 +297,22 @@ export function TournamentBoardView({
 		);
 	};
 
-	// Leaving mid-match exits the VIEW, not the tournament (SPEC-023 owns
-	// abandonment semantics): the server keeps playing — the leaver's turns
-	// auto-resolve (SPEC-005) — and reopening the Tournament button rejoins
-	// the room with the current snapshot (SPEC-022 reconnection).
+	// "Leave match" quits the tournament FOR GOOD (tournament:quit): the server
+	// removes the player permanently — they cannot rejoin (reconnection is only
+	// for players who merely disconnected, SPEC-022) — hands their seat to a CPU
+	// that plays out the rest of the match, and frees them to create/join a new
+	// tournament. Plain navigation/disconnect still goes through the
+	// reconnectable LEAVE in the join effect's cleanup.
 	const leaveMatch = () => {
 		const confirmed = window.confirm(
-			"Leave the match view? The tournament keeps running — your turns will " +
-				"be rolled automatically, and you can rejoin from the Tournament button.",
+			"Leave this tournament for good? This counts as a LOSS on your record. " +
+				"A CPU will take your place for the rest of the match and you won't be " +
+				"able to rejoin. You can start or join a new tournament afterwards.",
 		);
-		if (confirmed) onExit();
+		if (confirmed) {
+			getGameSocket().emit(TOURNAMENT_WS_MESSAGES.QUIT, { tournamentId });
+			onExit();
+		}
 	};
 
 	const sendIntent = (name: "StartGamblingIntent" | "LeaveGamblingIntent") => {
@@ -138,6 +321,32 @@ export function TournamentBoardView({
 			{ tournamentId, intent: { name } },
 			(_ack: TournamentIntentAck) => {
 				/* the next snapshot renders the outcome */
+			},
+		);
+	};
+
+	// Gamble with feedback: an unaffordable bet is caught locally (and the
+	// server re-validates — a rejected ack lands in the same notice) instead
+	// of the button silently doing nothing.
+	const startGamble = (cost: number, myPoints: number) => {
+		if (myPoints < cost) {
+			setGamblingNotice(
+				`Not enough points — the bet costs ${cost} and you have ${myPoints}.`,
+			);
+			return;
+		}
+		setGamblingNotice(null);
+		getGameSocket().emit(
+			TOURNAMENT_WS_MESSAGES.INTENT,
+			{ tournamentId, intent: { name: "StartGamblingIntent" } },
+			(ack: TournamentIntentAck) => {
+				if (!ack.accepted) {
+					setGamblingNotice(
+						ack.reason === "insufficient_points"
+							? `Not enough points — the bet costs ${cost}.`
+							: "The bet could not be placed.",
+					);
+				}
 			},
 		);
 	};
@@ -159,13 +368,134 @@ export function TournamentBoardView({
 		gambling !== null
 			? Math.max(0, Math.ceil((gambling.deadlineAt - nowMs) / 1000))
 			: null;
+	const myPoints =
+		snapshot?.players.find((p) => p.userId === myUserId)?.points ?? 0;
+	const canAffordGamble = gambling !== null && myPoints >= gambling.cost;
+
+	// A RESOLVED bet's outcome: while the phase is still GAMBLING_PHASE with
+	// no open session, the server is holding the round precisely so every
+	// board can present this result (SPEC-016).
+	const gambleReveal =
+		snapshot?.phase === "GAMBLING_PHASE" && gambling === null
+			? snapshot.lastGamble
+			: null;
+	const gambleRevealPlayer =
+		gambleReveal && snapshot
+			? snapshot.players.find((p) => p.userId === gambleReveal.playerId) ?? null
+			: null;
+
+	// A new gambling session (or its close) clears any stale bet feedback.
+	const gamblingKey = gambling
+		? `${gambling.winnerId}:${gambling.deadlineAt}`
+		: null;
+	useEffect(() => {
+		setGamblingNotice(null);
+	}, [gamblingKey]);
 	const champion =
 		snapshot?.winnerUserId != null
 			? snapshot.players.find((p) => p.userId === snapshot.winnerUserId) ?? null
 			: null;
 
+	// The live tie-break roulette (SPEC-015 "Desempates"): slices in seat
+	// order so every client draws the identical wheel and lands together.
+	const tieBreak = snapshot?.tieBreak ?? null;
+	const tieBreakPlayers =
+		tieBreak && snapshot
+			? snapshot.players
+					.filter((p) => tieBreak.playerIds.includes(p.userId))
+					.sort((a, b) => a.seat - b.seat)
+			: [];
+
+	// MINIGAME TIME! gate (SPEC-015 v2): the selected minigame waits for every
+	// human's "Let's go!" before launching. CPUs never confirm — the required
+	// set is the human seats; the server's deadline is the no-show backstop.
+	const minigameGate = snapshot?.minigameGate ?? null;
+	const gateHumans =
+		minigameGate && snapshot
+			? snapshot.players.filter(
+					(p) => minigameGate.playerIds.includes(p.userId) && !p.isBot,
+				)
+			: [];
+	const gateReadyCount = gateHumans.filter((p) =>
+		minigameGate?.readyPlayerIds.includes(p.userId),
+	).length;
+	const iConfirmedGate =
+		myUserId !== null && (minigameGate?.readyPlayerIds.includes(myUserId) ?? false);
+	const gateSeconds =
+		minigameGate !== null
+			? Math.max(0, Math.ceil((minigameGate.deadlineAt - nowMs) / 1000))
+			: null;
+
+	const confirmMinigame = () => {
+		getGameSocket().emit(
+			TOURNAMENT_WS_MESSAGES.INTENT,
+			{ tournamentId, intent: { name: "ConfirmMinigameIntent" } },
+			(_ack: TournamentIntentAck) => {
+				/* the next snapshot shows us among the ready players */
+			},
+		);
+	};
+
 	return createPortal(
 		<div style={overlayStyle} role="dialog" aria-modal="true" aria-label="Tournament board">
+			{/* Tie-break roulette: covers the board until the server resumes the
+			    round (the wheel lands on the server-chosen winner everywhere). */}
+			{tieBreak && tieBreakPlayers.length >= 2 && !isTerminal && (
+				<div style={tieBreakOverlayStyle}>
+					<TieBreakRoulette
+						players={tieBreakPlayers}
+						winnerId={tieBreak.winnerId}
+						seatColor={seatColor}
+					/>
+				</div>
+			)}
+			{/* MINIGAME TIME! — every human confirms before the match launches. */}
+			{minigameGate && !tieBreak && !isTerminal && (
+				<div style={tieBreakOverlayStyle}>
+					<div style={gateBoxStyle}>
+						<div style={{ fontSize: 34 }}>🎮</div>
+						<div style={{ fontWeight: 800, fontSize: 22, letterSpacing: 1 }}>
+							MINIGAME TIME!
+						</div>
+						<div style={{ fontWeight: 700, fontSize: 16 }}>
+							{minigameTitle(minigameGate.minigameId)}
+						</div>
+						<div style={mutedLabel}>
+							{gateReadyCount} / {gateHumans.length} players ready
+							{gateSeconds !== null ? ` · auto-starts in ${gateSeconds}s` : ""}
+						</div>
+						<div style={gateReadyRow}>
+							{gateHumans.map((p) => (
+								<span
+									key={p.userId}
+									style={{
+										...gateReadyChip,
+										opacity: minigameGate.readyPlayerIds.includes(p.userId)
+											? 1
+											: 0.5,
+									}}
+								>
+									{minigameGate.readyPlayerIds.includes(p.userId) ? "✅ " : "⌛ "}
+									{p.username}
+								</span>
+							))}
+						</div>
+						<button
+							type="button"
+							style={{
+								...primaryBtn,
+								minWidth: 190,
+								opacity: iConfirmedGate ? 0.6 : 1,
+								cursor: iConfirmedGate ? "default" : "pointer",
+							}}
+							disabled={iConfirmedGate}
+							onClick={confirmMinigame}
+						>
+							{iConfirmedGate ? "Waiting for players…" : "Let's go!"}
+						</button>
+					</div>
+				</div>
+			)}
 			<div style={frameStyle}>
 				<h2 style={{ margin: "0 0 4px", textAlign: "center" }}>The Parrot's Shell</h2>
 
@@ -192,8 +522,11 @@ export function TournamentBoardView({
 									Math.PI / 2;
 								const x = BOARD_CENTER + BOARD_RADIUS * Math.cos(angle);
 								const y = BOARD_CENTER + BOARD_RADIUS * Math.sin(angle);
+								// Rendered position: the animated one while a roll
+								// walks a token, the authoritative one otherwise.
 								const occupants = snapshot.players.filter(
-									(p) => p.tileId === tile.id,
+									(p) =>
+										(displayedTiles?.[p.userId] ?? p.tileId) === tile.id,
 								);
 								return (
 									<div
@@ -243,6 +576,34 @@ export function TournamentBoardView({
 													? `${champion.username} claims THE PARROT'S SHELL!`
 													: "Collective defeat — the Shell stays hidden"}
 										</div>
+									</>
+								) : gambleReveal ? (
+									<>
+										<div style={{ fontSize: 30 }}>
+											{gambleReveal.won ? "🔑" : "💸"}
+										</div>
+										<div style={{ fontWeight: 700, fontSize: 13 }}>
+											{gambleReveal.won
+												? `${gambleRevealPlayer?.username ?? "…"} unlocked a KEY ITEM!`
+												: `${gambleRevealPlayer?.username ?? "…"} lost the bet (−${gambleReveal.cost} pts)`}
+										</div>
+									</>
+								) : rollBanner ? (
+									<>
+										<div style={{ fontSize: 26 }}>🎲</div>
+										<div style={{ fontWeight: 700, fontSize: 13 }}>
+											{snapshot.players.find(
+												(p) => p.userId === rollBanner.playerId,
+											)?.username ?? "…"}{" "}
+											rolls
+										</div>
+										<div style={{ fontWeight: 800, fontSize: 30 }}>
+											{rollBanner.value ?? "…"}
+										</div>
+										{rollBanner.autoResolved &&
+											rollBanner.value !== null && (
+												<div style={mutedLabel}>(auto-rolled)</div>
+											)}
 									</>
 								) : (
 									<>
@@ -306,11 +667,32 @@ export function TournamentBoardView({
 												{Math.round(gambling.winChance * 100)}% chance ·{" "}
 												{gamblingSeconds}s
 											</div>
+											<div style={mutedLabel}>
+												You have {myPoints} points
+												{canAffordGamble
+													? "."
+													: ` — you need ${gambling.cost} to bet.`}
+											</div>
+											{gamblingNotice && (
+												<div style={gamblingNoticeStyle} role="alert">
+													{gamblingNotice}
+												</div>
+											)}
 											<div style={{ display: "flex", gap: 8 }}>
 												<button
 													type="button"
-													style={{ ...primaryBtn, marginTop: 4, flex: 1 }}
-													onClick={() => sendIntent("StartGamblingIntent")}
+													style={{
+														...primaryBtn,
+														marginTop: 4,
+														flex: 1,
+														opacity: canAffordGamble ? 1 : 0.45,
+														cursor: canAffordGamble
+															? "pointer"
+															: "not-allowed",
+													}}
+													onClick={() =>
+														startGamble(gambling.cost, myPoints)
+													}
 												>
 													Gamble
 												</button>
@@ -333,6 +715,34 @@ export function TournamentBoardView({
 											{gamblingSeconds}s
 										</div>
 									)}
+								</div>
+							)}
+
+							{/* The bet's outcome (SPEC-016): shown while the server
+							    holds the round for the reveal. */}
+							{gambleReveal && (
+								<div
+									style={{
+										...gamblingBox,
+										border: gambleReveal.won
+											? "1px solid rgba(46, 204, 113, 0.6)"
+											: "1px solid rgba(220, 60, 60, 0.55)",
+										background: gambleReveal.won
+											? "rgba(46, 204, 113, 0.12)"
+											: "rgba(220, 60, 60, 0.12)",
+									}}
+									role="status"
+								>
+									<div style={{ fontWeight: 700 }}>
+										{gambleReveal.won ? "🔑 " : "💸 "}
+										{gambleReveal.playerId === myUserId
+											? gambleReveal.won
+												? "You won the bet — a Key Item is unlocked!"
+												: `You lost the bet — ${gambleReveal.cost} points gone.`
+											: gambleReveal.won
+												? `${gambleRevealPlayer?.username ?? "The winner"} won the bet — a Key Item is unlocked!`
+												: `${gambleRevealPlayer?.username ?? "The winner"} lost the bet (−${gambleReveal.cost} points).`}
+									</div>
 								</div>
 							)}
 
@@ -381,6 +791,10 @@ function activePlayerName(snapshot: TournamentSnapshotV1): string {
 /** Human phase label for the board center (presentation only, SPEC-022). */
 function phaseLabel(snapshot: TournamentSnapshotV1): string {
 	switch (snapshot.phase) {
+		case "ROUND_START":
+			// Round 1 holds here until every player reaches the board (or the
+			// server-side grace expires) so nobody's first turn burns unseen.
+			return "Waiting for players…";
 		case "PLAYER_TURNS":
 			return activePlayerName(snapshot);
 		case "MINIGAME":
@@ -526,6 +940,49 @@ const gamblingBox: CSSProperties = {
 	display: "flex",
 	flexDirection: "column",
 	gap: 6,
+};
+const tieBreakOverlayStyle: CSSProperties = {
+	position: "absolute",
+	inset: 0,
+	zIndex: 3,
+	background: "rgba(8, 12, 24, 0.78)",
+	display: "flex",
+	alignItems: "center",
+	justifyContent: "center",
+};
+const gateBoxStyle: CSSProperties = {
+	display: "flex",
+	flexDirection: "column",
+	alignItems: "center",
+	gap: 8,
+	padding: "22px 28px",
+	borderRadius: 14,
+	background: "rgba(20, 26, 44, 0.96)",
+	border: "1px solid rgba(255, 255, 255, 0.18)",
+	textAlign: "center",
+	maxWidth: 340,
+};
+const gateReadyRow: CSSProperties = {
+	display: "flex",
+	flexWrap: "wrap",
+	gap: 6,
+	justifyContent: "center",
+};
+const gateReadyChip: CSSProperties = {
+	padding: "4px 10px",
+	borderRadius: 999,
+	background: "rgba(255, 255, 255, 0.08)",
+	fontSize: 12,
+	fontWeight: 600,
+};
+const gamblingNoticeStyle: CSSProperties = {
+	padding: "6px 10px",
+	borderRadius: 8,
+	border: "1px solid rgba(220,60,60,0.5)",
+	background: "rgba(220,60,60,0.15)",
+	color: "#ff9a9a",
+	fontSize: 12,
+	fontWeight: 600,
 };
 const leaveMatchBtn: CSSProperties = {
 	marginTop: 4,

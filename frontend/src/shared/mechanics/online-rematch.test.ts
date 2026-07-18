@@ -30,8 +30,9 @@ vi.mock("./game-end-modal", () => ({
 
 import { showOnlineRematchEndModal } from "./online-rematch";
 
-function makeScene() {
+function makeScene(registryValues: Record<string, unknown> = {}) {
 	const shutdownListeners = new Set<() => void>();
+	const timers: Array<{ callback: () => void; remove: ReturnType<typeof vi.fn> }> = [];
 	return {
 		events: {
 			once: vi.fn((_event: string, handler: () => void) =>
@@ -41,8 +42,20 @@ function makeScene() {
 				shutdownListeners.delete(handler),
 			),
 		},
-		registry: { set: vi.fn(), remove: vi.fn() },
+		registry: {
+			get: vi.fn((key: string) => registryValues[key]),
+			set: vi.fn(),
+			remove: vi.fn(),
+		},
 		scene: { start: vi.fn() },
+		time: {
+			addEvent: vi.fn((config: { callback: () => void }) => {
+				const timer = { callback: config.callback, remove: vi.fn() };
+				timers.push(timer);
+				return timer;
+			}),
+		},
+		timers,
 	};
 }
 
@@ -121,5 +134,44 @@ describe("online rematch modal", () => {
 		expect(mocks.socket.emit).toHaveBeenCalledWith("match:play-again", {
 			matchId: "old-match",
 		});
+	});
+
+	it("tournament minigames get a single CONTINUE action and no rematch listeners", () => {
+		const scene = makeScene({ onlineMatch: { tournamentId: "t-1" } });
+		showOnlineRematchEndModal(scene as never, null, options);
+
+		expect(mocks.listeners.get("match:rematch-start")?.size ?? 0).toBe(0);
+		const modal = mocks.showGameEndModal.mock.calls[0]?.[2] as {
+			result: string;
+			actions: Array<{ label: string; onClick(): void }>;
+		};
+		expect(modal.actions.map((a) => a.label)).toEqual(["CONTINUE"]);
+		expect(modal.result).toContain("15s");
+
+		modal.actions[0].onClick();
+		expect(mocks.socket.emit).toHaveBeenCalledWith("match:leave-finished", {
+			matchId: "old-match",
+		});
+		expect(scene.registry.remove).toHaveBeenCalledWith("onlineMatch");
+		expect(scene.scene.start).toHaveBeenCalledWith("HubScene");
+	});
+
+	it("tournament countdown auto-continues to the board when it reaches 0", () => {
+		const scene = makeScene({ onlineMatch: { tournamentId: "t-1" } });
+		showOnlineRematchEndModal(scene as never, null, options);
+
+		const timer = scene.timers[0];
+		expect(timer).toBeDefined();
+		for (let tick = 0; tick < 15; tick += 1) timer.callback();
+
+		expect(mocks.socket.emit).toHaveBeenCalledWith("match:leave-finished", {
+			matchId: "old-match",
+		});
+		expect(scene.scene.start).toHaveBeenCalledTimes(1);
+		expect(scene.scene.start).toHaveBeenCalledWith("HubScene");
+
+		// Further ticks after continuing must not re-fire the transition.
+		timer.callback();
+		expect(scene.scene.start).toHaveBeenCalledTimes(1);
 	});
 });

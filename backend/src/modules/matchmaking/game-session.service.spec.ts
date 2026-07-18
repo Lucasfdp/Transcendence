@@ -1,4 +1,5 @@
 import { GameResultsService } from "../game-results/game-results.service";
+import { Profile } from "../profiles/entities/profile.entity";
 import { UsersService } from "../users/users.service";
 import { Match } from "./entities/match.entity";
 import { MatchPlayer } from "./entities/match-player.entity";
@@ -88,6 +89,7 @@ describe("GameSessionService", () => {
 	let matchPlayerRepo: { update: jest.Mock };
 	let ratingRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
 	let dataSource: { transaction: jest.Mock };
+	let profileRepo: { findOne: jest.Mock; save: jest.Mock };
 
 	beforeEach(() => {
 		roomService = {
@@ -127,6 +129,10 @@ describe("GameSessionService", () => {
 			create: jest.fn((rating) => rating),
 			save: jest.fn(),
 		};
+		profileRepo = {
+			findOne: jest.fn(async () => ({ totalLosses: 0, gamesPlayed: 0 })),
+			save: jest.fn(async (p) => p),
+		};
 		// Transaction mock routes getRepository() to the same repo mocks the
 		// tests assert against, so the transactional persistence path is covered.
 		dataSource = {
@@ -141,6 +147,7 @@ describe("GameSessionService", () => {
 							if (entity === Match) return matchRepo;
 							if (entity === MatchPlayer) return matchPlayerRepo;
 							if (entity === UserRating) return ratingRepo;
+							if (entity === Profile) return profileRepo;
 							throw new Error("Unknown repository");
 						},
 					}),
@@ -290,6 +297,65 @@ describe("GameSessionService", () => {
 			{ id: room.matchId, status: "active" },
 			expect.objectContaining({ winnerUserId: 1, winnerSide: 0 }),
 		);
+	});
+
+	it("abandon() records a loss on the abandoning player's record (leaving = a loss)", async () => {
+		const room = makeRoom({ status: "active" });
+		roomService.getRoom.mockReturnValue(room);
+		engine.abandon.mockReturnValue(0); // side 0 wins; side 1 abandoned
+
+		await service.abandon(room, room.players[1]);
+
+		expect(profileRepo.findOne).toHaveBeenCalledWith({
+			where: { user: { id: room.players[1].user.id } },
+		});
+		expect(profileRepo.save).toHaveBeenCalledWith(
+			expect.objectContaining({ totalLosses: 1, gamesPlayed: 1 }),
+		);
+		// Abandon path grants no consolation XP/coins.
+		expect(gameResultsService.submitResult).not.toHaveBeenCalled();
+	});
+
+	it("abandon() does not record a loss for a guest or a CPU stand-in", async () => {
+		const guestRoom = makeRoom({
+			status: "active",
+			players: [makePlayer(0), makePlayer(1, { user: { id: 2, username: "g", isGuest: true } })],
+		});
+		roomService.getRoom.mockReturnValue(guestRoom);
+		engine.abandon.mockReturnValue(0);
+		await service.abandon(guestRoom, guestRoom.players[1]);
+		expect(profileRepo.save).not.toHaveBeenCalled();
+
+		jest.clearAllMocks();
+		profileRepo.findOne.mockResolvedValue({ totalLosses: 0, gamesPlayed: 0 });
+		const botRoom = makeRoom({
+			status: "active",
+			players: [makePlayer(0), makePlayer(1, { socketId: "bot:2" })],
+		});
+		roomService.getRoom.mockReturnValue(botRoom);
+		engine.abandon.mockReturnValue(0);
+		await service.abandon(botRoom, botRoom.players[1]);
+		expect(profileRepo.save).not.toHaveBeenCalled();
+	});
+
+	it("abort() tears the match down as a winnerless abandon (no rewards, engine cleaned)", async () => {
+		const room = makeRoom({ status: "active" });
+		room.state.winnerSide = 0;
+		roomService.getRoom.mockReturnValue(room);
+
+		const finished = await service.abort(room);
+
+		// Finished as abandoned with no winner.
+		expect(roomService.finish).toHaveBeenCalledWith("match-1", null, true);
+		expect(finished?.status).toBe("abandoned");
+		expect(finished?.state.winnerSide).toBeNull();
+		expect(engine.onRoomClosed).toHaveBeenCalledWith(room);
+		// Persisted as abandoned with a null winner; no XP/coins granted.
+		expect(matchRepo.update).toHaveBeenCalledWith(
+			{ id: "match-1", status: "active" },
+			expect.objectContaining({ status: "abandoned", winnerUserId: null }),
+		);
+		expect(gameResultsService.submitResult).not.toHaveBeenCalled();
 	});
 
 	it("cleans engine room state when an abandon is persisted", async () => {

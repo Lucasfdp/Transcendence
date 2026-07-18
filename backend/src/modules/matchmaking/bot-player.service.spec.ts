@@ -126,6 +126,50 @@ describe("BotPlayerService — CPU players vs the real engines", () => {
 		30_000,
 	);
 
+	it("bots sit out the start-countdown hold before their first action", async () => {
+		const registry = new GameEngineRegistry(
+			new ShellCurlEngine(),
+			new BambooBashEngine(),
+			new KameKnockEngine(),
+			new BellClashEngine(),
+		);
+		const rooms = new RoomService(registry);
+		let virtualNow = 1_000_000;
+		const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => virtualNow);
+		try {
+			const room = rooms.createRoom("match-hold", "kame-knock", "casual", [
+				{ socketId: "bot:1", user: botUser(1), shellSelection: [] },
+				{ socketId: "bot:2", user: botUser(2), shellSelection: [] },
+			]);
+			for (const player of room.players) {
+				rooms.setReady(room.matchId, player.user.id);
+			}
+			rooms.start(room.matchId);
+
+			const handleUserInput = jest.fn();
+			const bots = new BotPlayerService(rooms, {
+				handleUserInput,
+			} as unknown as MatchmakingGateway);
+
+			// Within the countdown window (clients show "3, 2, 1, GO!"): the
+			// bots must not move, no matter how many ticks pass.
+			for (let elapsed = 0; elapsed < 4_900; elapsed += 700) {
+				await bots.tick();
+				virtualNow += 700;
+			}
+			expect(handleUserInput).not.toHaveBeenCalled();
+
+			// Past the hold (+ the per-seat act delay): the bots play.
+			for (let elapsed = 0; elapsed < 4_000; elapsed += 700) {
+				virtualNow += 700;
+				await bots.tick();
+			}
+			expect(handleUserInput).toHaveBeenCalled();
+		} finally {
+			nowSpy.mockRestore();
+		}
+	});
+
 	it("bots never act on rooms without bot seats", async () => {
 		const registry = new GameEngineRegistry(
 			new ShellCurlEngine(),

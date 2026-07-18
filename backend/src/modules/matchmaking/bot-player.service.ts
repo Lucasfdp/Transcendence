@@ -34,8 +34,10 @@ import { MatchmakingGateway } from "./matchmaking.gateway";
 import {
 	BambooBashSnapshot,
 	BellClashSnapshot,
+	BOT_SOCKET_PREFIX,
 	CurlingSnapshot,
 	GameInputPayload,
+	isBotSeat,
 	KameKnockSnapshot,
 	MatchRoom,
 	ReplayFrameSnapshotEntity,
@@ -43,12 +45,9 @@ import {
 } from "./matchmaking.types";
 import { RoomService } from "./room.service";
 
-/** Socket-id prefix marking a server-driven seat. */
-export const BOT_SOCKET_PREFIX = "bot:";
-
-/** A seat currently played by the server (self-clears on human reconnect). */
-export const isBotSeat = (player: RoomPlayer): boolean =>
-	player.socketId.startsWith(BOT_SOCKET_PREFIX);
+// These moved to their dependency-free home (`matchmaking.types`) to break a
+// cycle; re-exported here so existing importers keep working unchanged.
+export { BOT_SOCKET_PREFIX, isBotSeat };
 
 /** Driver cadence; per-action pacing is randomized per throw (human-ish). */
 const BOT_TICK_MS = 400;
@@ -126,11 +125,22 @@ const launchVelocity = (
 	return { vx: (dx / distance) * speed, vy: (dy / distance) * speed };
 };
 
+/**
+ * Server-side stand-in for the clients' "3, 2, 1, GO!" opener: bots hold for
+ * this long after a room first ticks active, so a CPU can never move while
+ * the human players are still watching the countdown. Sized for the shared
+ * 3.2 s countdown plus the navigation lag of tournament clients (who reach
+ * the arena 1–3 s after the server starts the match).
+ */
+const BOT_START_COUNTDOWN_HOLD_MS = 5_000;
+
 @Injectable()
 export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 	private readonly logger = new Logger(BotPlayerService.name);
 	private timer: NodeJS.Timeout | null = null;
 	private readonly plans = new Map<string, SeatPlan>();
+	/** matchId → when bots may start acting (the countdown hold). */
+	private readonly roomHoldUntil = new Map<string, number>();
 
 	constructor(
 		private readonly rooms: RoomService,
@@ -145,6 +155,7 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 		if (this.timer) clearInterval(this.timer);
 		this.timer = null;
 		this.plans.clear();
+		this.roomHoldUntil.clear();
 	}
 
 	/** One pass over the active rooms; public for tests. */
@@ -152,6 +163,14 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 		const activeMatchIds = new Set<string>();
 		for (const room of this.rooms.getActiveRooms()) {
 			activeMatchIds.add(room.matchId);
+			// Match the clients' "3, 2, 1, GO!": bots sit out the countdown
+			// window after the room goes active, so nothing moves before GO.
+			let holdUntil = this.roomHoldUntil.get(room.matchId);
+			if (holdUntil === undefined) {
+				holdUntil = Date.now() + BOT_START_COUNTDOWN_HOLD_MS;
+				this.roomHoldUntil.set(room.matchId, holdUntil);
+			}
+			if (Date.now() < holdUntil) continue;
 			for (const player of room.players) {
 				if (!isBotSeat(player)) continue;
 				await this.stepSeat(room, player);
@@ -161,6 +180,11 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 		for (const key of [...this.plans.keys()]) {
 			if (!activeMatchIds.has(key.split("|")[0])) {
 				this.plans.delete(key);
+			}
+		}
+		for (const matchId of [...this.roomHoldUntil.keys()]) {
+			if (!activeMatchIds.has(matchId)) {
+				this.roomHoldUntil.delete(matchId);
 			}
 		}
 	}

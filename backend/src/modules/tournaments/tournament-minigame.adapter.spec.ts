@@ -125,6 +125,7 @@ describe("TournamentMinigameAdapter (SPEC-015 socket-bound)", () => {
 				{ socketId: "sock-10", user: socketUser(10), shellSelection: [] },
 				{ socketId: "sock-20", user: socketUser(20), shellSelection: [] },
 			],
+			tournamentId: "t-1",
 		});
 		expect(startServerInitiatedMatch).toHaveBeenCalledWith(
 			fakeRoom(null),
@@ -182,6 +183,30 @@ describe("TournamentMinigameAdapter (SPEC-015 socket-bound)", () => {
 
 		expect(signals[0].result?.winnerId).toBeNull();
 		expect(signals[0].result?.outcomes.get(10)).toBe("draw");
+		// No per-side scores on this fake room → everyone is a tie-break
+		// candidate (the coordinator's roulette settles it).
+		expect(signals[0].result?.tiedPlayerIds).toBeUndefined();
+	});
+
+	it("a tie with per-side scores reports only the players tied for the TOP score", () => {
+		const { adapter, lifecycle } = makeAdapter();
+		const signals: MinigameLifecycleSignal[] = [];
+		adapter.subscribe((s) => signals.push(s));
+
+		const room = {
+			matchId: "match-1",
+			gameId: "kame-knock",
+			players: [
+				{ side: 0, user: socketUser(10) },
+				{ side: 1, user: socketUser(20) },
+				{ side: 2, user: socketUser(30) },
+			],
+			state: { winnerSide: null, score: [7, 3, 7] },
+		} as unknown as MatchRoom;
+		lifecycle.emit({ type: "finished", room });
+
+		expect(signals[0].result?.winnerId).toBeNull();
+		expect(signals[0].result?.tiedPlayerIds).toEqual([10, 30]);
 	});
 
 	it("reconcile reads the durable rows one-shot; unfinished matches yield null", async () => {

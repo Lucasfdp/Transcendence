@@ -17,6 +17,8 @@ export interface CreateMatchInput {
 	mode: MatchMode;
 	players: MatchPlayerInput[];
 	powerupsEnabled?: boolean;
+	/** Owning tournament id when this match is a tournament minigame (SPEC-015). */
+	tournamentId?: string;
 }
 
 /**
@@ -51,6 +53,7 @@ export class MatchFactoryService {
 		);
 		const room = this.roomService.createRoom(match.id, gameId, mode, players, {
 			powerupsEnabled: input.powerupsEnabled,
+			tournamentId: input.tournamentId,
 		});
 		await this.matchPlayerRepo.save(
 			room.players.map((player) =>

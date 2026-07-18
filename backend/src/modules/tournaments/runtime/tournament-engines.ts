@@ -71,7 +71,11 @@ import {
 	KeyItemDefinition,
 	KeyItemProgressionSnapshot,
 } from "../key-items/key-item.types";
-import { TournamentMinigame } from "../minigame/tournament-minigame";
+import {
+	MinigameLaunchGateConfig,
+	TieBreakGateConfig,
+	TournamentMinigame,
+} from "../minigame/tournament-minigame";
 import {
 	MinigameCatalogPort,
 	MinigameLauncherPort,
@@ -164,6 +168,16 @@ export interface TournamentEnginesOptions {
 	readonly minigameLifecycle?: MinigameLifecyclePort;
 	readonly minigameReconciler?: MinigameReconcilerPort;
 	readonly minigameCatalog?: MinigameCatalogPort;
+	/**
+	 * Pre-launch "MINIGAME TIME!" confirmation gate (SPEC-015 v2). Absent ⇒
+	 * matches launch immediately (Phase-1 behaviour, standalone tests).
+	 */
+	readonly minigameLaunchGate?: MinigameLaunchGateConfig;
+	/**
+	 * Tie-break audience gate (SPEC-015 v2): the roulette waits for every
+	 * player's board before spinning. Absent ⇒ spin immediately.
+	 */
+	readonly minigameTieBreakGate?: TieBreakGateConfig;
 	/**
 	 * Provably-fair seam for Gambling (SPEC-016). Defaults to the existing
 	 * casino's primitives; tests inject a deterministic stub.
@@ -532,6 +546,8 @@ export function createTournamentEngines(
 		lifecycle: minigameLifecycle,
 		reconciler: minigameReconciler,
 		catalog: minigameCatalog,
+		launchGate: options.minigameLaunchGate,
+		tieBreakGate: options.minigameTieBreakGate,
 		rewardGranter: rewards,
 		makeContext: (input) => ({
 			tournamentId,

@@ -1330,6 +1330,7 @@ export class MatchmakingGateway
 				matchId: activeRoom.matchId,
 				side: player.side,
 				gameId: activeRoom.gameId,
+				tournamentId: activeRoom.tournamentId,
 				snapshot: activeRoom.state,
 				physicsState: activeRoom.physicsState
 					? this.publicPhysicsState(activeRoom)
@@ -1425,6 +1426,7 @@ export class MatchmakingGateway
 			inMatch: true,
 			matchId: status.room.matchId,
 			gameId: status.room.gameId,
+			tournamentId: status.room.tournamentId,
 			phase: status.room.status,
 			side: status.side,
 			reconnectExpiresAt: status.reconnectExpiresAt,
@@ -1449,5 +1451,60 @@ export class MatchmakingGateway
 			);
 			if (playerSocket) this.emitUserMatchStatus(playerSocket);
 		}
+	}
+
+	/**
+	 * Force-tear-down an in-flight match with no winner, e.g. a tournament
+	 * minigame whose tournament was cancelled because no real players remain.
+	 * Prevents zombie matches lingering in `active` until a watchdog. Public so
+	 * server-side orchestrators (the tournament minigame adapter) can call it;
+	 * no-op if the match is already gone or resolved.
+	 */
+	async abortMatch(matchId: string, reason: string): Promise<void> {
+		const room = this.rooms.getRoom(matchId);
+		if (
+			!room ||
+			room.status === "finished" ||
+			room.status === "abandoned"
+		) {
+			return;
+		}
+		this.logger.log(`aborting match ${matchId}: ${reason}`);
+		const finished = await this.sessions.abort(room);
+		if (!finished) return;
+		this.emitState(finished.matchId);
+		this.server.to(finished.matchId).emit("game:end", finished.state);
+		for (const roomPlayer of finished.players) {
+			const playerSocket = this.server.sockets.sockets.get(
+				roomPlayer.socketId,
+			);
+			if (playerSocket) this.emitUserMatchStatus(playerSocket);
+		}
+	}
+
+	/**
+	 * Hand a live seat to a CPU stand-in mid-match: a tournament player quit
+	 * for good ("Leave game") while their round's minigame was in flight, so
+	 * the seat plays on server-side (BotPlayerService) instead of dangling
+	 * into the disconnect-forfeit path — the other seats keep their match.
+	 * Public for the tournament minigame adapter; no-op if the match is gone,
+	 * resolved, or the user isn't seated.
+	 */
+	convertSeatToBot(matchId: string, userId: number): void {
+		const room = this.rooms.convertSeatToBot(matchId, userId);
+		if (!room) return;
+		this.logger.log(
+			`seat of user ${userId} in match ${matchId} handed to a CPU stand-in`,
+		);
+		// The departed user's sockets stop receiving this match, and their
+		// match:status flips to "no match" (the seat is no longer theirs).
+		for (const sid of this.presence.getSocketIds(userId)) {
+			const socket = this.server.sockets.sockets.get(sid);
+			if (socket) {
+				socket.leave(matchId);
+				this.emitUserMatchStatus(socket);
+			}
+		}
+		this.emitState(matchId);
 	}
 }

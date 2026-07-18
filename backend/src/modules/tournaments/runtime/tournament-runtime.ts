@@ -138,6 +138,15 @@ export interface TournamentRuntimeOptions {
 	 * is affordable, else pass). Humans and bots share every validation path.
 	 */
 	readonly botPlayerIds?: readonly number[];
+	/**
+	 * Interactive mode only: how long to hold the FIRST round's turns open for
+	 * players to reach the board (the lobby's start → board navigation takes a
+	 * poll interval + a page load per client). Turns begin as soon as every
+	 * human has connected, or when this grace expires — whichever comes first.
+	 * 0 (default) starts turn 1 immediately (the pre-gate behaviour, and what
+	 * most unit tests expect).
+	 */
+	readonly firstTurnsGraceMs?: number;
 }
 
 /** Result of a RollDiceIntent forwarded to the Runtime (SPEC-022 validation). */
@@ -176,6 +185,42 @@ const FINAL_CHALLENGE_RETRY_MS = 30_000;
 const BOT_TURN_DELAY_MS = 1_500;
 const BOT_GAMBLING_DELAY_MS = 2_500;
 
+/**
+ * Grace before a disconnect auto-resolves the leaver's active turn (or open
+ * gambling decision). A LEAVE is fired on EVERY board unmount — including the
+ * mount/unmount/mount cycle React StrictMode runs in dev and brief
+ * navigations — so resolving instantly skipped players who were actually
+ * arriving (their rejoin lands milliseconds after the leave). The turn
+ * system's own roll timeout stays the real backstop.
+ */
+const DISCONNECT_RESOLVE_GRACE_MS = 3_000;
+
+/**
+ * Pause between a resolved roll and the NEXT turn (or the round's minigame):
+ * the boards are presenting that roll — suspense + value reveal + the token's
+ * tile-by-tile walk (~2.3 s) — so the baton only passes once the piece has
+ * visibly landed. Purely presentation pacing; the roll itself is long final.
+ */
+const TURN_HANDOFF_MS = 2_600;
+
+/** MINIGAME TIME! gate: minimum hold + confirmation deadline (SPEC-015 v2). */
+const MINIGAME_GATE_MIN_MS = 1_500;
+const MINIGAME_GATE_TIMEOUT_MS = 20_000;
+
+/**
+ * Hold after a RESOLVED bet (won/lost) before the round continues, so every
+ * board can present the Key-Item gamble's outcome (SPEC-016). Passing /
+ * timing out needs no reveal — those resume immediately.
+ */
+const GAMBLE_RESULT_HOLD_MS = 4_000;
+
+/**
+ * Tie-break audience gate: spin anyway when this passes (covers the arena's
+ * 15 s CONTINUE auto-return + navigation; a player who never comes back can
+ * never hold the roulette hostage).
+ */
+const TIE_BREAK_ARRIVAL_TIMEOUT_MS = 20_000;
+
 export class TournamentRuntime {
 	private readonly bus: TournamentEventBus;
 	private readonly machine: TournamentStateMachine;
@@ -199,8 +244,39 @@ export class TournamentRuntime {
 	private turnIndex = 0;
 	/** The champion once VICTORY resolves (SPEC-021); null until then. */
 	private winnerUserId: number | null = null;
-	/** CPU participants whose board/gambling decisions this Runtime plays. */
-	private readonly botPlayerIds: ReadonlySet<number>;
+	/**
+	 * CPU participants whose board/gambling decisions this Runtime plays.
+	 * Mutable: a human who quits the match for good is converted into a CPU
+	 * (`convertPlayerToBot`) so the tournament plays on in their place.
+	 */
+	private readonly botPlayerIds: Set<number>;
+	/** Players currently connected to the board (gateway join/leave signals). */
+	private readonly connectedPlayers = new Set<number>();
+	/** True while round 1's turns are held open for players to arrive. */
+	private firstTurnsPending = false;
+	private readonly firstTurnsGraceMs: number;
+	/**
+	 * The most recent resolved dice roll (presentation data for the snapshot:
+	 * the board client reveals the value and walks the token, SPEC-022 — the
+	 * authoritative position is already in the players' tileIds).
+	 */
+	private lastRollState: {
+		readonly playerId: number;
+		readonly round: number;
+		readonly value: number;
+		readonly autoResolved: boolean;
+	} | null = null;
+	/**
+	 * The most recent RESOLVED Key-Item bet (presentation data, like
+	 * `lastRollState`): the boards banner "won a Key Item!" / "lost the bet"
+	 * while the round holds for the reveal.
+	 */
+	private lastGambleState: {
+		readonly playerId: number;
+		readonly round: number;
+		readonly won: boolean;
+		readonly cost: number;
+	} | null = null;
 
 	constructor(options: TournamentRuntimeOptions) {
 		this.tournamentId = options.tournamentId;
@@ -241,6 +317,28 @@ export class TournamentRuntime {
 			minigameLifecycle: options.minigamePorts?.lifecycle,
 			minigameReconciler: options.minigamePorts?.reconciler,
 			minigameCatalog: options.minigamePorts?.catalog,
+			// MINIGAME TIME! gate (interactive only): every human confirms the
+			// launch; CPU seats and players with no live board never block.
+			minigameLaunchGate: options.interactiveTurns
+				? {
+						minMs: MINIGAME_GATE_MIN_MS,
+						timeoutMs: MINIGAME_GATE_TIMEOUT_MS,
+						isAutoReady: (playerId) =>
+							this.botPlayerIds.has(playerId) ||
+							!this.connectedPlayers.has(playerId),
+					}
+				: undefined,
+			// Tie-break audience gate (interactive only): the roulette waits
+			// for the boards returning from the arena so everyone watches the
+			// SAME spin — presence is a live connection (CPUs always present).
+			minigameTieBreakGate: options.interactiveTurns
+				? {
+						arrivalTimeoutMs: TIE_BREAK_ARRIVAL_TIMEOUT_MS,
+						isPresent: (playerId) =>
+							this.botPlayerIds.has(playerId) ||
+							this.connectedPlayers.has(playerId),
+					}
+				: undefined,
 		});
 
 		// Persistence hook (see file header): one subscription covers every
@@ -249,28 +347,83 @@ export class TournamentRuntime {
 			this.onSnapshot(this.buildSnapshot());
 		});
 
+		// Record every resolved roll for the snapshot (presentation: the board
+		// client reveals the value and walks the token before settling on the
+		// authoritative position — SPEC-022 keeps gameplay server-side).
+		this.bus.on("PlayerTurnFinished", (event) => {
+			if (event.playerId !== null) {
+				this.lastRollState = {
+					playerId: event.playerId,
+					round: event.round,
+					value: event.payload.diceValue,
+					autoResolved: event.payload.autoResolved,
+				};
+			}
+		});
+		// Record every RESOLVED Key-Item bet for the snapshot — the boards
+		// banner the outcome while the round holds for the reveal (SPEC-016).
+		this.bus.on("GamblingWon", (event) => {
+			if (event.playerId !== null) {
+				this.lastGambleState = {
+					playerId: event.playerId,
+					round: event.round,
+					won: true,
+					cost: event.payload.cost,
+				};
+			}
+		});
+		this.bus.on("GamblingLost", (event) => {
+			if (event.playerId !== null) {
+				this.lastGambleState = {
+					playerId: event.playerId,
+					round: event.round,
+					won: false,
+					cost: event.payload.cost,
+				};
+			}
+		});
+
 		// Interactive turn sequencing (Vertical Slice): the Runtime is the sole
 		// sequencer (SPEC-005 "Solo el Runtime cambia de jugador") — every finished
 		// turn (intent, timeout or disconnect) hands the baton to the next player
 		// or closes the round. Subscribed once; inert unless interactive.
 		this.interactive = options.interactiveTurns ?? false;
 		this.botPlayerIds = new Set(options.botPlayerIds ?? []);
+		this.firstTurnsGraceMs = options.firstTurnsGraceMs ?? 0;
 		if (this.interactive) {
 			this.bus.on("PlayerTurnFinished", () => {
 				this.onInteractiveTurnFinished();
 			});
 			// GamblingFinished fires on EVERY close (bet won/lost, abandon,
-			// timeout — SPEC-016), so one subscription resumes the round.
-			this.bus.on("GamblingFinished", () => {
-				if (this.machine.currentPhase === "GAMBLING_PHASE") {
-					this.enterCheckKeyItems();
+			// timeout — SPEC-016), so one subscription resumes the round. A
+			// RESOLVED bet holds first so every board presents the outcome;
+			// passing/timing out resumes immediately (nothing to reveal).
+			this.bus.on("GamblingFinished", (event) => {
+				if (this.machine.currentPhase !== "GAMBLING_PHASE") {
+					return;
 				}
+				const outcome = event.payload.outcome;
+				if (outcome !== "won" && outcome !== "lost") {
+					this.enterCheckKeyItems();
+					return;
+				}
+				this.clock.schedule(GAMBLE_RESULT_HOLD_MS, () => {
+					if (
+						!this.machine.isTerminal &&
+						this.machine.currentPhase === "GAMBLING_PHASE"
+					) {
+						this.enterCheckKeyItems();
+					}
+				});
 			});
 		}
 		// CPU participants (CPU v2): decide through the SAME intent entry
 		// points as humans, after a clock delay (deterministic under a
-		// ManualClock; human-ish pacing under the SystemClock).
-		if (this.interactive && this.botPlayerIds.size > 0) {
+		// ManualClock; human-ish pacing under the SystemClock). Always wired in
+		// interactive mode (the handlers check membership at event time), so a
+		// human converted into a CPU mid-game (`convertPlayerToBot`) is driven
+		// from their very next turn even when the table started with 0 bots.
+		if (this.interactive) {
 			this.bus.on("PlayerTurnStarted", (event) => {
 				const playerId = event.playerId;
 				if (playerId === null || !this.botPlayerIds.has(playerId)) {
@@ -351,9 +504,39 @@ export class TournamentRuntime {
 		return this.winnerUserId;
 	}
 
-	/** CPU participants (CPU v2) — exposed for the wire snapshot. */
+	/** CPU participants (CPU v2 + converted quitters) — for the wire snapshot. */
 	get botPlayers(): ReadonlySet<number> {
 		return this.botPlayerIds;
+	}
+
+	/** The most recent resolved dice roll — for the wire snapshot (SPEC-022). */
+	get lastRoll(): {
+		readonly playerId: number;
+		readonly round: number;
+		readonly value: number;
+		readonly autoResolved: boolean;
+	} | null {
+		return this.lastRollState;
+	}
+
+	/** The most recent resolved Key-Item bet — for the wire snapshot (SPEC-016). */
+	get lastGamble(): {
+		readonly playerId: number;
+		readonly round: number;
+		readonly won: boolean;
+		readonly cost: number;
+	} | null {
+		return this.lastGambleState;
+	}
+
+	/**
+	 * How many seats are still played by a real human (not a CPU, including
+	 * humans converted to CPUs by `convertPlayerToBot`). Zero means the match
+	 * has no real players left — the caller tears the tournament down rather
+	 * than let an all-CPU game and its minigames run on in limbo.
+	 */
+	get humanPlayerCount(): number {
+		return this.turnOrder.filter((id) => !this.botPlayerIds.has(id)).length;
 	}
 
 	// ── Lifecycle ─────────────────────────────────────────────────────────
@@ -387,11 +570,53 @@ export class TournamentRuntime {
 
 		this.enterRoundStart(1);
 
-		// Interactive mode enters PLAYER_TURNS immediately and opens the first
-		// real turn; simulation mode stops here and is driven by advancePhase().
+		// Interactive mode opens the first real turn; simulation mode stops
+		// here and is driven by advancePhase(). With a first-turns grace, the
+		// round holds in ROUND_START until every human reached the board (the
+		// lobby's start → board navigation takes a poll + a page load per
+		// client) or the grace expires — otherwise turn 1 would be burning (or
+		// auto-resolving) against players who never saw it start.
 		if (this.interactive) {
-			this.beginPlayerTurns();
+			if (this.firstTurnsGraceMs > 0 && !this.allHumansConnected()) {
+				this.firstTurnsPending = true;
+				this.clock.schedule(this.firstTurnsGraceMs, () => {
+					this.beginFirstTurnsIfPending();
+				});
+			} else {
+				this.beginPlayerTurns();
+			}
 		}
+	}
+
+	/** Every human seat has a connected board client (bots count as present). */
+	private allHumansConnected(): boolean {
+		return this.turnOrder.every(
+			(id) => this.botPlayerIds.has(id) || this.connectedPlayers.has(id),
+		);
+	}
+
+	/** Opens round 1's turns once (player-arrival gate or grace expiry). */
+	private beginFirstTurnsIfPending(): void {
+		if (!this.firstTurnsPending || this.machine.isTerminal) {
+			return;
+		}
+		this.firstTurnsPending = false;
+		this.beginPlayerTurns();
+	}
+
+	/**
+	 * A participant's board client joined the tournament room (gateway JOIN).
+	 * Cancels any pending disconnect auto-resolve for them (the grace check
+	 * reads `connectedPlayers` at fire time) and, while round 1 is held open,
+	 * starts the turns as soon as the last human arrives.
+	 */
+	handlePlayerConnected(playerId: number): void {
+		this.connectedPlayers.add(playerId);
+		if (this.firstTurnsPending && this.allHumansConnected()) {
+			this.beginFirstTurnsIfPending();
+		}
+		// A waiting tie-break roulette may now have its full audience.
+		this.engines.minigame.notifyPresenceChanged();
 	}
 
 	// ── Intents (SPEC-022: clients only REQUEST; the server validates) ────
@@ -440,17 +665,90 @@ export class TournamentRuntime {
 	}
 
 	/**
-	 * A participant disconnected (SPEC-005 "Desconexión" / SPEC-023): if it is
-	 * their turn, the Turn System auto-resolves it immediately; if they hold
-	 * the open gambling decision, it closes as abandoned (SPEC-016
-	 * "Desconexión"); otherwise a no-op. Synchronization concerns (rooms,
-	 * snapshots) stay in the gateway.
+	 * ConfirmMinigameIntent ("Let's go!", SPEC-015 v2): the player confirms
+	 * the MINIGAME TIME! gate. The coordinator validates (gate open, seated,
+	 * not already ready) and launches once everyone required confirmed.
+	 */
+	handleConfirmMinigame(
+		playerId: number,
+	): { status: "ok" } | { status: "rejected"; reason: string } {
+		if (!this.interactive) {
+			return { status: "rejected", reason: "no_launch_gate" };
+		}
+		return this.engines.minigame.confirmLaunch(playerId);
+	}
+
+	/**
+	 * A participant disconnected (SPEC-005 "Desconexión" / SPEC-023): after a
+	 * short grace, if they have not reconnected, the Turn System auto-resolves
+	 * their active turn and any open gambling decision of theirs closes as
+	 * abandoned (SPEC-016 "Desconexión"); otherwise a no-op. The grace exists
+	 * because the board fires LEAVE on every unmount — StrictMode's dev
+	 * mount cycle and quick navigations rejoin within milliseconds, and
+	 * resolving instantly was skipping players who were actually arriving.
+	 * Synchronization concerns (rooms, snapshots) stay in the gateway.
 	 */
 	handlePlayerDisconnect(playerId: number): void {
-		this.engines.turnSystem.handleDisconnect(playerId);
-		if (this.machine.currentPhase === "GAMBLING_PHASE") {
-			this.engines.gambling.abandon(playerId);
+		this.connectedPlayers.delete(playerId);
+		this.clock.schedule(DISCONNECT_RESOLVE_GRACE_MS, () => {
+			if (this.connectedPlayers.has(playerId) || this.machine.isTerminal) {
+				return; // reconnected in time (or nothing left to resolve)
+			}
+			this.engines.turnSystem.handleDisconnect(playerId);
+			if (this.machine.currentPhase === "GAMBLING_PHASE") {
+				this.engines.gambling.abandon(playerId);
+			}
+		});
+	}
+
+	/**
+	 * Replace a departed human with a CPU (the "Leave match" quit flow, SPEC-005
+	 * "Desconexión" taken to its permanent end): the player keeps their seat,
+	 * points and turn-order position, but from now on the Runtime plays their
+	 * board turns and gambling decisions exactly like a lobby CPU (CPU v2) —
+	 * through the SAME validated intent entry points, so nothing about the game
+	 * changes except who decides. If they own the live decision right now (their
+	 * active turn, or the open gambling session), the CPU takes it over
+	 * immediately so the round never stalls; the roll timeout is the backstop
+	 * either way. Idempotent; ignores non-participants and existing bots.
+	 * Minigames need no handling — a socket-less participant is already seated
+	 * by the bot stand-in (CPU v1).
+	 */
+	convertPlayerToBot(playerId: number): void {
+		if (!this.interactive || this.botPlayerIds.has(playerId)) {
+			return;
 		}
+		if (!this.turnOrder.includes(playerId)) {
+			return;
+		}
+		this.botPlayerIds.add(playerId);
+
+		// The PlayerTurnStarted / GamblingOpened event that arms the CPU already
+		// fired for the CURRENT decision before this conversion, so drive that
+		// one decision here; every future turn is handled by the subscriptions.
+		if (
+			this.machine.currentPhase === "PLAYER_TURNS" &&
+			this.engines.turnSystem.activePlayerId === playerId
+		) {
+			this.clock.schedule(BOT_TURN_DELAY_MS, () => {
+				this.handleRollDice(playerId);
+			});
+		} else if (
+			this.machine.currentPhase === "GAMBLING_PHASE" &&
+			this.engines.gambling.serialize().session?.winnerId === playerId
+		) {
+			this.clock.schedule(BOT_GAMBLING_DELAY_MS, () => {
+				this.decideBotGambling(playerId);
+			});
+		}
+
+		// If round 1 was being held open for arrivals and the quitter was the
+		// last missing human, the wait is over — start the turns now.
+		if (this.firstTurnsPending && this.allHumansConnected()) {
+			this.beginFirstTurnsIfPending();
+		}
+		// A CPU seat is always "present": release any waiting tie-break gate.
+		this.engines.minigame.notifyPresenceChanged();
 	}
 
 	/**
@@ -582,18 +880,28 @@ export class TournamentRuntime {
 		this.engines.turnSystem.startTurn(playerId);
 	}
 
-	/** PlayerTurnFinished (intent, timeout or disconnect): next player or close. */
+	/**
+	 * PlayerTurnFinished (intent, timeout or disconnect): next player or close.
+	 * The baton passes AFTER a handoff pause — the boards are presenting the
+	 * resolved roll (value reveal + token walk), so the next turn (or the
+	 * round's minigame) only opens once the piece has visibly landed.
+	 */
 	private onInteractiveTurnFinished(): void {
 		if (this.machine.currentPhase !== "PLAYER_TURNS") {
 			return;
 		}
 		this.turnIndex += 1;
-		if (this.turnIndex < this.turnOrder.length) {
-			this.startTurnAt(this.turnIndex);
-			return;
-		}
-		this.machine.setActivePlayer(null);
-		this.finishInteractiveRound();
+		this.clock.schedule(TURN_HANDOFF_MS, () => {
+			if (this.machine.isTerminal || this.machine.currentPhase !== "PLAYER_TURNS") {
+				return;
+			}
+			if (this.turnIndex < this.turnOrder.length) {
+				this.startTurnAt(this.turnIndex);
+				return;
+			}
+			this.machine.setActivePlayer(null);
+			this.finishInteractiveRound();
+		});
 	}
 
 	/**

@@ -1,7 +1,13 @@
 import { Injectable } from "@nestjs/common";
 import { MatchMode } from "./entities/match.entity";
 import { GameEngineRegistry } from "./engines/game-engine.registry";
-import { MatchRoom, RoomPlayer, SocketUser } from "./matchmaking.types";
+import {
+	BOT_SOCKET_PREFIX,
+	isBotSeat,
+	MatchRoom,
+	RoomPlayer,
+	SocketUser,
+} from "./matchmaking.types";
 import { toSnapshotPlayer } from "./snapshot-player.util";
 
 const MAX_PLAYERS = 5;
@@ -22,7 +28,7 @@ export class RoomService {
 			user: SocketUser;
 			shellSelection: string[];
 		}>,
-		options: { powerupsEnabled?: boolean } = {},
+		options: { powerupsEnabled?: boolean; tournamentId?: string } = {},
 	): MatchRoom {
 		const roomPlayers = players
 			.slice(0, MAX_PLAYERS)
@@ -39,6 +45,7 @@ export class RoomService {
 			matchId,
 			gameId,
 			mode,
+			tournamentId: options.tournamentId,
 			status: "pending",
 			players: roomPlayers,
 			spectators: new Map(),
@@ -196,6 +203,38 @@ export class RoomService {
 			() => onTimeout(room, player),
 			timeoutMs,
 		);
+		this.refreshSnapshotPlayers(room, true);
+		return room;
+	}
+
+	/**
+	 * Hand a live seat to a CPU stand-in mid-match (a tournament player who
+	 * quit for good): the seat keeps the real user's identity so the outcome
+	 * stays credited to their account, but is played server-side from now on
+	 * (`bot:` socket → BotPlayerService sweep). The user is unmapped from the
+	 * room — `match:status` shows no match, `reconnect` can never hand the
+	 * seat back, and they are free to queue elsewhere.
+	 */
+	convertSeatToBot(matchId: string, userId: number): MatchRoom | null {
+		const room = this.getRoom(matchId);
+		const player = room?.players.find(
+			(candidate) => candidate.user.id === userId,
+		);
+		if (
+			!room ||
+			!player ||
+			room.status === "finished" ||
+			room.status === "abandoned"
+		)
+			return null;
+		if (!isBotSeat(player)) {
+			if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+			player.disconnectTimer = undefined;
+			player.socketId = `${BOT_SOCKET_PREFIX}${userId}`;
+			player.connected = true;
+			player.reconnectExpiresAt = undefined;
+		}
+		this.userRoom.delete(userId);
 		this.refreshSnapshotPlayers(room, true);
 		return room;
 	}

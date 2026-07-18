@@ -478,10 +478,29 @@ export interface RoomPlayer {
 	disconnectTimer?: NodeJS.Timeout;
 }
 
+/** Socket-id prefix marking a server-driven (CPU) seat. */
+export const BOT_SOCKET_PREFIX = "bot:";
+
+/**
+ * A seat currently played by the server (self-clears on human reconnect).
+ * Lives here — a dependency-free leaf — so both `bot-player.service` and
+ * `game-session.service` can use it without importing each other (the latter
+ * would form a cycle through `matchmaking.gateway`).
+ */
+export const isBotSeat = (player: RoomPlayer): boolean =>
+	player.socketId.startsWith(BOT_SOCKET_PREFIX);
+
 export interface MatchRoom {
 	matchId: string;
 	gameId: string;
 	mode: MatchMode;
+	/**
+	 * Set when this match is a tournament-launched minigame (SPEC-015): the id
+	 * of the owning tournament. Client payloads (`match:status`,
+	 * `tournament:minigame-start`) carry it so the end-of-match UI can route
+	 * players back to the tournament board instead of the hub.
+	 */
+	tournamentId?: string;
 	status: "pending" | "active" | "finished" | "abandoned";
 	players: RoomPlayer[];
 	spectators: Map<string, SocketUser>;

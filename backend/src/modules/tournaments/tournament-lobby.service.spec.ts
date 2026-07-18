@@ -91,6 +91,7 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 		save: jest.Mock;
 		create: jest.Mock;
 		delete: jest.Mock;
+		update: jest.Mock;
 	};
 	let userRepo: { findOne: jest.Mock };
 	let profileRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
@@ -147,6 +148,7 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 				.fn()
 				.mockImplementation((p: Partial<TournamentParticipant>) => p),
 			delete: jest.fn().mockResolvedValue({ affected: 1 }),
+			update: jest.fn().mockResolvedValue({ affected: 1 }),
 		};
 		userRepo = { findOne: jest.fn() };
 		profileRepo = {
@@ -698,6 +700,30 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 			expect(tournamentRepo.save).toHaveBeenCalledWith(
 				expect.objectContaining({ status: "cancelled" }),
 			);
+		});
+	});
+
+	describe("markParticipantLeft", () => {
+		it("flips the row to a forfeit and records a loss on the player's record", async () => {
+			profileRepo.findOne.mockResolvedValue({ totalLosses: 2, gamesPlayed: 5 });
+
+			await service.markParticipantLeft("t-1", 10);
+
+			expect(participantRepo.update).toHaveBeenCalledWith(
+				{ tournamentId: "t-1", userId: 10, hasLeft: false },
+				{ hasLeft: true, outcome: "forfeit" },
+			);
+			expect(profileRepo.save).toHaveBeenCalledWith(
+				expect.objectContaining({ totalLosses: 3, gamesPlayed: 6 }),
+			);
+		});
+
+		it("records no loss when the row was already flipped (repeated quit)", async () => {
+			participantRepo.update.mockResolvedValueOnce({ affected: 0 });
+
+			await service.markParticipantLeft("t-1", 10);
+
+			expect(profileRepo.save).not.toHaveBeenCalled();
 		});
 	});
 });
