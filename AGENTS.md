@@ -1,64 +1,173 @@
 # Repository Guidelines
 
-## Reglas Base
-- Siempre que se genera cualquier documentacion que se suba al repositorio el idioma tiene que ser sin falta ingles britanico. No se puede subir ningun archivo al repositorio que no este estrictamente en ingles britanico.
-- El idioma de respuesta debe ser siempre el idioma del usuario. Si hay duda real, usa ingles.
-- Si un cambio modifica reglas de trabajo, flujos o convenciones reflejadas aqui, actualiza `AGENTS.md` en la misma tarea.
-- Cualquier cambio en el proyecto debe revisar `docs/modules-progress.md` para comprobar si se completo algun avance de modulo y, si aplica, actualizar ese archivo para reflejar el nuevo progreso.
-- Todo documento nuevo del proyecto debe guardarse en `docs/`.
-- Antes de redactar o investigar, prioriza `docs/`. El enunciado principal esta en `docs/en.subject.md` y su version PDF en `docs/en.subject.pdf`.
-- `docs/deprecated/` y `docs/old_docs/` son archivo historico. No deben usarse como fuente principal para entender el proyecto ni para tomar decisiones actuales, salvo peticion explicita del usuario.
-- El alcance funcional del proyecto queda acotado por `docs/modules-progress.md`. No anadas modulos o funcionalidades fuera de ese marco salvo peticion explicita del usuario.
+## Core Rules
 
-## Indice Operativo
-- Contexto general del producto: `docs/project-overview.md`
-- Enunciado y alcance: `docs/en.subject.md`
-- Docker y despliegue: `docker-compose.yml`, `docker-compose.override.yml`, `docs/deployment.md`, `docs/docker-notes.md`
-- Arquitectura de servicios: `docs/project-overview.md`, `docs/service-map.md`
+- All repository documentation and instructional files must be written strictly
+  in British English.
+- Always reply in the user's language. Use English only when the user's language
+  is genuinely unclear.
+- `AGENTS.md` and `CLAUDE.md` are mirrored operational guides. Any change to
+  working rules, workflows, or conventions must update both files in the same
+  task and keep their operational content identical.
+- Every project change must review `docs/modules-progress.md`. Update it in the
+  same task when the change advances or completes a module.
+- Store every new project document under `docs/`.
+- Prioritise current documents before drafting or investigating. The principal
+  brief is `docs/en.subject.md`, with its PDF version in `docs/en.subject.pdf`.
+- Treat `docs/deprecated/` and `docs/old_docs/` as historical archives. Do not
+  use them as primary sources for current decisions unless the user explicitly
+  requests it.
+- When a working document is fully completed and verified, move it to
+  `docs/old_docs/` in the same task. Keep it in `docs/` while any phase,
+  finding, or validation remains open.
+- The functional scope is defined by `docs/modules-progress.md`. Do not add
+  modules or functionality outside that scope unless the user explicitly asks.
+
+## Operational Index
+
+- Product context: `docs/project-overview.md`
+- Brief and scope: `docs/en.subject.md`
+- Docker and deployment: `docker-compose.yml`, `docker-compose.override.yml`,
+  `docs/deployment.md`, `docs/docker-notes.md`
+- Service architecture: `docs/project-overview.md`, `docs/service-map.md`
 - Frontend: `frontend/src/`, `public/`
 - Backend: `backend/src/`
-- Comandos de trabajo: `Makefile`
-- Seguridad y OAuth: `docs/security.md`, `docs/oauth-setup.md`
-- Alcance y estado de modulos: `docs/modules-progress.md`
-- Archivo historico: `docs/deprecated/`, `docs/old_docs/`
+- Working commands: `Makefile`
+- Security and OAuth: `docs/security.md`, `docs/oauth-setup.md`
+- Module scope and status: `docs/modules-progress.md`
+- Historical archive: `docs/deprecated/`, `docs/old_docs/`
 
-## Estructura Del Proyecto
-`frontend/` contiene la SPA con Vite, React y Phaser. `backend/` contiene la API NestJS con TypeORM y migraciones en `backend/src/migrations/`. `infra/` agrupa Nginx, PostgreSQL, Redis, Vault, monitorizacion y configuracion auxiliar. `scripts/` contiene utilidades locales. `public/` guarda assets compartidos. `docs/` centraliza la documentacion viva del proyecto.
+## Project Structure
+
+`frontend/` contains the Vite, React, and Phaser SPA. `backend/` contains the
+NestJS API, TypeORM entities, and migrations under `backend/src/migrations/`.
+`infra/` contains Nginx, PostgreSQL, Redis, Vault, monitoring, and supporting
+configuration. `scripts/` contains local utilities. `public/` contains shared
+assets. `docs/` contains the live project documentation.
 
 ## Docker
-La pila principal vive en `docker-compose.yml`; `docker-compose.override.yml` activa hot reload para desarrollo.
 
-- `reverse_proxy`: entrada HTTPS unica; termina TLS y enruta frontend, API y monitorizacion.
-- `frontend`: cliente Vite/React/Phaser servido internamente en el stack.
-- `backend`: API NestJS, autenticacion, logica de juego y acceso a datos.
-- `database`: PostgreSQL persistente para usuarios, perfiles y datos de juego.
-- `redis`: cache, soporte de sesiones y base para tiempo real o colas futuras.
-- `monitoring`: panel de monitorizacion expuesto detras de Nginx.
-- `vault`: origen central de secretos en local.
-- `backend_vault_agent`: renderiza secretos consumidos por backend.
-- `database_vault_agent`: renderiza password y secretos de PostgreSQL.
-- `redis_vault_agent`: renderiza password y secretos de Redis.
-- `monitoring_vault_agent`: renderiza secretos del servicio de monitorizacion.
+The main stack is defined in `docker-compose.yml`.
+`docker-compose.override.yml` enables development hot reload.
 
-## Frontend Y Backend
-Manten el mismo formato que ya existe. La base actual usa tabs de ancho `4` en [`.prettierrc.json`](/home/marcos/programming/transgender/.prettierrc.json). No mezcles estilos nuevos. En frontend respeta la organizacion por `pages/`, `routes/`, `hooks/`, `shared/` y nombres tipo `PascalCase` para componentes y `camelCase` para hooks o utilidades. En backend sigue el estilo TypeScript/NestJS actual y las reglas de ESLint ya definidas.
+- `reverse_proxy`: the single HTTPS entry point; terminates TLS and routes the
+  frontend, API, and monitoring services.
+- `frontend`: the Vite, React, and Phaser client served inside the stack.
+- `backend`: authentication, API, game logic, and data access.
+- `database`: persistent PostgreSQL storage for users, profiles, and game data.
+- `redis`: caching, session support, and the basis for real-time work or queues.
+- `monitoring`: the monitoring dashboard exposed through Nginx.
+- `vault`: the central source of local secrets.
+- `backend_vault_agent`: renders secrets consumed by the backend.
+- `database_vault_agent`: renders PostgreSQL passwords and secrets.
+- `redis_vault_agent`: renders Redis passwords and secrets.
+- `monitoring_vault_agent`: renders monitoring-service secrets.
+
+## Frontend and Backend
+
+Preserve the existing format. The project uses tabs with a width of `4`, as
+defined in `.prettierrc.json`. Do not introduce a competing style.
+
+In the frontend, respect the existing `pages/`, `routes/`, `hooks/`, `features/`,
+`components/`, and `shared/` boundaries. Use `PascalCase` for components and
+`camelCase` for hooks and utilities. In the backend, follow the existing
+TypeScript, NestJS, and ESLint conventions.
+
+## Frontend Styling
+
+Tailwind CSS is the default styling system. The canonical configuration is
+`frontend/tailwind.config.cjs`, and the required import order in
+`frontend/src/main.tsx` is:
+
+1. `styles/tailwind-base.css`
+2. `styles/modules/index.css`
+3. `styles/tailwind-utilities.css`
+
+Follow these rules for every frontend style change:
+
+- Use Tailwind utilities directly in React for local, static component styling.
+- Keep every Tailwind class as a complete, statically discoverable string.
+  Do not construct class names from partial strings. Use explicit maps for
+  variants, or add a deliberate safelist entry when generation is unavoidable.
+- Use a feature style module under `frontend/src/styles/modules/` when a style
+  needs pseudo-elements, relational or attribute selectors, complex keyframes,
+  vendor-specific controls, shared semantic selectors, or values driven through
+  CSS custom properties.
+- Register every new feature style module in
+  `frontend/src/styles/modules/index.css`. Preserve the manifest's cascade order;
+  do not import feature styles ad hoc from unrelated components.
+- Do not create another `global.css`, monolithic stylesheet, or second style
+  entry point.
+- Reuse an existing domain module before creating a new one. Split a module when
+  it reaches 1,000 lines where practical. A stylesheet must be split before it
+  reaches 1,600 lines.
+- Use clear domain names such as `cards.css`, `social-replays.css`, or
+  `gambling-wheel.css`. For retained global selectors, follow the existing BEM
+  convention and keep selectors scoped to their feature.
+- Within feature modules, use `@apply` for repeated Tailwind-compatible layout
+  and typography primitives. Keep raw CSS only where it expresses behaviour or
+  visual detail more clearly or where no exactly equivalent utility exists.
+- Never replace a CSS shorthand with a narrower Tailwind utility when that
+  changes reset semantics. For example, `background: transparent` is not
+  equivalent to `bg-transparent`, and `list-style: none` is not always
+  equivalent to `list-none`.
+- Use inline React styles only for genuinely runtime-derived values. Prefer
+  setting a CSS custom property and consuming it in the relevant feature module.
+- Keep fonts, palette tokens, and shared custom properties in the foundation
+  layer. Do not duplicate design tokens across feature files.
+- After moving a stylesheet, correct and verify all relative asset and font
+  paths. A successful development render alone is not sufficient; the
+  production build must emit the assets.
+- Write all new CSS comments in British English. Update live documentation that
+  references a renamed or moved stylesheet.
+
+For any style change, validation must include:
+
+- `cd frontend && npm run build`
+- `cd frontend && npm run test:run`
+- a check that every stylesheet is reachable through `styles/modules/index.css`
+- `git diff --check`
+- visual validation at affected desktop and responsive breakpoints
+
+For integrated or visually significant changes, use the `Makefile` to validate
+the running stack and inspect Firefox console, network, and rendered state. If
+repository-wide type-checking has unrelated baseline failures, type-check the
+touched files where possible and report the baseline failures explicitly.
 
 ## Makefile
-Usa siempre el `Makefile` como entrada principal del entorno local.
 
-- Arranque: `make up`, `make dev`, `make prod`, `make down`, `make restart`, `make re`
-- Servicios concretos: `make restart-front`, `make restart-back`, `make rebuild-front`, `make rebuild-back`, `make refresh-app`
-- Build y estado: `make build`, `make logs SERVICE=backend`, `make ps`, `make status`, `make health`
-- Diagnostico y limpieza: `make diagnosis`, `make clean`, `make fclean`
-- Inspeccion: `make shell SERVICE=backend`, `make inspect SERVICE=backend`, `make volumes`, `make networks`, `make db`, `make open`
-- Vault y certificados: `make vault-bootstrap`, `make vault-init`, `make vault-unseal`, `make vault-seed-dev`, `make vault-status`, `make certs`, `make prepare-local-secrets`
-- Entorno y ayuda: `make check-env`, `make help`
-- Flujo git automatizado: `make push M="mensaje"`
+Always use the `Makefile` as the main entry point for the local environment.
 
-## Testing Y Validacion
-Backend usa Jest con `*.spec.ts`; ejecuta `cd backend && npm run test` o `npm run test:cov`. Para cambios integrados en la plataforma, valida con `make dev` o `make up` segun el modo que toque. Si no hay tests de frontend para una zona, documenta la validacion manual en la entrega.
+- Start and stop: `make up`, `make dev`, `make prod`, `make down`,
+  `make restart`, `make re`
+- Individual services: `make restart-front`, `make restart-back`,
+  `make rebuild-front`, `make rebuild-back`, `make refresh-app`
+- Build and status: `make build`, `make logs SERVICE=backend`, `make ps`,
+  `make status`, `make health`
+- Diagnostics and cleaning: `make diagnosis`, `make clean`, `make fclean`
+- Inspection: `make shell SERVICE=backend`, `make inspect SERVICE=backend`,
+  `make volumes`, `make networks`, `make db`, `make open`
+- Vault and certificates: `make vault-bootstrap`, `make vault-init`,
+  `make vault-unseal`, `make vault-seed-dev`, `make vault-status`, `make certs`,
+  `make prepare-local-secrets`
+- Environment and help: `make check-env`, `make help`
+- Automated Git flow: `make push M="message"`
 
-When a runtime error, frozen scene, or logical failure remains unexplained after static analysis, launch Firefox in headless/developer mode and autonomously reproduce the required user flows. Inspect the browser console, network activity, visual state, and available traces to identify the cause before applying a fix. This diagnostic step complements, rather than replaces, automated tests and final manual validation.
+## Testing and Validation
+
+The backend uses Jest with `*.spec.ts`; run `cd backend && npm run test` or
+`npm run test:cov`. For integrated platform changes, validate with `make dev` or
+`make up`, depending on the required mode. If a frontend area lacks automated
+tests, document the manual validation in the delivery.
+
+When a runtime error, frozen scene, or logical failure remains unexplained after
+static analysis, launch Firefox in headless or developer mode and autonomously
+reproduce the required user flows. Inspect the browser console, network
+activity, visual state, and available traces before applying a fix. This step
+complements rather than replaces automated tests and final manual validation.
 
 ## Commits
-El historial reciente usa mensajes cortos y directos, por ejemplo `Fixed auth and removed CORS restrictions`. Mantén ese nivel de concrecion: una idea por commit, sin titulos vagos.
+
+Use short, direct commit messages, for example
+`Fixed auth and removed CORS restrictions`. Keep one clear idea per commit and
+avoid vague titles.
