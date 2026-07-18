@@ -1,0 +1,227 @@
+/* ── Shell Drop (Plinko) ────────────────────────────────────────────────── */
+.hub-drop {
+	@apply flex flex-col items-center;
+	gap: 14px;
+	@apply w-full;
+}
+.hub-drop__board {
+	@apply relative w-full;
+	/* Actual height is set inline per row-count tier (see `boardHeightPx` in
+	   ShellDropModal.tsx) so higher-risk tiers with more peg rows visibly
+	   extend the board downward instead of squeezing every tier into the
+	   same fixed height. This is just the pre-JS/loading fallback. */
+	height: 220px;
+	border-radius: 12px;
+	border: 2px solid var(--line);
+	background: radial-gradient(
+			ellipse at 50% 0%,
+			color-mix(in srgb, var(--accent-strong) 16%, transparent) 0%,
+			transparent 55%
+		),
+		repeating-linear-gradient(
+			0deg,
+			rgba(255, 255, 255, 0.03) 0,
+			rgba(255, 255, 255, 0.03) 1px,
+			transparent 1px,
+			transparent 22px
+		),
+		rgba(0, 0, 0, 0.35);
+	@apply overflow-hidden;
+}
+.hub-drop__canvas {
+	@apply absolute inset-0 block w-full h-full;
+}
+.hub-drop__buckets {
+	@apply absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	@apply flex;
+	gap: 2px;
+	padding: 0 4px;
+}
+.hub-drop__bucket {
+	@apply flex-1 text-center;
+	padding: 4px 2px;
+	font-size: 0.68rem;
+	font-family: var(--mono-font);
+	@apply font-bold;
+	border-top: 2px solid var(--line);
+	color: var(--muted);
+}
+.hub-drop__bucket.is-win-tier {
+	color: var(--accent);
+}
+.hub-drop__bucket.is-loss-tier {
+	color: #ff9083;
+}
+.hub-drop__bucket.is-landed {
+	background: color-mix(in srgb, var(--accent) 22%, transparent);
+	color: var(--text);
+}
+.hub-drop__balance {
+	color: var(--muted);
+	@apply font-semibold;
+}
+.hub-drop__result {
+	font-family: var(--display-font);
+	font-size: 1.3rem;
+	@apply font-bold m-0 text-center;
+}
+.hub-drop__result.is-win {
+	color: var(--accent);
+}
+.hub-drop__result.is-loss {
+	color: #ff9083;
+}
+.hub-drop__result.is-push {
+	color: var(--muted);
+}
+.hub-drop__tiers {
+	@apply flex;
+	gap: 10px;
+	@apply flex-wrap justify-center;
+}
+.hub-drop__tier {
+	padding: 10px 16px;
+	border-radius: 10px;
+	border: 2px solid var(--line);
+	background: rgba(0, 0, 0, 0.3);
+	color: var(--text);
+	@apply font-bold cursor-pointer;
+	transition: border-color 0.15s ease, transform 0.08s ease;
+}
+.hub-drop__tier:hover:not(:disabled) {
+	transform: translateY(-1px);
+}
+.hub-drop__tier.is-selected {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.hub-drop__tier:disabled {
+	opacity: 0.5;
+	@apply cursor-not-allowed;
+}
+.hub-drop__controls {
+	@apply flex flex-col items-center;
+	gap: 10px;
+	@apply w-full;
+}
+.hub-drop__wager {
+	@apply flex items-center;
+	gap: 8px;
+}
+.hub-drop__stake-label {
+	color: var(--muted);
+	@apply font-semibold;
+}
+.hub-drop__stake-input {
+	width: 96px;
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: rgba(0, 0, 0, 0.3);
+	color: var(--text);
+	font-family: var(--mono-font);
+}
+.hub-drop__drop-button {
+	padding: 10px 18px;
+	border: 0;
+	border-radius: 10px;
+	@apply font-bold;
+	letter-spacing: 0.04em;
+	@apply cursor-pointer;
+	color: #1b1208;
+	background: linear-gradient(135deg, #f0d27a, #e6a23c);
+	box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+	transition: transform 0.08s ease, filter 0.15s ease;
+}
+.hub-drop__drop-button:hover:not(:disabled) {
+	filter: brightness(1.07);
+	transform: translateY(-1px);
+}
+.hub-drop__drop-button:disabled {
+	opacity: 0.5;
+	@apply cursor-not-allowed;
+}
+.hub-drop__hint {
+	color: #ff9083;
+	font-size: 0.85rem;
+	@apply m-0;
+}
+.hub-drop__fairness {
+	@apply w-full;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	padding: 8px 12px;
+	background: rgba(0, 0, 0, 0.2);
+}
+.hub-drop__fairness summary {
+	@apply cursor-pointer;
+	color: var(--accent);
+	@apply font-semibold;
+}
+.hub-drop__fairness-grid {
+	margin: 8px 0 0;
+	@apply grid;
+	grid-template-columns: auto 1fr;
+	gap: 4px 12px;
+	font-family: var(--mono-font);
+	font-size: 0.78rem;
+	word-break: break-all;
+}
+.hub-drop__fairness-grid dt {
+	color: var(--muted);
+}
+.hub-drop__fairness-grid dd {
+	@apply m-0;
+}
+.hub-drop__seed {
+	@apply flex flex-col;
+	gap: 4px;
+	@apply w-full;
+	color: var(--muted);
+	font-size: 0.85rem;
+}
+.hub-drop__seed input {
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: rgba(0, 0, 0, 0.3);
+	color: var(--text);
+	font-family: var(--mono-font);
+}
+.hub-drop__verify {
+	margin-top: 8px;
+	@apply flex flex-col;
+	gap: 6px;
+}
+.hub-drop__verify-button {
+	align-self: flex-start;
+	padding: 6px 12px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: rgba(0, 0, 0, 0.3);
+	color: var(--accent);
+	@apply font-semibold cursor-pointer;
+}
+.hub-drop__verify-button:disabled {
+	opacity: 0.5;
+	@apply cursor-not-allowed;
+}
+.hub-drop__verify-result {
+	@apply m-0;
+	font-size: 0.82rem;
+}
+.hub-drop__verify-result.is-ok {
+	color: var(--accent);
+}
+.hub-drop__verify-result.is-bad {
+	color: #ff9083;
+}
+.hub-drop__notice {
+	color: var(--muted);
+	font-size: 0.8rem;
+	@apply text-center m-0;
+}
+

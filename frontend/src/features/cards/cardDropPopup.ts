@@ -10,7 +10,7 @@ const POPUP_DEPTH = 500;
  * same match — see `achievement-popup.ts`'s POPUP_DEPTH/position. */
 const POPUP_Y_OFFSET = 130;
 
-/** Per-rarity accent colors, mirrored from the binder's CSS (--card-accent in global.css). */
+/** Per-rarity accent colours, mirrored from the binder's cards style module. */
 const RARITY_ACCENT: Record<CardRarity, number> = {
 	stone: 0x8a8f99,
 	bronze: 0xc08457,

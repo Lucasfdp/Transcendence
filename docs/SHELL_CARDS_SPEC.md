@@ -310,7 +310,7 @@ Design decisions locked for this batch:
   became a `.hub-cards__pack-tiers` picker, one card per tier, each showing
   its name, a full odds/foil/guarantee summary, its own afford-state, and an
   "Opening..." state scoped to that tier. `RevealOverlay` needed no changes.
-- `styles/global.css` — `.hub-cards__pack-tier*`; the legendary tier reuses
+- `styles/modules/cards.css` — `.hub-cards__pack-tier*`; the legendary tier reuses
   the gold rarity accent colour as a "this pack is special" visual cue.
 
 ---
@@ -381,7 +381,7 @@ holds for every owned card.
   `.hub-cards__lightbox-prismatic` layer gated on
   `rarity === "gold" && prismaticCount > 0`; `RevealOverlay`'s tag shows
   "✵ Prismatic" in place of "✦ foil" for a prismatic pull.
-- `styles/global.css` — `.hub-cards__card.is-prismatic::after` (a faster,
+- `styles/modules/cards.css` — `.hub-cards__card.is-prismatic::after` (a faster,
   rainbow-hued shimmer overriding the plain foil sweep) and
   `.hub-cards__lightbox-prismatic` (an additional conic-gradient layer atop
   the existing holo, spinning the opposite direction for visual distinction);

@@ -1,0 +1,249 @@
+/* ── Three-Shell Monte ──────────────────────────────────────────────────── */
+.hub-monte {
+	@apply flex flex-col items-center;
+	gap: 20px;
+}
+.hub-monte__row {
+	@apply relative;
+	min-height: 132px;
+	height: 132px;
+}
+.hub-monte__canvas {
+	@apply block;
+}
+.hub-monte__shell {
+	@apply absolute;
+	left: 0;
+	bottom: 0;
+	width: 102px;
+	height: 118px;
+	border: 0;
+	background: transparent;
+	@apply cursor-pointer flex flex-col items-center justify-end p-0;
+	transition-property: transform;
+	transition-timing-function: cubic-bezier(0.28, 0.72, 0.2, 1);
+	will-change: transform;
+}
+.hub-monte__shell:disabled {
+	@apply cursor-not-allowed;
+}
+.hub-monte__shell-face {
+	@apply w-full;
+	height: 80px;
+	border-radius: 60% 60% 24% 24%;
+	background: radial-gradient(circle at 50% 20%, #c98f5a, #7c5230);
+	border: 2px solid rgba(12, 17, 24, 0.85);
+	box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+	transition: transform 0.12s ease, border-color 0.15s ease;
+}
+.hub-monte__shell.is-swapping .hub-monte__shell-face {
+	transform: translateY(-18px);
+}
+.hub-monte__shell.is-lifted .hub-monte__shell-face {
+	transform: translateY(-22px) rotate(-7deg);
+}
+.hub-monte__shell.is-covering .hub-monte__shell-face {
+	transform: translateY(2px);
+}
+.hub-monte__shell.is-pick .hub-monte__shell-face {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 2px var(--accent) inset, 0 3px 6px rgba(0, 0, 0, 0.4);
+}
+.hub-monte__shell:hover:not(:disabled) .hub-monte__shell-face {
+	transform: translateY(-3px);
+}
+.hub-monte__shell.is-winner .hub-monte__shell-face {
+	transform: translateY(-18px) rotate(-8deg);
+	border-color: var(--accent-strong);
+}
+.hub-monte__pearl {
+	@apply absolute;
+	bottom: 36px;
+	width: 30px;
+	height: 30px;
+	border-radius: 50%;
+	background: radial-gradient(circle at 35% 30%, #ffffff, #cbd5e1 70%, #94a3b8);
+	box-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+}
+.hub-monte__shell-num {
+	margin-top: 8px;
+	color: var(--muted);
+	@apply font-bold;
+	font-size: 1rem;
+}
+.hub-monte__shell.is-pick .hub-monte__shell-num {
+	color: var(--accent);
+}
+.hub-monte__balance {
+	color: var(--muted);
+	@apply font-semibold;
+}
+.hub-monte__result {
+	font-family: var(--display-font);
+	font-size: 1.6rem;
+	@apply font-bold m-0;
+}
+.hub-monte__result.is-win {
+	color: var(--accent);
+}
+.hub-monte__result.is-loss {
+	color: #ff9083;
+}
+.hub-monte__tiers {
+	@apply flex;
+	gap: 8px;
+	@apply flex-wrap justify-center;
+}
+.hub-monte__tier {
+	padding: 11px 18px;
+	border-radius: 10px;
+	border: 2px solid var(--line);
+	background: rgba(0, 0, 0, 0.3);
+	color: var(--text);
+	font-size: 1rem;
+	@apply font-bold cursor-pointer;
+	transition: border-color 0.15s ease, transform 0.08s ease;
+}
+.hub-monte__tier:hover:not(:disabled) {
+	transform: translateY(-1px);
+}
+.hub-monte__tier.is-selected {
+	border-color: var(--accent-strong);
+	box-shadow: 0 0 0 1px var(--accent-strong) inset;
+}
+.hub-monte__tier:disabled {
+	opacity: 0.5;
+	@apply cursor-not-allowed;
+}
+.hub-monte__controls {
+	@apply flex flex-col items-center;
+	gap: 10px;
+	@apply w-full;
+}
+.hub-monte__wager {
+	@apply flex items-center;
+	gap: 8px;
+	@apply flex-wrap justify-center;
+}
+.hub-monte__stake-label {
+	color: var(--muted);
+	@apply font-semibold;
+}
+.hub-monte__stake-input {
+	width: 110px;
+	padding: 10px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: rgba(0, 0, 0, 0.3);
+	color: var(--text);
+	font-family: var(--mono-font);
+	font-size: 1rem;
+}
+.hub-monte__play-button {
+	padding: 13px 24px;
+	border: 0;
+	border-radius: 10px;
+	font-size: 1rem;
+	@apply font-bold;
+	letter-spacing: 0.04em;
+	@apply cursor-pointer;
+	color: #1b1208;
+	background: linear-gradient(135deg, #f0d27a, #e6a23c);
+	box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+	transition: transform 0.08s ease, filter 0.15s ease;
+}
+.hub-monte__play-button:hover:not(:disabled) {
+	filter: brightness(1.07);
+	transform: translateY(-1px);
+}
+.hub-monte__play-button:disabled {
+	opacity: 0.5;
+	@apply cursor-not-allowed;
+}
+.hub-monte__hint {
+	color: #ff9083;
+	font-size: 0.85rem;
+	@apply m-0;
+}
+.hub-monte__fairness {
+	@apply w-full;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	padding: 8px 12px;
+	background: rgba(0, 0, 0, 0.2);
+}
+.hub-monte__fairness summary {
+	@apply cursor-pointer;
+	color: var(--accent);
+	@apply font-semibold;
+}
+.hub-monte__fairness-grid {
+	margin: 8px 0 0;
+	@apply grid;
+	grid-template-columns: auto 1fr;
+	gap: 4px 12px;
+	font-family: var(--mono-font);
+	font-size: 0.78rem;
+	word-break: break-all;
+}
+.hub-monte__fairness-grid dt {
+	color: var(--muted);
+}
+.hub-monte__fairness-grid dd {
+	@apply m-0;
+}
+.hub-monte__seed {
+	@apply flex flex-col;
+	gap: 4px;
+	@apply w-full;
+	color: var(--muted);
+	font-size: 0.85rem;
+}
+.hub-monte__seed input {
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: rgba(0, 0, 0, 0.3);
+	color: var(--text);
+	font-family: var(--mono-font);
+}
+.hub-monte__verify {
+	margin-top: 8px;
+	@apply flex flex-col;
+	gap: 6px;
+}
+.hub-monte__verify-button {
+	align-self: flex-start;
+	padding: 6px 12px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: rgba(0, 0, 0, 0.3);
+	color: var(--accent);
+	@apply font-semibold cursor-pointer;
+}
+.hub-monte__verify-button:disabled {
+	opacity: 0.5;
+	@apply cursor-not-allowed;
+}
+.hub-monte__verify-result {
+	@apply m-0;
+	font-size: 0.82rem;
+}
+.hub-monte__verify-result.is-ok {
+	color: var(--accent);
+}
+.hub-monte__verify-result.is-bad {
+	color: #ff9083;
+}
+.hub-monte__notice {
+	color: var(--muted);
+	font-size: 0.8rem;
+	@apply text-center m-0;
+}
+@media (prefers-reduced-motion: reduce) {
+	.hub-monte__shell-face,
+	.hub-monte__shell.is-winner .hub-monte__shell-face {
+		transition: none !important;
+	}
+}
+

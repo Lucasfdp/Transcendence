@@ -131,7 +131,9 @@ New, fully unit-tested pure/presentational modules under `frontend/src/features/
 - `toast/ToastList.tsx` (+`.test.tsx`) — presentational stack.
 - `toast/Toaster.tsx` — connected container (mounted in `frontend/src/app/App.tsx` inside
   a new `<ToastProvider>`).
-- CSS: `.toast*` and `.hub-modal__social-count` in `frontend/src/styles/global.css`.
+- Styling: the toast stack uses Tailwind utilities in
+  `frontend/src/features/social/toast/ToastList.tsx`; `.hub-modal__social-count`
+  remains in `frontend/src/styles/modules/social-replays.css`.
 
 `HomePage.tsx` wiring:
 - `useToast()` consumed; magic number `FRIEND_REMOVAL_UNDO_MS = 5000`.
@@ -170,7 +172,8 @@ New, fully unit-tested pure/presentational modules under `frontend/src/features/
 - `HomePage.tsx` — friends list now renders **grouped** (In game / Online / Offline) via a
   shared `friendRow()` renderer; in-game shows the game label (from `RANKED_GAMES`), offline
   shows "Last online <relative>". Optimistic-accept builds a full `FriendView`.
-- CSS: `.hub-modal__social-group*`, `.hub-modal__social-status*` in `global.css`.
+- CSS: `.hub-modal__social-group*`, `.hub-modal__social-status*` in
+  `frontend/src/styles/modules/social-replays.css`.
 
 **Frontend test count after Batch 2: 26 passing.**
 
@@ -307,7 +310,7 @@ frontend/src/test/**  frontend/src/features/social/**
 frontend/src/features/hub/api.ts
 frontend/src/app/App.tsx
 frontend/src/pages/HomePage.tsx
-frontend/src/styles/global.css
+frontend/src/styles/modules/social-replays.css
 ```
 
 ### Suggested order for the next agent

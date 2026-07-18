@@ -1,0 +1,259 @@
+@font-face {
+	font-family: "Blowbrush";
+	src: url("../../assets/fonts/blowbrush.otf") format("opentype");
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Rowdy";
+	src: url("../../assets/fonts/Rowdy-Regular.ttf") format("truetype");
+	font-display: swap;
+	font-weight: 400;
+	font-style: normal;
+}
+
+:root {
+	--bg: #0c1015;
+	--panel: rgba(12, 17, 24, 0.82);
+	--line: rgba(241, 211, 145, 0.22);
+	--text: #f1eadb;
+	--muted: #b3a996;
+	--accent: #f1d391;
+	--accent-strong: #e88a3d;
+	--blowbrush-font: "Blowbrush", var(--display-font);
+	--rowdy-font: "Rowdy", "Palatino Linotype", "Book Antiqua", Palatino, serif;
+	--display-font: var(--rowdy-font);
+	--body-font: var(--rowdy-font);
+	--mono-font: "IBM Plex Mono", "Cascadia Code", "Fira Code", Consolas,
+		"Courier New", monospace;
+}
+
+* {
+	@apply box-border select-none;
+}
+
+html,
+body,
+#root {
+	@apply min-h-full;
+}
+
+body {
+	@apply m-0;
+	color: var(--text);
+	font-family: var(--body-font);
+	background: linear-gradient(180deg, #120f14 0%, #090d12 56%, #05070a 100%);
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+button,
+input {
+	font: inherit;
+}
+
+.viewport-guard {
+	@apply fixed inset-0;
+	z-index: 10000;
+	@apply grid place-items-center overflow-hidden;
+	padding: clamp(1.25rem, 4vw, 3rem);
+	background:
+		linear-gradient(135deg, rgba(7, 10, 15, 0.74), rgba(7, 10, 15, 0.95)),
+		repeating-linear-gradient(
+			90deg,
+			transparent 0,
+			transparent 3.4rem,
+			rgba(241, 211, 145, 0.045) 3.45rem,
+			rgba(241, 211, 145, 0.045) 3.5rem
+		),
+		#080b10;
+}
+
+.viewport-guard__sun {
+	@apply absolute;
+	top: -20vmax;
+	right: -14vmax;
+	width: 56vmax;
+	@apply aspect-square;
+	border: 1px solid rgba(241, 211, 145, 0.28);
+	border-radius: 50%;
+	box-shadow: 0 0 0 4vmax rgba(241, 211, 145, 0.025), 0 0 9vmax rgba(232, 138, 61, 0.16);
+}
+
+.viewport-guard__panel {
+	@apply relative;
+	width: min(100%, 38rem);
+	padding: clamp(2rem, 6vw, 4.25rem);
+	border: 1px solid rgba(241, 211, 145, 0.48);
+	background: linear-gradient(145deg, rgba(23, 28, 34, 0.98), rgba(7, 10, 14, 0.94));
+	box-shadow: 1rem 1rem 0 rgba(0, 0, 0, 0.3), 0 1.5rem 5rem rgba(0, 0, 0, 0.52);
+	@apply text-center;
+}
+
+.viewport-guard__panel::before,
+.viewport-guard__panel::after {
+	@apply absolute;
+	width: 1.25rem;
+	height: 1.25rem;
+	border-color: var(--accent);
+	border-style: solid;
+	content: "";
+}
+
+.viewport-guard__panel::before {
+	top: 0.55rem;
+	left: 0.55rem;
+	border-width: 1px 0 0 1px;
+}
+
+.viewport-guard__panel::after {
+	right: 0.55rem;
+	bottom: 0.55rem;
+	border-width: 0 1px 1px 0;
+}
+
+.viewport-guard__eyebrow {
+	margin: 0 0 1rem;
+	color: var(--accent);
+	font-size: 0.76rem;
+	letter-spacing: 0.28em;
+	@apply uppercase;
+}
+
+.viewport-guard h1 {
+	@apply m-0;
+	font-family: var(--display-font);
+	font-size: clamp(2.4rem, 8vw, 5rem);
+	line-height: 0.9;
+	@apply uppercase;
+}
+
+.viewport-guard__panel > p:not(.viewport-guard__eyebrow) {
+	max-width: 33rem;
+	margin: 1.5rem auto 0;
+	color: var(--muted);
+	font-size: clamp(1rem, 2.4vw, 1.2rem);
+	line-height: 1.5;
+}
+
+.viewport-guard__risk,
+.viewport-guard__instruction {
+	color: var(--accent) !important;
+	@apply font-bold;
+}
+
+.viewport-guard__continue {
+	margin-top: 2rem;
+	padding: 0.9rem 1.5rem;
+	border: 1px solid var(--accent);
+	background: var(--accent);
+	color: #17110b;
+	@apply font-bold;
+	letter-spacing: 0.08em;
+	@apply uppercase cursor-pointer;
+	transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.viewport-guard__continue:hover,
+.viewport-guard__continue:focus-visible {
+	background: transparent;
+	color: var(--accent);
+	transform: translateY(-2px);
+}
+
+.viewport-guard__device {
+	@apply relative grid place-items-center;
+	width: 7rem;
+	margin: 0 auto 1.5rem;
+	@apply aspect-square;
+}
+
+.viewport-guard__device-frame {
+	width: 5.8rem;
+	height: 3.35rem;
+	border: 2px solid var(--accent);
+	border-radius: 0.4rem;
+	box-shadow: inset 0 0 0 0.35rem rgba(241, 211, 145, 0.1);
+}
+
+.viewport-guard__rotation-arrow {
+	@apply absolute;
+	right: -0.1rem;
+	bottom: -0.1rem;
+	color: var(--accent-strong);
+	font-family: var(--mono-font);
+	font-size: 2.5rem;
+	@apply leading-none;
+}
+
+@media (max-height: 34rem) and (orientation: landscape) {
+	.viewport-guard {
+		padding: 0.9rem;
+	}
+
+	.viewport-guard__panel {
+		width: min(100%, 42rem);
+		padding: 1.15rem 2.25rem;
+	}
+
+	.viewport-guard__device {
+		margin-bottom: 0.6rem;
+		transform: scale(0.72);
+	}
+
+	.viewport-guard__panel > p:not(.viewport-guard__eyebrow) {
+		margin-top: 0.65rem;
+		line-height: 1.35;
+	}
+
+	.viewport-guard__continue {
+		margin-top: 0.9rem;
+	}
+}
+
+/* Phone landscape can be as short as 320 px: keep the whole decision visible. */
+@media (max-height: 28rem) and (orientation: landscape) {
+	.viewport-guard__panel {
+		padding: 0.75rem 1.5rem 0.9rem;
+	}
+
+	.viewport-guard__eyebrow {
+		margin-bottom: 0.35rem;
+		font-size: 0.62rem;
+	}
+
+	.viewport-guard h1 {
+		font-size: clamp(1.75rem, 4.6vw, 2.8rem);
+	}
+
+	.viewport-guard__panel > p:not(.viewport-guard__eyebrow) {
+		margin-top: 0.45rem;
+		font-size: clamp(0.82rem, 1.7vw, 1rem);
+		line-height: 1.25;
+	}
+
+	.viewport-guard__continue {
+		margin-top: 0.65rem;
+		padding: 0.6rem 1rem;
+		font-size: 0.76rem;
+	}
+
+	.viewport-guard__device {
+		width: 4.25rem;
+		margin-bottom: 0.15rem;
+		transform: scale(0.62);
+	}
+}
+
+.nine-slice-button {
+	border-style: solid;
+	border-width: var(--nine-slice-width, 40px);
+	border-image-source: var(--nine-slice-source);
+	border-image-slice: var(--nine-slice-slice, 40) fill;
+	border-image-width: var(--nine-slice-width, 40px);
+	border-image-repeat: stretch;
+}
+

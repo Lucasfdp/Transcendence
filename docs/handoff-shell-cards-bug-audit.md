@@ -32,7 +32,8 @@ Frontend:
 Verified healthy: all 19 `imageUrl` assets exist under `public/assets/`
 (character + power-ups); `is-foil` / `is-prismatic` /
 `hub-cards__lightbox-prismatic` / `hub-cards__pack-tier*` /
-`hub-cards__reveal*` CSS classes all present in `frontend/src/styles/global.css`;
+`hub-cards__reveal*` CSS classes all present in
+`frontend/src/styles/modules/cards.css`;
 odds tables and roll math are correct (including the guaranteed-slot weighting
 and the conditional 4th prismatic draw); DTO validation is active; the
 first-copy 23505 race path in `grantCard` works as documented.

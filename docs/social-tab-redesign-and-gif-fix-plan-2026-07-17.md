@@ -204,13 +204,14 @@ the right; tabs only swap the left pane's list.
 
 ### Reference pattern (already in the codebase)
 
-The replay modal: grid container `.hub-modal__replays` (`global.css:5248`) —
+The replay modal uses the `.hub-modal__replays` grid in
+`frontend/src/styles/modules/social-replays.css` —
 `grid-template-columns: minmax(18rem, 0.92fr) minmax(24rem, 1.08fr)`, left pane scrolls
 internally, right pane has `border-left` + `padding-left`, and the whole thing collapses to a
-single column at `@media (max-width: 1100px)` (`global.css:5487`). The modal body override
+single column at `@media (max-width: 1100px)`. The modal body override
 `.hub-modal__panel--wide .hub-modal__body:has(.hub-modal__replays) { overflow: hidden; }`
-(`global.css:2392`) makes the panes own their scrolling. The tab buttons are
-`.hub-modal__replay-tab` / `--active` (`global.css:5292`). The right pane's empty state is the
+in the feature module makes the panes own their scrolling. The tab buttons are
+`.hub-modal__replay-tab` / `--active`. The right pane's empty state is the
 game logo + "Select a replay to inspect its timeline."
 
 ### Target structure
@@ -256,9 +257,10 @@ inside the existing `<HubModal title="Social" variant="wide">`:
 - **Mini avatars (friend rows only):** render `ShellPortrait`
   (`frontend/src/features/profile/ShellPortrait.tsx`) at the start of `friendRow`:
   `<ShellPortrait avatar={friend.avatar} shellSkin={friend.shellSkin} displayName={friend.turtleName ?? friend.username} size="small" />`
-  — omit `level` to suppress the level chip. `--small` is 3.4rem (`global.css:8500`); that's
+  — omit `level` to suppress the level chip. `--small` is 3.4rem in
+  `frontend/src/styles/modules/profiles.css`; that's
   likely too large for a dense list row, so add a `shell-portrait--mini` size (~2.2rem) in
-  `global.css` and extend the `ShellPortraitSize` type. `FriendView.avatar` already exists —
+  the profile style module and extend the `ShellPortraitSize` type. `FriendView.avatar` already exists —
   **no backend or API changes needed.** Overlay the existing presence dot
   (`.hub-modal__presence-dot` / online/in-game variants) on the portrait's bottom-right corner;
   keep the textual "Last online …" / game label beside the name as today. `ShellPortrait`

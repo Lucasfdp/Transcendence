@@ -38,7 +38,7 @@ GET /api/leaderboard/overall?scope=global|friends
 
 - `frontend/src/features/hub/api.ts` — removed stale `getLeaderboard()` / `LeaderboardEntry`. Added `getGameLeaderboard`, `getOverallLeaderboard`, `RANKED_GAMES` constant, `GameLeaderboardEntry`, `OverallLeaderboardEntry`, `LeaderboardScope` types.
 - `frontend/src/pages/HomePage.tsx` — leaderboard panel now has a game dropdown (including "Overall") and a global/friends scope toggle. Fetches re-fire on dropdown or scope change.
-- `frontend/src/styles/global.css` — added `.hub-leaderboard-controls`, `.hub-leaderboard-select`, `.hub-leaderboard-scope`, `.hub-leaderboard-scope__btn`, `.hub-ranking-list__rank`, `.hub-ranking-list__name`, `.hub-ranking-list__stat`.
+- `frontend/src/styles/modules/social-replays.css` — contains the leaderboard controls, selectors, scope controls, and ranking-list styles.
 
 ---
 
@@ -90,7 +90,7 @@ npx typeorm migration:run -d src/data-source.ts
 - `backend/src/app.module.ts` — added `NotificationsModule`.
 - `frontend/src/features/hub/api.ts` — added `NotificationType`, `NotificationView` types.
 - `frontend/src/pages/HomePage.tsx` — bell button in hub header with unread badge; notification drawer listing unread items; Accept/Decline actions for `friend_request` type.
-- `frontend/src/styles/global.css` — added `.hub-notif-bell`, `.hub-notif-bell__badge`, `.hub-notif-drawer` and all child BEM elements.
+- `frontend/src/styles/modules/social-replays.css` — contains `.hub-notif-bell`, `.hub-notif-bell__badge`, `.hub-notif-drawer` and all child BEM elements.
 
 ---
 
@@ -142,7 +142,7 @@ interface PrivateLobby {
 - `backend/src/modules/matchmaking/matchmaking.module.ts` — added `PrivateLobbiesService` to providers, `FriendsModule` to imports.
 - `backend/src/modules/matchmaking/matchmaking.gateway.ts` — injected `PrivateLobbiesService`, `FriendsService`; added all lobby event handlers above.
 - `frontend/src/pages/HomePage.tsx` — `LobbyCountdown` component, host waiting overlay, invitee invite popup, "Invite" button per online friend in the social modal, game picker inline.
-- `frontend/src/styles/global.css` — added `.hub-modal__social-invite-btn`, `.hub-lobby-picker` and children, `.hub-lobby-countdown`, `.hub-lobby-waiting` and children, `.hub-invite-popup` and children.
+- `frontend/src/styles/modules/social-replays.css` — contains `.hub-modal__social-invite-btn`, `.hub-lobby-picker` and children, `.hub-lobby-countdown`, `.hub-lobby-waiting` and children, `.hub-invite-popup` and children.
 
 ---
 

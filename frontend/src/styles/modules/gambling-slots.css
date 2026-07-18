@@ -1,0 +1,187 @@
+/* ── Shrine Slots ───────────────────────────────────────────────────────── */
+.hub-slots {
+	@apply flex flex-col items-center;
+	gap: 20px;
+}
+.hub-slots__reels {
+	@apply flex;
+	gap: 18px;
+}
+.hub-slots__reel {
+	width: 108px;
+	height: 126px;
+	border-radius: 16px;
+	border: 2px solid var(--line);
+	background: rgba(0, 0, 0, 0.35);
+	@apply flex items-center justify-center overflow-hidden;
+	box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.hub-slots__reel-canvas {
+	@apply block w-full h-full;
+}
+.hub-slots__balance {
+	color: var(--muted);
+	@apply font-semibold;
+}
+.hub-slots__result {
+	font-family: var(--display-font);
+	font-size: 1.6rem;
+	@apply font-bold m-0 text-center;
+}
+.hub-slots__result.is-win {
+	color: var(--accent);
+}
+.hub-slots__result.is-loss {
+	color: #ff9083;
+}
+.hub-slots__controls {
+	@apply flex flex-col items-center;
+	gap: 10px;
+	@apply w-full;
+}
+.hub-slots__wager {
+	@apply flex items-center;
+	gap: 8px;
+}
+.hub-slots__stake-label {
+	color: var(--muted);
+	@apply font-semibold;
+}
+.hub-slots__stake-input {
+	width: 110px;
+	padding: 10px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: rgba(0, 0, 0, 0.3);
+	color: var(--text);
+	font-family: var(--mono-font);
+	font-size: 1rem;
+}
+.hub-slots__spin-button {
+	padding: 13px 24px;
+	border: 0;
+	border-radius: 10px;
+	font-size: 1rem;
+	@apply font-bold;
+	letter-spacing: 0.04em;
+	@apply cursor-pointer;
+	color: #1b1208;
+	background: linear-gradient(135deg, #f0d27a, #e6a23c);
+	box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+	transition: transform 0.08s ease, filter 0.15s ease;
+}
+.hub-slots__spin-button:hover:not(:disabled) {
+	filter: brightness(1.07);
+	transform: translateY(-1px);
+}
+.hub-slots__spin-button:disabled {
+	opacity: 0.5;
+	@apply cursor-not-allowed;
+}
+.hub-slots__hint {
+	color: #ff9083;
+	font-size: 0.85rem;
+	@apply m-0;
+}
+.hub-slots__odds,
+.hub-slots__fairness {
+	@apply w-full;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	padding: 8px 12px;
+	background: rgba(0, 0, 0, 0.2);
+}
+.hub-slots__odds summary,
+.hub-slots__fairness summary {
+	@apply cursor-pointer;
+	color: var(--accent);
+	@apply font-semibold;
+}
+.hub-slots__odds-table {
+	@apply w-full;
+	margin-top: 8px;
+	border-collapse: collapse;
+	font-size: 0.9rem;
+}
+.hub-slots__odds-table th,
+.hub-slots__odds-table td {
+	padding: 4px 6px;
+	@apply text-left;
+	border-bottom: 1px solid var(--line);
+}
+.hub-slots__odds-table th {
+	color: var(--muted);
+}
+.hub-slots__odds-symbol {
+	@apply flex items-center;
+	gap: 6px;
+}
+.hub-slots__odds-icon {
+	width: 30px;
+	height: 30px;
+	@apply object-contain;
+}
+.hub-slots__fairness-grid {
+	margin: 8px 0 0;
+	@apply grid;
+	grid-template-columns: auto 1fr;
+	gap: 4px 12px;
+	font-family: var(--mono-font);
+	font-size: 0.78rem;
+	word-break: break-all;
+}
+.hub-slots__fairness-grid dt {
+	color: var(--muted);
+}
+.hub-slots__fairness-grid dd {
+	@apply m-0;
+}
+.hub-slots__seed {
+	@apply flex flex-col;
+	gap: 4px;
+	@apply w-full;
+	color: var(--muted);
+	font-size: 0.85rem;
+}
+.hub-slots__seed input {
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: rgba(0, 0, 0, 0.3);
+	color: var(--text);
+	font-family: var(--mono-font);
+}
+.hub-slots__verify {
+	margin-top: 8px;
+	@apply flex flex-col;
+	gap: 6px;
+}
+.hub-slots__verify-button {
+	align-self: flex-start;
+	padding: 6px 12px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: rgba(0, 0, 0, 0.3);
+	color: var(--accent);
+	@apply font-semibold cursor-pointer;
+}
+.hub-slots__verify-button:disabled {
+	opacity: 0.5;
+	@apply cursor-not-allowed;
+}
+.hub-slots__verify-result {
+	@apply m-0;
+	font-size: 0.82rem;
+}
+.hub-slots__verify-result.is-ok {
+	color: var(--accent);
+}
+.hub-slots__verify-result.is-bad {
+	color: #ff9083;
+}
+.hub-slots__notice {
+	color: var(--muted);
+	font-size: 0.8rem;
+	@apply text-center m-0;
+}
+

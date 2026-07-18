@@ -37,7 +37,10 @@ Ordered: fixing top-to-bottom is a sensible plan. B1–B6 are user-visible.
 
 ### B2 (MEDIUM): Chat thread has no scroll anchoring
 
-**Locations:** `frontend/src/pages/HomePage.tsx:3352-3417` (message list), `frontend/src/styles/global.css:4498-4506` (`.hub-modal__chat-message-list`: `flex-direction: column; max-height: 260px; overflow-y: auto`).
+**Locations:** `frontend/src/pages/HomePage.tsx` (message list) and
+`frontend/src/styles/modules/social-replays.css`
+(`.hub-modal__chat-message-list`: `flex-direction: column; max-height: 260px;
+overflow-y: auto`).
 
 **Why:** messages render oldest-first and the scroll container starts at the top, so opening a conversation shows the *oldest* page while the newest messages — the reason the user opened the thread — are below the fold. Live messages append below the fold invisibly. "Load older" prepends items, which shifts content and jumps the viewport.
 

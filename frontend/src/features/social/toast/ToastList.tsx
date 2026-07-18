@@ -4,6 +4,12 @@
  */
 import { type Toast } from "./ToastContext";
 
+const toastVariantClasses: Record<Toast["variant"], string> = {
+	success: "border-l-[3px] border-l-[#6fcf97]",
+	error: "border-l-[3px] border-l-[var(--accent-strong)]",
+	info: "border-l-[3px] border-l-[var(--accent)]",
+};
+
 interface ToastListProps {
 	toasts: Toast[];
 	onDismiss: (id: string) => void;
@@ -17,7 +23,7 @@ export function ToastList({
 
 	return (
 		<div
-			className="toast-stack"
+			className="pointer-events-none fixed bottom-4 right-4 z-[9999] flex max-w-[min(92vw,360px)] flex-col gap-2"
 			role="region"
 			aria-label="Notifications"
 			aria-live="polite"
@@ -25,14 +31,14 @@ export function ToastList({
 			{toasts.map((toast) => (
 				<div
 					key={toast.id}
-					className={`toast toast--${toast.variant}`}
+					className={`pointer-events-auto flex animate-toast-in items-center gap-[0.6rem] rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-3 py-[0.6rem] font-body text-[0.85rem] text-[var(--text)] shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-[8px] motion-reduce:animate-none ${toastVariantClasses[toast.variant]}`}
 					role="status"
 				>
-					<span className="toast__message">{toast.message}</span>
+					<span className="flex-auto leading-[1.3]">{toast.message}</span>
 					{toast.action ? (
 						<button
 							type="button"
-							className="toast__action"
+							className="flex-none cursor-pointer rounded-md border border-[var(--accent)] bg-transparent px-[0.55rem] py-[0.2rem] text-[0.78rem] text-[var(--accent)] hover:bg-[rgba(241,211,145,0.12)]"
 							onClick={() => {
 								toast.action?.onAction();
 								onDismiss(toast.id);
@@ -43,7 +49,7 @@ export function ToastList({
 					) : null}
 					<button
 						type="button"
-						className="toast__close"
+						className="flex-none cursor-pointer border-0 bg-transparent px-[0.15rem] py-0 text-[1.1rem] leading-none text-[var(--muted)] hover:text-[var(--text)]"
 						aria-label="Dismiss notification"
 						onClick={() => onDismiss(toast.id)}
 					>

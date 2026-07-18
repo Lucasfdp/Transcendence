@@ -168,6 +168,11 @@ A single-page application built with React, Phaser 3.60, and Vite. React handles
 
 **Entry points:** `frontend/src/main.tsx` mounts the React app and routes. `frontend/src/lib/createShellSmashGame.ts` creates the Phaser `Game` instance and registers the hub and mini-game scenes.
 
+**Styling:** Tailwind CSS provides shared utilities, design tokens, and reusable
+layout primitives. Complex visual effects remain grouped by feature under
+`frontend/src/styles/modules/`, with a single ordered manifest preserving the
+application's cascade.
+
 **Vite config:** The dev server proxies `/api` to `http://backend:8000`, so the frontend never needs to know the backend's address in development.
 
 ### Scenes

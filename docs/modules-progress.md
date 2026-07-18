@@ -161,7 +161,9 @@ Requirement breakdown:
 
 Evidence:
 - Reusable components in `frontend/src/components/`
-- Theme and global styles in `frontend/src/shared/theme.ts` and `frontend/src/styles/global.css`
+- Theme primitives in `frontend/src/shared/theme.ts`, Tailwind CSS configuration
+  in `frontend/tailwind.config.cjs`, and feature-scoped style modules in
+  `frontend/src/styles/modules/`.
 
 Missing for completion:
 - Formal inventory of the design system is lacking.

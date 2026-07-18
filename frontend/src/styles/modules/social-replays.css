@@ -1,0 +1,1545 @@
+/* ── Social modal ── */
+.hub-modal__social-add {
+	@apply flex;
+	gap: 0.5rem;
+	@apply items-center;
+	margin-bottom: 0.75rem;
+}
+.hub-modal__social-add .hub-modal__field-input {
+	@apply flex-1;
+}
+.hub-modal__social-code {
+	@apply flex;
+	gap: 0.5rem;
+	@apply items-center justify-between;
+	margin-bottom: 0.75rem;
+	padding: 0.5rem 0.75rem;
+	border-radius: 0.5rem;
+	background: rgba(255, 255, 255, 0.04);
+}
+.hub-modal__social-code code {
+	font-size: 0.95rem;
+	letter-spacing: 0.02em;
+}
+.hub-modal__social-section {
+	margin-top: 0.5rem;
+}
+.hub-modal__social-search {
+	@apply w-full;
+	margin-bottom: 0.5rem;
+}
+.hub-modal__social-section h3 {
+	font-size: 0.8rem;
+	opacity: 0.6;
+	@apply uppercase;
+	letter-spacing: 0.05em;
+	margin: 0 0 0.4rem;
+}
+.hub-modal__social-list {
+	list-style: none;
+	@apply m-0 p-0 flex flex-col;
+	gap: 0.4rem;
+}
+.hub-modal__social-row {
+	@apply relative flex items-center justify-between;
+	/* Defensive fallback: if a long name/status ever can't fit alongside the
+	 * actions on one line (narrow window, long username), wrap to a second
+	 * line instead of silently overlapping — the two-pane sidebar is narrower
+	 * than the old single-column modal this row was originally designed for. */
+	@apply flex-wrap;
+	gap: 0.5rem;
+	padding: 0.35rem 0.5rem;
+	background: rgba(255,255,255,0.05);
+	border-radius: 4px;
+}
+.hub-modal__social-identity {
+	@apply flex items-center;
+	gap: 0.5rem;
+	@apply min-w-0;
+}
+.hub-modal__social-portrait {
+	@apply relative inline-flex flex-none;
+}
+.hub-modal__social-portrait-presence {
+	@apply absolute;
+	right: -0.05rem;
+	bottom: -0.05rem;
+	border: 2px solid rgba(13, 17, 11, 0.9);
+}
+.hub-modal__social-name {
+	@apply flex items-center;
+	gap: 0.35rem;
+	font-size: 0.9rem;
+}
+.hub-modal__social-name small {
+	opacity: 0.5;
+	font-size: 0.75rem;
+}
+.hub-modal__social-online {
+	@apply inline-block;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: #6fcf97;
+}
+.hub-modal__social-actions {
+	@apply flex;
+	gap: 0.35rem;
+}
+
+.hub-modal__social-profile-link {
+	align-content: center;
+	padding: 0.1rem 0.25rem;
+	color: var(--accent);
+	font-size: 0.78rem;
+	text-underline-offset: 0.18rem;
+}
+
+.hub-modal__social-confirm-label {
+	font-size: 0.8rem;
+	opacity: 0.85;
+}
+.hub-modal__social-confirm-btn,
+.hub-modal__social-block-btn {
+	color: #ff8a8a;
+}
+.hub-modal__social-count {
+	margin-left: 0.5rem;
+	font-family: var(--body-font);
+	font-size: 0.72rem;
+	@apply font-normal;
+	letter-spacing: 0.02em;
+	color: var(--muted);
+}
+
+.hub-modal__social-group {
+	margin-top: 0.5rem;
+}
+
+.hub-modal__social-group-label {
+	margin: 0.4rem 0 0.25rem;
+	font-family: var(--body-font);
+	font-size: 0.68rem;
+	@apply font-bold;
+	letter-spacing: 0.08em;
+	@apply uppercase;
+	color: var(--muted);
+}
+
+.hub-modal__social-status {
+	margin-left: 0.45rem;
+	font-family: var(--body-font);
+	font-size: 0.72rem;
+	letter-spacing: 0.01em;
+}
+
+.hub-modal__social-status--ingame {
+	color: var(--accent);
+}
+
+.hub-profile-card {
+	@apply absolute;
+	top: 100%;
+	left: 0;
+	z-index: 20;
+	margin-top: 0.25rem;
+	padding: 0.6rem 0.75rem;
+	min-width: 220px;
+	background: rgba(20, 20, 30, 0.96);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 6px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+	font-size: 0.8rem;
+}
+.hub-profile-card__identity {
+	@apply grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	@apply items-center;
+	gap: 0.65rem;
+	margin-bottom: 0.55rem;
+	padding-bottom: 0.5rem;
+	border-bottom: 1px solid rgba(226, 186, 104, 0.18);
+}
+.hub-profile-card__identity strong {
+	@apply block;
+	margin-bottom: 0.12rem;
+	color: #fff3c6;
+}
+.hub-profile-card p {
+	margin: 0 0 0.25rem;
+}
+.hub-profile-card p:last-child {
+	@apply mb-0;
+}
+.hub-profile-card__level {
+	@apply font-semibold;
+}
+.hub-profile-card--error {
+	opacity: 0.7;
+}
+.hub-modal__social-status--offline {
+	color: var(--muted);
+}
+
+.hub-modal__social-message-btn {
+	color: var(--accent);
+}
+
+/* ── Social modal two-pane layout (Workstream C) ──
+ * Cloned from the replay modal's `.hub-modal__replays` grid/pane/tab rules
+ * under independent `social-` names so the two features stay separately
+ * tunable, per the redesign handoff. Same 1100px collapse breakpoint and
+ * the same `:has()` body-overflow override pattern. */
+.hub-modal__social-grid {
+	@apply grid;
+	grid-template-columns: minmax(18rem, 0.92fr) minmax(24rem, 1.08fr);
+	gap: 0;
+	@apply h-full min-h-0;
+}
+
+.hub-modal__social-sidebar,
+.hub-modal__social-main {
+	@apply flex flex-col;
+	gap: 0.75rem;
+	@apply min-h-0;
+}
+
+.hub-modal__social-sidebar {
+	padding-right: 1rem;
+	@apply overflow-hidden;
+}
+
+.hub-modal__social-sidebar-scroll {
+	@apply flex-1 min-h-0 overflow-y-auto;
+	padding-right: 0.35rem;
+}
+
+.hub-modal__social-main {
+	padding-left: 1rem;
+	border-left: 1px solid rgba(245, 214, 119, 0.2);
+	@apply overflow-y-auto;
+}
+
+.hub-modal__social-tabs {
+	@apply flex;
+	gap: 0.55rem;
+	@apply flex-wrap;
+}
+
+.hub-modal__social-tab {
+	@apply relative inline-flex items-center;
+	gap: 0.4rem;
+	font-family: var(--rowdy-font);
+	font-size: 0.9rem;
+	@apply font-bold;
+	letter-spacing: 0.04em;
+	color: #d8ff9f;
+	background: rgba(9, 22, 12, 0.72);
+	border: 1px solid rgba(123, 183, 111, 0.42);
+	border-radius: 0.72rem;
+	padding: 0.55rem 0.95rem;
+	@apply cursor-pointer;
+}
+
+.hub-modal__social-tab--active {
+	color: #eaffc8;
+	background: linear-gradient(180deg, rgba(43, 67, 35, 0.9), rgba(13, 38, 18, 0.94));
+	border-color: rgba(216, 255, 159, 0.72);
+}
+
+.hub-modal__social-tab-badge {
+	@apply inline-flex items-center justify-center;
+	min-width: 1.3rem;
+	height: 1.3rem;
+	padding: 0 0.3rem;
+	border-radius: 999px;
+	background: var(--accent-strong, #d4af37);
+	color: #1a1a1a;
+	font-size: 0.68rem;
+	@apply font-extrabold leading-none;
+}
+
+.hub-modal__social-empty {
+	@apply flex-1;
+	min-height: 20rem;
+	@apply grid place-items-center;
+	align-content: center;
+	gap: 1rem;
+	border: 1px solid rgba(245, 214, 119, 0.16);
+	border-radius: 14px;
+	background:
+		radial-gradient(circle at 50% 36%, rgba(184, 219, 134, 0.12), transparent 34%),
+		linear-gradient(180deg, rgba(13, 17, 11, 0.72), rgba(5, 7, 8, 0.82));
+	@apply text-center;
+}
+
+.hub-modal__social-empty-logo {
+	width: min(18rem, 70%);
+	max-height: 12rem;
+	@apply object-contain;
+	filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.44));
+}
+
+/* "← Back" only makes sense once the two panes collapse to one column on
+ * mobile — hidden on desktop where both the list and the open thread are
+ * visible side by side. */
+.hub-modal__chat-back-button {
+	@apply hidden;
+}
+
+@media (max-width: 1100px) {
+	.hub-modal__panel--wide .hub-modal__body:has(.hub-modal__social-grid) {
+		@apply overflow-auto;
+	}
+
+	.hub-modal__social-grid {
+		grid-template-columns: 1fr;
+		height: auto;
+		@apply overflow-visible;
+	}
+
+	.hub-modal__social-sidebar {
+		padding-right: 0;
+		@apply overflow-visible;
+	}
+
+	.hub-modal__social-main {
+		padding-left: 0;
+		padding-top: 1rem;
+		border-left: 0;
+		border-top: 1px solid rgba(245, 214, 119, 0.2);
+		@apply overflow-visible;
+	}
+
+	.hub-modal__social-sidebar-scroll {
+		@apply overflow-visible;
+		padding-right: 0;
+	}
+
+	.hub-modal__social-empty {
+		min-height: clamp(14rem, 48vw, 20rem);
+	}
+
+	.hub-modal__chat-back-button {
+		@apply inline-block;
+	}
+}
+
+/* ── Chat (Messages section within the Social modal) ── */
+.hub-modal__chat-section {
+	margin-top: 0.75rem;
+	padding-top: 0.75rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.hub-modal__chat-header {
+	@apply flex items-center justify-between;
+	margin-bottom: 0.4rem;
+}
+.hub-modal__chat-header h3 {
+	@apply m-0;
+}
+.hub-modal__chat-new-group {
+	@apply flex flex-col;
+	gap: 0.4rem;
+	margin-bottom: 0.6rem;
+	padding: 0.5rem 0.6rem;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.04);
+}
+.hub-modal__chat-new-group-hint {
+	margin: 0.2rem 0 0;
+	font-size: 0.72rem;
+	color: var(--muted);
+}
+.hub-modal__chat-member-row {
+	list-style: none;
+	font-size: 0.85rem;
+}
+.hub-modal__chat-member-row label {
+	@apply flex items-center;
+	gap: 0.4rem;
+}
+.hub-modal__chat-conversation-btn {
+	@apply flex flex-col items-start;
+	gap: 0.15rem;
+	@apply w-full;
+	background: none;
+	border: none;
+	@apply p-0 text-left;
+	color: inherit;
+	@apply cursor-pointer;
+	font-family: inherit;
+}
+.hub-modal__chat-preview {
+	opacity: 0.6;
+	font-size: 0.75rem;
+	@apply max-w-full overflow-hidden text-ellipsis whitespace-nowrap;
+}
+.hub-modal__chat-unread-dot {
+	@apply inline-block;
+	width: 7px;
+	height: 7px;
+	margin-left: 0.35rem;
+	border-radius: 50%;
+	background: var(--accent-strong, #d4af37);
+}
+.hub-modal__chat-thread {
+	@apply flex flex-col;
+	gap: 0.5rem;
+}
+.hub-modal__chat-thread-header {
+	@apply flex items-center;
+	gap: 0.5rem;
+}
+.hub-modal__chat-thread-title {
+	@apply flex-1 font-semibold;
+}
+/* Group member management (Decision 1/2) */
+.hub-modal__chat-thread-actions {
+	@apply flex items-center;
+	gap: 0.35rem;
+}
+.hub-modal__chat-members-toggle {
+	font-size: 0.75rem;
+	padding: 0.2rem 0.5rem;
+	border-radius: 4px;
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	color: inherit;
+	@apply cursor-pointer;
+}
+.hub-modal__chat-members-toggle:disabled {
+	opacity: 0.5;
+	@apply cursor-default;
+}
+.hub-modal__chat-rename {
+	@apply flex;
+	gap: 0.35rem;
+	margin: 0.4rem 0;
+}
+.hub-modal__chat-rename input {
+	@apply flex-1 min-w-0;
+}
+.hub-modal__chat-members {
+	margin: 0.5rem 0;
+	padding: 0.6rem 0.6rem;
+	border-radius: 4px;
+	background: rgba(255, 255, 255, 0.04);
+	/* Space the member list, the add toggle, and the add list from each other
+	 * so the themed buttons' glow (a box-shadow — no layout box) never bleeds
+	 * across sections. */
+	@apply flex flex-col;
+	gap: 0.75rem;
+}
+.hub-modal__chat-members-list,
+.hub-modal__chat-members-add-list {
+	list-style: none;
+	@apply m-0 p-0 flex flex-col;
+	/* Enough vertical rhythm that adjacent buttons + their glow don't touch. */
+	gap: 0.6rem;
+}
+.hub-modal__chat-member {
+	@apply flex items-center;
+	gap: 0.5rem;
+	/* Tall enough to seat the themed Remove button without it overflowing the
+	 * row into its neighbours. */
+	min-height: 2.1rem;
+	font-size: 0.8rem;
+}
+.hub-modal__chat-member-name {
+	@apply flex-1 min-w-0;
+}
+/* Keep the add toggle clear of the member list above and the candidate list below. */
+.hub-modal__chat-members .hub-modal__chat-members-toggle {
+	align-self: flex-start;
+}
+.hub-modal__presence-dot {
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.25);
+	@apply flex-none;
+}
+.hub-modal__presence-dot--online {
+	background: #4ade80;
+}
+.hub-modal__chat-members-empty {
+	font-size: 0.75rem;
+	opacity: 0.7;
+	margin: 0.25rem 0 0;
+}
+.hub-modal__chat-message-list {
+	list-style: none;
+	@apply m-0 p-0 flex flex-col;
+	gap: 0.35rem;
+	max-height: 260px;
+	@apply overflow-y-auto;
+}
+.hub-modal__chat-message {
+	@apply flex;
+	align-items: baseline;
+	gap: 0.4rem;
+	padding: 0.3rem 0.5rem;
+	border-radius: 4px;
+	background: rgba(255, 255, 255, 0.05);
+	font-size: 0.85rem;
+}
+.hub-modal__chat-message--system {
+	@apply justify-center;
+	opacity: 0.6;
+	font-size: 0.75rem;
+	@apply italic;
+	background: none;
+}
+.hub-modal__chat-message-sender {
+	@apply font-semibold;
+	opacity: 0.8;
+}
+.hub-modal__chat-message-body {
+	@apply flex-1;
+	word-break: break-word;
+}
+.hub-modal__chat-message-time {
+	font-size: 0.68rem;
+	color: var(--muted);
+	@apply whitespace-nowrap;
+}
+.hub-modal__chat-composer {
+	@apply flex;
+	gap: 0.5rem;
+}
+.hub-modal__chat-composer .hub-modal__field-input {
+	@apply flex-1;
+}
+.hub-modal__chat-gif-image {
+	max-width: 180px;
+	max-height: 180px;
+	border-radius: 6px;
+	@apply block;
+}
+.hub-modal__chat-gif-toggle {
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: rgba(255, 255, 255, 0.05);
+	color: inherit;
+	border-radius: 4px;
+	padding: 0.35rem 0.6rem;
+	font-size: 0.75rem;
+	@apply font-bold cursor-pointer;
+}
+.hub-modal__chat-gif-toggle--active {
+	background: var(--accent-strong, #d4af37);
+	color: #1a1a1a;
+	border-color: transparent;
+}
+.hub-modal__chat-gif-picker {
+	@apply flex flex-col;
+	gap: 0.4rem;
+	padding: 0.5rem 0.6rem;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.04);
+}
+.hub-modal__chat-gif-status {
+	@apply m-0;
+	font-size: 0.75rem;
+	color: var(--muted);
+	@apply text-center;
+}
+.hub-modal__chat-gif-status--error {
+	color: #ff8d8d;
+}
+.hub-modal__chat-gif-attribution {
+	@apply m-0;
+	font-size: 0.65rem;
+	color: var(--muted);
+	@apply text-right;
+	opacity: 0.7;
+}
+.hub-modal__chat-gif-grid {
+	list-style: none;
+	@apply m-0 p-0 grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 0.4rem;
+	max-height: 220px;
+	@apply overflow-y-auto;
+}
+.hub-modal__chat-gif-thumb {
+	@apply w-full p-0;
+	border: none;
+	border-radius: 4px;
+	@apply overflow-hidden cursor-pointer;
+	background: rgba(255, 255, 255, 0.05);
+	line-height: 0;
+}
+.hub-modal__chat-gif-thumb img {
+	@apply w-full;
+	height: 70px;
+	@apply object-cover block;
+}
+
+.hub-modal__replays {
+	@apply grid;
+	grid-template-columns: minmax(18rem, 0.92fr) minmax(24rem, 1.08fr);
+	gap: 0;
+	@apply flex-1;
+	height: auto;
+	@apply min-h-0;
+}
+
+.hub-modal__replay-list,
+.hub-modal__replay-viewer {
+	@apply flex flex-col;
+	gap: 0.75rem;
+	@apply min-h-0;
+}
+
+.hub-modal__replay-list {
+	gap: 1rem;
+	padding-right: 1rem;
+	@apply overflow-hidden;
+}
+
+.hub-modal__replay-notice {
+	margin: 0 0 0.85rem;
+	padding: 0.7rem 0.85rem;
+	border: 1px solid rgba(245, 214, 119, 0.18);
+	border-radius: 0.75rem;
+	background: rgba(245, 214, 119, 0.08);
+	color: #f6e7c8;
+	font-size: 0.92rem;
+}
+
+.hub-modal__replay-viewer {
+	padding-left: 1rem;
+	border-left: 1px solid rgba(245, 214, 119, 0.2);
+	@apply overflow-hidden;
+}
+
+.hub-modal__replay-tabs {
+	@apply flex;
+	gap: 0.55rem;
+	@apply flex-wrap;
+}
+
+.hub-modal__replay-tab {
+	font-family: var(--rowdy-font);
+	font-size: 0.9rem;
+	@apply font-bold;
+	letter-spacing: 0.04em;
+	color: #d8ff9f;
+	background: rgba(9, 22, 12, 0.72);
+	border: 1px solid rgba(123, 183, 111, 0.42);
+	border-radius: 0.72rem;
+	padding: 0.55rem 0.95rem;
+	@apply cursor-pointer;
+}
+
+.hub-modal__replay-tab--active {
+	color: #eaffc8;
+	background: linear-gradient(180deg, rgba(43, 67, 35, 0.9), rgba(13, 38, 18, 0.94));
+	border-color: rgba(216, 255, 159, 0.72);
+}
+
+.hub-modal__replay-section {
+	@apply flex flex-col;
+	gap: 0.75rem;
+	@apply flex-1 min-h-0;
+}
+
+.hub-modal__replay-section h3,
+.hub-modal__replay-viewer h3 {
+	@apply m-0;
+	font-family: var(--rowdy-font);
+	font-size: 1rem;
+	@apply font-bold;
+	letter-spacing: 0.06em;
+	@apply uppercase;
+	color: var(--accent);
+}
+
+.hub-modal__replay-items {
+	list-style: none;
+	@apply m-0 p-0 flex flex-col;
+	gap: 0.75rem;
+}
+
+.hub-modal__replay-items-scroll {
+	@apply flex-1 min-h-0 overflow-y-auto;
+	padding-right: 0.35rem;
+}
+
+.hub-modal__replay-empty {
+	@apply flex-1;
+	min-height: 20rem;
+	@apply grid place-items-center;
+	align-content: center;
+	gap: 1rem;
+	border: 1px solid rgba(245, 214, 119, 0.16);
+	border-radius: 14px;
+	background:
+		radial-gradient(circle at 50% 36%, rgba(184, 219, 134, 0.12), transparent 34%),
+		linear-gradient(180deg, rgba(13, 17, 11, 0.72), rgba(5, 7, 8, 0.82));
+	@apply text-center;
+}
+
+.hub-modal__replay-empty-logo {
+	width: min(18rem, 70%);
+	max-height: 12rem;
+	@apply object-contain;
+	filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.44));
+}
+
+.hub-modal__replay-item {
+	@apply flex justify-between items-center;
+	gap: 0.75rem;
+	padding: 0.8rem;
+	border: 1px solid rgba(245, 214, 119, 0.18);
+	border-radius: 12px;
+	background: rgba(13, 9, 6, 0.72);
+}
+
+.hub-modal__replay-copy {
+	@apply flex flex-col;
+	gap: 0.25rem;
+	@apply min-w-0;
+}
+
+.hub-modal__replay-copy strong {
+	font-family: var(--rowdy-font);
+	font-size: 0.98rem;
+	letter-spacing: 0.03em;
+}
+
+.hub-modal__replay-copy small {
+	color: var(--muted);
+	font-family: var(--body-font);
+}
+
+.hub-modal__replay-actions {
+	@apply flex flex-col;
+	gap: 0.45rem;
+}
+
+.hub-modal__replay-meta,
+.hub-modal__replay-frame-meta {
+	@apply flex justify-between;
+	gap: 0.75rem;
+	@apply flex-wrap;
+}
+
+.hub-modal__replay-toolbar {
+	@apply flex;
+	gap: 0.5rem;
+	@apply flex-wrap;
+}
+
+.hub-modal__replay-slider {
+	@apply w-full;
+}
+
+.hub-modal__replay-stage {
+	@apply w-full;
+	aspect-ratio: 1 / 1;
+	border-radius: 14px;
+	background: radial-gradient(circle at top, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.35));
+	border: 1px solid rgba(245, 214, 119, 0.16);
+}
+
+.hub-modal__replay-phaser {
+	@apply w-full;
+	aspect-ratio: 1 / 1;
+	min-height: 320px;
+	@apply overflow-hidden;
+	border-radius: 14px;
+	background:
+		radial-gradient(circle at 18% 18%, rgba(255, 244, 210, 0.16), transparent 34%),
+		radial-gradient(circle at 78% 12%, rgba(143, 176, 128, 0.14), transparent 30%),
+		linear-gradient(180deg, rgba(10, 9, 14, 0.78), rgba(8, 7, 11, 0.9));
+	border: 1px solid rgba(245, 214, 119, 0.16);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.hub-modal__replay-phaser--expanded {
+	aspect-ratio: auto;
+	min-height: min(50vh, 640px);
+}
+
+.hub-modal__replay-phaser canvas {
+	@apply block w-full h-full;
+}
+
+.hub-modal__replay-viewer--expanded {
+	@apply h-full overflow-hidden;
+}
+
+.hub-modal__replay-scoreboard {
+	@apply flex;
+	gap: 0.75rem;
+	@apply flex-wrap;
+}
+
+.hub-modal__replay-scoreboard span {
+	padding: 0.3rem 0.55rem;
+	border-radius: 999px;
+	background: rgba(245, 214, 119, 0.08);
+	border: 1px solid rgba(245, 214, 119, 0.16);
+	font-size: 0.78rem;
+}
+
+.hub-modal__replay-json {
+	@apply m-0;
+	padding: 0.85rem;
+	border-radius: 12px;
+	background: rgba(5, 5, 5, 0.72);
+	color: #f6e7c8;
+	font-size: 0.8rem;
+	line-height: 1.45;
+	max-height: 24rem;
+	@apply overflow-auto whitespace-pre-wrap;
+	word-break: break-word;
+}
+
+@media (max-width: 1100px) {
+	.hub-modal__panel--wide .hub-modal__body:has(.hub-modal__replays) {
+		@apply overflow-auto;
+	}
+
+	.hub-modal__replays {
+		grid-template-columns: 1fr;
+		height: auto;
+		@apply overflow-visible;
+	}
+
+	.hub-modal__replay-list {
+		padding-right: 0;
+		@apply overflow-visible;
+	}
+
+	.hub-modal__replay-viewer {
+		padding-left: 0;
+		padding-top: 1rem;
+		border-left: 0;
+		border-top: 1px solid rgba(245, 214, 119, 0.2);
+		@apply overflow-visible;
+	}
+
+	.hub-modal__replay-items-scroll {
+		@apply overflow-visible;
+		padding-right: 0;
+	}
+
+	.hub-modal__replay-item {
+		@apply flex-col;
+	}
+
+	.hub-modal__replay-actions {
+		@apply flex-row;
+	}
+
+	.hub-modal__replay-empty {
+		min-height: clamp(14rem, 48vw, 20rem);
+	}
+
+	.hub-modal__replay-phaser {
+		min-height: clamp(220px, 70vw, 320px);
+	}
+}
+
+/* ── Shared select style (invite picker, report reason picker) ───────────── */
+
+.hub-leaderboard-select {
+	@apply w-full;
+	padding: 0.4rem 0.6rem;
+	background: rgba(12, 17, 24, 0.9);
+	border: 1px solid rgba(123, 183, 111, 0.42);
+	border-radius: 0.72rem;
+	color: #eaffc8;
+	font-family: var(--body-font);
+	font-size: 0.85rem;
+	@apply cursor-pointer appearance-none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23d8ff9f'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 0.6rem center;
+	padding-right: 1.8rem;
+}
+
+.hub-leaderboard-select:focus {
+	outline: 1px solid #d8ff9f;
+}
+
+/* ── Ranking controls (game tab bar + scope toggle) ───────────────────────── */
+
+.hub-ranking-controls {
+	@apply flex flex-col;
+	gap: 0.6rem;
+	margin-bottom: 0.75rem;
+}
+
+.hub-ranking-tabs {
+	@apply grid;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	@apply w-full overflow-hidden;
+	border: 1px solid rgba(241, 211, 145, 0.22);
+	border-radius: 0.7rem;
+	background: rgba(5, 9, 12, 0.72);
+	box-shadow: 0 0.25rem 0 rgba(13, 20, 13, 0.94);
+}
+
+.hub-ranking-tab {
+	min-height: 2.7rem;
+	border: 0;
+	border-right: 1px solid rgba(241, 211, 145, 0.18);
+	border-radius: 0;
+	background: rgba(7, 12, 15, 0.74);
+	color: #b8db86;
+	font-family: var(--blowbrush-font);
+	font-size: clamp(0.82rem, 1.35vw, 1.1rem);
+	@apply font-black;
+	letter-spacing: 0.05em;
+	@apply uppercase;
+	-webkit-text-stroke: 0.35px rgba(3, 8, 6, 0.82);
+	text-shadow: 0 2px 0 rgba(5, 28, 18, 0.7);
+	@apply cursor-pointer;
+	transition:
+		background 160ms ease,
+		color 160ms ease;
+}
+
+.hub-ranking-tab:last-child {
+	border-right: 0;
+}
+
+.hub-ranking-tab:hover,
+.hub-ranking-tab--active {
+	background: linear-gradient(180deg, rgba(43, 67, 35, 0.9), rgba(13, 38, 18, 0.94));
+	color: #e4f5b9;
+}
+
+.hub-ranking-scope-toggle {
+	align-self: flex-start;
+	@apply inline-flex items-center;
+	gap: 0.45rem;
+	padding: 0.4rem 1.1rem;
+	border: 1px solid rgba(123, 183, 111, 0.42);
+	border-radius: 0.7rem;
+	background: linear-gradient(180deg, rgba(43, 67, 35, 0.9), rgba(13, 38, 18, 0.94));
+	color: #eaffc8;
+	font-family: var(--body-font);
+	font-size: 0.8rem;
+	@apply font-bold;
+	letter-spacing: 0.04em;
+	@apply uppercase cursor-pointer;
+	transition:
+		background 0.15s ease,
+		color 0.15s ease,
+		border-color 0.15s ease;
+}
+
+.hub-ranking-scope-toggle:hover {
+	background: rgba(24, 44, 24, 0.74);
+	border-color: rgba(216, 255, 159, 0.72);
+}
+
+.hub-ranking-scope-toggle:focus-visible {
+	outline: 1px solid #d8ff9f;
+}
+
+.hub-ranking-scope-toggle__icon {
+	font-size: 0.9rem;
+	opacity: 0.8;
+}
+
+@media (max-width: 780px) {
+	.hub-ranking-tabs {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 520px) {
+	.hub-ranking-tabs {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+.hub-ranking-list__rank {
+	color: var(--accent);
+	@apply font-bold;
+	font-size: 0.85rem;
+}
+
+.hub-ranking-list__name {
+	@apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap;
+}
+
+.hub-ranking-list__stat {
+	color: var(--muted);
+	font-size: 0.78rem;
+	@apply whitespace-nowrap;
+}
+
+/* Rankings Bug Audit M6: the full fetched list (up to 100 rows) now renders
+   instead of being sliced to 10, so it needs a bounded, scrollable box. */
+.hub-ranking-list--scrollable {
+	max-height: 18rem;
+	@apply overflow-y-auto;
+	padding-right: 0.25rem;
+}
+
+.hub-ranking-list--scrollable li.hub-ranking-list__self {
+	background: rgba(241, 211, 145, 0.14);
+	border-radius: 0.4rem;
+	padding-left: 0.4rem;
+	padding-right: 0.4rem;
+}
+
+/* Pinned summary of the caller's own rank — always visible under the
+   scrollable list regardless of where their row falls (Bug Audit M6). */
+.hub-ranking-list__own-rank {
+	@apply grid;
+	grid-template-columns: auto 1fr auto;
+	gap: 0.55rem;
+	@apply items-center;
+	margin-top: 0.5rem;
+	padding: 0.55rem 0.7rem;
+	border-top: 1px solid rgba(241, 211, 145, 0.28);
+	background: rgba(241, 211, 145, 0.08);
+	border-radius: 0.4rem;
+	font-size: 0.85rem;
+}
+
+.hub-ranking-list__own-rank span {
+	color: var(--muted);
+	font-size: 0.78rem;
+	@apply uppercase;
+	letter-spacing: 0.03em;
+}
+
+.hub-ranking-list__own-rank strong {
+	color: var(--accent);
+}
+
+.hub-modal__rankings-error {
+	@apply flex flex-col items-start;
+	gap: 0.6rem;
+}
+
+/* ── Notification bell ───────────────────────────────────────────────────── */
+
+.hub-notif-bell {
+	@apply relative flex items-center justify-center;
+	width: 2.2rem;
+	height: 2.2rem;
+	@apply p-0;
+	background: transparent;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	color: var(--text);
+	font-size: 1rem;
+	@apply cursor-pointer;
+	transition: background 0.15s, border-color 0.15s;
+	flex-shrink: 0;
+}
+
+.hub-notif-bell:hover,
+.hub-notif-bell.is-open {
+	background: rgba(241, 211, 145, 0.1);
+	border-color: var(--accent);
+}
+
+.hub-notif-bell__badge {
+	@apply absolute;
+	top: -5px;
+	right: -5px;
+	min-width: 1.1rem;
+	height: 1.1rem;
+	padding: 0 0.25rem;
+	background: var(--accent-strong);
+	border-radius: 999px;
+	color: #fff;
+	font-size: 0.65rem;
+	@apply font-bold;
+	line-height: 1.1rem;
+	@apply text-center pointer-events-none;
+}
+
+/* ── Notification drawer ─────────────────────────────────────────────────── */
+
+.hub-notif-drawer__backdrop {
+	@apply fixed inset-0;
+	z-index: 79;
+	@apply p-0;
+	border: 0;
+	background: rgba(2, 5, 7, 0.46);
+	backdrop-filter: blur(2px);
+	@apply cursor-default;
+}
+
+.hub-notif-drawer {
+	@apply fixed;
+	top: clamp(0.7rem, 1.5vw, 1.25rem);
+	right: clamp(0.7rem, 1.5vw, 1.25rem);
+	bottom: clamp(0.7rem, 1.5vw, 1.25rem);
+	z-index: 80;
+	width: min(26rem, calc(100vw - 1.4rem));
+	@apply flex flex-col;
+	background:
+		radial-gradient(circle at 82% 8%, rgba(184, 219, 134, 0.11), transparent 28%),
+		linear-gradient(160deg, rgba(31, 38, 23, 0.985), rgba(7, 12, 12, 0.99) 72%);
+	border: 1px solid rgba(202, 204, 142, 0.48);
+	border-radius: 1.2rem;
+	box-shadow:
+		-1.25rem 1.5rem 4rem rgba(0, 0, 0, 0.56),
+		0 0 28px rgba(120, 123, 74, 0.14),
+		inset 0 0 0 1px rgba(202, 204, 142, 0.07);
+	@apply overflow-hidden;
+}
+
+.hub-notif-drawer::before {
+	@apply absolute;
+	inset: 0.55rem;
+	border: 1px solid rgba(241, 211, 145, 0.06);
+	border-radius: 0.85rem;
+	@apply pointer-events-none;
+	content: "";
+}
+
+.hub-notif-drawer__header {
+	@apply relative;
+	z-index: 1;
+	@apply flex items-center;
+	gap: 0.65rem;
+	padding: 1.25rem 1.15rem 1rem;
+	border-bottom: 1px solid rgba(241, 211, 145, 0.22);
+	background: linear-gradient(180deg, rgba(42, 51, 27, 0.76), rgba(18, 26, 17, 0.34));
+	flex-shrink: 0;
+}
+
+.hub-notif-drawer__header h3 {
+	@apply m-0 flex-1;
+	color: #b8db86;
+	font-family: var(--blowbrush-font);
+	font-size: clamp(1.7rem, 3vw, 2.15rem);
+	@apply font-black;
+	line-height: 0.9;
+	letter-spacing: 0.055em;
+	@apply uppercase;
+	-webkit-text-stroke: 0.45px rgba(3, 8, 6, 0.86);
+	text-shadow:
+		0 2px 0 rgba(5, 28, 18, 0.78),
+		0 0 12px rgba(120, 255, 130, 0.16);
+}
+
+.hub-notif-drawer__mark-all {
+	padding: 0.42rem 0.68rem;
+	background: rgba(9, 22, 12, 0.72);
+	border: 1px solid rgba(123, 183, 111, 0.44);
+	border-radius: 0.6rem;
+	color: #d8ff9f;
+	font-family: var(--rowdy-font);
+	font-size: 0.75rem;
+	@apply font-bold;
+	letter-spacing: 0.025em;
+	@apply cursor-pointer whitespace-nowrap;
+	transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.hub-notif-drawer__mark-all:hover {
+	color: #eaffc8;
+	border-color: rgba(216, 255, 159, 0.74);
+	background: rgba(31, 56, 27, 0.88);
+}
+
+.hub-notif-drawer__close {
+	width: 2rem;
+	height: 2rem;
+	@apply grid place-items-center;
+	background: rgba(9, 22, 12, 0.68);
+	border: 1px solid rgba(123, 183, 111, 0.36);
+	color: #c8d0b3;
+	font-size: 0.9rem;
+	@apply cursor-pointer;
+	border-radius: 0.6rem;
+	transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.hub-notif-drawer__close:hover {
+	color: #eaffc8;
+	background: rgba(31, 56, 27, 0.9);
+	border-color: rgba(216, 255, 159, 0.7);
+}
+
+.hub-notif-drawer__empty {
+	@apply relative;
+	z-index: 1;
+	@apply grid place-items-center flex-1;
+	margin: 1rem;
+	padding: 2rem 1rem;
+	border: 1px solid rgba(245, 214, 119, 0.14);
+	border-radius: 0.9rem;
+	background:
+		radial-gradient(circle at 50% 42%, rgba(184, 219, 134, 0.1), transparent 36%),
+		rgba(5, 9, 9, 0.42);
+	color: #aeb99d;
+	font-size: 0.92rem;
+	@apply text-center;
+}
+
+.hub-notif-drawer__list {
+	@apply relative;
+	z-index: 1;
+	@apply flex-1 overflow-y-auto m-0;
+	padding: 0.9rem;
+	list-style: none;
+	scrollbar-color: rgba(184, 219, 134, 0.38) transparent;
+}
+
+.hub-notif-drawer__item {
+	@apply flex flex-col;
+	gap: 0.75rem;
+	margin-bottom: 0.7rem;
+	padding: 0.9rem;
+	border: 1px solid rgba(123, 183, 111, 0.28);
+	border-radius: 0.85rem;
+	background: linear-gradient(145deg, rgba(18, 31, 18, 0.84), rgba(8, 14, 13, 0.78));
+	box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
+	transition: background 0.12s, border-color 0.12s, transform 0.12s;
+}
+
+.hub-notif-drawer__item:hover {
+	transform: translateY(-1px);
+	border-color: rgba(184, 219, 134, 0.5);
+	background: linear-gradient(145deg, rgba(25, 42, 23, 0.92), rgba(9, 17, 14, 0.86));
+}
+
+.hub-notif-drawer__item-body {
+	@apply flex-1;
+	font-size: 0.88rem;
+	line-height: 1.45;
+	color: var(--text);
+}
+
+.hub-notif-drawer__item-body strong {
+	color: #d8ff9f;
+	@apply font-bold;
+}
+
+.hub-notif-drawer__item-time {
+	@apply block;
+	margin-top: 0.3rem;
+	font-size: 0.74rem;
+	color: rgba(241, 211, 145, 0.62);
+	letter-spacing: 0.025em;
+}
+
+.hub-notif-drawer__item-actions {
+	@apply flex items-center justify-end;
+	gap: 0.35rem;
+	@apply w-full;
+	flex-shrink: 0;
+}
+
+.hub-notif-drawer__action {
+	padding: 0.38rem 0.65rem;
+	border-radius: 0.55rem;
+	font-size: 0.75rem;
+	font-family: var(--rowdy-font);
+	@apply font-bold;
+	letter-spacing: 0.025em;
+	@apply cursor-pointer;
+	border: 1px solid transparent;
+	transition: filter 0.15s, transform 0.15s;
+}
+
+.hub-notif-drawer__action:hover {
+	filter: brightness(1.16);
+	transform: translateY(-1px);
+}
+
+.hub-notif-drawer__action--accept {
+	background: rgba(38, 83, 42, 0.72);
+	border-color: rgba(151, 218, 127, 0.68);
+	color: #d8ffb5;
+}
+
+.hub-notif-drawer__action--decline {
+	background: rgba(91, 39, 35, 0.56);
+	border-color: rgba(226, 125, 105, 0.58);
+	color: #ffc0ae;
+}
+
+.hub-notif-drawer__dismiss {
+	width: 1.75rem;
+	height: 1.75rem;
+	@apply grid place-items-center;
+	background: rgba(241, 211, 145, 0.05);
+	border: 1px solid rgba(241, 211, 145, 0.16);
+	color: #aeb99d;
+	font-size: 0.75rem;
+	@apply cursor-pointer;
+	border-radius: 0.5rem;
+	transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.hub-notif-drawer__dismiss:hover {
+	color: #f6e7c8;
+	background: rgba(241, 211, 145, 0.11);
+	border-color: rgba(241, 211, 145, 0.38);
+}
+
+/* ── Social modal — invite button ────────────────────────────────────────── */
+
+.hub-modal__social-invite-btn {
+	padding: 0.25rem 0.6rem;
+	background: rgba(9, 22, 12, 0.72);
+	border: 1px solid rgba(123, 183, 111, 0.58);
+	border-radius: 4px;
+	color: #d8ff9f;
+	font-size: 0.75rem;
+	font-family: var(--body-font);
+	@apply cursor-pointer;
+	transition: background 0.15s;
+}
+
+.hub-modal__social-invite-btn:hover {
+	background: rgba(24, 44, 24, 0.8);
+}
+
+/* "More" overflow menu (Remove/Block/Report) on friend rows — keeps the row
+ * to Message + Invite + one toggle so it fits the Social modal's narrower
+ * sidebar instead of 5 always-visible text buttons overflowing it. */
+.hub-modal__social-menu-wrapper {
+	@apply relative inline-flex;
+}
+
+.hub-modal__social-menu-toggle {
+	width: 1.7rem;
+	height: 1.7rem;
+	@apply inline-flex items-center justify-center p-0;
+	background: rgba(9, 22, 12, 0.72);
+	border: 1px solid rgba(123, 183, 111, 0.58);
+	border-radius: 4px;
+	color: #d8ff9f;
+	font-size: 1.05rem;
+	@apply leading-none cursor-pointer;
+	transition: background 0.15s;
+}
+
+.hub-modal__social-menu-toggle:hover,
+.hub-modal__social-menu-toggle[aria-expanded="true"] {
+	background: rgba(24, 44, 24, 0.8);
+}
+
+.hub-modal__social-menu {
+	@apply absolute;
+	top: calc(100% + 0.3rem);
+	right: 0;
+	z-index: 10;
+	@apply flex flex-col;
+	gap: 0.2rem;
+	min-width: 7rem;
+	padding: 0.35rem;
+	background: rgba(9, 15, 10, 0.97);
+	border: 1px solid rgba(123, 183, 111, 0.42);
+	border-radius: 6px;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.hub-modal__social-menu button {
+	padding: 0.32rem 0.5rem;
+	background: none;
+	border: none;
+	border-radius: 4px;
+	color: inherit;
+	font-size: 0.78rem;
+	font-family: var(--body-font);
+	@apply text-left cursor-pointer;
+}
+
+.hub-modal__social-menu button:hover {
+	background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Lobby game picker (inline in social modal) ──────────────────────────── */
+
+.hub-lobby-picker {
+	margin-top: 1rem;
+	padding: 0.85rem;
+	background: rgba(9, 22, 12, 0.58);
+	border: 1px solid rgba(123, 183, 111, 0.32);
+	border-radius: 6px;
+	@apply flex flex-col;
+	gap: 0.55rem;
+}
+
+.hub-lobby-picker p {
+	@apply m-0;
+	font-size: 0.88rem;
+	color: var(--text);
+}
+
+.hub-lobby-picker__actions {
+	@apply flex;
+	gap: 0.5rem;
+}
+
+.hub-lobby-picker__confirm,
+.hub-lobby-picker__cancel {
+	@apply flex-1;
+	padding: 0.35rem 0;
+	border-radius: 4px;
+	font-size: 0.8rem;
+	font-family: var(--body-font);
+	@apply cursor-pointer;
+	border: 1px solid transparent;
+	transition: opacity 0.15s;
+}
+
+.hub-lobby-picker__confirm {
+	background: rgba(111, 207, 151, 0.2);
+	border-color: #6fcf97;
+	color: #6fcf97;
+}
+
+.hub-lobby-picker__cancel {
+	background: rgba(7, 10, 16, 0.66);
+	border-color: rgba(123, 183, 111, 0.32);
+	color: rgba(234, 255, 200, 0.68);
+}
+
+.hub-lobby-picker__confirm:hover,
+.hub-lobby-picker__cancel:hover {
+	opacity: 0.8;
+}
+
+/* ── Lobby countdown ─────────────────────────────────────────────────────── */
+
+.hub-lobby-countdown {
+	font-family: var(--mono-font);
+	font-size: 1.1rem;
+	color: var(--accent);
+	letter-spacing: 0.05em;
+}
+
+/* ── Active lobby waiting room overlay (host) ────────────────────────────── */
+
+.hub-lobby-waiting {
+	@apply fixed inset-0;
+	z-index: 75;
+	@apply grid place-items-center;
+	background: rgba(5, 7, 10, 0.75);
+	backdrop-filter: blur(4px);
+}
+
+.hub-lobby-waiting__inner {
+	@apply flex flex-col items-center;
+	gap: 0.75rem;
+	padding: 2rem 2.5rem;
+	background: #0e1319;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+	@apply text-center;
+	min-width: 260px;
+}
+
+.hub-lobby-waiting__label {
+	@apply m-0;
+	color: var(--muted);
+	font-size: 0.9rem;
+}
+
+.hub-lobby-waiting__game {
+	@apply m-0;
+	font-family: var(--display-font);
+	font-size: 1.1rem;
+	color: var(--accent);
+}
+
+.hub-lobby-waiting__cancel {
+	margin-top: 0.5rem;
+	padding: 0.35rem 1.2rem;
+	background: transparent;
+	border: 1px solid rgba(235, 87, 87, 0.5);
+	border-radius: 4px;
+	color: #eb5757;
+	font-size: 0.8rem;
+	font-family: var(--body-font);
+	@apply cursor-pointer;
+	transition: background 0.15s;
+}
+
+.hub-lobby-waiting__cancel:hover {
+	background: rgba(235, 87, 87, 0.12);
+}
+
+/* ── Incoming invite popup (invitee) ─────────────────────────────────────── */
+
+.hub-invite-popup {
+	@apply fixed;
+	bottom: 1.5rem;
+	right: 1.5rem;
+	z-index: 85;
+}
+
+.hub-invite-popup__inner {
+	@apply flex flex-col;
+	gap: 0.6rem;
+	padding: 1.25rem 1.5rem;
+	background: #0e1319;
+	border: 1px solid var(--accent);
+	border-radius: 10px;
+	box-shadow: 0 6px 28px rgba(0, 0, 0, 0.65);
+	min-width: 240px;
+}
+
+.hub-invite-popup__from {
+	@apply m-0;
+	font-size: 0.9rem;
+	color: var(--text);
+}
+
+.hub-invite-popup__from strong {
+	color: var(--accent);
+}
+
+.hub-invite-popup__game {
+	@apply m-0;
+	font-family: var(--display-font);
+	font-size: 0.95rem;
+	color: var(--muted);
+}
+
+.hub-invite-popup__actions {
+	@apply flex;
+	gap: 0.5rem;
+	margin-top: 0.25rem;
+}
+
+.hub-invite-popup__accept,
+.hub-invite-popup__decline {
+	@apply flex-1;
+	padding: 0.4rem 0;
+	border-radius: 4px;
+	font-size: 0.82rem;
+	font-family: var(--body-font);
+	@apply cursor-pointer;
+	border: 1px solid transparent;
+	transition: opacity 0.15s;
+}
+
+.hub-invite-popup__accept {
+	background: rgba(111, 207, 151, 0.2);
+	border-color: #6fcf97;
+	color: #6fcf97;
+}
+
+.hub-invite-popup__decline {
+	background: rgba(235, 87, 87, 0.12);
+	border-color: #eb5757;
+	color: #eb5757;
+}
+
+.hub-invite-popup__accept:hover,
+.hub-invite-popup__decline:hover {
+	opacity: 0.8;
+}
+
