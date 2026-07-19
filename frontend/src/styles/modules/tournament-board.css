@@ -1,0 +1,248 @@
+.tournament-board {
+	--tournament-bg-image: url("/assets/backgrounds/night_bg.png");
+	@apply fixed inset-0 isolate overflow-auto text-white;
+	z-index: 1000;
+	background:
+		linear-gradient(180deg, rgba(5, 8, 13, 0.08), rgba(5, 8, 13, 0.36)),
+		var(--tournament-bg-image) center / cover fixed,
+		#080c14;
+}
+
+.tournament-board--night {
+	--tournament-bg-image: url("/assets/backgrounds/night_bg.png");
+}
+
+.tournament-board--sunset {
+	--tournament-bg-image: url("/assets/backgrounds/sunset_bg.png");
+}
+
+.tournament-board--sunrise {
+	--tournament-bg-image: url("/assets/backgrounds/sunrise_bg.png");
+}
+
+.tournament-board--login {
+	--tournament-bg-image: url("/assets/backgrounds/login_bg.png");
+}
+
+.tournament-board--cycle {
+	--tournament-bg-image: url("/assets/backgrounds/night_cycle_part1.png");
+}
+
+.tournament-board__frame {
+	@apply relative min-h-screen w-full;
+	font-family: inherit;
+}
+
+.tournament-board__title {
+	@apply absolute m-0 text-center font-extrabold tracking-wide;
+	top: clamp(0.8rem, 2vw, 1.75rem);
+	left: clamp(1rem, 2.5vw, 2.5rem);
+	z-index: 7;
+	font-size: clamp(1.35rem, 2.2vw, 2.25rem);
+	color: #f5e4b8;
+	text-shadow:
+		0 2px 2px rgba(8, 7, 4, 0.94),
+		0 0 18px rgba(218, 174, 83, 0.35);
+}
+
+.tournament-board__content {
+	@apply relative min-h-screen w-full;
+}
+
+.tournament-board__stage {
+	@apply absolute left-1/2 top-1/2;
+	width: min(100vw, 177.778vh);
+	aspect-ratio: 16 / 9;
+	transform: translate(-50%, -50%);
+}
+
+.tournament-board__map {
+	@apply pointer-events-none absolute inset-0 h-full w-full select-none object-contain;
+	z-index: 1;
+}
+
+.tournament-board__path {
+	@apply pointer-events-none absolute inset-0 h-full w-full overflow-visible;
+	z-index: 2;
+}
+
+.tournament-board__path polyline {
+	fill: none;
+	stroke: rgba(244, 214, 139, 0.36);
+	stroke-width: 2px;
+	stroke-dasharray: 3 8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	vector-effect: non-scaling-stroke;
+	filter: drop-shadow(0 1px 2px rgba(25, 17, 8, 0.9));
+}
+
+.tournament-board__tile {
+	@apply pointer-events-none absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full;
+	z-index: 3;
+	width: clamp(0.62rem, 1.05vw, 1.05rem);
+	height: clamp(0.62rem, 1.05vw, 1.05rem);
+	border: 1px solid rgba(255, 239, 196, 0.72);
+	background: rgba(40, 30, 17, 0.62);
+	box-shadow:
+		0 1px 3px rgba(15, 9, 4, 0.92),
+		inset 0 0 4px rgba(255, 230, 164, 0.25);
+}
+
+.tournament-board__tile--start,
+.tournament-board__tile--bonus {
+	width: clamp(1rem, 1.55vw, 1.55rem);
+	height: clamp(1rem, 1.55vw, 1.55rem);
+}
+
+.tournament-board__tile--start {
+	border-color: rgba(137, 218, 160, 0.92);
+	background: rgba(35, 94, 51, 0.82);
+}
+
+.tournament-board__tile--bonus {
+	border-color: rgba(255, 229, 126, 0.96);
+	background: rgba(118, 87, 20, 0.88);
+	box-shadow:
+		0 0 12px rgba(255, 213, 84, 0.72),
+		0 1px 3px rgba(15, 9, 4, 0.95);
+}
+
+.tournament-board__tile-label {
+	font-size: clamp(0.45rem, 0.68vw, 0.68rem);
+	font-weight: 800;
+	line-height: 1;
+	color: #fff3c4;
+}
+
+.tournament-board__token {
+	@apply pointer-events-none absolute flex items-center justify-center rounded-full;
+	z-index: 5;
+	width: clamp(1.8rem, 3.1vw, 3.35rem);
+	height: clamp(1.8rem, 3.1vw, 3.35rem);
+	border: 2px solid;
+	background: rgba(16, 23, 18, 0.72);
+	transition:
+		left 170ms linear,
+		top 170ms linear;
+}
+
+.tournament-board__token img {
+	@apply h-[118%] w-[118%] max-w-none select-none object-contain;
+	filter: drop-shadow(0 2px 2px rgba(4, 7, 4, 0.88));
+}
+
+.tournament-board__token--active {
+	animation: tournament-token-pulse 1.15s ease-in-out infinite alternate;
+}
+
+.tournament-board__bot {
+	@apply absolute rounded-full px-1 font-extrabold;
+	right: -0.65rem;
+	top: -0.35rem;
+	font-size: 0.5rem;
+	line-height: 1rem;
+	background: #151c2b;
+	border: 1px solid rgba(255, 255, 255, 0.72);
+}
+
+.tournament-board__status,
+.tournament-board__hud {
+	border: 1px solid rgba(224, 197, 136, 0.38);
+	background: rgba(12, 18, 27, 0.82);
+	box-shadow: 0 12px 32px rgba(3, 5, 9, 0.38);
+	backdrop-filter: blur(9px);
+}
+
+.tournament-board__status {
+	@apply absolute left-1/2 flex -translate-x-1/2 flex-col items-center gap-0.5 rounded-xl px-5 py-2 text-center;
+	top: clamp(0.8rem, 2.2vw, 2rem);
+	z-index: 6;
+	max-width: min(35vw, 25rem);
+	min-width: 9rem;
+}
+
+.tournament-board__hud {
+	@apply fixed flex flex-col gap-2 rounded-2xl p-3.5;
+	top: clamp(0.75rem, 1.7vw, 1.5rem);
+	right: clamp(0.75rem, 1.7vw, 1.5rem);
+	z-index: 7;
+	width: clamp(13rem, 20vw, 18rem);
+	max-height: calc(100vh - 2rem);
+	overflow-y: auto;
+}
+
+@keyframes tournament-token-pulse {
+	from {
+		filter: brightness(1);
+	}
+	to {
+		filter: brightness(1.22) drop-shadow(0 0 8px rgba(255, 255, 255, 0.78));
+	}
+}
+
+@media (max-width: 900px), (orientation: portrait) {
+	.tournament-board__frame {
+		@apply pb-4;
+	}
+
+	.tournament-board__title {
+		position: absolute;
+	}
+
+	.tournament-board__content {
+		@apply flex min-h-screen flex-col pt-14;
+	}
+
+	.tournament-board__stage {
+		@apply relative left-auto top-auto shrink-0;
+		width: 100%;
+		transform: none;
+	}
+
+	.tournament-board__status {
+		top: 0.45rem;
+		max-width: 48vw;
+		padding: 0.35rem 0.75rem;
+	}
+
+	.tournament-board__hud {
+		@apply relative inset-auto mx-3 mt-2 w-auto overflow-visible;
+		max-height: none;
+	}
+}
+
+@media (max-width: 520px) {
+	.tournament-board__title {
+		font-size: 1rem;
+		left: 0.65rem;
+		top: 0.65rem;
+	}
+
+	.tournament-board__status {
+		right: 0.5rem;
+		left: auto;
+		max-width: 55vw;
+		min-width: 0;
+		transform: none;
+		font-size: 0.72rem;
+	}
+
+	.tournament-board__path polyline {
+		stroke-width: 1px;
+	}
+
+	.tournament-board__token {
+		border-width: 1px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tournament-board__token {
+		transition: none;
+	}
+
+	.tournament-board__token--active {
+		animation: none;
+	}
+}

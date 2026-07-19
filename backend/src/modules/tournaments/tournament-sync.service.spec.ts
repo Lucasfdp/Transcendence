@@ -15,7 +15,10 @@ import { User } from "../users/entities/user.entity";
 import { ManualClock } from "./infra/clock";
 import { TOURNAMENT_SETTINGS_V1 } from "./config/settings.catalog";
 import { TournamentRuntime } from "./runtime/tournament-runtime";
-import { TournamentSyncService, tournamentRoomName } from "./tournament-sync.service";
+import {
+	TournamentSyncService,
+	tournamentRoomName,
+} from "./tournament-sync.service";
 import { TournamentSnapshotEnvelope } from "./tournaments.contracts";
 
 const TOURNAMENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -25,8 +28,11 @@ const flushMicrotasks = (): Promise<void> =>
 	new Promise((resolve) => setImmediate(resolve));
 
 function makeHarness() {
-	const emitted: { room: string; event: string; payload: TournamentSnapshotEnvelope }[] =
-		[];
+	const emitted: {
+		room: string;
+		event: string;
+		payload: TournamentSnapshotEnvelope;
+	}[] = [];
 	const server = {
 		to: (room: string) => ({
 			emit: (event: string, payload: TournamentSnapshotEnvelope) => {
@@ -36,9 +42,11 @@ function makeHarness() {
 	} as unknown as Server;
 
 	const userRepo = {
-		find: jest.fn().mockResolvedValue(
-			PARTICIPANT_IDS.map((id) => ({ id, username: `user-${id}` })),
-		),
+		find: jest
+			.fn()
+			.mockResolvedValue(
+				PARTICIPANT_IDS.map((id) => ({ id, username: `user-${id}` })),
+			),
 	} as unknown as Repository<User>;
 
 	const clock = new ManualClock(1_000);
@@ -60,10 +68,18 @@ function makeHarness() {
 describe("TournamentSyncService (SPEC-022 snapshot-first)", () => {
 	beforeEach(() => {
 		jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
-		jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
-		jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
-		jest.spyOn(Logger.prototype, "debug").mockImplementation(() => undefined);
-		jest.spyOn(Logger.prototype, "verbose").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "warn").mockImplementation(
+			() => undefined,
+		);
+		jest.spyOn(Logger.prototype, "error").mockImplementation(
+			() => undefined,
+		);
+		jest.spyOn(Logger.prototype, "debug").mockImplementation(
+			() => undefined,
+		);
+		jest.spyOn(Logger.prototype, "verbose").mockImplementation(
+			() => undefined,
+		);
 	});
 	afterEach(() => jest.restoreAllMocks());
 
@@ -88,9 +104,13 @@ describe("TournamentSyncService (SPEC-022 snapshot-first)", () => {
 		expect(snapshot.turnOrder).toHaveLength(4);
 		expect(snapshot.activePlayerId).toBe(snapshot.turnOrder[0]);
 		expect(snapshot.turnDeadlineAt).not.toBeNull();
-		expect(snapshot.board.tiles).toHaveLength(8);
-		expect(snapshot.board.tiles[0]).toEqual({ id: "tile-0", kind: "empty", order: 0 });
-		expect(snapshot.board.tiles[2].kind).toBe("bonus");
+		expect(snapshot.board.tiles).toHaveLength(28);
+		expect(snapshot.board.tiles[0]).toEqual({
+			id: "tile-0",
+			kind: "start",
+			order: 0,
+		});
+		expect(snapshot.board.tiles[5].kind).toBe("bonus");
 		expect(snapshot.players).toHaveLength(4);
 		for (const player of snapshot.players) {
 			expect(player.username).toBe(`user-${player.userId}`);
@@ -183,7 +203,9 @@ describe("TournamentSyncService (SPEC-022 snapshot-first)", () => {
 		// Let every turn time out (+ the turn-handoff pause each):
 		// 2 rounds × 4 players → DEFEAT → FINISHED.
 		for (let i = 0; i < 8; i++) {
-			clock.advance(TOURNAMENT_SETTINGS_V1.timeouts.turnSeconds * 1000 + 3_000);
+			clock.advance(
+				TOURNAMENT_SETTINGS_V1.timeouts.turnSeconds * 1000 + 3_000,
+			);
 			await flushMicrotasks();
 		}
 

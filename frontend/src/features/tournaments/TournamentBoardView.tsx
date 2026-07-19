@@ -1,7 +1,6 @@
 /**
- * TournamentBoardView.tsx — the Vertical Slice in-match view (SPEC-022 /
- * SPEC-039 minimum): a PROVISIONAL schematic board + die button + HUD. The
- * real presentation (Phaser scene, theming, animations) is Phase 7.
+ * TournamentBoardView.tsx — The Parrot's Shell in-match view (SPEC-022 /
+ * SPEC-039): the themed map, animated player pieces, die controls and HUD.
  *
  * Snapshot-first client rules (SPEC-022):
  * - The rendered state is ALWAYS the last snapshot with the highest `seq`;
@@ -18,6 +17,8 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 
 import { getGameSocket } from "../../services/network/gameSocket";
+import { INGAME_PLAYER_ASSET } from "../../shared/assets";
+import { hubBackgroundClass } from "../../shared/backgrounds";
 import { api } from "../hub/api";
 import {
 	TOURNAMENT_WS_EVENTS,
@@ -28,6 +29,10 @@ import {
 	type TournamentSnapshotV1,
 } from "./contracts";
 import { TieBreakRoulette } from "./TieBreakRoulette";
+import {
+	TOURNAMENT_BOARD_PATH,
+	tournamentTilePosition,
+} from "./tournament-board-layout";
 
 interface TournamentBoardViewProps {
 	tournamentId: string;
@@ -47,7 +52,15 @@ const MINIGAME_TITLES: Record<string, string> = {
 
 const minigameTitle = (id: string): string => MINIGAME_TITLES[id] ?? id;
 
-const seatColor = (seat: number): string => SEAT_COLORS[seat % SEAT_COLORS.length];
+const seatColor = (seat: number): string =>
+	SEAT_COLORS[seat % SEAT_COLORS.length];
+
+const TOKEN_OFFSETS = [
+	{ x: 0, y: 0 },
+	{ x: -12, y: -9 },
+	{ x: 12, y: -9 },
+	{ x: 0, y: 12 },
+] as const;
 
 // ── Dice-roll presentation pacing (client-side only, SPEC-022: the server
 //    already resolved the roll — this merely reveals it before settling) ─────
@@ -104,6 +117,10 @@ export function TournamentBoardView({
 }: TournamentBoardViewProps): JSX.Element {
 	const [snapshot, setSnapshot] = useState<TournamentSnapshotV1 | null>(null);
 	const [myUserId, setMyUserId] = useState<number | null>(null);
+	const [background, setBackground] = useState<{
+		id: string;
+		alterId: string | null;
+	} | null>(null);
 	const [joinError, setJoinError] = useState<string | null>(null);
 	/** Presentation-only clock tick for the turn countdown. */
 	const [nowMs, setNowMs] = useState(() => Date.now());
@@ -125,7 +142,13 @@ export function TournamentBoardView({
 		void api
 			.getMe()
 			.then((me) => {
-				if (!cancelled) setMyUserId(me.id);
+				if (!cancelled) {
+					setMyUserId(me.id);
+					setBackground({
+						id: me.hubBackground,
+						alterId: me.hubBackgroundAlter,
+					});
+				}
 			})
 			.catch(() => {
 				/* unauthenticated views just never see the Roll button */
@@ -161,14 +184,18 @@ export function TournamentBoardView({
 		};
 		/** Skip a job without theatrics (used when reveals pile up). */
 		const commitInstant = (job: RollAnimation) => {
-			setTiles({ ...(displayedNow ?? {}), [job.playerId]: job.targetTileId });
+			setTiles({
+				...(displayedNow ?? {}),
+				[job.playerId]: job.targetTileId,
+			});
 		};
 
 		const pump = () => {
 			if (disposed || animatingPlayer !== null) return;
 			// Falling behind (CPU turns every ~1.5 s): fast-forward the backlog
 			// so the board never drifts more than a couple of rolls behind.
-			while (queue.length > 2) commitInstant(queue.shift() as RollAnimation);
+			while (queue.length > 2)
+				commitInstant(queue.shift() as RollAnimation);
 			const job = queue.shift();
 			if (!job) return;
 			animatingPlayer = job.playerId;
@@ -197,7 +224,10 @@ export function TournamentBoardView({
 							pump();
 							return;
 						}
-						setTiles({ ...(displayedNow ?? {}), [job.playerId]: nextTile });
+						setTiles({
+							...(displayedNow ?? {}),
+							[job.playerId]: nextTile,
+						});
 						wait(TOKEN_STEP_MS, step);
 					};
 					step();
@@ -226,8 +256,8 @@ export function TournamentBoardView({
 					value: roll.value,
 					autoResolved: roll.autoResolved,
 					targetTileId:
-						snap.players.find((p) => p.userId === roll.playerId)?.tileId ??
-						null,
+						snap.players.find((p) => p.userId === roll.playerId)
+							?.tileId ?? null,
 				});
 			}
 
@@ -239,7 +269,8 @@ export function TournamentBoardView({
 				...(displayedNow ?? {}),
 			};
 			for (const p of snap.players) {
-				if (isFirst || !pending.has(p.userId)) next[p.userId] = p.tileId;
+				if (isFirst || !pending.has(p.userId))
+					next[p.userId] = p.tileId;
 				else if (!(p.userId in next)) next[p.userId] = p.tileId;
 			}
 			setTiles(next);
@@ -272,7 +303,9 @@ export function TournamentBoardView({
 	useEffect(() => {
 		const socket = getGameSocket();
 		const onMinigameStart = (data: { matchId: string; gameId: string }) => {
-			navigate(`/play/${data.gameId}`, { state: { autoJoinMatch: true } });
+			navigate(`/play/${data.gameId}`, {
+				state: { autoJoinMatch: true },
+			});
 		};
 		socket.on("tournament:minigame-start", onMinigameStart);
 		return () => {
@@ -315,7 +348,9 @@ export function TournamentBoardView({
 		}
 	};
 
-	const sendIntent = (name: "StartGamblingIntent" | "LeaveGamblingIntent") => {
+	const sendIntent = (
+		name: "StartGamblingIntent" | "LeaveGamblingIntent",
+	) => {
 		getGameSocket().emit(
 			TOURNAMENT_WS_MESSAGES.INTENT,
 			{ tournamentId, intent: { name } },
@@ -381,7 +416,9 @@ export function TournamentBoardView({
 			: null;
 	const gambleRevealPlayer =
 		gambleReveal && snapshot
-			? snapshot.players.find((p) => p.userId === gambleReveal.playerId) ?? null
+			? (snapshot.players.find(
+					(p) => p.userId === gambleReveal.playerId,
+				) ?? null)
 			: null;
 
 	// A new gambling session (or its close) clears any stale bet feedback.
@@ -393,7 +430,9 @@ export function TournamentBoardView({
 	}, [gamblingKey]);
 	const champion =
 		snapshot?.winnerUserId != null
-			? snapshot.players.find((p) => p.userId === snapshot.winnerUserId) ?? null
+			? (snapshot.players.find(
+					(p) => p.userId === snapshot.winnerUserId,
+				) ?? null)
 			: null;
 
 	// The live tie-break roulette (SPEC-015 "Desempates"): slices in seat
@@ -413,14 +452,16 @@ export function TournamentBoardView({
 	const gateHumans =
 		minigameGate && snapshot
 			? snapshot.players.filter(
-					(p) => minigameGate.playerIds.includes(p.userId) && !p.isBot,
+					(p) =>
+						minigameGate.playerIds.includes(p.userId) && !p.isBot,
 				)
 			: [];
 	const gateReadyCount = gateHumans.filter((p) =>
 		minigameGate?.readyPlayerIds.includes(p.userId),
 	).length;
 	const iConfirmedGate =
-		myUserId !== null && (minigameGate?.readyPlayerIds.includes(myUserId) ?? false);
+		myUserId !== null &&
+		(minigameGate?.readyPlayerIds.includes(myUserId) ?? false);
 	const gateSeconds =
 		minigameGate !== null
 			? Math.max(0, Math.ceil((minigameGate.deadlineAt - nowMs) / 1000))
@@ -437,7 +478,16 @@ export function TournamentBoardView({
 	};
 
 	return createPortal(
-		<div style={overlayStyle} role="dialog" aria-modal="true" aria-label="Tournament board">
+		<div
+			className={`tournament-board ${hubBackgroundClass(
+				"tournament-board",
+				background?.id,
+				background?.alterId,
+			)}`}
+			role="dialog"
+			aria-modal="true"
+			aria-label="Tournament board"
+		>
 			{/* Tie-break roulette: covers the board until the server resumes the
 			    round (the wheel lands on the server-chosen winner everywhere). */}
 			{tieBreak && tieBreakPlayers.length >= 2 && !isTerminal && (
@@ -454,7 +504,13 @@ export function TournamentBoardView({
 				<div style={tieBreakOverlayStyle}>
 					<div style={gateBoxStyle}>
 						<div style={{ fontSize: 34 }}>🎮</div>
-						<div style={{ fontWeight: 800, fontSize: 22, letterSpacing: 1 }}>
+						<div
+							style={{
+								fontWeight: 800,
+								fontSize: 22,
+								letterSpacing: 1,
+							}}
+						>
 							MINIGAME TIME!
 						</div>
 						<div style={{ fontWeight: 700, fontSize: 16 }}>
@@ -462,7 +518,9 @@ export function TournamentBoardView({
 						</div>
 						<div style={mutedLabel}>
 							{gateReadyCount} / {gateHumans.length} players ready
-							{gateSeconds !== null ? ` · auto-starts in ${gateSeconds}s` : ""}
+							{gateSeconds !== null
+								? ` · auto-starts in ${gateSeconds}s`
+								: ""}
 						</div>
 						<div style={gateReadyRow}>
 							{gateHumans.map((p) => (
@@ -470,12 +528,19 @@ export function TournamentBoardView({
 									key={p.userId}
 									style={{
 										...gateReadyChip,
-										opacity: minigameGate.readyPlayerIds.includes(p.userId)
-											? 1
-											: 0.5,
+										opacity:
+											minigameGate.readyPlayerIds.includes(
+												p.userId,
+											)
+												? 1
+												: 0.5,
 									}}
 								>
-									{minigameGate.readyPlayerIds.includes(p.userId) ? "✅ " : "⌛ "}
+									{minigameGate.readyPlayerIds.includes(
+										p.userId,
+									)
+										? "✅ "
+										: "⌛ "}
 									{p.username}
 								</span>
 							))}
@@ -491,83 +556,153 @@ export function TournamentBoardView({
 							disabled={iConfirmedGate}
 							onClick={confirmMinigame}
 						>
-							{iConfirmedGate ? "Waiting for players…" : "Let's go!"}
+							{iConfirmedGate
+								? "Waiting for players…"
+								: "Let's go!"}
 						</button>
 					</div>
 				</div>
 			)}
-			<div style={frameStyle}>
-				<h2 style={{ margin: "0 0 4px", textAlign: "center" }}>The Parrot's Shell</h2>
+			<div className="tournament-board__frame">
+				<h2 className="tournament-board__title">The Parrot's Shell</h2>
 
 				{joinError && (
 					<div style={{ textAlign: "center" }}>
-						<p style={errorText}>Could not join the match ({joinError}).</p>
-						<button type="button" style={secondaryBtn} onClick={onExit}>
+						<p style={errorText}>
+							Could not join the match ({joinError}).
+						</p>
+						<button
+							type="button"
+							style={secondaryBtn}
+							onClick={onExit}
+						>
 							Back to Hub
 						</button>
 					</div>
 				)}
 
 				{!joinError && !snapshot && (
-					<p style={{ textAlign: "center", opacity: 0.7 }}>Joining the match…</p>
+					<p style={{ textAlign: "center", opacity: 0.7 }}>
+						Joining the match…
+					</p>
 				)}
 
 				{snapshot && (
-					<div style={contentRow}>
-						{/* ── Schematic board ── */}
-						<div style={boardBox}>
+					<div className="tournament-board__content">
+						<div className="tournament-board__stage">
+							<img
+								className="tournament-board__map"
+								src="/assets/tournament/tournamentMap.png"
+								alt=""
+								draggable={false}
+							/>
+							<svg
+								className="tournament-board__path"
+								viewBox="0 0 100 100"
+								preserveAspectRatio="none"
+								aria-hidden="true"
+							>
+								<polyline
+									points={[
+										...TOURNAMENT_BOARD_PATH,
+										TOURNAMENT_BOARD_PATH[0],
+									]
+										.map((point) => `${point.x},${point.y}`)
+										.join(" ")}
+								/>
+							</svg>
 							{snapshot.board.tiles.map((tile) => {
-								const angle =
-									(tile.order / snapshot.board.tiles.length) * 2 * Math.PI -
-									Math.PI / 2;
-								const x = BOARD_CENTER + BOARD_RADIUS * Math.cos(angle);
-								const y = BOARD_CENTER + BOARD_RADIUS * Math.sin(angle);
-								// Rendered position: the animated one while a roll
-								// walks a token, the authoritative one otherwise.
-								const occupants = snapshot.players.filter(
-									(p) =>
-										(displayedTiles?.[p.userId] ?? p.tileId) === tile.id,
+								const position = tournamentTilePosition(
+									tile.id,
 								);
+								if (!position) return null;
 								return (
 									<div
 										key={tile.id}
+										className={`tournament-board__tile tournament-board__tile--${tile.kind}`}
+										title={
+											tile.kind === "bonus"
+												? `Bonus step ${tile.order}`
+												: tile.order === 0
+													? "Starting clearing"
+													: `Step ${tile.order}`
+										}
 										style={{
-											...tileStyle,
-											left: x - TILE_SIZE / 2,
-											top: y - TILE_SIZE / 2,
-											background:
-												tile.kind === "bonus"
-													? "rgba(241,196,15,0.25)"
-													: "rgba(255,255,255,0.08)",
+											left: `${position.x}%`,
+											top: `${position.y}%`,
 										}}
 									>
-										<span style={tileLabel}>
-											{tile.kind === "bonus" ? "★" : tile.order}
+										<span className="tournament-board__tile-label">
+											{tile.kind === "bonus"
+												? "★"
+												: tile.order === 0
+													? "S"
+													: ""}
 										</span>
-										<div style={tokenRow}>
-											{occupants.map((p) => (
-												<span
-													key={p.userId}
-													title={p.username}
-													style={{
-														...tokenStyle,
-														background: seatColor(p.seat),
-														outline:
-															snapshot.activePlayerId === p.userId
-																? "2px solid #fff"
-																: "none",
-													}}
-												/>
-											))}
-										</div>
 									</div>
 								);
 							})}
-							<div style={boardCenterBox}>
+							{snapshot.players.map((player) => {
+								const tileId =
+									displayedTiles?.[player.userId] ??
+									player.tileId;
+								const position = tournamentTilePosition(tileId);
+								if (!position) return null;
+								const occupants = snapshot.players
+									.filter(
+										(candidate) =>
+											(displayedTiles?.[
+												candidate.userId
+											] ?? candidate.tileId) === tileId,
+									)
+									.sort((a, b) => a.seat - b.seat);
+								const occupantIndex = occupants.findIndex(
+									(candidate) =>
+										candidate.userId === player.userId,
+								);
+								const offset =
+									TOKEN_OFFSETS[occupantIndex] ??
+									TOKEN_OFFSETS[0];
+								return (
+									<div
+										key={player.userId}
+										className={`tournament-board__token${
+											snapshot.activePlayerId ===
+											player.userId
+												? " tournament-board__token--active"
+												: ""
+										}`}
+										title={player.username}
+										style={{
+											left: `${position.x}%`,
+											top: `${position.y}%`,
+											transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
+											borderColor: seatColor(player.seat),
+											boxShadow: `0 0 0 2px rgba(5, 8, 12, 0.82), 0 0 12px ${seatColor(player.seat)}`,
+										}}
+									>
+										<img
+											src={INGAME_PLAYER_ASSET.bodySource}
+											alt=""
+											draggable={false}
+										/>
+										{player.isBot && (
+											<span className="tournament-board__bot">
+												CPU
+											</span>
+										)}
+									</div>
+								);
+							})}
+							<div className="tournament-board__status">
 								{isTerminal ? (
 									<>
 										<div style={{ fontSize: 30 }}>
-											{phase === "CANCELLED" ? "🚫" : champion ? "🏆" : "💀"}
+											{phase === "CANCELLED"
+												? "🚫"
+												: champion
+													? "🏆"
+													: "💀"}
 										</div>
 										<div style={{ fontWeight: 700 }}>
 											{phase === "CANCELLED"
@@ -582,7 +717,12 @@ export function TournamentBoardView({
 										<div style={{ fontSize: 30 }}>
 											{gambleReveal.won ? "🔑" : "💸"}
 										</div>
-										<div style={{ fontWeight: 700, fontSize: 13 }}>
+										<div
+											style={{
+												fontWeight: 700,
+												fontSize: 13,
+											}}
+										>
 											{gambleReveal.won
 												? `${gambleRevealPlayer?.username ?? "…"} unlocked a KEY ITEM!`
 												: `${gambleRevealPlayer?.username ?? "…"} lost the bet (−${gambleReveal.cost} pts)`}
@@ -591,31 +731,53 @@ export function TournamentBoardView({
 								) : rollBanner ? (
 									<>
 										<div style={{ fontSize: 26 }}>🎲</div>
-										<div style={{ fontWeight: 700, fontSize: 13 }}>
+										<div
+											style={{
+												fontWeight: 700,
+												fontSize: 13,
+											}}
+										>
 											{snapshot.players.find(
-												(p) => p.userId === rollBanner.playerId,
+												(p) =>
+													p.userId ===
+													rollBanner.playerId,
 											)?.username ?? "…"}{" "}
 											rolls
 										</div>
-										<div style={{ fontWeight: 800, fontSize: 30 }}>
+										<div
+											style={{
+												fontWeight: 800,
+												fontSize: 30,
+											}}
+										>
 											{rollBanner.value ?? "…"}
 										</div>
 										{rollBanner.autoResolved &&
 											rollBanner.value !== null && (
-												<div style={mutedLabel}>(auto-rolled)</div>
+												<div style={mutedLabel}>
+													(auto-rolled)
+												</div>
 											)}
 									</>
 								) : (
 									<>
 										<div style={mutedLabel}>
-											Round {snapshot.round} / {snapshot.maxRound}
+											Round {snapshot.round} /{" "}
+											{snapshot.maxRound}
 										</div>
-										<div style={{ fontWeight: 700, fontSize: 14 }}>
+										<div
+											style={{
+												fontWeight: 700,
+												fontSize: 14,
+											}}
+										>
 											{phaseLabel(snapshot)}
 										</div>
 										{snapshot.phase === "PLAYER_TURNS" &&
 											countdownSeconds !== null && (
-												<div style={mutedLabel}>{countdownSeconds}s</div>
+												<div style={mutedLabel}>
+													{countdownSeconds}s
+												</div>
 											)}
 									</>
 								)}
@@ -623,7 +785,7 @@ export function TournamentBoardView({
 						</div>
 
 						{/* ── HUD ── */}
-						<div style={hudBox}>
+						<div className="tournament-board__hud">
 							<div style={mutedLabel}>Turn order</div>
 							<ul style={playerList}>
 								{snapshot.players.map((p) => (
@@ -632,25 +794,36 @@ export function TournamentBoardView({
 										style={{
 											...playerRow,
 											outline:
-												snapshot.activePlayerId === p.userId
+												snapshot.activePlayerId ===
+												p.userId
 													? "1px solid rgba(255,255,255,0.6)"
 													: "none",
 											opacity: p.connected ? 1 : 0.55,
 										}}
 									>
-										<span style={{ ...tokenStyle, background: seatColor(p.seat) }} />
+										<span
+											style={{
+												...tokenStyle,
+												background: seatColor(p.seat),
+											}}
+										/>
 										<span style={{ flex: 1 }}>
 											{p.isBot ? "🤖 " : ""}
 											{p.username}
-											{p.userId === myUserId ? " (you)" : ""}
+											{p.userId === myUserId
+												? " (you)"
+												: ""}
 										</span>
-										<span style={{ fontWeight: 700 }}>{p.points}</span>
+										<span style={{ fontWeight: 700 }}>
+											{p.points}
+										</span>
 									</li>
 								))}
 							</ul>
 
 							<div style={{ ...mutedLabel, marginTop: 8 }}>
-								Key Items: {snapshot.keyItems.unlocked} / {snapshot.keyItems.required}
+								Key Items: {snapshot.keyItems.unlocked} /{" "}
+								{snapshot.keyItems.required}
 							</div>
 
 							{/* Gambling decision (SPEC-016): the winner decides; everyone
@@ -663,9 +836,12 @@ export function TournamentBoardView({
 												🎰 You won the minigame!
 											</div>
 											<div style={mutedLabel}>
-												Bet {gambling.cost} points for a Key Item —{" "}
-												{Math.round(gambling.winChance * 100)}% chance ·{" "}
-												{gamblingSeconds}s
+												Bet {gambling.cost} points for a
+												Key Item —{" "}
+												{Math.round(
+													gambling.winChance * 100,
+												)}
+												% chance · {gamblingSeconds}s
 											</div>
 											<div style={mutedLabel}>
 												You have {myPoints} points
@@ -674,32 +850,53 @@ export function TournamentBoardView({
 													: ` — you need ${gambling.cost} to bet.`}
 											</div>
 											{gamblingNotice && (
-												<div style={gamblingNoticeStyle} role="alert">
+												<div
+													style={gamblingNoticeStyle}
+													role="alert"
+												>
 													{gamblingNotice}
 												</div>
 											)}
-											<div style={{ display: "flex", gap: 8 }}>
+											<div
+												style={{
+													display: "flex",
+													gap: 8,
+												}}
+											>
 												<button
 													type="button"
 													style={{
 														...primaryBtn,
 														marginTop: 4,
 														flex: 1,
-														opacity: canAffordGamble ? 1 : 0.45,
+														opacity: canAffordGamble
+															? 1
+															: 0.45,
 														cursor: canAffordGamble
 															? "pointer"
 															: "not-allowed",
 													}}
 													onClick={() =>
-														startGamble(gambling.cost, myPoints)
+														startGamble(
+															gambling.cost,
+															myPoints,
+														)
 													}
 												>
 													Gamble
 												</button>
 												<button
 													type="button"
-													style={{ ...secondaryBtn, marginTop: 4, flex: 1 }}
-													onClick={() => sendIntent("LeaveGamblingIntent")}
+													style={{
+														...secondaryBtn,
+														marginTop: 4,
+														flex: 1,
+													}}
+													onClick={() =>
+														sendIntent(
+															"LeaveGamblingIntent",
+														)
+													}
 												>
 													Pass
 												</button>
@@ -709,10 +906,12 @@ export function TournamentBoardView({
 										<div style={mutedLabel}>
 											🎰{" "}
 											{snapshot.players.find(
-												(p) => p.userId === gambling.winnerId,
+												(p) =>
+													p.userId ===
+													gambling.winnerId,
 											)?.username ?? "The winner"}{" "}
-											is deciding whether to gamble for a Key Item…{" "}
-											{gamblingSeconds}s
+											is deciding whether to gamble for a
+											Key Item… {gamblingSeconds}s
 										</div>
 									)}
 								</div>
@@ -753,7 +952,9 @@ export function TournamentBoardView({
 										style={{
 											...primaryBtn,
 											opacity: isMyTurn ? 1 : 0.45,
-											cursor: isMyTurn ? "pointer" : "default",
+											cursor: isMyTurn
+												? "pointer"
+												: "default",
 										}}
 										disabled={!isMyTurn}
 										onClick={rollDice}
@@ -762,13 +963,21 @@ export function TournamentBoardView({
 											? `🎲 Roll the dice${countdownSeconds !== null ? ` (${countdownSeconds}s)` : ""}`
 											: "Waiting for your turn…"}
 									</button>
-									<button type="button" style={leaveMatchBtn} onClick={leaveMatch}>
+									<button
+										type="button"
+										style={leaveMatchBtn}
+										onClick={leaveMatch}
+									>
 										Leave match
 									</button>
 								</>
 							)}
 							{isTerminal && (
-								<button type="button" style={primaryBtn} onClick={onExit}>
+								<button
+									type="button"
+									style={primaryBtn}
+									onClick={onExit}
+								>
 									Back to Hub
 								</button>
 							)}
@@ -815,85 +1024,13 @@ function phaseLabel(snapshot: TournamentSnapshotV1): string {
 	}
 }
 
-// ── Provisional inline styles (self-contained; replaced by Phase 7) ──────────
+// ── Small dynamic presentation styles ───────────────────────────────────────
 
-const BOARD_SIZE = 340;
-const BOARD_CENTER = BOARD_SIZE / 2;
-const BOARD_RADIUS = 125;
-const TILE_SIZE = 58;
-
-const overlayStyle: CSSProperties = {
-	position: "fixed",
-	inset: 0,
-	zIndex: 1000,
-	background: "rgba(8,12,24,0.94)",
-	display: "flex",
-	alignItems: "center",
-	justifyContent: "center",
-	color: "#f5f5f5",
-	fontFamily: "inherit",
-};
-const frameStyle: CSSProperties = {
-	width: "min(720px, 96vw)",
-	maxHeight: "94vh",
-	overflowY: "auto",
-	background: "rgba(20,26,44,0.9)",
-	border: "1px solid rgba(255,255,255,0.14)",
-	borderRadius: 14,
-	padding: 18,
-};
-const contentRow: CSSProperties = {
-	display: "flex",
-	gap: 18,
-	flexWrap: "wrap",
-	justifyContent: "center",
-	alignItems: "center",
-};
-const boardBox: CSSProperties = {
-	position: "relative",
-	width: BOARD_SIZE,
-	height: BOARD_SIZE,
-	flex: "0 0 auto",
-};
-const tileStyle: CSSProperties = {
-	position: "absolute",
-	width: TILE_SIZE,
-	height: TILE_SIZE,
-	borderRadius: 10,
-	border: "1px solid rgba(255,255,255,0.25)",
-	display: "flex",
-	flexDirection: "column",
-	alignItems: "center",
-	justifyContent: "center",
-	gap: 3,
-};
-const tileLabel: CSSProperties = { fontSize: 12, opacity: 0.75 };
-const tokenRow: CSSProperties = { display: "flex", gap: 3, minHeight: 12 };
 const tokenStyle: CSSProperties = {
 	width: 12,
 	height: 12,
 	borderRadius: "50%",
 	display: "inline-block",
-};
-const boardCenterBox: CSSProperties = {
-	position: "absolute",
-	left: "50%",
-	top: "50%",
-	transform: "translate(-50%, -50%)",
-	textAlign: "center",
-	display: "flex",
-	flexDirection: "column",
-	gap: 2,
-	alignItems: "center",
-	maxWidth: 130,
-};
-const hudBox: CSSProperties = {
-	display: "flex",
-	flexDirection: "column",
-	gap: 8,
-	minWidth: 220,
-	flex: "1 1 220px",
-	maxWidth: 300,
 };
 const playerList: CSSProperties = {
 	listStyle: "none",

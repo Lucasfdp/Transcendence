@@ -51,7 +51,10 @@ import {
 	BoardSnapshot,
 	TileActionRunner,
 } from "../board/board.types";
-import { V1_BOARD_ID, createBoardRegistry } from "../board/board-registry";
+import {
+	PARROTS_SHELL_BOARD_ID,
+	createBoardRegistry,
+} from "../board/board-registry";
 import { TournamentBoard } from "../board/tournament-board";
 import { DiceSnapshot, DiceValueModifier } from "../dice/dice.types";
 import { createDiceRegistry } from "../dice/dice-registry";
@@ -402,10 +405,12 @@ export function createTournamentEngines(
 	//    Teleport/MovePlayer Actions can drive it).
 	const resolvedBoardRegistry =
 		boardRegistry ?? createBoardRegistry({ seed: true });
-	const boardDefinition = resolvedBoardRegistry.get(boardId ?? V1_BOARD_ID);
+	const boardDefinition = resolvedBoardRegistry.get(
+		boardId ?? PARROTS_SHELL_BOARD_ID,
+	);
 	if (!boardDefinition) {
 		throw new Error(
-			`[createTournamentEngines] unknown board "${boardId ?? V1_BOARD_ID}"`,
+			`[createTournamentEngines] unknown board "${boardId ?? PARROTS_SHELL_BOARD_ID}"`,
 		);
 	}
 	const board = new TournamentBoard({
@@ -513,7 +518,13 @@ export function createTournamentEngines(
 	// Shell match state (SPEC-013 "ShellReward" / SPEC-021 "Recompensa"): THE ONE
 	// Shell, granted only through the Reward Resolver's `grantShell` Action; the
 	// holder enforces single-grant and emits ShellGranted.
-	const shell = new TournamentShell({ tournamentId, bus, clock, logger, getRound });
+	const shell = new TournamentShell({
+		tournamentId,
+		bus,
+		clock,
+		logger,
+		getRound,
+	});
 
 	// Re-bind so every context (Board tiles + `makeActionContext`) exposes the
 	// Board (SPEC-006), Random Events (SPEC-019), steal (SPEC-006), shop
@@ -598,7 +609,9 @@ export function createTournamentEngines(
 		keyItems: { isComplete: () => keyItems.isComplete() },
 		ruleController: {
 			activate: (config) =>
-				rules.registerAndActivate(createRule(config), { round: getRound() })
+				rules.registerAndActivate(createRule(config), {
+					round: getRound(),
+				})
 					? config.id
 					: null,
 			remove: (ruleId) => {
@@ -637,7 +650,9 @@ export function createTournamentEngines(
 		registry: finalChallengeRegistry,
 		ruleController: {
 			activate: (config) =>
-				rules.registerAndActivate(createRule(config), { round: getRound() })
+				rules.registerAndActivate(createRule(config), {
+					round: getRound(),
+				})
 					? config.id
 					: null,
 			remove: (ruleId) => {

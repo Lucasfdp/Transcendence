@@ -1,19 +1,18 @@
 /**
- * board-registry.ts — the immutable board definition registry (SPEC-002) plus a
- * v1 PLACEHOLDER catalog.
+ * board-registry.ts — the immutable board definition registry (SPEC-002) and
+ * The Parrot's Shell board catalogue.
  *
  * Board definitions are pure, immutable content, so they live in the generic
  * deep-freezing `Registry<T>` (SPEC-025) exactly like items/dice — never a
  * bespoke store. The whole board is data (SPEC-002 "Board Configuration": never
  * built by code), so `createBoardRegistry()` builds a registry, optionally
- * pre-seeded with the v1 placeholder board below.
+ * pre-seeded with the production v1 board below.
  *
- * The v1 board is NOT content (that is a later phase). It is a minimal RING of
- * eight tiles composed purely of Actions from config (SPEC-002 "Composición de
- * casillas v1" / SPEC-006 data-driven), with NO artistic names anywhere — ids
- * like `tile-0`…`tile-7` and `metadata.theme = "placeholder"` only (SPEC-002
- * "Restricciones"). A ring (last tile connects back to the first) keeps movement
- * total, so every roll lands somewhere well-defined.
+ * The v1 board is a 28-step ring following the paths in The Parrot's Shell map.
+ * It remains pure Action-based configuration (SPEC-002 / SPEC-006): the backend
+ * owns successor order and tile effects, while visual coordinates stay in the
+ * frontend presentation layer. A ring keeps movement total, so every roll lands
+ * somewhere well-defined.
  */
 
 import { Registry } from "../registry/registry";
@@ -25,7 +24,9 @@ import { BoardDefinition, Tile } from "./board.types";
  * `startingTile` that exists, unique tile ids, and — v1 single-successor —
  * exactly one connection per tile pointing at an existing tile.
  */
-export const validateBoardDefinition = (definition: BoardDefinition): string[] => {
+export const validateBoardDefinition = (
+	definition: BoardDefinition,
+): string[] => {
 	const errors: string[] = [];
 	if (!definition.id || definition.id.trim() === "") {
 		errors.push("id must be a non-empty string");
@@ -52,7 +53,9 @@ export const validateBoardDefinition = (definition: BoardDefinition): string[] =
 	for (const tile of definition.tiles) {
 		// v1: exactly one outgoing connection (single-successor board, SPEC-002).
 		if (!Array.isArray(tile.connections) || tile.connections.length !== 1) {
-			errors.push(`tile "${tile.id}" must have exactly one connection in v1`);
+			errors.push(
+				`tile "${tile.id}" must have exactly one connection in v1`,
+			);
 			continue;
 		}
 		if (!ids.has(tile.connections[0])) {
@@ -69,7 +72,7 @@ export const validateBoardDefinition = (definition: BoardDefinition): string[] =
 
 /**
  * Builds a fresh board registry (SPEC-025). Pass `seed: true` to pre-register
- * the v1 placeholder board below.
+ * The Parrot's Shell v1 board below.
  */
 export const createBoardRegistry = (
 	options: { seed?: boolean } = {},
@@ -79,29 +82,29 @@ export const createBoardRegistry = (
 		validateBoardDefinition,
 	);
 	if (options.seed) {
-		registry.register(V1_PLACEHOLDER_BOARD);
+		registry.register(PARROTS_SHELL_BOARD);
 	}
 	return registry;
 };
 
-// ── v1 placeholder board (SPEC-002 "Composición de casillas v1") ────────────
+// ── The Parrot's Shell v1 board (SPEC-002) ──────────────────────────────────
 
-/** Id of the v1 placeholder board, exported for tests/integration. */
-export const V1_BOARD_ID = "placeholder-ring-8";
+/** Id of the production v1 board, exported for tests and integration. */
+export const PARROTS_SHELL_BOARD_ID = "parrots-shell-path-28";
 
-const RING_SIZE = 8;
+const PATH_SIZE = 28;
+const BONUS_TILE_INDICES = new Set([5, 12, 19, 25]);
 
 /**
- * A tile of the placeholder ring. Tile `i` connects to tile `i+1` (mod 8).
+ * A tile of the map path. Tile `i` connects to tile `i+1` (mod 28).
  * Behaviour is expressed only through `actions` (SPEC-006 data-driven): most
  * tiles do `nothing` (a placeholder Action — an unregistered action type
- * resolves/skips cleanly today, SPEC-008); a couple award points via the
- * existing `awardPoints` Action. No artistic names — theme is "placeholder".
+ * resolves/skips cleanly today, SPEC-008); four evenly distributed stops award
+ * points through the existing `awardPoints` Action.
  */
-const ringTile = (index: number): Tile => {
-	const next = `tile-${(index + 1) % RING_SIZE}`;
-	// tile-2 and tile-5 are bonus tiles; the rest are empty placeholders.
-	const isBonus = index === 2 || index === 5;
+const pathTile = (index: number): Tile => {
+	const next = `tile-${(index + 1) % PATH_SIZE}`;
+	const isBonus = BONUS_TILE_INDICES.has(index);
 	return {
 		id: `tile-${index}`,
 		connections: [next],
@@ -109,21 +112,29 @@ const ringTile = (index: number): Tile => {
 			? [
 					{
 						type: "awardPoints",
-						parameters: { amount: 25, reason: "tile:bonus", source: "tile" },
+						parameters: {
+							amount: 25,
+							reason: "tile:bonus",
+							source: "tile",
+						},
 					},
-			  ]
+				]
 			: [{ type: "nothing", parameters: {} }],
 		// `kind` is a PRESENTATION hint for the wire snapshot (SPEC-022) — the
 		// Board never interprets metadata (SPEC-002 "Restricciones").
-		metadata: { theme: "placeholder", index, kind: isBonus ? "bonus" : "empty" },
+		metadata: {
+			theme: "parrots-shell",
+			index,
+			kind: index === 0 ? "start" : isBonus ? "bonus" : "path",
+		},
 	};
 };
 
-/** The v1 placeholder ring board (fixtures / bootstrap only). */
-export const V1_PLACEHOLDER_BOARD: BoardDefinition = {
-	id: V1_BOARD_ID,
-	name: "Placeholder Ring",
+/** The production v1 board. Visual coordinates are keyed by these tile ids. */
+export const PARROTS_SHELL_BOARD: BoardDefinition = {
+	id: PARROTS_SHELL_BOARD_ID,
+	name: "The Parrot's Shell",
 	startingTile: "tile-0",
-	tiles: Array.from({ length: RING_SIZE }, (_, i) => ringTile(i)),
-	metadata: { theme: "placeholder" },
+	tiles: Array.from({ length: PATH_SIZE }, (_, i) => pathTile(i)),
+	metadata: { theme: "parrots-shell" },
 };

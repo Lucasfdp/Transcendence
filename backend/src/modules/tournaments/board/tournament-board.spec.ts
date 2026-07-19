@@ -9,7 +9,7 @@ import { AnyTournamentEvent } from "../events/tournament-event.types";
 import { TournamentEventBus } from "../events/tournament-event-bus";
 import { ManualClock } from "../infra/clock";
 import { TileActionRunner } from "./board.types";
-import { V1_PLACEHOLDER_BOARD } from "./board-registry";
+import { PARROTS_SHELL_BOARD } from "./board-registry";
 import { TournamentBoard, TournamentBoardOptions } from "./tournament-board";
 
 const TOURNAMENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -17,8 +17,14 @@ const PARTICIPANT_IDS = [10, 20, 30, 40];
 
 /** Recording runner: captures every `run` call, returns one success per Action. */
 class RecordingRunner implements TileActionRunner {
-	readonly calls: { actions: readonly ActionConfig[]; context: ActionContext }[] = [];
-	run(actions: readonly ActionConfig[], context: ActionContext): ExecutionResult[] {
+	readonly calls: {
+		actions: readonly ActionConfig[];
+		context: ActionContext;
+	}[] = [];
+	run(
+		actions: readonly ActionConfig[],
+		context: ActionContext,
+	): ExecutionResult[] {
 		this.calls.push({ actions, context });
 		return actions.map(() => ({ status: "success" }) as ExecutionResult);
 	}
@@ -40,7 +46,7 @@ function makeBoard(overrides: Partial<TournamentBoardOptions> = {}): Harness {
 	const runner = new RecordingRunner();
 	const board = new TournamentBoard({
 		tournamentId: TOURNAMENT_ID,
-		definition: V1_PLACEHOLDER_BOARD,
+		definition: PARROTS_SHELL_BOARD,
 		participantIds: PARTICIPANT_IDS,
 		bus,
 		clock,
@@ -57,10 +63,18 @@ function names(events: AnyTournamentEvent[]): string[] {
 describe("TournamentBoard (SPEC-002)", () => {
 	beforeEach(() => {
 		jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
-		jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
-		jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
-		jest.spyOn(Logger.prototype, "debug").mockImplementation(() => undefined);
-		jest.spyOn(Logger.prototype, "verbose").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "warn").mockImplementation(
+			() => undefined,
+		);
+		jest.spyOn(Logger.prototype, "error").mockImplementation(
+			() => undefined,
+		);
+		jest.spyOn(Logger.prototype, "debug").mockImplementation(
+			() => undefined,
+		);
+		jest.spyOn(Logger.prototype, "verbose").mockImplementation(
+			() => undefined,
+		);
 	});
 
 	afterEach(() => {
@@ -94,21 +108,25 @@ describe("TournamentBoard (SPEC-002)", () => {
 		]);
 		// The runner received exactly the destination tile's actions.
 		expect(runner.calls).toHaveLength(1);
-		expect(runner.calls[0].actions).toEqual(board.getTile("tile-3")?.actions);
+		expect(runner.calls[0].actions).toEqual(
+			board.getTile("tile-3")?.actions,
+		);
 	});
 
 	it("walks backward for negative steps (predecessor edge)", () => {
 		const { board } = makeBoard();
-		// tile-7 connects to tile-0, so one step back from tile-0 is tile-7.
+		// tile-27 connects to tile-0, so one step back from tile-0 is tile-27.
 		const result = board.movePlayer(10, -1);
 		expect(result.status).toBe("moved");
-		expect(board.getPosition(10)).toBe("tile-7");
+		expect(board.getPosition(10)).toBe("tile-27");
 	});
 
 	it("wraps around the ring", () => {
 		const { board } = makeBoard();
-		expect((board.movePlayer(10, 8) as { toTileId: string }).toTileId).toBe("tile-0");
-		board.movePlayer(20, 10);
+		expect(
+			(board.movePlayer(10, 28) as { toTileId: string }).toTileId,
+		).toBe("tile-0");
+		board.movePlayer(20, 30);
 		expect(board.getPosition(20)).toBe("tile-2");
 	});
 
@@ -130,7 +148,10 @@ describe("TournamentBoard (SPEC-002)", () => {
 		}
 		expect(board.getPosition(10)).toBe("tile-5");
 		const moved = events.find((e) => e.name === "PlayerMoved");
-		expect(moved?.payload).toMatchObject({ toTileId: "tile-5", forced: true });
+		expect(moved?.payload).toMatchObject({
+			toTileId: "tile-5",
+			forced: true,
+		});
 	});
 
 	it("rejects a teleport to an unknown tile without throwing or moving", () => {
@@ -164,7 +185,9 @@ describe("TournamentBoard (SPEC-002)", () => {
 			run: () => {
 				runCount += 1;
 				const r = board.teleportPlayer(10, "tile-4");
-				teleportResults.push(r.status === "rejected" ? r.reason : r.status);
+				teleportResults.push(
+					r.status === "rejected" ? r.reason : r.status,
+				);
 				return [{ status: "success" }];
 			},
 		};
@@ -175,7 +198,10 @@ describe("TournamentBoard (SPEC-002)", () => {
 		expect(runCount).toBe(2);
 		// One re-entrant teleport moved; the deeper one was suppressed. (The
 		// suppressed one resolves first, before the outer teleport returns.)
-		expect([...teleportResults].sort()).toEqual(["moved", "relocation_limit"]);
+		expect([...teleportResults].sort()).toEqual([
+			"moved",
+			"relocation_limit",
+		]);
 		expect(board.getPosition(10)).toBe("tile-4");
 	});
 
@@ -192,7 +218,7 @@ describe("TournamentBoard (SPEC-002)", () => {
 		const snapshot = board.serialize();
 		const roundTripped = JSON.parse(JSON.stringify(snapshot));
 		expect(roundTripped).toEqual(snapshot);
-		expect(roundTripped.boardId).toBe(V1_PLACEHOLDER_BOARD.id);
+		expect(roundTripped.boardId).toBe(PARROTS_SHELL_BOARD.id);
 		const p10 = roundTripped.positions.find(
 			(p: { playerId: number }) => p.playerId === 10,
 		);
