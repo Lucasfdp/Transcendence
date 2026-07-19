@@ -96,6 +96,7 @@ import {
 import {
 	PLAYER_COLOUR_VALUES,
 	PLAYER_HEX_COLOURS,
+	drawPlayerRing,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
 import { displayUsername, hudPlayerLabel } from "../../shared/player-labels";
@@ -1479,6 +1480,17 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 				)
 			)
 				drawShellBallTexture(this, "kame-knock-player-local", this.ball, DEPTH_BALL);
+			const colour =
+				PLAYER_COLOUR_VALUES[
+					this.currentPlayerIndex() % PLAYER_COLOUR_VALUES.length
+				] ?? THEME.gold;
+			drawPlayerRing(
+				this.ballGfx,
+				this.ball.x,
+				this.ball.y,
+				this.ball.r,
+				colour,
+			);
 			this.powerBallTexCount = drawKameKnockPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 			return;
 		}
@@ -1519,8 +1531,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		if (onlineBall.trail?.length) {
 			drawKameKnockBallTrail(this.ballGfx, onlineBall.trail, colour);
 		}
-		this.ballGfx.lineStyle(Math.max(2, ball.r * 0.14), colour, 0.95);
-		this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.08);
+		drawPlayerRing(this.ballGfx, ball.x, ball.y, ball.r, colour);
 		this.powerBallTexCount = drawKameKnockPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 	}
 

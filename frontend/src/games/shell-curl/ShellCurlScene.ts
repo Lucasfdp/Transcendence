@@ -86,6 +86,7 @@ import { THEME } from "../../shared/theme";
 import {
 	PLAYER_COLOUR_VALUES,
 	PLAYER_HEX_COLOURS,
+	drawPlayerRing,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
 import { hudPlayerLabel } from "../../shared/player-labels";
@@ -891,7 +892,7 @@ export class ShellCurlScene
 		this.ballGfx.set(ball.id, gfx);
 		this.allBalls.push(ball);
 		this.ballTrails.reset(ball.id, ball.x, ball.y);
-		this.drawPlayerBall(gfx, ball, true);
+		this.drawPlayerBall(gfx, ball, false);
 		return ball;
 	}
 
@@ -1065,8 +1066,14 @@ export class ShellCurlScene
 	private addActiveRing(ball: CurlingBallState): void {
 		this.clearActiveRing();
 		const gfx = this.add.graphics().setDepth(DEPTH_BALLS + 1);
-		gfx.lineStyle(3, 0xd4a843, 0.6);
-		gfx.strokeCircle(ball.x, ball.y, ball.r * 1.45);
+		drawPlayerRing(
+			gfx,
+			ball.x,
+			ball.y,
+			ball.r,
+			PLAYER_COLOUR_VALUES[ball.teamId % PLAYER_COLOUR_VALUES.length],
+			0.78,
+		);
 		this.activeRingGfx = gfx;
 		this.activeRingTween = this.tweens.add({
 			targets: gfx,
@@ -1095,11 +1102,15 @@ export class ShellCurlScene
 		// Redraw active ring position
 		if (this.activeBall && this.activeRingGfx) {
 			this.activeRingGfx.clear();
-			this.activeRingGfx.lineStyle(3, 0xd4a843, 0.6);
-			this.activeRingGfx.strokeCircle(
+			drawPlayerRing(
+				this.activeRingGfx,
 				this.activeBall.x,
 				this.activeBall.y,
-				this.activeBall.r * 1.45,
+				this.activeBall.r,
+				PLAYER_COLOUR_VALUES[
+					this.activeBall.teamId % PLAYER_COLOUR_VALUES.length
+				],
+				0.78,
 			);
 		}
 	}
@@ -1754,7 +1765,7 @@ export class ShellCurlScene
 			const scores = endScores[end] ?? [];
 			return {
 				label: `ROUND ${end + 1}`,
-				value: state.score
+				subtitle: state.score
 					.map((_score, player) => {
 						const value = scores[player];
 						return `P${player + 1}:${value ?? "-"}`;
@@ -1764,9 +1775,7 @@ export class ShellCurlScene
 					end === state.currentEnd && state.phase !== "gameover"
 						? THEME.textGold
 						: THEME.text,
-				valueColor: THEME.text,
 				labelFontSize: "12px",
-				valueFontSize: "15px",
 			};
 		});
 	}

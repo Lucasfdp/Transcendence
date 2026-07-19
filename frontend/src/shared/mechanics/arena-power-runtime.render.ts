@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 
+import { drawPlayerRing } from "../game-ui";
 import { drawShellBallTexture } from "./ball";
 import type { ArenaPowerBallEntry } from "./arena-power-runtime";
 import {
@@ -28,7 +29,6 @@ export function drawArenaPowerBalls(
 		depth: number;
 		playerShellSkins: readonly string[];
 		colourForPlayer: (player: number) => number;
-		ringScale?: number;
 	},
 ): number {
 	for (let i = entries.length; i < renderedCount; i++) {
@@ -46,12 +46,14 @@ export function drawArenaPowerBalls(
 			)
 		)
 			drawShellBallTexture(scene, `${options.prefix}-${i}`, ball, options.depth);
-		gfx.lineStyle(
-			Math.max(2, ball.r * 0.14),
+		drawPlayerRing(
+			gfx,
+			ball.x,
+			ball.y,
+			ball.r,
 			options.colourForPlayer(player),
-			0.75,
+			0.8,
 		);
-		gfx.strokeCircle(ball.x, ball.y, ball.r * (options.ringScale ?? 1.06));
 	}
 	return entries.length;
 }

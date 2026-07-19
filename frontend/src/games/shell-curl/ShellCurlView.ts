@@ -6,6 +6,7 @@
  */
 
 import Phaser from "phaser";
+import { drawPlayerRing, PLAYER_COLOUR_VALUES } from "../../shared/game-ui";
 import { THEME } from "../../shared/theme";
 import { PowerType } from "../../shared/mechanics/power-system";
 import { ALL_POWERS } from "../../shared/mechanics/power-system";
@@ -74,10 +75,15 @@ export function drawShellCurlBall(
 	}
 
 	gfx.clear();
-	if (isActive) {
-		gfx.lineStyle(3, 0xd4a843, 0.6);
-		gfx.strokeCircle(ball.x, ball.y, ball.r * 1.45);
-	}
+	drawPlayerRing(
+		gfx,
+		ball.x,
+		ball.y,
+		ball.r,
+		PLAYER_COLOUR_VALUES[ball.teamId % PLAYER_COLOUR_VALUES.length],
+		1,
+		isActive,
+	);
 	if (ball.frozen) {
 		gfx.fillStyle(0x88ccff, 0.3);
 		gfx.fillCircle(ball.x, ball.y, ball.r * 1.15);
@@ -99,11 +105,6 @@ export function drawShellCurlShellFallback(
 ): void {
 	const { x, y, r } = ball;
 	gfx.clear();
-	if (isActive) {
-		gfx.lineStyle(3, 0xd4a843, 0.6);
-		gfx.strokeCircle(x, y, r * 1.45);
-	}
-
 	gfx.fillStyle(0x000000, 0.22);
 	gfx.fillEllipse(x + r * 0.22, y + r * 0.34, r * 2.25, r * 0.72);
 	gfx.fillStyle(0x6f8f3d, 1);
@@ -120,6 +121,15 @@ export function drawShellCurlShellFallback(
 		gfx.fillStyle(0x88ccff, 0.3);
 		gfx.fillCircle(x, y, r * 1.15);
 	}
+	drawPlayerRing(
+		gfx,
+		x,
+		y,
+		r,
+		PLAYER_COLOUR_VALUES[ball.teamId % PLAYER_COLOUR_VALUES.length],
+		1,
+		isActive,
+	);
 }
 
 // ── Bumpers ───────────────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@ import type {
 	ReplayFrameSnapshotEntity,
 } from "../../services/network/gameSocket";
 import { ARENA_01 } from "../../shared/arenas/arena01";
-import { PLAYER_COLOUR_VALUES } from "../../shared/game-ui";
+import { drawPlayerRing, PLAYER_COLOUR_VALUES } from "../../shared/game-ui";
 import {
 	type ArenaPixels,
 	layoutOvalArenaSkin,
@@ -645,11 +645,12 @@ export class ReplayScene extends ResponsiveScene {
 			drawShellBallTexture(this, actorName, ball, DEPTH_ACTORS);
 		}
 
-		this.actorGfx.lineStyle(Math.max(2, projectile.r * 0.12), colour, 0.95);
-		this.actorGfx.strokeCircle(
+		drawPlayerRing(
+			this.actorGfx,
 			projectile.x,
 			projectile.y,
-			projectile.r * 1.08,
+			projectile.r,
+			colour,
 		);
 		this.actorGfx.fillStyle(colour, 0.96);
 		this.actorGfx.fillCircle(

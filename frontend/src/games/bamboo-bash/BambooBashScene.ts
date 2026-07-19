@@ -98,6 +98,7 @@ import {
 import {
 	PLAYER_COLOUR_VALUES,
 	PLAYER_HEX_COLOURS,
+	drawPlayerRing,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
 import { displayUsername, hudPlayerLabel } from "../../shared/player-labels";
@@ -1264,12 +1265,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 				if (onlineBall.trail?.length) {
 					drawBambooBashBallTrail(this.ballGfx, onlineBall.trail, colour);
 				}
-				this.ballGfx.lineStyle(
-					Math.max(2, ball.r * 0.14),
-					colour,
-					0.95,
-				);
-				this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.08);
+				drawPlayerRing(this.ballGfx, ball.x, ball.y, ball.r, colour);
 			}
 			this.powerBallTexCount = drawBambooBashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 			return;
@@ -1287,6 +1283,13 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 				)
 			)
 				drawShellBallTexture(this, "bamboo-bash-player-local", this.ball, DEPTH_HUD - 17);
+			drawPlayerRing(
+				this.ballGfx,
+				this.ball.x,
+				this.ball.y,
+				this.ball.r,
+				LOCAL_PLAYER_COLOURS[0],
+			);
 			this.powerBallTexCount = drawBambooBashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);
 			return;
 		}
@@ -1314,15 +1317,12 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 					participant.ball,
 					DEPTH_HUD - 17,
 				);
-			this.ballGfx.lineStyle(
-				Math.max(2, participant.ball.r * 0.14),
-				colour,
-				0.95,
-			);
-			this.ballGfx.strokeCircle(
+			drawPlayerRing(
+				this.ballGfx,
 				participant.ball.x,
 				participant.ball.y,
-				participant.ball.r * 1.08,
+				participant.ball.r,
+				colour,
 			);
 		});
 		this.powerBallTexCount = drawBambooBashPowerBalls(this, this.ballGfx, this.powerBalls, this.powerBallTexCount, this.playerShellSkins);

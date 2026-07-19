@@ -1,3 +1,4 @@
+import type Phaser from "phaser";
 import type { PanelRect } from "./ui/panels/side-panel";
 
 export const GAME_UI = {
@@ -36,6 +37,25 @@ export interface GameHudLayout {
 
 export function playerHexColour(player: number): string {
 	return PLAYER_HEX_COLOURS[player % PLAYER_HEX_COLOURS.length];
+}
+
+export function drawPlayerRing(
+	gfx: Phaser.GameObjects.Graphics,
+	x: number,
+	y: number,
+	radius: number,
+	colour: number,
+	alpha = 1,
+	showDarkSeparator = true,
+): void {
+	gfx.lineStyle(Math.max(5, radius * 0.38), colour, 0.16 * alpha);
+	gfx.strokeCircle(x, y, radius);
+	if (showDarkSeparator) {
+		gfx.lineStyle(Math.max(3.5, radius * 0.26), 0x05080c, 0.82 * alpha);
+		gfx.strokeCircle(x, y, radius);
+	}
+	gfx.lineStyle(Math.max(2, radius * 0.14), colour, 0.95 * alpha);
+	gfx.strokeCircle(x, y, radius);
 }
 
 export function resolveGameHudLayout(width: number, height: number): GameHudLayout {

@@ -94,6 +94,7 @@ import {
 import {
 	PLAYER_COLOUR_VALUES,
 	PLAYER_HEX_COLOURS,
+	drawPlayerRing,
 	resolveGameHudLayout,
 } from "../../shared/game-ui";
 import { displayUsername, hudPlayerLabel } from "../../shared/player-labels";
@@ -1616,12 +1617,7 @@ export class BellClashScene
 						ball,
 						DEPTH_BALL,
 					);
-				this.ballGfx.lineStyle(
-					Math.max(2, ball.r * 0.14),
-					colour,
-					0.95,
-				);
-				this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.1);
+				drawPlayerRing(this.ballGfx, ball.x, ball.y, ball.r, colour);
 				this.ballGfx.fillStyle(colour, 0.95);
 				this.ballGfx.fillCircle(
 					ball.x,
@@ -1654,6 +1650,16 @@ export class BellClashScene
 					this.ball,
 					DEPTH_BALL,
 				);
+			const localColour =
+				PLAYER_COLOURS[this.currentPlayerIndex() % PLAYER_COLOURS.length] ??
+				THEME.gold;
+			drawPlayerRing(
+				this.ballGfx,
+				this.ball.x,
+				this.ball.y,
+				this.ball.r,
+				localColour,
+			);
 			this.powerBallTexCount = drawBellClashPowerBalls(
 				this,
 				this.ballGfx,
@@ -1694,8 +1700,7 @@ export class BellClashScene
 			if (onlineBall.trail?.length) {
 				drawBellClashBallTrail(this.ballGfx, onlineBall.trail, colour);
 			}
-			this.ballGfx.lineStyle(Math.max(2, ball.r * 0.14), colour, 0.95);
-			this.ballGfx.strokeCircle(ball.x, ball.y, ball.r * 1.1);
+			drawPlayerRing(this.ballGfx, ball.x, ball.y, ball.r, colour);
 			this.ballGfx.fillStyle(colour, 0.95);
 			this.ballGfx.fillCircle(
 				ball.x,

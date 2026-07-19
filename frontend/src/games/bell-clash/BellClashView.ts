@@ -357,7 +357,6 @@ export function drawBellClashPowerBalls(
 			colourForPlayer: (player) =>
 				PLAYER_COLOUR_VALUES[player % PLAYER_COLOUR_VALUES.length] ??
 				THEME.gold,
-			ringScale: 1.08,
 		},
 	);
 }

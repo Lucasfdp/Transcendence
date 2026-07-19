@@ -1,5 +1,6 @@
 import type Phaser from "phaser";
 export * from "./ball-core";
+import { drawPlayerRing, PLAYER_COLOUR_VALUES } from "../game-ui";
 import type { BallState } from "./ball-core";
 import type { RectArenaPixels } from "./rect-arena";
 import { HEAVY_MASS_RATIO, PowerType } from "./power-system";
@@ -265,10 +266,15 @@ export function drawCurlingBall(
 	const { x, y, r } = s;
 	g.clear();
 
-	if (isActive) {
-		g.lineStyle(3, 0xd4a843, 0.6);
-		g.strokeCircle(x, y, r * 1.45);
-	}
+	drawPlayerRing(
+		g,
+		x,
+		y,
+		r,
+		PLAYER_COLOUR_VALUES[s.teamId % PLAYER_COLOUR_VALUES.length],
+		0.78,
+		isActive,
+	);
 
 	if (s.frozen) {
 		g.fillStyle(0x88ccff, 0.3);

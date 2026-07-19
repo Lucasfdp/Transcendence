@@ -345,6 +345,13 @@ Evidence:
   with 70 frontend files / 389 tests, 100 backend suites / 1,414 tests, and both
   production builds. A two-guest Firefox run confirmed synchronised classic trails
   on both multiplayer clients at 1440×900 and responsive relayout at 1000×700.
+- Player rings in all four games and replay rendering now match the tournament-map
+  tokens: a coloured inner edge, dark separation, and a soft colour halo. Temple
+  Curling's active ring also follows the current player's colour while retaining
+  its turn pulse. The ring is present in single-player modes and its coloured edge
+  now marks the exact circular physics radius. Settled Temple Curling shells retain
+  their coloured hitbox edge without the active shell's dark separator. Frontend
+  validation passed with 72 files / 395 tests and a production build.
 
 Missing for completion:
 - Bell Clash and Bamboo Bash manual multiplayer validation, including live
