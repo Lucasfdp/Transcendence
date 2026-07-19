@@ -338,7 +338,7 @@ export class ShellCurlOnlineController {
 			this.updateStatus(
 				`${this.scene.playerLabel(snapshot.currentTurn, snapshot.score.length)} turn`,
 			);
-			this.scene.powerSidePanel?.hide();
+			this.scene.powerSidePanel?.refresh();
 			this.scene.launchInput.recreate();
 		}
 	}

@@ -13,19 +13,19 @@ export const GAME_UI = {
 } as const;
 
 export const PLAYER_HEX_COLOURS = [
-	"#f0d979",
-	"#9fd890",
-	"#df7b62",
-	"#eef0c9",
-	"#d69b4a",
+	"#5b9bd1",
+	"#d95d4e",
+	"#63b56e",
+	"#e8c15a",
+	"#a678c8",
 ] as const;
 
 export const PLAYER_COLOUR_VALUES = [
-	0xf0d979,
-	0x9fd890,
-	0xdf7b62,
-	0xeef0c9,
-	0xd69b4a,
+	0x5b9bd1,
+	0xd95d4e,
+	0x63b56e,
+	0xe8c15a,
+	0xa678c8,
 ] as const;
 
 export interface GameHudLayout {

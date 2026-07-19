@@ -282,7 +282,7 @@ export class ShellCurlScene
 	// ── Overlay ───────────────────────────────────────────────────────────────
 	public overlayContainer: Phaser.GameObjects.Container | null = null;
 
-	// ── Power side panel (replaces the bottom PowerPicker bar) ────────────────
+	// ── Power side panel ──────────────────────────────────────────────────────
 	public powerSidePanel: GameInfoSidePanel | null = null;
 	private scoreLogPanel: SidePanel | null = null;
 	private localEndScores: Array<Array<number | null>> = [];
@@ -733,7 +733,7 @@ export class ShellCurlScene
 			const power = this.activePower;
 			this.activePower = PowerType.NONE;
 			this.online.emitRelease(this.activeBall, vx, vy, power);
-			this.powerSidePanel?.hide();
+			this.powerSidePanel?.refresh();
 			this.launchInput.recreate();
 			this.clearActiveRing();
 			this.turnManager.setPhase("settling");
@@ -756,7 +756,7 @@ export class ShellCurlScene
 
 		this.launchInput.recreate();
 
-		this.powerSidePanel?.hide();
+		this.powerSidePanel?.refresh();
 		this.clearActiveRing();
 
 		// Re-attach sweep controller to the active ball

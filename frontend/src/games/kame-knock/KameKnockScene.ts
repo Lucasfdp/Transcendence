@@ -596,7 +596,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			if (power !== PowerType.NONE)
 				(this.powerUsed[p] ?? this.powerUsed[0]).add(power);
 			this.activePower = PowerType.NONE;
-			this.powerSidePanel?.hide();
+			this.powerSidePanel?.refresh();
 			this.launchInput.destroy();
 			notifyGameRuleRelease(this.buildGameRuleHooks(), this.ball);
 			this.online.emitRelease({
@@ -628,7 +628,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		}
 
 		this.activePower = PowerType.NONE;
-		this.powerSidePanel?.hide();
+		this.powerSidePanel?.refresh();
 		notifyGameRuleRelease(this.buildGameRuleHooks(), this.ball);
 	}
 
@@ -836,7 +836,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		this.ball.vx = 0;
 		this.ball.vy = 0;
 		this.combo = 0;
-		this.powerSidePanel?.hide();
+		this.powerSidePanel?.refresh();
 		this.updateSidePanels();
 		this.updateScoreHud();
 		this.localReplay.captureFrame(true, "finished");
@@ -888,7 +888,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	showOnlineEndScreen(snapshot: KameKnockSnapshot): void {
 		this.running = false;
 		this.launchInput.destroy();
-		this.powerSidePanel?.hide();
+		this.powerSidePanel?.refresh();
 		this.overlay?.destroy(true);
 		this.overlayState = {
 			kind: "online-end",
@@ -1151,7 +1151,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 				this.launchedThisBall ||
 				this.online.releasePendingFlag)
 		) {
-			this.powerSidePanel?.hide();
+			this.powerSidePanel?.refresh();
 			return;
 		}
 		const layout = this.resolveLayout();

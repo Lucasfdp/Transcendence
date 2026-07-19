@@ -140,6 +140,7 @@ const SPAWN_EVERY_MS = 1800; // cadence of new bamboo while the field has room
 const MAX_BAMBOO = 6; // max bamboo alive at once
 const START_BAMBOO = 2; // bamboo present when the round begins
 const FREEZE_DURATION_MS = 5_000; // how long FREEZE pauses spawn accumulation
+const TIMER_TOP_Y = 92; // round clock sits below the player top bar (~74px)
 const REPLAY_CAPTURE_STEP_MS = 100;
 const PICKUP_RADIUS_SRC = 20;
 const PICKUP_SPAWN_ATTEMPTS = 80;
@@ -703,7 +704,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			this.ball.vy = 0;
 			if (power !== PowerType.NONE) this.powerUsed.add(power);
 			this.activePower = PowerType.NONE;
-			this.powerSidePanel?.hide();
+			this.powerSidePanel?.refresh();
 			this.launchInput.recreate();
 			this.online.emitRelease({
 				roundNumber: this.online.currentRoundNumber,
@@ -729,7 +730,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 
 		// Reset selection to NONE and hide panel while ball is in flight
 		this.activePower = PowerType.NONE;
-		this.powerSidePanel?.hide();
+		this.powerSidePanel?.refresh();
 	}
 
 	private onLocalLaunch(index: number): void {
@@ -750,7 +751,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		}
 
 		participant.activePower = PowerType.NONE;
-		this.powerSidePanel?.hide();
+		this.powerSidePanel?.refresh();
 		this.localReplay.recordEvent("action:start");
 		this.localReplay.captureFrame(true);
 	}
@@ -858,7 +859,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		}
 		this.ball.vx = 0;
 		this.ball.vy = 0;
-		this.powerSidePanel?.hide();
+		this.powerSidePanel?.refresh();
 		this.updateSidePanels();
 		if (this.online.isActive) {
 			this.launchInput.destroy();
@@ -972,7 +973,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 	showOnlineEndScreen(snapshot: BambooBashSnapshot): void {
 		this.running = false;
 		this.launchInput.cancel();
-		this.powerSidePanel?.hide();
+		this.powerSidePanel?.refresh();
 		this.overlay?.destroy(true);
 
 		const title =
@@ -1041,15 +1042,14 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			.setVisible(false);
 
 		this.timerText = this.add
-			.text(this.scale.width / 2, 16, this.formatTime(), {
-				fontSize: "26px",
+			.text(this.scale.width / 2, TIMER_TOP_Y, this.formatTime(), {
+				fontSize: "34px",
 				color: THEME.text,
 				fontFamily: THEME.font,
 				fontStyle: "bold",
 			})
 			.setOrigin(0.5, 0)
-			.setDepth(DEPTH_HUD)
-			.setVisible(false);
+			.setDepth(DEPTH_HUD);
 	}
 
 	private formatTime(ms?: number): string {
@@ -1799,7 +1799,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			this.online.markAway(),
 		);
 		this.scoreText.setPosition(16, 16);
-		this.timerText.setPosition(this.scale.width / 2, 16);
+		this.timerText.setPosition(this.scale.width / 2, TIMER_TOP_Y);
 		this.online.repositionStatus(this.scale.width / 2, 48);
 		this.overlay?.setPosition(this.scale.width / 2, this.scale.height / 2);
 		this.turnAnnouncementText?.setPosition(
@@ -2028,8 +2028,8 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			labelColor?: string;
 			valueColor?: string;
 		}[] = [];
+		// The round clock always renders top-centre (`timerText`), never here.
 		if (this.online.isActive) {
-			rows.push({ label: "TIME", value: this.formatTime() });
 			rows.push({
 				label: "ROUND",
 				value: `${this.online.currentRoundNumber}/${this.online.currentTotalRounds}`,
@@ -2043,28 +2043,6 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 				label: "TURN",
 				value: `P${this.activeLocalParticipantIndex + 1}`,
 			});
-			if (this.isLocalVersus()) {
-				this.localParticipants.forEach((_participant, index) => {
-					const active = index === this.activeLocalParticipantIndex;
-					const colour =
-						PLAYER_HEX_COLOURS[index % PLAYER_HEX_COLOURS.length];
-					rows.push({
-						label: active
-							? `P${index + 1} TIMER ACTIVE`
-							: `P${index + 1} TIMER`,
-						value: this.formatTime(
-							this.localTimeLeftMs[index] ?? 0,
-						),
-						labelColor: active ? colour : undefined,
-						valueColor: colour,
-					});
-				});
-			} else {
-				rows.push({
-					label: "TIME",
-					value: this.formatTime(this.timeLeftMs),
-				});
-			}
 			rows.push({
 				label: "SCORE",
 				value: String(
@@ -2075,7 +2053,6 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			return rows;
 		}
 
-		rows.push({ label: "TIME", value: this.formatTime() });
 		rows.push({ label: "SCORE", value: String(this.score) });
 		return rows;
 	}

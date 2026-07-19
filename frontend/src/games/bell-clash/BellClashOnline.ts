@@ -300,7 +300,7 @@ export class BellClashOnlineController {
 		if (power !== PowerType.NONE)
 			this.scene.powerUsed[this.side]?.add(power);
 		this.scene.activePower = PowerType.NONE;
-		this.scene.powerSidePanel?.hide();
+		this.scene.powerSidePanel?.refresh();
 		this.scene.launchInput.recreate();
 		this.localPhysicsMoving = true;
 		this.updateStatus("Launching...");
@@ -431,7 +431,7 @@ export class BellClashOnlineController {
 		if (this.localShotNumber >= this.shotsPerRound) {
 			this.roundSubmitted = true;
 			this.updateStatus("Waiting for opponents...");
-			this.scene.powerSidePanel?.hide();
+			this.scene.powerSidePanel?.refresh();
 			return;
 		}
 		this.updateStatus(

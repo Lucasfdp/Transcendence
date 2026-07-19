@@ -531,7 +531,7 @@ export class BambooBashOnlineController {
 		if (!this.match || this.countdownText) return;
 		this.scene.running = false;
 		this.scene.activePower = PowerType.NONE;
-		this.scene.powerSidePanel?.hide();
+		this.scene.powerSidePanel?.refresh();
 
 		const steps = ["3", "2", "1", "GO!"];
 

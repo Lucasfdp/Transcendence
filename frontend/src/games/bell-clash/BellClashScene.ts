@@ -619,7 +619,7 @@ export class BellClashScene
 		}
 
 		this.activePower = PowerType.NONE;
-		this.powerSidePanel?.hide();
+		this.powerSidePanel?.refresh();
 		notifyGameRuleRelease(this.buildGameRuleHooks(), this.ball);
 	}
 
@@ -840,7 +840,7 @@ export class BellClashScene
 		this.launchInput.cancel();
 		this.ball.vx = 0;
 		this.ball.vy = 0;
-		this.powerSidePanel?.hide();
+		this.powerSidePanel?.refresh();
 		this.updateSidePanels();
 		this.localReplay.captureFrame(true, "finished");
 		const replayParticipants = buildCommonLocalReplayParticipantContext(
@@ -1074,7 +1074,7 @@ export class BellClashScene
 				this.online.localShot >= this.online.shotsPerRoundCount ||
 				isBallMoving(this.ball))
 		) {
-			this.powerSidePanel?.hide();
+			this.powerSidePanel?.refresh();
 			return;
 		}
 		const layout = this.resolveLayout();
@@ -1775,7 +1775,7 @@ export class BellClashScene
 			return;
 		this.running = false;
 		this.launchInput.destroy();
-		this.powerSidePanel?.hide();
+		this.powerSidePanel?.refresh();
 		this.overlayState = {
 			kind: "online-end",
 			rebuild: () => this.showOnlineEndScreen(snapshot),

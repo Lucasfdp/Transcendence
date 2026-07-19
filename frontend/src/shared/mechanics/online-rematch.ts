@@ -122,23 +122,58 @@ export function showOnlineRematchEndModal(
 	return overlay;
 }
 
+interface TournamentContinueCountdown {
+	readonly matchId: string;
+	/** Re-render with fresh options, keeping the running countdown. */
+	readonly show: (
+		previous: Phaser.GameObjects.Container | null | undefined,
+		options: OnlineRematchOptions,
+	) => Phaser.GameObjects.Container;
+	readonly cancel: () => void;
+}
+
+/**
+ * One live countdown per scene. The scenes rebuild their end screen whenever
+ * the overlay is destroyed (e.g. the resize handler), which re-enters
+ * `showTournamentContinueModal`; without this registry every re-entry armed a
+ * SECOND ticking timer and the two re-rendered the modal on alternating
+ * seconds, each with its own count ("13, 12, 14, 11, 13, 10…").
+ */
+const tournamentContinueCountdowns = new WeakMap<
+	Phaser.Scene,
+	TournamentContinueCountdown
+>();
+
 function showTournamentContinueModal(
 	scene: Phaser.Scene,
 	previous: Phaser.GameObjects.Container | null | undefined,
 	options: OnlineRematchOptions,
 ): Phaser.GameObjects.Container {
+	const running = tournamentContinueCountdowns.get(scene);
+	if (running && running.matchId === options.matchId)
+		return running.show(previous, options);
+	running?.cancel();
+
 	const socket = getGameSocket();
 	let overlay: Phaser.GameObjects.Container | null | undefined = previous;
+	let currentOptions = options;
 	let remaining = TOURNAMENT_CONTINUE_SECONDS;
 	let done = false;
 
-	const continueToTournament = (): void => {
+	const dispose = (): void => {
 		if (done) return;
 		done = true;
 		timer.remove();
-		scene.events.off("shutdown", cancelCountdown);
-		socket.emit("match:leave-finished", { matchId: options.matchId });
-		options.onReturn?.();
+		scene.events.off("shutdown", dispose);
+		if (tournamentContinueCountdowns.get(scene)?.matchId === options.matchId)
+			tournamentContinueCountdowns.delete(scene);
+	};
+
+	const continueToTournament = (): void => {
+		if (done) return;
+		dispose();
+		socket.emit("match:leave-finished", { matchId: currentOptions.matchId });
+		currentOptions.onReturn?.();
 		scene.registry.remove("onlineMatch");
 		scene.scene.start("HubScene");
 	};
@@ -147,11 +182,11 @@ function showTournamentContinueModal(
 	// uses for its WAITING/CANCELLED re-renders) so the countdown stays live.
 	const render = (): Phaser.GameObjects.Container => {
 		overlay = showGameEndModal(scene, overlay, {
-			...options,
-			result: `${options.result} — BACK TO THE BOARD IN ${remaining}s`,
+			...currentOptions,
+			result: `${currentOptions.result} — BACK TO THE BOARD IN ${remaining}s`,
 			actions: [{ label: "CONTINUE", onClick: continueToTournament }],
 		});
-		options.onOverlay?.(overlay);
+		currentOptions.onOverlay?.(overlay);
 		return overlay;
 	};
 
@@ -164,11 +199,19 @@ function showTournamentContinueModal(
 			else render();
 		},
 	});
-	const cancelCountdown = (): void => {
-		done = true;
-		timer.remove();
-	};
-	scene.events.once("shutdown", cancelCountdown);
+	scene.events.once("shutdown", dispose);
+	tournamentContinueCountdowns.set(scene, {
+		matchId: options.matchId,
+		show: (nextPrevious, nextOptions) => {
+			// The caller may have destroyed the previous overlay (resize
+			// rebuild passes undefined); keep our reference in that case —
+			// showGameEndModal safely ignores an already-destroyed container.
+			if (nextPrevious) overlay = nextPrevious;
+			currentOptions = nextOptions;
+			return render();
+		},
+		cancel: dispose,
+	});
 
 	return render();
 }

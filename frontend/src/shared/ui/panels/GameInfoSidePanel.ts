@@ -146,11 +146,17 @@ export class GameInfoSidePanel {
 	private usedPowers: Set<PowerType> = new Set();
 	private active = false;
 
-	// Collapsible (drop-down) mode state. `collapsed` persists across rebuilds so
-	// toggling and resizes don't reset what the player opened.
+	// Collapse state. The panel can be collapsed to its title strip in every
+	// mode; until the player chooses, drop-downs auto-compact (no room to
+	// dock) while docked panels start open. The choice persists across
+	// rebuilds and mode switches.
 	private collapsible = false;
-	private collapsed = false;
+	private collapsedChoice: boolean | null = null;
 	private side: "left" | "right" = "left";
+
+	private get collapsed(): boolean {
+		return this.collapsedChoice ?? this.collapsible;
+	}
 
 	// Scroll window over the power rows when the list is taller than the panel.
 	private scrollRow = 0;
@@ -248,42 +254,34 @@ export class GameInfoSidePanel {
 		this.rebuild();
 	}
 
-	/** Recompute the drop-down rect for the current collapsed/expanded state. */
+	/** Recompute the expanded drop-down rect (rebuild clamps when collapsed). */
 	private updateCollapsibleRect(): void {
 		const sw = this.scene.scale.width;
 		const sh = this.scene.scale.height;
 		const w = Math.min(COLLAPSE_W, sw - EDGE_PAD * 2);
 		const x = this.side === "left" ? EDGE_PAD : sw - EDGE_PAD - w;
 		const headerH = PAD + TITLE_H;
-		if (this.collapsed) {
-			this.rect = { x, y: COLLAPSE_TOP, width: w, height: headerH };
-		} else {
-			const maxH = sh - COLLAPSE_TOP - EDGE_PAD;
-			const details = this.details();
-			const summaryH = details
-				? SECTION_H + details.summaryLines.length * SUMMARY_LINE_H + 6
-				: 0;
-			const infoH = this.infoRows().length * 22;
-			const need =
-				headerH +
-				summaryH +
-				infoH +
-				SECTION_H +
-				8 +
-				this.powers.length * ROW_H +
-				DESC_H +
-				PAD;
-			this.rect = {
-				x,
-				y: COLLAPSE_TOP,
-				width: w,
-				height: Math.max(headerH, Math.min(need, maxH)),
-			};
-		}
-	}
-
-	hide(): void {
-		this.refresh();
+		const maxH = sh - COLLAPSE_TOP - EDGE_PAD;
+		const details = this.details();
+		const summaryH = details
+			? SECTION_H + details.summaryLines.length * SUMMARY_LINE_H + 6
+			: 0;
+		const infoH = this.infoRows().length * 22;
+		const need =
+			headerH +
+			summaryH +
+			infoH +
+			SECTION_H +
+			8 +
+			this.powers.length * ROW_H +
+			DESC_H +
+			PAD;
+		this.rect = {
+			x,
+			y: COLLAPSE_TOP,
+			width: w,
+			height: Math.max(headerH, Math.min(need, maxH)),
+		};
 	}
 
 	destroy(): void {
@@ -310,7 +308,10 @@ export class GameInfoSidePanel {
 		this.lastRenderKey = renderKey;
 		this.clear();
 		this.maxScrollRows = 0; // recomputed in the rows section; stays 0 when collapsed
-		const r = this.rect;
+		// Collapsed panels shrink to the title strip in every mode.
+		const r = this.collapsed
+			? { ...this.rect, height: PAD + TITLE_H }
+			: this.rect;
 
 		// Frame
 		this.gfx.fillStyle(THEME.stoneDeep, 0.88);
@@ -334,27 +335,31 @@ export class GameInfoSidePanel {
 			fontStyle: "bold",
 		}).setShadow(0, 2, "rgba(5, 28, 18, 0.78)", 2);
 
-		// Collapsible mode anchors the full panel to an edge on small viewports.
-		if (this.collapsible) {
-			this.addText(
-				r.x + r.width - PAD - 12,
-				r.y + PAD - 2,
-				"▴",
-				{
-					fontSize: "14px",
-					color: THEME.textGold,
-					fontFamily: THEME.font,
-					fontStyle: "bold",
-				},
-			);
-			const toggle = this.scene.add
-				.zone(r.x, r.y, r.width, PAD + TITLE_H)
-				.setOrigin(0, 0)
-				.setInteractive({ useHandCursor: true })
-				.setDepth(this.depth + 2);
-			toggle.on("pointerup", () => this.rebuild());
-			this.zones.push(toggle);
-		}
+		// Chevron + a click-zone over the title strip toggle the panel
+		// open/closed in every mode. When collapsed we draw only this strip.
+		this.addText(
+			r.x + r.width - PAD - 12,
+			r.y + PAD - 2,
+			this.collapsed ? "▾" : "▴",
+			{
+				fontSize: "14px",
+				color: THEME.textGold,
+				fontFamily: THEME.font,
+				fontStyle: "bold",
+			},
+		);
+		const toggle = this.scene.add
+			.zone(r.x, r.y, r.width, PAD + TITLE_H)
+			.setOrigin(0, 0)
+			.setInteractive({ useHandCursor: true })
+			.setDepth(this.depth + 2);
+		toggle.on("pointerup", () => {
+			this.collapsedChoice = !this.collapsed;
+			if (this.collapsible) this.updateCollapsibleRect();
+			this.rebuild();
+		});
+		this.zones.push(toggle);
+		if (this.collapsed) return;
 
 		this.gfx.lineStyle(1, THEME.stoneLight, 0.36);
 		this.gfx.lineBetween(

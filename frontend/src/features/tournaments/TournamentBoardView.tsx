@@ -40,7 +40,7 @@ interface TournamentBoardViewProps {
 }
 
 /** Provisional seat colors (seat = fixed turn-order position, D13). */
-const SEAT_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6"];
+const SEAT_COLORS = ["#5b9bd1", "#d95d4e", "#63b56e", "#e8c15a", "#a678c8"];
 
 /** Display titles for the minigame ids (MINIGAME TIME! popup). */
 const MINIGAME_TITLES: Record<string, string> = {

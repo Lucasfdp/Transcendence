@@ -169,6 +169,32 @@ describe("online rematch modal", () => {
 		expect(scene.scene.start).toHaveBeenCalledWith("HubScene");
 	});
 
+	it("tournament countdown survives an overlay rebuild without forking timers", () => {
+		const scene = makeScene({ onlineMatch: { tournamentId: "t-1" } });
+		showOnlineRematchEndModal(scene as never, null, options);
+
+		// Two ticks pass, then the scene rebuilds its end screen (the resize
+		// handler destroys the overlay and calls the modal again).
+		scene.timers[0].callback();
+		scene.timers[0].callback();
+		showOnlineRematchEndModal(scene as never, null, options);
+
+		// No second timer was armed and the re-render kept the live count.
+		expect(scene.timers).toHaveLength(1);
+		const modalCalls = mocks.showGameEndModal.mock.calls;
+		const lastModal = modalCalls[modalCalls.length - 1]?.[2] as {
+			result: string;
+		};
+		expect(lastModal.result).toContain("13s");
+
+		// The single countdown keeps descending monotonically.
+		scene.timers[0].callback();
+		const nextModal = modalCalls[modalCalls.length - 1]?.[2] as {
+			result: string;
+		};
+		expect(nextModal.result).toContain("12s");
+	});
+
 	it("tournament countdown auto-continues to the board when it reaches 0", () => {
 		const scene = makeScene({ onlineMatch: { tournamentId: "t-1" } });
 		showOnlineRematchEndModal(scene as never, null, options);

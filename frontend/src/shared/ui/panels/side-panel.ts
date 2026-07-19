@@ -54,11 +54,18 @@ export class SidePanel {
 	private readonly texts: Phaser.GameObjects.Text[] = [];
 	private readonly zones: Phaser.GameObjects.Zone[] = [];
 
-	// Collapsible (drop-down) mode state. `collapsed` persists across rebuilds.
+	// Collapse state. The panel can be collapsed to its title strip in every
+	// mode; until the player chooses, drop-downs auto-compact (no room to
+	// dock) while docked panels start open. The choice persists across
+	// rebuilds and mode switches.
 	private collapsible = false;
-	private collapsed = false;
+	private collapsedChoice: boolean | null = null;
 	private side: "left" | "right" = "right";
 	private lastConfig: SidePanelConfig | null = null;
+
+	private get collapsed(): boolean {
+		return this.collapsedChoice ?? this.collapsible;
+	}
 
 	// Scroll window over the log rows when there are more than fit above the footer.
 	private rect: PanelRect | null = null;
@@ -125,17 +132,21 @@ export class SidePanel {
 	}
 
 	private render(config: SidePanelConfig): void {
-		const renderKey = this.renderKey(config);
+		// Collapsed panels shrink to the title strip in every mode.
+		const rect = this.collapsed
+			? { ...config.rect, height: PAD + TITLE_H }
+			: config.rect;
+		const renderKey = this.renderKey({ ...config, rect });
 		if (renderKey === this.lastRenderKey) return;
 		this.lastRenderKey = renderKey;
 		this.lastConfig = config;
-		this.rect = config.rect;
+		this.rect = rect;
 		this.maxScrollRows = 0; // recomputed in drawRows; stays 0 when collapsed
 		this.clearObjects();
-		this.drawFrame(config.rect);
-		this.drawTitle(config.title, config.rect);
-		if (!(this.collapsible && this.collapsed)) {
-			this.drawRows(config.rows, config.rect, config.footerRows ?? []);
+		this.drawFrame(rect);
+		this.drawTitle(config.title, rect);
+		if (!this.collapsed) {
+			this.drawRows(config.rows, rect, config.footerRows ?? []);
 		}
 	}
 
@@ -144,10 +155,10 @@ export class SidePanel {
 		const sh = this.scene.scale.height;
 		const w = Math.min(COLLAPSE_W, sw - EDGE_PAD * 2);
 		const x = this.side === "left" ? EDGE_PAD : sw - EDGE_PAD - w;
-		const headerH = PAD + TITLE_H;
-		const height = this.collapsed
-			? headerH
-			: Math.max(headerH, sh - COLLAPSE_TOP - EDGE_PAD);
+		const height = Math.max(
+			PAD + TITLE_H,
+			sh - COLLAPSE_TOP - EDGE_PAD,
+		);
 		return { x, y: COLLAPSE_TOP, width: w, height };
 	}
 
@@ -206,33 +217,39 @@ export class SidePanel {
 			.setShadow(0, 2, "rgba(5, 28, 18, 0.78)", 2);
 		this.texts.push(text);
 
-		// Collapsible mode anchors the full panel to an edge on small viewports.
-		if (this.collapsible) {
-			const chev = this.scene.add
-				.text(
-					rect.x + rect.width - PAD - 12,
-					rect.y + PAD - 2,
-					"▴",
-					{
-						fontSize: "16px",
-						color: THEME.textGold,
-						fontFamily: THEME.font,
-						fontStyle: "bold",
-					},
-				)
-				.setDepth(this.depth + 1);
-			this.texts.push(chev);
+		// Chevron + a click-zone over the title strip toggle the panel
+		// open/closed in every mode. When collapsed we draw only this strip.
+		const chev = this.scene.add
+			.text(
+				rect.x + rect.width - PAD - 12,
+				rect.y + PAD - 2,
+				this.collapsed ? "▾" : "▴",
+				{
+					fontSize: "16px",
+					color: THEME.textGold,
+					fontFamily: THEME.font,
+					fontStyle: "bold",
+				},
+			)
+			.setDepth(this.depth + 1);
+		this.texts.push(chev);
 
-			const toggle = this.scene.add
-				.zone(rect.x, rect.y, rect.width, PAD + TITLE_H)
-				.setOrigin(0, 0)
-				.setInteractive({ useHandCursor: true })
-				.setDepth(this.depth + 2);
-			toggle.on("pointerup", () => {
-				if (this.lastConfig) this.render(this.lastConfig);
-			});
-			this.zones.push(toggle);
-		}
+		const toggle = this.scene.add
+			.zone(rect.x, rect.y, rect.width, PAD + TITLE_H)
+			.setOrigin(0, 0)
+			.setInteractive({ useHandCursor: true })
+			.setDepth(this.depth + 2);
+		toggle.on("pointerup", () => {
+			this.collapsedChoice = !this.collapsed;
+			if (!this.lastConfig) return;
+			this.render(
+				this.collapsible
+					? { ...this.lastConfig, rect: this.collapsibleRect() }
+					: this.lastConfig,
+			);
+		});
+		this.zones.push(toggle);
+		if (this.collapsed) return;
 
 		this.gfx.lineStyle(1, THEME.stoneLight, 0.36);
 		this.gfx.lineBetween(

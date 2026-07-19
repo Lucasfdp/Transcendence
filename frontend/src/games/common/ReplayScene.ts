@@ -101,10 +101,6 @@ const REPLAY_BACKGROUND_ASSETS: Record<string, string> = {
 	login_cycle_bg: "/assets/backgrounds/login_bg.png",
 };
 
-const PLAYER_COLOURS = [
-	0x2255cc, 0xcc3333, 0x4aa564, 0xbb55dd, 0xd4a843,
-] as const;
-
 interface ReplaySceneData {
 	replay: ReplayDetail;
 	controller?: ReplayController;
@@ -630,7 +626,7 @@ export class ReplayScene extends ResponsiveScene {
 		projectile: ProjectileRenderState,
 	): void {
 		const colour =
-			PLAYER_COLOURS[projectile.side % PLAYER_COLOURS.length] ??
+			PLAYER_COLOUR_VALUES[projectile.side % PLAYER_COLOUR_VALUES.length] ??
 			THEME.gold;
 		const ball: BallState = {
 			x: projectile.x,
