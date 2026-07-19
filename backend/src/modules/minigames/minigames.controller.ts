@@ -16,33 +16,33 @@ const MINIGAMES: MiniGameDefinition[] = [
 		name: "Kame Knock",
 		status: "available",
 		description:
-			"Billiards-like target smashing — launch your shell and clear every round.",
+			"Launch your shell and clear every round.",
 	},
 	{
 		id: "bell-clash",
 		name: "Bell Clash",
 		status: "available",
-		description: "Ring the great temple bell from the perfect angle.",
+		description: "Ring the great temple bell.",
 	},
 	{
 		id: "temple-curling",
 		name: "Temple Curling",
 		status: "available",
 		description:
-			"Hot-seat curling with shells, bumpers, powers, and scoring stones.",
+			"Hot-seat curling with your shell.",
 	},
 	{
 		id: "river-rush",
 		name: "River Rush",
 		status: "coming_soon",
 		description:
-			"Race down the cherry-blossom river before the current sweeps you away.",
+			"Race down the cherry-blossom river.",
 	},
 	{
 		id: "bamboo-bash",
 		name: "Bamboo Bash",
 		status: "available",
-		description: "Survive the bamboo forest as obstacles close in.",
+		description: "Survive the bamboo forest.",
 	},
 ];
 

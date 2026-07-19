@@ -961,6 +961,30 @@
 	transition: filter 160ms ease;
 }
 
+.hub-game-card--bamboo-bash::before {
+	background-image: url("/assets/ui/gamesButtons/bambooButton.png");
+}
+
+.hub-game-card--kame-knock::before {
+	background-image: url("/assets/ui/gamesButtons/kameButton.png");
+}
+
+.hub-game-card--oni-dodge::before {
+	background-image: url("/assets/ui/gamesButtons/oniButton.png");
+}
+
+.hub-game-card--bell-clash::before {
+	background-image: url("/assets/ui/gamesButtons/bellButton.png");
+}
+
+.hub-game-card--river-rush::before {
+	background-image: url("/assets/ui/gamesButtons/riverButton.png");
+}
+
+.hub-game-card--temple-curling::before {
+	background-image: url("/assets/ui/gamesButtons/curlButton.png");
+}
+
 .hub-page__mode-back-button {
 	@apply relative grid place-items-center;
 	align-self: center;
@@ -1242,4 +1266,3 @@
 .hub-ranking-list strong {
 	@apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap;
 }
-
