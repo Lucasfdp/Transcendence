@@ -40,7 +40,7 @@ interface TournamentBoardViewProps {
 }
 
 /** Provisional seat colors (seat = fixed turn-order position, D13). */
-const SEAT_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f"];
+const SEAT_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6"];
 
 /** Display titles for the minigame ids (MINIGAME TIME! popup). */
 const MINIGAME_TITLES: Record<string, string> = {
@@ -59,7 +59,8 @@ const TOKEN_OFFSETS = [
 	{ x: 0, y: 0 },
 	{ x: -12, y: -9 },
 	{ x: 12, y: -9 },
-	{ x: 0, y: 12 },
+	{ x: -12, y: 12 },
+	{ x: 12, y: 12 },
 ] as const;
 
 // ── Dice-roll presentation pacing (client-side only, SPEC-022: the server

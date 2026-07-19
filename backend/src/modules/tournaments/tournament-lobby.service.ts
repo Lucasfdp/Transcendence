@@ -88,7 +88,7 @@ const PIN_NOT_FOUND_MESSAGE = "No tournament found for this PIN";
  * section (`join()`) and `start()` both re-validate the seat count inside a
  * serialized DB transaction with a `pessimistic_write` lock on the
  * `tournaments` row (`withLockedTournament`), so concurrent joins can never
- * overfill the 4-seat lobby and a join can never race a start.
+ * overfill the 5-seat lobby and a join can never race a start.
  */
 @Injectable()
 export class TournamentLobbyService {
@@ -479,7 +479,7 @@ export class TournamentLobbyService {
 	}
 
 	/**
-	 * POST /tournaments/:id/start — creator only, exactly 4 players. Flips
+	 * POST /tournaments/:id/start — creator only, exactly 5 players. Flips
 	 * the row to `active`, assigns seed-derived seats if the completion path
 	 * has not already done so, announces `tournament:starting`, and hands off
 	 * to TournamentRuntimeService (SPEC-001/SPEC-023, Phase 1). The seat
@@ -662,7 +662,7 @@ export class TournamentLobbyService {
 	 * Concurrency hardening (SPEC-023 accepted-risk closure): runs `work`
 	 * inside a DB transaction after taking a `pessimistic_write` lock on the
 	 * `tournaments` row, so concurrent joins/starts on the SAME tournament
-	 * serialize instead of racing on a stale participant count — the 4-seat
+	 * serialize instead of racing on a stale participant count — the 5-seat
 	 * lobby can never be overfilled and `start()` can never race a `join()`.
 	 * Same lock-then-mutate discipline as `AchievementsService.applyReward`
 	 * (`lockUserForUpdate`).

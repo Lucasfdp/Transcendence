@@ -6,7 +6,7 @@
  * flow can be exercised end-to-end. It reuses the shared `wip-modal` shell for a
  * consistent frame; the lobby content is styled inline to stay self-contained.
  *
- * Scope note: a tournament needs 4 players to start. This modal only covers
+ * Scope note: a tournament needs 5 players to start. This modal only covers
  * the CREATION lobby; the match itself lives at its own endpoint
  * (`/tournament/:id`, TournamentPage) — once the lobby goes active this modal
  * closes and navigates there.
@@ -20,7 +20,7 @@ import { tournamentApi } from "./api";
 import type { TournamentLobbyState } from "./contracts";
 
 /** Players required to fill a lobby (backend: TOURNAMENT_PLAYERS). */
-const LOBBY_CAPACITY = 4;
+const LOBBY_CAPACITY = 5;
 const POLL_INTERVAL_MS = 2500;
 
 interface TournamentLobbyModalProps {

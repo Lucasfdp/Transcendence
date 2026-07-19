@@ -344,7 +344,7 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 				makeTournament(makeRecord()),
 			);
 			participantQueue = [
-				[1, 3, 4, 5].map((id, i) => makeParticipant(id, i)),
+				[1, 3, 4, 5, 6].map((id, i) => makeParticipant(id, i)),
 			];
 
 			await expect(service.invite("t-1", 1, 2)).rejects.toThrow(
@@ -471,7 +471,7 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 				makeTournament(makeRecord()),
 			);
 			participantQueue = [
-				[1, 3, 4, 5].map((id, i) => makeParticipant(id, i)),
+				[1, 3, 4, 5, 6].map((id, i) => makeParticipant(id, i)),
 			];
 
 			await expect(service.joinByPin(2, "TABCDE")).rejects.toThrow(
@@ -490,16 +490,16 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 			);
 		});
 
-		it("assigns seed-derived seats when the 4th player completes the lobby", async () => {
+		it("assigns seed-derived seats when the 5th player completes the lobby", async () => {
 			const record = makeRecord({ seed: "seed-x" });
 			pinQueryBuilder.getOne.mockResolvedValue(makeTournament(record));
-			const before = [1, 3, 4].map((id, i) => makeParticipant(id, i));
-			const after = [...before, makeParticipant(2, 3)];
+			const before = [1, 3, 4, 5].map((id, i) => makeParticipant(id, i));
+			const after = [...before, makeParticipant(2, 4)];
 			participantQueue = [before, after];
 
 			const state = await service.joinByPin(2, "TABCDE");
 
-			const expectedOrder = deriveTurnOrder("seed-x", [1, 3, 4, 2]);
+			const expectedOrder = deriveTurnOrder("seed-x", [1, 3, 4, 5, 2]);
 			expect(record.seatsAssigned).toBe(true);
 			for (const participant of after) {
 				expect(participant.seat).toBe(
@@ -509,7 +509,9 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 			expect(state.participants.map((p) => p.userId)).toEqual(
 				expectedOrder,
 			);
-			expect(state.participants.map((p) => p.seat)).toEqual([0, 1, 2, 3]);
+			expect(state.participants.map((p) => p.seat)).toEqual([
+				0, 1, 2, 3, 4,
+			]);
 			expect(lastPushedCause()).toBe("TournamentLobbyCompleted");
 			// Every member got the live update.
 			const updates = notifications.pushLiveEvent.mock.calls.filter(
@@ -604,7 +606,7 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 			const tournament = makeTournament(makeRecord({ expiresAt: PAST }));
 			tournamentRepo.findOne.mockResolvedValue(tournament);
 			participantQueue = [
-				[1, 2, 3, 4].map((id, i) => makeParticipant(id, i)),
+				[1, 2, 3, 4, 5].map((id, i) => makeParticipant(id, i)),
 			];
 
 			await expect(service.start("t-1", 1)).rejects.toThrow(
@@ -617,7 +619,9 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 			const record = makeRecord({ seed: "seed-y" });
 			const tournament = makeTournament(record);
 			tournamentRepo.findOne.mockResolvedValue(tournament);
-			const members = [1, 2, 3, 4].map((id, i) => makeParticipant(id, i));
+			const members = [1, 2, 3, 4, 5].map((id, i) =>
+				makeParticipant(id, i),
+			);
 			participantQueue = [members];
 
 			const state = await service.start("t-1", 1);
@@ -626,7 +630,7 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 			expect(tournament.startedAt).toBeInstanceOf(Date);
 			expect(state.status).toBe("active");
 
-			const expectedOrder = deriveTurnOrder("seed-y", [1, 2, 3, 4]);
+			const expectedOrder = deriveTurnOrder("seed-y", [1, 2, 3, 4, 5]);
 			expect(state.participants.map((p) => p.userId)).toEqual(
 				expectedOrder,
 			);

@@ -14,7 +14,7 @@ import { TOURNAMENT_SETTINGS_V1 } from "./config/settings.catalog";
 export const TOURNAMENT_LOBBY_EXPIRY_MS =
 	TOURNAMENT_SETTINGS_V1.timeouts.lobbyExpiryMinutes * 60 * 1_000;
 
-/** Fixed tournament size (SPEC-024 / SPEC-038 v1): exactly 4 players. */
+/** Fixed tournament size (SPEC-024 / SPEC-038 v1): exactly 5 players. */
 export const TOURNAMENT_PLAYERS = TOURNAMENT_SETTINGS_V1.playersPerTournament;
 
 /** Default configuration catalog id stamped on new tournaments (SPEC-024). */

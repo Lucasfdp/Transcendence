@@ -82,7 +82,7 @@ export const TOURNAMENT_SETTINGS_V1: TournamentSettings = {
 		balance: "provisional dev values (D2, SPEC-040)",
 	},
 
-	playersPerTournament: 4,
+	playersPerTournament: 5,
 	keyItemsRequired: 4,
 	initialPoints: 100,
 	inventoryCapacity: 8,
