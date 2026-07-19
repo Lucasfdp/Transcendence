@@ -53,6 +53,21 @@ describe("ArenaBallTrailRuntime", () => {
 		]);
 	});
 
+	it("preserves authoritative ids for projected power balls", () => {
+		const [object] = buildArenaPowerBallTrailObjects(
+			[
+				{
+					id: 42,
+					player: 1,
+					ball: { x: 10, y: 20, vx: 1, vy: 0, r: 4 },
+				},
+			],
+			() => true,
+		);
+
+		expect(object.id).toBe(42);
+	});
+
 	it("reads rectangular arena trails for curling-style projectiles", () => {
 		const runtime = new ArenaBallTrailRuntime();
 		const arena = {

@@ -24,7 +24,7 @@ import type { PowerPickupManager } from "../../shared/mechanics/power-pickups";
 
 const DEPTH_BALLS = 2;
 const DEPTH_HUD = 20;
-const BUMPER_FLASH_MS = 130;
+export const BUMPER_FLASH_MS = 130;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

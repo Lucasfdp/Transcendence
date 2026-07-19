@@ -321,6 +321,23 @@ describe("MatchmakingGateway", () => {
 				}),
 			);
 		});
+
+		it("includes compact authoritative impact events in the public projection", () => {
+			const impactEvent = { id: 4, kind: "solid-target" as const, entityId: 7, side: 1, objectId: 9, x: 70.5, y: 0 };
+			const room = makeRoom({
+				physicsState: {
+					matchId: "match-1", physicsSeq: 10, serverTime: 400,
+					entities: [], pickups: [], scoreEvents: [], impactEvents: [impactEvent],
+					nextEntityId: 8, nextPickupId: 1, nextScoreEventId: 1,
+				} as never,
+			});
+
+			const projection = (
+				gateway as unknown as { publicPhysicsState: (value: MatchRoom) => { impactEvents: unknown[] } }
+			).publicPhysicsState(room);
+
+			expect(projection.impactEvents).toEqual([impactEvent]);
+		});
 	});
 
 	describe("convertSeatToBot", () => {
@@ -386,6 +403,7 @@ describe("MatchmakingGateway", () => {
 					entities: [],
 					pickups: [],
 					scoreEvents: [],
+					impactEvents: [{ id: 6, kind: "bumper", entityId: 2, side: 0, objectId: 3, x: 100, y: 200 }],
 					nextEntityId: 1,
 					nextPickupId: 1,
 					nextScoreEventId: 1,
@@ -406,7 +424,11 @@ describe("MatchmakingGateway", () => {
 			expect(socket.emit).toHaveBeenCalledWith("game:state", room.state);
 			expect(socket.emit).toHaveBeenCalledWith(
 				"game:physics-state",
-				expect.objectContaining({ physicsSeq: 12, liveRoundScores: [100, 0] }),
+				expect.objectContaining({
+					physicsSeq: 12,
+					liveRoundScores: [100, 0],
+					impactEvents: [{ id: 6, kind: "bumper", entityId: 2, side: 0, objectId: 3, x: 100, y: 200 }],
+				}),
 			);
 		});
 	});

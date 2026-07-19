@@ -35,6 +35,17 @@ describe("Temple Curling authoritative physics", () => {
 		launchShellCurlProjectile(physics, 0, 300, 0, "none");
 		advanceShellCurlPhysics(physics, state, 1000 / 30);
 		expect(physics.entities[0].vx).toBeLessThan(0);
+		expect(physics.impactEvents).toEqual([{
+			id: 1,
+			kind: "bumper",
+			entityId: physics.entities[0].id,
+			side: 0,
+			objectId: 0,
+			x: 0.07 * 1570,
+			y: 0.5 * 880,
+		}]);
+		advanceShellCurlPhysics(physics, state, 0);
+		expect(physics.impactEvents).toHaveLength(1);
 	});
 
 	it("creates stable authoritative entities for splitter power", () => {
@@ -66,11 +77,14 @@ describe("Temple Curling authoritative physics", () => {
 	it("publishes a newer empty projection when an end resets", () => {
 		const physics = createShellCurlPhysicsState("curl-physics");
 		launchShellCurlProjectile(physics, 0, 300, 0, "none");
+		physics.nextImpactEventId = 4;
 		const previousSeq = physics.physicsSeq;
 
 		resetShellCurlPhysicsEnd(physics);
 
 		expect(physics.entities).toEqual([]);
+		expect(physics.impactEvents).toEqual([]);
+		expect(physics.nextImpactEventId).toBe(4);
 		expect(physics.physicsSeq).toBeGreaterThan(previousSeq);
 	});
 });

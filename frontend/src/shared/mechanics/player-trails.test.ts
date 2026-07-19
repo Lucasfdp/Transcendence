@@ -1,7 +1,10 @@
 import type Phaser from "phaser";
 import { describe, expect, it, vi } from "vitest";
 
-import { drawClassicPlayerTrail } from "./player-trails";
+import {
+	buildPlayerTrailStamps,
+	drawClassicPlayerTrail,
+} from "./player-trails";
 
 function createGraphicsMock() {
 	return {
@@ -92,5 +95,45 @@ describe("drawClassicPlayerTrail", () => {
 			[1, 2, 3, 4],
 			[100, 200, 300, 400],
 		]);
+	});
+});
+
+describe("buildPlayerTrailStamps", () => {
+	const positions = Array.from({ length: 12 }, (_value, index) => ({
+		x: index * 10,
+		y: 20 + index * 2,
+	}));
+
+	it("builds a continuous texture-stamped classic trail", () => {
+		const stamps = buildPlayerTrailStamps(
+			positions,
+			0xf0d979,
+			"trail_classic",
+		);
+
+		expect(stamps.length).toBeGreaterThan(positions.length);
+		expect(stamps.every((stamp) => stamp.texture === "soft")).toBe(true);
+		expect(stamps[stamps.length - 1]?.tint).toBe(0xf0d979);
+	});
+
+	it.each([
+		["trail_comet", "soft"],
+		["trail_spark", "spark"],
+		["trail_ghost", "ring"],
+		["trail_ripple", "ring"],
+	] as const)("builds distinct %s stamps", (effect, texture) => {
+		const stamps = buildPlayerTrailStamps(positions, 0xf0d979, effect);
+		expect(stamps.length).toBeGreaterThan(0);
+		expect(stamps.some((stamp) => stamp.texture === texture)).toBe(true);
+	});
+
+	it("falls back to classic stamps for an unknown cosmetic id", () => {
+		const stamps = buildPlayerTrailStamps(
+			positions,
+			0xf0d979,
+			"trail_unknown",
+		);
+		expect(stamps.length).toBeGreaterThan(positions.length);
+		expect(stamps.every((stamp) => stamp.texture === "soft")).toBe(true);
 	});
 });

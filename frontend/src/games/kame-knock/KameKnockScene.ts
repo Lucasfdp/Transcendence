@@ -1526,7 +1526,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 
 
 
-	private recordBallTrails(): void {
+	public recordBallTrails(): void {
 		if (!this.online.isActive) {
 			this.ballTrails.recordSet({
 				balls: [
@@ -1553,6 +1553,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 				player: side,
 				ball,
 			})),
+			powerBalls: this.powerBalls,
 			isMoving: (ball) => this.isBallMoving(ball),
 			trailOptions: { ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
 			trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
@@ -1576,7 +1577,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			playersById.set(id, player);
 		for (let index = 0; index < this.powerBalls.length; index++)
 			playersById.set(
-				`power-${index}`,
+				this.powerBalls.at(index)?.id ?? `power-${index}`,
 				this.powerBalls.at(index)?.player ?? 0,
 			);
 		for (const side of this.online.ballMap.keys()) playersById.set(side, side);

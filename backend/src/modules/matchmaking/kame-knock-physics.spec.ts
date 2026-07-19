@@ -77,6 +77,34 @@ describe("Kame Knock authoritative physics", () => {
 		]);
 	});
 
+	it("publishes one monotonic event when a projectile bounces off a solid target", () => {
+		const physics = createKamePhysicsState("kame-physics");
+		const state = snapshot();
+		state.targets = [{
+			id: 9, kind: "drum", breakable: false, nx: 0.1, ny: 0,
+			ageMs: 0, lifetimeMs: Number.POSITIVE_INFINITY, radiusSrc: 32, points: 150,
+		}];
+		launchKameProjectile(physics, 1, 0, 100, 0, "none");
+
+		advanceKamePhysics(physics, state, 1000);
+
+		expect(physics.entities[0].vx).toBeLessThan(0);
+		expect(physics.impactEvents).toEqual([{
+			id: 1,
+			kind: "solid-target",
+			entityId: physics.entities[0].id,
+			side: 1,
+			objectId: 9,
+			x: 0.1 * 705,
+			y: 0,
+		}]);
+		advanceKamePhysics(physics, state, 0);
+		expect(physics.impactEvents).toHaveLength(1);
+		resetKamePhysicsTurn(physics, false);
+		expect(physics.impactEvents).toEqual([]);
+		expect(physics.nextImpactEventId).toBe(2);
+	});
+
 	it("creates stable server identities for splitter projectiles", () => {
 		const physics = createKamePhysicsState("kame-physics");
 

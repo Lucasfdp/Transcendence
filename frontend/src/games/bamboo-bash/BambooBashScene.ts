@@ -1362,7 +1362,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		this.ballTrails.reset(`local-${index}`, ball.x, ball.y);
 	}
 
-	private recordBallTrails(): void {
+	public recordBallTrails(): void {
 		if (this.online.ballMap.size > 0) {
 			this.ballTrails.recordSet({
 				balls: [...this.online.ballMap.entries()].map(([side, ball]) => ({
@@ -1417,14 +1417,14 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		);
 	}
 
-	private drawBallTrails(): void {
+	public drawBallTrails(): void {
 		const playersById = new Map<number | string, number>([["local", 0]]);
 		for (const [side] of this.online.ballMap) playersById.set(side, side);
 		this.localParticipants.forEach((_participant, index) =>
 			playersById.set(`local-${index}`, index),
 		);
 		this.powerBalls.forEach((entry, index) =>
-			playersById.set(`power-${index}`, entry.player),
+			playersById.set(entry.id ?? `power-${index}`, entry.player),
 		);
 		this.ballTrails.draw(this.trailGfx, playersById, {
 			...BALL_TRAIL_OPTIONS,

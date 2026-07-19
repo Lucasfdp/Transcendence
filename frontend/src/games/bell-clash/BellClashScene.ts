@@ -1246,7 +1246,7 @@ export class BellClashScene
 		this.ballTrails.reset("local", this.ball.x, this.ball.y);
 	}
 
-	private recordBallTrails(): void {
+	public recordBallTrails(): void {
 		if (!this.online.isActive && this.localPlayerCount > 1) {
 			this.ballTrails.recordSet({
 				balls: this.localBallsForPhysics().map(([side, ball]) => ({
@@ -1318,7 +1318,7 @@ export class BellClashScene
 		for (const side of this.online.ballMap.keys())
 			playersById.set(side, side);
 		this.powerBalls.forEach((entry, index) =>
-			playersById.set(`power-${index}`, entry.player),
+			playersById.set(entry.id ?? `power-${index}`, entry.player),
 		);
 		this.ballTrails.draw(this.trailGfx, playersById, {
 			...BALL_TRAIL_OPTIONS,

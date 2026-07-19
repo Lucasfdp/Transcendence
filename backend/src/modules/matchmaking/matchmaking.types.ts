@@ -177,9 +177,11 @@ export interface ShellCurlPhysicsState {
 	pickups: ShellCurlPhysicsPickup[];
 	scoreEvents: [];
 	pickupEvents: ArenaPhysicsPickupEvent[];
+	impactEvents: ArenaPhysicsImpactEvent[];
 	nextEntityId: number;
 	nextPickupId: number;
 	nextPickupEventId: number;
+	nextImpactEventId: number;
 }
 
 export interface BallSnapshotData {
@@ -391,6 +393,16 @@ export interface ArenaPhysicsPickupEvent {
 	y: number;
 }
 
+export interface ArenaPhysicsImpactEvent {
+	id: number;
+	kind: "bumper" | "solid-target";
+	entityId: number;
+	side: number;
+	objectId: number;
+	x: number;
+	y: number;
+}
+
 export interface BellClashPhysicsState {
 	matchId: string;
 	physicsSeq: number;
@@ -399,6 +411,7 @@ export interface BellClashPhysicsState {
 	pickups: BellClashPhysicsPickup[];
 	scoreEvents: BellClashScoreEvent[];
 	pickupEvents?: ArenaPhysicsPickupEvent[];
+	impactEvents?: ArenaPhysicsImpactEvent[];
 	nextEntityId: number;
 	nextPickupId: number;
 	nextScoreEventId: number;
@@ -425,6 +438,7 @@ export interface BambooBashPhysicsState {
 	pickups: BambooBashPhysicsPickup[];
 	scoreEvents: BambooBashScoreEvent[];
 	pickupEvents?: ArenaPhysicsPickupEvent[];
+	impactEvents?: ArenaPhysicsImpactEvent[];
 	nextEntityId: number;
 	nextPickupId: number;
 	nextScoreEventId: number;
@@ -453,10 +467,12 @@ export interface KameKnockPhysicsState {
 		y: number;
 	}>;
 	pickupEvents?: ArenaPhysicsPickupEvent[];
+	impactEvents: ArenaPhysicsImpactEvent[];
 	nextEntityId: number;
 	nextPickupId: number;
 	nextScoreEventId: number;
 	nextPickupEventId?: number;
+	nextImpactEventId: number;
 	combo: number;
 	settledProjectionPending: boolean;
 }

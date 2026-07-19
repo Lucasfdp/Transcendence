@@ -28,10 +28,12 @@ export function createKamePhysicsState(matchId: string): KameKnockPhysicsState {
 		pickups: [],
 		scoreEvents: [],
 		pickupEvents: [],
+		impactEvents: [],
 		nextEntityId: 1,
 		nextPickupId: 1,
 		nextScoreEventId: 1,
 		nextPickupEventId: 1,
+		nextImpactEventId: 1,
 		combo: 0,
 		settledProjectionPending: false,
 	};
@@ -45,6 +47,7 @@ export function resetKamePhysicsTurn(
 	physics.pickups = powerupsEnabled ? [createPickup(physics)] : [];
 	physics.scoreEvents = [];
 	physics.pickupEvents = [];
+	physics.impactEvents = [];
 	physics.combo = 0;
 	physics.settledProjectionPending = false;
 	bump(physics);
@@ -157,7 +160,13 @@ function resolveTargets(physics: KameKnockPhysicsState, snapshot: KameKnockSnaps
 		const target = snapshot.targets[index]; const x = target.nx * ARENA_RX; const y = target.ny * ARENA_RY;
 		const distance = Math.max(0.001, Math.hypot(entity.x - x, entity.y - y)); const minimum = entity.radius + target.radiusSrc;
 		if (distance >= minimum) continue;
-		if (!target.breakable) { bounceTarget(entity, x, y, target.radiusSrc, distance); continue; }
+		if (!target.breakable) {
+			if (bounceTarget(entity, x, y, target.radiusSrc, distance)) {
+				physics.impactEvents.push({ id: physics.nextImpactEventId++, kind: "solid-target", entityId: entity.id, side: entity.ownerSide, objectId: target.id, x, y });
+				physics.impactEvents = physics.impactEvents.slice(-16);
+			}
+			continue;
+		}
 		if (entity.ghostCollisionAvailable) { entity.ghostCollisionAvailable = false; continue; }
 		snapshot.targets.splice(index, 1);
 		physics.combo += 1;
@@ -172,11 +181,13 @@ function resolveTargets(physics: KameKnockPhysicsState, snapshot: KameKnockSnaps
 	}
 }
 
-function bounceTarget(entity: KameKnockPhysicsEntity, x: number, y: number, radius: number, distance: number): void {
+function bounceTarget(entity: KameKnockPhysicsEntity, x: number, y: number, radius: number, distance: number): boolean {
 	const nx = (entity.x - x) / distance; const ny = (entity.y - y) / distance;
 	entity.x = x + nx * (entity.radius + radius); entity.y = y + ny * (entity.radius + radius);
 	const dot = entity.vx * nx + entity.vy * ny;
-	if (dot < 0) { entity.vx = (entity.vx - 2 * dot * nx) * SOLID_BOUNCE_DAMP; entity.vy = (entity.vy - 2 * dot * ny) * SOLID_BOUNCE_DAMP; }
+	if (dot >= 0) return false;
+	entity.vx = (entity.vx - 2 * dot * nx) * SOLID_BOUNCE_DAMP; entity.vy = (entity.vy - 2 * dot * ny) * SOLID_BOUNCE_DAMP;
+	return true;
 }
 
 function resolveEntityCollisions(entities: KameKnockPhysicsEntity[]): void {

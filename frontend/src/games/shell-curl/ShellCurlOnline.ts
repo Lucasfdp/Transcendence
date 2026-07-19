@@ -23,7 +23,11 @@ import {
 import { showOnlineRematchEndModal } from "../../shared/mechanics/online-rematch";
 import { THEME } from "../../shared/theme";
 import { displayUsername } from "../../shared/player-labels";
-import { drawShellCurlBallTrails, drawShellCurlBumpers } from "./ShellCurlView";
+import {
+	BUMPER_FLASH_MS,
+	drawShellCurlBallTrails,
+	drawShellCurlBumpers,
+} from "./ShellCurlView";
 import { destroyIngamePlayerTexture } from "../../shared/mechanics/player-renderer";
 import {
 	appendAuthoritativeSample,
@@ -87,6 +91,7 @@ export interface ShellCurlOnlineScene {
 	playerHexColour(player: number): string;
 	playerLabel(side: number, playerCount: number): string;
 	redrawAllBalls(): void;
+	recordMovingBallTrails(): void;
 	removeBall(ball: CurlingBallState): void;
 	restoreOnlineAim(power: PowerType): void;
 	showRemotePlacedBall(side: number): void;
@@ -106,6 +111,7 @@ export class ShellCurlOnlineController {
 	private readonly projected = new Map<number, ProjectedCurlingBall>();
 	private rejoinTimer: ReturnType<typeof setInterval> | null = null;
 	private releasePending = false;
+	private lastImpactEventId = 0;
 
 	constructor(scene: Phaser.Scene & ShellCurlOnlineScene) {
 		this.scene = scene;
@@ -135,6 +141,7 @@ export class ShellCurlOnlineController {
 		this.lastPhysicsSeq = -1;
 		this.projectionTimeline.reset();
 		this.releasePending = false;
+		this.lastImpactEventId = 0;
 		this.projected.clear();
 		return this.isActive;
 	}
@@ -231,7 +238,7 @@ export class ShellCurlOnlineController {
 		);
 	}
 
-	updateReplay(_delta: number): void {
+	updateReplay(delta: number): void {
 		for (const ball of this.projected.values()) {
 			const sample = this.projectionTimeline.interpolate(
 				ball.syncSamples ?? [],
@@ -239,6 +246,19 @@ export class ShellCurlOnlineController {
 			if (!sample) continue;
 			this.applySample(ball, sample);
 		}
+		this.scene.recordMovingBallTrails();
+		let bumpersChanged = false;
+		for (const bumper of this.scene.bumpers) {
+			if (bumper.flashTimer <= 0) continue;
+			bumper.flashTimer = Math.max(0, bumper.flashTimer - delta);
+			bumpersChanged = true;
+		}
+		if (bumpersChanged)
+			drawShellCurlBumpers(
+				this.scene.bumperGfx,
+				this.scene.bumpers,
+				this.scene.arena,
+			);
 		this.scene.redrawAllBalls();
 		drawShellCurlBallTrails(
 			this.scene.ballTrails,
@@ -324,6 +344,7 @@ export class ShellCurlOnlineController {
 	}
 
 	private applyPhysicsState(state: ShellCurlPhysicsState): void {
+		const isInitialPhysicsProjection = this.lastPhysicsSeq < 0;
 		if (
 			!this.match ||
 			state.matchId !== this.match.matchId ||
@@ -332,6 +353,13 @@ export class ShellCurlOnlineController {
 			return;
 		this.lastPhysicsSeq = state.physicsSeq;
 		this.scene.syncOnlinePowerPickups(state.pickups);
+		for (const event of state.impactEvents ?? []) {
+			if (event.id <= this.lastImpactEventId) continue;
+			this.lastImpactEventId = event.id;
+			if (isInitialPhysicsProjection || event.kind !== "bumper") continue;
+			const bumper = this.scene.bumpers[event.objectId];
+			if (bumper) bumper.flashTimer = BUMPER_FLASH_MS;
+		}
 		if (state.entities.length === 0) {
 			this.projected.clear();
 			this.scene.clearAllBallGfx();
@@ -387,6 +415,7 @@ export class ShellCurlOnlineController {
 			};
 			ball.teamId = entity.ownerSide;
 			ball.power = entity.power as PowerType;
+			ball.alpha = entity.alpha ?? 1;
 			ball.stopped = entity.stopped;
 			ball.syncSamples = appendAuthoritativeSample(
 				ball.syncSamples ?? [],
@@ -458,6 +487,7 @@ export class ShellCurlOnlineController {
 				(object.scale ?? 1) *
 				this.scene.arena.scale,
 			power: object.power as PowerType,
+			alpha: object.alpha ?? 1,
 			stopped: true,
 			curlBias: DEFAULT_CURL_BIAS,
 		}));

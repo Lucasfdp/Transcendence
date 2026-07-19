@@ -42,6 +42,7 @@ export interface CurlingBallState extends BallState {
 	ghostUsed?: boolean;
 	frozen?: boolean;
 	frictionOverride?: number;
+	alpha?: number;
 }
 
 /**

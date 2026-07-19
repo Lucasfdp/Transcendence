@@ -31,9 +31,11 @@ export function createShellCurlPhysicsState(matchId: string): ShellCurlPhysicsSt
 		pickups: [],
 		scoreEvents: [],
 		pickupEvents: [],
+		impactEvents: [],
 		nextEntityId: 1,
 		nextPickupId: 1,
 		nextPickupEventId: 1,
+		nextImpactEventId: 1,
 	};
 }
 
@@ -61,6 +63,7 @@ export function resetShellCurlPhysicsEnd(
 		? Array.from({ length: PICKUP_COUNT }, () => createPickup(physics))
 		: [];
 	physics.pickupEvents = [];
+	physics.impactEvents = [];
 	bump(physics);
 }
 
@@ -78,7 +81,7 @@ export function advanceShellCurlPhysics(
 		for (const entity of physics.entities) {
 			if (entity.stopped) continue;
 			stepEntity(entity, stepMs);
-			resolveBumpers(entity, snapshot);
+			resolveBumpers(physics, entity, snapshot);
 		}
 		resolveEntityCollisions(physics.entities);
 		collectPickups(physics, snapshot);
@@ -230,9 +233,9 @@ function resolveWall(entity: ShellCurlPhysicsEntity): void {
 	else if (entity.y > bottom) { entity.y = bottom; entity.vy = -entity.vy * damping; }
 }
 
-function resolveBumpers(entity: ShellCurlPhysicsEntity, snapshot: CurlingSnapshot): void {
+function resolveBumpers(physics: ShellCurlPhysicsState, entity: ShellCurlPhysicsEntity, snapshot: CurlingSnapshot): void {
 	const bumpers = (snapshot.map as { bumpers?: Array<{ fx: number; fy: number }> }).bumpers ?? [];
-	for (const bumper of bumpers) {
+	for (const [bumperIndex, bumper] of bumpers.entries()) {
 		const x = bumper.fx * SHEET_W, y = bumper.fy * SHEET_H;
 		const dx = entity.x - x, dy = entity.y - y, distance = Math.max(0.001, Math.hypot(dx, dy));
 		const minimum = entity.radius + BUMPER_RADIUS;
@@ -240,7 +243,11 @@ function resolveBumpers(entity: ShellCurlPhysicsEntity, snapshot: CurlingSnapsho
 		const nx = dx / distance, ny = dy / distance;
 		entity.x = x + nx * minimum; entity.y = y + ny * minimum;
 		const dot = entity.vx * nx + entity.vy * ny;
-		if (dot < 0) { entity.vx = (entity.vx - 2 * dot * nx) * BUMPER_BOOST; entity.vy = (entity.vy - 2 * dot * ny) * BUMPER_BOOST; entity.stopped = false; }
+		if (dot < 0) {
+			entity.vx = (entity.vx - 2 * dot * nx) * BUMPER_BOOST; entity.vy = (entity.vy - 2 * dot * ny) * BUMPER_BOOST; entity.stopped = false;
+			physics.impactEvents.push({ id: physics.nextImpactEventId++, kind: "bumper", entityId: entity.id, side: entity.ownerSide, objectId: bumperIndex, x, y });
+			physics.impactEvents = physics.impactEvents.slice(-16);
+		}
 	}
 }
 

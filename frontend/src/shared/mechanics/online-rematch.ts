@@ -6,6 +6,7 @@ import {
 	type OnlineMatchContext,
 } from "../../services/network/gameSocket";
 import { showGameEndModal, type GameEndModalOptions } from "./game-end-modal";
+import { applySnapshotPlayerCosmetics } from "./player-config";
 
 interface OnlineRematchOptions extends Omit<GameEndModalOptions, "actions"> {
 	readonly matchId: string;
@@ -80,6 +81,7 @@ export function showOnlineRematchEndModal(
 		replayDisabledReason?: "powerups-enabled" | null;
 	}): void => {
 		disposeListeners();
+		applySnapshotPlayerCosmetics(scene.registry, payload.snapshot.players);
 		scene.registry.set("onlineMatch", {
 			matchId: payload.matchId,
 			side: payload.side,

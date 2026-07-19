@@ -175,6 +175,28 @@ describe("KameKnockEngine", () => {
 		expect(room.physicsState?.entities).toHaveLength(0);
 	});
 
+	it("retains server-authored solid-target impact events in physics state", () => {
+		const engine = new KameKnockEngine();
+		const room = makeRoom(false);
+		engine.start(room);
+		const state = room.state as KameKnockSnapshot;
+		state.targets = [{
+			id: 12, kind: "crate", breakable: false, nx: 0.1, ny: 0,
+			ageMs: 0, lifetimeMs: Number.POSITIVE_INFINITY, radiusSrc: 28, points: 120,
+		}];
+
+		engine.handleInput(room, 1, {
+			matchId: room.matchId,
+			action: "release",
+			payload: { roundNumber: 1, turnNumber: 0, vx: 100, vy: 0 },
+		});
+		engine.advanceSimulation(room, 1000);
+
+		expect(room.physicsState?.impactEvents).toEqual([
+			expect.objectContaining({ id: 1, kind: "solid-target", side: 0, objectId: 12 }),
+		]);
+	});
+
 	it("advances a settled authoritative turn without client settlement input", () => {
 		const engine = new KameKnockEngine();
 		const room = makeRoom(false);

@@ -8,6 +8,7 @@ import { KameKnockScene } from "../games/kame-knock/KameKnockScene";
 import { BellClashScene } from "../games/bell-clash/BellClashScene";
 import type { GameId } from "../shared/mechanics/game-powers";
 import type { OnlineMatchContext } from "../services/network/gameSocket";
+import { resolveSnapshotPlayerCosmetics } from "../shared/mechanics/player-config";
 
 export interface ShellSmashStartData {
 	gameId: GameId;
@@ -79,10 +80,19 @@ function configureInitialScene(
 	initialScene?: ShellSmashStartData,
 ): void {
 	if (!initialScene) return;
+	const onlineCosmetics = initialScene.onlineMatch?.snapshot
+		? resolveSnapshotPlayerCosmetics(initialScene.onlineMatch.snapshot.players)
+		: undefined;
 
 	game.registry.set("shellSelection", initialScene.shellSelection);
-	game.registry.set("shellSkins", initialScene.shellSkins ?? {});
-	game.registry.set("trailEffects", initialScene.trailEffects ?? {});
+	game.registry.set(
+		"shellSkins",
+		initialScene.shellSkins ?? onlineCosmetics?.shellSkins ?? {},
+	);
+	game.registry.set(
+		"trailEffects",
+		initialScene.trailEffects ?? onlineCosmetics?.trailEffects ?? {},
+	);
 	if (initialScene.user) game.registry.set("user", initialScene.user);
 	else game.registry.remove("user");
 	game.registry.set("localMode", initialScene.localMode ?? "solo");

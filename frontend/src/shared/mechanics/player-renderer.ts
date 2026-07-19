@@ -113,7 +113,8 @@ export function drawIngameShellTexture(
 		.setPosition(state.x, state.y)
 		.setDepth(depth + 0.01)
 		.setRotation(isPlayerMoving(state) ? shell.rotation : 0)
-		.setDisplaySize(state.r * 2.35, state.r * 2.35);
+		.setDisplaySize(state.r * 2.35, state.r * 2.35)
+		.setAlpha(state.alpha ?? 1);
 	return true;
 }
 

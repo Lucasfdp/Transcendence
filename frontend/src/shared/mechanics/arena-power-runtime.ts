@@ -15,6 +15,7 @@ import { createMirrorBall, createSplitBalls } from "./ball-spawn-powers";
 import { PowerType } from "./power-system";
 
 export interface ArenaPowerBallEntry {
+	id?: number | string;
 	ball: BallState;
 	player: number;
 }

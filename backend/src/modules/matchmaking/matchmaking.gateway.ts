@@ -1235,6 +1235,7 @@ export class MatchmakingGateway
 			pickups: physics.pickups,
 			scoreEvents: physics.scoreEvents,
 			pickupEvents: physics.pickupEvents ?? [],
+			impactEvents: physics.impactEvents ?? [],
 		};
 		if (room.state.gameId === "bamboo-bash") {
 			const state = room.state as BambooBashSnapshot;

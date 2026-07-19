@@ -87,6 +87,7 @@ export interface BellClashOnlineScene {
 	addScoreEvent(label: string, value: string): void;
 	currentPlayerIndex(): number;
 	drawBallTrails(): void;
+	recordBallTrails(): void;
 	drawBalls(): void;
 	formatScoreText(): string;
 	formatShotText(): string;
@@ -335,6 +336,7 @@ export class BellClashOnlineController {
 			this.updateProjectedBall(ball, delta);
 		}
 
+		this.scene.recordBallTrails();
 		this.scene.layoutBell();
 		this.scene.drawBallTrails();
 		this.scene.drawBalls();
@@ -517,11 +519,14 @@ export class BellClashOnlineController {
 		this.hasPhysicsProjection = true;
 		const activeIds = new Set(state.entities.map((entity) => entity.id));
 		for (const id of this.projectedEntities.keys()) {
-			if (!activeIds.has(id)) this.projectedEntities.delete(id);
+			if (!activeIds.has(id)) {
+				this.projectedEntities.delete(id);
+				this.scene.ballTrails.delete(id);
+			}
 		}
 
 		const primaryBySide = new Map<number, OnlineBallState>();
-		const derived: Array<{ ball: OnlineBallState; player: number }> = [];
+		const derived: Array<{ id: number; ball: OnlineBallState; player: number }> = [];
 		for (const entity of state.entities) {
 			let ball =
 				entity.primary && entity.ownerSide === this.side
@@ -572,7 +577,7 @@ export class BellClashOnlineController {
 				ball.vy = 0;
 			}
 			if (entity.primary) primaryBySide.set(entity.ownerSide, ball);
-			else derived.push({ ball, player: entity.ownerSide });
+			else derived.push({ id: entity.id, ball, player: entity.ownerSide });
 		}
 
 		for (const [side, ball] of primaryBySide) {

@@ -248,6 +248,16 @@ export interface ArenaPhysicsEntity {
 	alpha: number;
 }
 
+export interface ArenaPhysicsImpactEvent {
+	id: number;
+	kind: "bumper" | "solid-target";
+	entityId: number;
+	side: number;
+	objectId: number;
+	x: number;
+	y: number;
+}
+
 export interface BambooBashPhysicsState {
 	matchId: string;
 	physicsSeq: number;
@@ -278,6 +288,7 @@ export interface KameKnockPhysicsState {
 		y: number;
 	}>;
 	pickupEvents?: Array<{ id: number; side: number; type: string; x: number; y: number }>;
+	impactEvents?: ArenaPhysicsImpactEvent[];
 	targets?: KameKnockSnapshot["targets"];
 	score?: number[];
 	roundScores?: number[];
@@ -413,6 +424,7 @@ export interface ShellCurlPhysicsState {
 		x: number;
 		y: number;
 	}>;
+	impactEvents?: ArenaPhysicsImpactEvent[];
 }
 
 export interface OnlineMatchContext {

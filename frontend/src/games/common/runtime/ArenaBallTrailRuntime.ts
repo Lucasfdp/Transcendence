@@ -55,7 +55,7 @@ export function buildArenaPowerBallTrailObjects(
 	keyPrefix = "power",
 ): PlayerTrailObject[] {
 	return Array.from(entries, (entry, index) => ({
-		id: `${keyPrefix}-${index}`,
+		id: entry.id ?? `${keyPrefix}-${index}`,
 		player: entry.player,
 		x: entry.ball.x,
 		y: entry.ball.y,

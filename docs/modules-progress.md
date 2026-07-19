@@ -332,6 +332,19 @@ Evidence:
    Bash and Bell Clash on 2026-07-14. Automated backend (59 suites / 827 tests),
    frontend (48 files / 289 tests), and build validation passed; initial two-client
    and power-up checks are positive, while the full validation matrix remains pending.
+- Multiplayer cosmetic parity was completed on 2026-07-19. Public matchmaking,
+  PIN/private matches, spectators, re-entry, rematches, and tournament minigames
+  now derive each player's equipped shell skin and trail effect from the
+  authoritative snapshot by side. All four arena clients reconstruct trails from
+  interpolated authoritative positions without restoring client-side physics.
+  Classic, comet, spark, ghost, and ripple trails render through cached procedural
+  stamps on dynamic textures rather than per-frame vector retessellation. Temple
+  Curling now preserves Phantom alpha online, and server-owned monotonic impact
+  events drive Curling bumper flashes and Kame Knock solid-target bounce feedback
+  without replaying historical effects after re-entry. Automated validation passed
+  with 70 frontend files / 389 tests, 100 backend suites / 1,414 tests, and both
+  production builds. A two-guest Firefox run confirmed synchronised classic trails
+  on both multiplayer clients at 1440×900 and responsive relayout at 1000×700.
 
 Missing for completion:
 - Bell Clash and Bamboo Bash manual multiplayer validation, including live
@@ -376,6 +389,10 @@ Missing for completion:
 - Complete the manual two-client Temple Curling matrix, including the eight
   powers, full matches, re-entry, spectators, responsive relayout, and 3–5
   player matches, before claiming its rollout complete.
+- Complete a two-account visual matrix with non-default equipped shell skins and
+  each advanced trail effect across public/private entry, spectator, re-entry,
+  rematch, and tournament-minigame paths. The shared snapshot and renderer paths
+  are covered automatically, while this final asset-level matrix remains manual.
 - Follow-up remote validation under the original network conditions found Bell
   Clash and Kame Knock responsive with powers enabled. Temple Curling retained
   additional gameplay issues after the ghost-ball cleanup; those are deferred

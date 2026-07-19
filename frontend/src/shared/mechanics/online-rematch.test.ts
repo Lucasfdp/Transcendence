@@ -96,6 +96,13 @@ describe("online rematch modal", () => {
 			matchId: "new-match",
 			gameId: "temple-curling",
 			phase: "active",
+			players: [
+				{
+					side: 0,
+					shellSkin: "dragon",
+					trailEffect: "trail_comet",
+				},
+			],
 		};
 		for (const handler of mocks.listeners.get("match:rematch-start") ?? [])
 			handler({
@@ -115,6 +122,12 @@ describe("online rematch modal", () => {
 			physicsState,
 			replayEnabled: false,
 			replayDisabledReason: "powerups-enabled",
+		});
+		expect(scene.registry.set).toHaveBeenCalledWith("shellSkins", {
+			player0: "dragon",
+		});
+		expect(scene.registry.set).toHaveBeenCalledWith("trailEffects", {
+			player0: "trail_comet",
 		});
 		expect(scene.scene.start).toHaveBeenCalledTimes(1);
 		expect(scene.scene.start).toHaveBeenCalledWith("ShellCurlScene");

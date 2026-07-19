@@ -16,6 +16,7 @@ import { ResponsiveScene } from "../../shared/responsive-scene";
 import { ALL_POWERS, PowerType } from "../../shared/mechanics/power-system";
 import { GAME_POWERS, GameId } from "../../shared/mechanics/game-powers";
 import { THEME } from "../../shared/theme";
+import { applySnapshotPlayerCosmetics } from "../../shared/mechanics/player-config";
 import { api, ShellInventory } from "./api";
 import {
 	getGameSocket,
@@ -675,6 +676,10 @@ export class ShellPickerScene extends ResponsiveScene {
 				{ matchId: status.matchId },
 				(physicsState: BellClashPhysicsState | null) => {
 					if (!this.scene.isActive()) return;
+					applySnapshotPlayerCosmetics(
+						this.registry,
+						snapshot.players,
+					);
 					this.registry.set("onlineMatch", {
 						matchId: status.matchId,
 						side: status.side,
@@ -1031,6 +1036,7 @@ export class ShellPickerScene extends ResponsiveScene {
 			)
 				return;
 			socket.off("game:state", onState);
+			applySnapshotPlayerCosmetics(this.registry, snapshot.players);
 			this.registry.set("onlineMatch", {
 				matchId: snapshot.matchId,
 				side,

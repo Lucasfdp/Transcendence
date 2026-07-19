@@ -26,7 +26,11 @@ import { THEME } from "../../shared/theme";
 import { BALL_SRC_R } from "../../shared/mechanics/ball";
 import { PLAYER_COLOUR_VALUES } from "../../shared/game-ui";
 import { clearKameKnockPowerBalls } from "./KameKnockView";
-import { popKameKnockScore, showKameKnockPowerPickupNotice } from "./KameKnockView";
+import {
+	popKameKnockBounce,
+	popKameKnockScore,
+	showKameKnockPowerPickupNotice,
+} from "./KameKnockView";
 import {
 	appendAuthoritativeSample,
 	AuthoritativeProjectionTimeline,
@@ -83,6 +87,7 @@ export interface KameKnockOnlineScene {
 	drawTargets(): void;
 	drawBall(): void;
 	drawBallTrails(): void;
+	recordBallTrails(): void;
 	addScoreEvent(label: string, value: string): void;
 	updateScoreHud(): void;
 	updateSidePanels(): void;
@@ -111,6 +116,7 @@ export class KameKnockOnlineController {
 	private lastPhysicsSeq = -1;
 	private lastScoreEventId = 0;
 	private lastPickupEventId = 0;
+	private lastImpactEventId = 0;
 	private readonly projectedEntities = new Map<number, OnlineBallState>();
 	private readonly projectionTimeline = new AuthoritativeProjectionTimeline();
 	private latestPhysicsState: KameKnockPhysicsState | null = null;
@@ -203,6 +209,7 @@ export class KameKnockOnlineController {
 		this.lastPhysicsSeq = -1;
 		this.lastScoreEventId = 0;
 		this.lastPickupEventId = 0;
+		this.lastImpactEventId = 0;
 		this.projectedEntities.clear();
 		this.projectionTimeline.reset();
 		this.latestPhysicsState = null;
@@ -429,6 +436,7 @@ export class KameKnockOnlineController {
 			ball.vx = target.stopped ? 0 : target.vx * this.scene.arena.scale;
 			ball.vy = target.stopped ? 0 : target.vy * this.scene.arena.scale;
 		}
+		this.scene.recordBallTrails();
 		this.scene.drawBallTrails();
 		this.scene.drawBall();
 	}
@@ -460,6 +468,7 @@ export class KameKnockOnlineController {
 
 	private applyPhysicsState(state: KameKnockPhysicsState): void {
 		if (!this.match || state.matchId !== this.match.matchId || !this.projectionTimeline.accept(state.physicsSeq, state.serverTime)) return;
+		const isInitialPhysicsProjection = this.lastPhysicsSeq < 0;
 		this.lastPhysicsSeq = state.physicsSeq;
 		this.latestPhysicsState = state;
 		const targetsSignature = JSON.stringify(state.targets ?? []);
@@ -475,9 +484,14 @@ export class KameKnockOnlineController {
 		if (state.roundNumber !== undefined) this.scene.currentBallIndex = Math.max(0, state.roundNumber - 1);
 		if (state.currentTurn !== undefined) this.visibleBallSide = state.currentTurn;
 		const active = new Set(state.entities.map((entity) => entity.id));
-		for (const id of this.projectedEntities.keys()) if (!active.has(id)) this.projectedEntities.delete(id);
+		for (const id of this.projectedEntities.keys()) {
+			if (!active.has(id)) {
+				this.projectedEntities.delete(id);
+				this.scene.ballTrails.delete(id);
+			}
+		}
 		const primary = new Map<number, OnlineBallState>();
-		const derived: Array<{ ball: OnlineBallState; player: number }> = [];
+		const derived: Array<{ id: number; ball: OnlineBallState; player: number }> = [];
 		for (const entity of state.entities) {
 			let ball = entity.primary && entity.ownerSide === this.side
 				? this.scene.ball as OnlineBallState
@@ -489,7 +503,7 @@ export class KameKnockOnlineController {
 			ball.syncSamples = appendAuthoritativeSample(ball.syncSamples ?? [], sample);
 			if (entity.stopped) { ball.x = this.scene.arena.cx + entity.x * this.scene.arena.scale; ball.y = this.scene.arena.cy + entity.y * this.scene.arena.scale; ball.vx = 0; ball.vy = 0; }
 			this.projectedEntities.set(entity.id, ball);
-			if (entity.primary) primary.set(entity.ownerSide, ball); else derived.push({ ball, player: entity.ownerSide });
+			if (entity.primary) primary.set(entity.ownerSide, ball); else derived.push({ id: entity.id, ball, player: entity.ownerSide });
 		}
 		this.balls.clear();
 		for (const [side, ball] of primary) this.balls.set(side, ball);
@@ -504,6 +518,16 @@ export class KameKnockOnlineController {
 			if (event.id <= this.lastPickupEventId) continue;
 			this.lastPickupEventId = event.id;
 			if ((Object.values(PowerType) as string[]).includes(event.type)) showKameKnockPowerPickupNotice(this.scene, event.type as PowerType, this.scene.arena.cx + event.x * this.scene.arena.scale, this.scene.arena.cy + event.y * this.scene.arena.scale, this.scene.arena);
+		}
+		for (const event of state.impactEvents ?? []) {
+			if (event.id <= this.lastImpactEventId) continue;
+			this.lastImpactEventId = event.id;
+			if (isInitialPhysicsProjection || event.kind !== "solid-target") continue;
+			popKameKnockBounce(
+				this.scene,
+				this.scene.arena.cx + event.x * this.scene.arena.scale,
+				this.scene.arena.cy + event.y * this.scene.arena.scale,
+			);
 		}
 		if (pickupsChanged) this.scene.syncOnlinePowerPickups(state.pickups);
 		const moving = state.entities.some((entity) => !entity.stopped);

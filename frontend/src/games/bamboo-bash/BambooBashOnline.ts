@@ -81,6 +81,8 @@ export interface BambooBashOnlineScene {
 
 	drawBamboos(): void;
 	drawBalls(): void;
+	recordBallTrails(): void;
+	drawBallTrails(): void;
 	updateScoreHud(): void;
 	updateSidePanels(): void;
 	addScoreEvent(label: string, value: string): void;
@@ -289,7 +291,9 @@ export class BambooBashOnlineController {
 			ball.vx = target.stopped ? 0 : target.vx * this.scene.arena.scale;
 			ball.vy = target.stopped ? 0 : target.vy * this.scene.arena.scale;
 		}
+		this.scene.recordBallTrails();
 		this.scene.drawBamboos();
+		this.scene.drawBallTrails();
 		this.scene.drawBalls();
 	}
 
@@ -323,6 +327,7 @@ export class BambooBashOnlineController {
 			// deterministic player launch positions instead of rendering placeholder
 			// balls at the arena origin.
 			this.projectedEntities.clear();
+			this.scene.ballTrails.clear();
 			this.balls.clear();
 			this.scene.powerBalls.replace([]);
 			if (snapshot) this.resetOnlineBalls(snapshot);
@@ -335,9 +340,12 @@ export class BambooBashOnlineController {
 
 		const activeIds = new Set(state.entities.map((entity) => entity.id));
 		for (const id of this.projectedEntities.keys())
-			if (!activeIds.has(id)) this.projectedEntities.delete(id);
+			if (!activeIds.has(id)) {
+				this.projectedEntities.delete(id);
+				this.scene.ballTrails.delete(id);
+			}
 		const primaries = new Map<number, OnlineBallState>();
-		const derived: Array<{ ball: OnlineBallState; player: number }> = [];
+		const derived: Array<{ id: number; ball: OnlineBallState; player: number }> = [];
 		for (const entity of state.entities) {
 			let ball = entity.primary && entity.ownerSide === this.side
 				? this.scene.ball as OnlineBallState
@@ -367,7 +375,7 @@ export class BambooBashOnlineController {
 			}
 			this.projectedEntities.set(entity.id, ball);
 			if (entity.primary) primaries.set(entity.ownerSide, ball);
-			else derived.push({ ball, player: entity.ownerSide });
+			else derived.push({ id: entity.id, ball, player: entity.ownerSide });
 		}
 		this.balls.clear();
 		for (const [side, ball] of primaries) this.balls.set(side, ball);

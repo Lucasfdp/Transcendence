@@ -115,6 +115,23 @@ describe("ShellCurlEngine", () => {
 		expect(room.state.seq).toBe(lifecycleSequence);
 	});
 
+	it("retains server-authored bumper impact events in physics state", () => {
+		const engine = new ShellCurlEngine();
+		const room = makeRoom();
+		engine.start(room);
+		(room.state as CurlingSnapshot).map = {
+			gameId: "temple-curling",
+			bumpers: [{ fx: 0.07, fy: 0.5 }],
+		};
+
+		release(engine, room, 1, { vx: 300, vy: 0 });
+		engine.advanceSimulation(room, 1000 / 30);
+
+		expect(room.physicsState?.impactEvents).toEqual([
+			expect.objectContaining({ id: 1, kind: "bumper", side: 0, objectId: 0 }),
+		]);
+	});
+
 	it("requires selected powers and consumes an active power only once per game", () => {
 		const engine = new ShellCurlEngine();
 		const room = makeRoom(2, [["rocket"], []]);
