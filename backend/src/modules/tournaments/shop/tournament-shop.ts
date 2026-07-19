@@ -35,6 +35,7 @@ import {
 	ShopContextFactory,
 	ShopEconomyPort,
 	ShopOffer,
+	ShopOfferView,
 	ShopPriceModifier,
 	ShopRewardGranter,
 	ShopSnapshot,
@@ -182,12 +183,7 @@ export class TournamentShop {
 			return this.reject(playerId, round, offerId, "out_of_stock");
 		}
 
-		const price = Math.max(
-			0,
-			Math.round(
-				this.priceModifier.apply({ playerId, round, offerId, basePrice: offer.price }),
-			),
-		);
+		const price = this.modifiedPrice(offer, playerId, round);
 		if ((this.economy.getBalance(playerId) ?? 0) < price) {
 			return this.reject(playerId, round, offerId, "insufficient_points");
 		}
@@ -233,6 +229,28 @@ export class TournamentShop {
 		return this.registry.getAll();
 	}
 
+	/**
+	 * The displayable catalog for one player (SPEC-022): every offer with the
+	 * price `buy` would charge (rule price seam applied) and its current
+	 * availability. Pure read — no session required, no events.
+	 */
+	getCatalogView(
+		playerId: number,
+		round: number = this.getRound(),
+	): ShopOfferView[] {
+		return this.registry.getAll().map((offer) => ({
+			id: offer.id,
+			name: offer.name,
+			description: offer.description,
+			icon: offer.icon,
+			price: this.modifiedPrice(offer, playerId, round),
+			available:
+				(offer.requirements?.minRound === undefined ||
+					round >= offer.requirements.minRound) &&
+				this.hasStock(offer, playerId),
+		}));
+	}
+
 	serialize(): ShopSnapshot {
 		return {
 			tournamentId: this.tournamentId,
@@ -256,6 +274,25 @@ export class TournamentShop {
 		this.session = null;
 		this.lastOutcome = outcome;
 		this.emit("ShopClosed", session.playerId, session.round, { outcome });
+	}
+
+	/** The price `buy` charges: the Rule Engine seam applied, floored at 0. */
+	private modifiedPrice(
+		offer: ShopOffer,
+		playerId: number,
+		round: number,
+	): number {
+		return Math.max(
+			0,
+			Math.round(
+				this.priceModifier.apply({
+					playerId,
+					round,
+					offerId: offer.id,
+					basePrice: offer.price,
+				}),
+			),
+		);
 	}
 
 	private hasStock(offer: ShopOffer, playerId: number): boolean {

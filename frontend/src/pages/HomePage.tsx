@@ -125,6 +125,9 @@ const GIF_SEARCH_MIN_LENGTH = 2;
  */
 const CHAT_MESSAGE_PAGE_SIZE = 50;
 
+/** Default photo for group conversations that have no custom photo set. */
+const GROUP_DEFAULT_AVATAR_SRC = "/assets/ui/icons/group_default.svg";
+
 /**
  * How close (px) to the bottom of the thread counts as "pinned" — a live
  * message auto-scrolls into view only when the reader is within this distance,
@@ -1182,11 +1185,13 @@ function HomeMenu(): JSX.Element {
 
 		// Group metadata changed (Decision 1): patch whichever field is present —
 		// `name` on an owner rename (the thread header derives its title from the
-		// list, so it updates too) and/or `ownerId` on an ownership transfer, so
-		// the new owner's owner-only controls light up live.
+		// list, so it updates too), `avatar` on an owner photo change, and/or
+		// `ownerId` on an ownership transfer, so the new owner's owner-only
+		// controls light up live.
 		const onChatConversationUpdated = (data: {
 			conversationId: number;
 			name?: string;
+			avatar?: string | null;
 			ownerId?: number | null;
 		}) => {
 			setConversations((prev) =>
@@ -1195,6 +1200,7 @@ function HomeMenu(): JSX.Element {
 							if (c.id !== data.conversationId) return c;
 							const patched = { ...c };
 							if (data.name !== undefined) patched.name = data.name;
+							if (data.avatar !== undefined) patched.avatar = data.avatar;
 							if (data.ownerId !== undefined) patched.ownerId = data.ownerId;
 							return patched;
 						})
@@ -2075,6 +2081,52 @@ function HomeMenu(): JSX.Element {
 		} catch (err: unknown) {
 			showToast({
 				message: err instanceof Error ? err.message : "Could not rename group.",
+				variant: "error",
+			});
+		} finally {
+			setGroupActionLoading(false);
+		}
+	};
+
+	/** Owner-only: upload a group photo. Mirrors handleAvatarUpload's client-side
+	 * checks; the list patches from the response (and the room-wide
+	 * chat:conversation-updated broadcast keeps other members in sync). */
+	const handleGroupAvatarUpload = async (
+		event: ChangeEvent<HTMLInputElement>,
+	): Promise<void> => {
+		const file = event.target.files?.[0];
+		event.target.value = "";
+		if (!file || !activeConversationId || groupActionLoading) return;
+
+		const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+		if (!allowedTypes.has(file.type) || file.size > 2 * 1024 * 1024) {
+			showToast({
+				message: "Choose a JPEG, PNG, WebP, or GIF image up to 2 MB.",
+				variant: "error",
+			});
+			return;
+		}
+
+		setGroupActionLoading(true);
+		try {
+			await api.getCsrfToken();
+			const { avatarUrl } = await api.uploadGroupAvatar(
+				activeConversationId,
+				file,
+			);
+			setConversations((prev) =>
+				prev
+					? prev.map((c) =>
+							c.id === activeConversationId
+								? { ...c, avatar: avatarUrl }
+								: c,
+						)
+					: prev,
+			);
+		} catch (err: unknown) {
+			showToast({
+				message:
+					err instanceof Error ? err.message : "Could not update group photo.",
 				variant: "error",
 			});
 		} finally {
@@ -4194,19 +4246,32 @@ function HomeMenu(): JSX.Element {
 																	className="hub-modal__chat-conversation-btn"
 																	onClick={() => void handleOpenConversation(conversation.id)}
 																>
-																	<span className="hub-modal__social-name">
-																		{conversationTitle(conversation)}
-																		{unreadConversationIds.has(conversation.id) ? (
-																			<span
-																				className="hub-modal__chat-unread-dot"
-																				role="img"
-																				aria-label="Unread"
-																			/>
-																		) : null}
+																	<ShellPortrait
+																		avatar={
+																			conversation.type === "group"
+																				? (conversation.avatar ??
+																					GROUP_DEFAULT_AVATAR_SRC)
+																				: conversation.avatar
+																		}
+																		shellSkin={conversation.shellSkin}
+																		displayName={conversationTitle(conversation)}
+																		size="mini"
+																	/>
+																	<span className="hub-modal__chat-conversation-text">
+																		<span className="hub-modal__social-name">
+																			{conversationTitle(conversation)}
+																			{unreadConversationIds.has(conversation.id) ? (
+																				<span
+																					className="hub-modal__chat-unread-dot"
+																					role="img"
+																					aria-label="Unread"
+																				/>
+																			) : null}
+																		</span>
+																		<small className="hub-modal__chat-preview">
+																			{conversation.lastMessagePreview ?? "No messages yet"}
+																		</small>
 																	</span>
-																	<small className="hub-modal__chat-preview">
-																		{conversation.lastMessagePreview ?? "No messages yet"}
-																	</small>
 																</button>
 															</li>
 														))
@@ -4407,6 +4472,17 @@ function HomeMenu(): JSX.Element {
 														>
 															Rename
 														</button>
+														<label className="hub-modal__chat-members-toggle hub-modal__chat-photo-upload">
+															{groupActionLoading ? "Uploading…" : "Photo"}
+															<input
+																type="file"
+																accept="image/jpeg,image/png,image/webp,image/gif"
+																disabled={groupActionLoading}
+																onChange={(event) =>
+																	void handleGroupAvatarUpload(event)
+																}
+															/>
+														</label>
 														<button
 															type="button"
 															className="hub-modal__chat-members-toggle"

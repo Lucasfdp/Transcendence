@@ -376,8 +376,10 @@ export interface ConversationSummaryView {
 	name: string | null;
 	/** The other participant's id, for a dm. Null for groups. */
 	otherUserId: number | null;
-	/** The other participant's avatar, for a dm. Null for groups. */
+	/** The other participant's avatar for a dm; the group photo for a group. */
 	avatar: string | null;
+	/** The other participant's equipped shell, for a dm's avatar fallback. Null for groups. */
+	shellSkin: string | null;
 	/** Group owner's user id — null for dms / owner-deleted groups. Gates owner-only controls (Decision 1). */
 	ownerId: number | null;
 	lastMessageAt: string | null;
@@ -955,6 +957,19 @@ export const api = {
 			method: "PATCH",
 			body: JSON.stringify({ name }),
 		}),
+
+	/** Owner-only: upload a group photo. Same accepted types and 2 MB cap as uploadAvatar. */
+	uploadGroupAvatar: (
+		conversationId: number,
+		file: File,
+	): Promise<{ avatarUrl: string }> => {
+		const form = new FormData();
+		form.append("avatar", file);
+		return apiUploadFile<{ avatarUrl: string }>(
+			`/chat/conversations/${conversationId}/avatar`,
+			form,
+		);
+	},
 
 	/** Owner-only: delete a group and all its messages (Decision 1). */
 	deleteGroupChat: (conversationId: number): Promise<void> =>

@@ -96,36 +96,55 @@ const PATH_SIZE = 28;
 const BONUS_TILE_INDICES = new Set([5, 12, 19, 25]);
 
 /**
+ * The shop stop (SPEC-012): the tile in front of the pagoda at the map's top
+ * right corner. Landing here runs the `openShop` tile Action, which asks the
+ * Shop System to open a purchase session for the acting player (SPEC-006
+ * "OpenShopAction": the Action never opens the shop itself).
+ */
+export const SHOP_TILE_INDEX = 18;
+
+/**
  * A tile of the map path. Tile `i` connects to tile `i+1` (mod 28).
  * Behaviour is expressed only through `actions` (SPEC-006 data-driven): most
  * tiles do `nothing` (a placeholder Action — an unregistered action type
  * resolves/skips cleanly today, SPEC-008); four evenly distributed stops award
- * points through the existing `awardPoints` Action.
+ * points through the existing `awardPoints` Action, and the pagoda stop opens
+ * the Shop through `openShop`.
  */
 const pathTile = (index: number): Tile => {
 	const next = `tile-${(index + 1) % PATH_SIZE}`;
 	const isBonus = BONUS_TILE_INDICES.has(index);
+	const isShop = index === SHOP_TILE_INDEX;
 	return {
 		id: `tile-${index}`,
 		connections: [next],
-		actions: isBonus
-			? [
-					{
-						type: "awardPoints",
-						parameters: {
-							amount: 25,
-							reason: "tile:bonus",
-							source: "tile",
+		actions: isShop
+			? [{ type: "openShop", parameters: {} }]
+			: isBonus
+				? [
+						{
+							type: "awardPoints",
+							parameters: {
+								amount: 25,
+								reason: "tile:bonus",
+								source: "tile",
+							},
 						},
-					},
-				]
-			: [{ type: "nothing", parameters: {} }],
+					]
+				: [{ type: "nothing", parameters: {} }],
 		// `kind` is a PRESENTATION hint for the wire snapshot (SPEC-022) — the
 		// Board never interprets metadata (SPEC-002 "Restricciones").
 		metadata: {
 			theme: "parrots-shell",
 			index,
-			kind: index === 0 ? "start" : isBonus ? "bonus" : "path",
+			kind:
+				index === 0
+					? "start"
+					: isShop
+						? "shop"
+						: isBonus
+							? "bonus"
+							: "path",
 		},
 	};
 };

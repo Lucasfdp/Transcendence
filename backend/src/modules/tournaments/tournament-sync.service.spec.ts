@@ -111,6 +111,8 @@ describe("TournamentSyncService (SPEC-022 snapshot-first)", () => {
 			order: 0,
 		});
 		expect(snapshot.board.tiles[5].kind).toBe("bonus");
+		expect(snapshot.board.tiles[18].kind).toBe("shop");
+		expect(snapshot.shop).toBeNull();
 		expect(snapshot.players).toHaveLength(4);
 		for (const player of snapshot.players) {
 			expect(player.username).toBe(`user-${player.userId}`);
@@ -124,6 +126,38 @@ describe("TournamentSyncService (SPEC-022 snapshot-first)", () => {
 		});
 		// JSON-safe (goes on the wire).
 		expect(JSON.parse(JSON.stringify(payload))).toEqual(payload);
+	});
+
+	it("exposes an open shop session with the shopper-priced catalog (SPEC-012)", async () => {
+		const { sync, runtime, emitted } = makeHarness();
+		await sync.attach(TOURNAMENT_ID, runtime);
+		runtime.start();
+		await flushMicrotasks();
+
+		const active = runtime.gameEngines.turnSystem.activePlayerId as number;
+		runtime.gameEngines.shop.open(active);
+		await flushMicrotasks();
+
+		const snapshot = emitted[emitted.length - 1].payload.snapshot;
+		expect(snapshot.shop).toMatchObject({ playerId: active });
+		expect(snapshot.shop?.deadlineAt).toBeGreaterThan(0);
+		expect(snapshot.shop?.offers.map((o) => o.id)).toEqual([
+			"pointsPack",
+			"luckyDiceOffer",
+			"badgeOffer",
+		]);
+		// Round 1: the badge (minRound 2) is listed but not yet available.
+		expect(
+			snapshot.shop?.offers.find((o) => o.id === "badgeOffer")?.available,
+		).toBe(false);
+		expect(
+			snapshot.shop?.offers.find((o) => o.id === "pointsPack"),
+		).toMatchObject({ price: 40, available: true });
+
+		// Closing the session clears the wire field again.
+		runtime.gameEngines.shop.cancel(active);
+		await flushMicrotasks();
+		expect(emitted[emitted.length - 1].payload.snapshot.shop).toBeNull();
 	});
 
 	it("coalesces one whole turn (roll+move+resolve burst) into ONE broadcast, seq monotonic", async () => {

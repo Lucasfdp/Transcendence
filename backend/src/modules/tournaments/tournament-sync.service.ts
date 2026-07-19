@@ -273,6 +273,32 @@ export class TournamentSyncService {
 						deadlineAt: minigame.launchGate.deadlineAt,
 					}
 				: null,
+			shop: this.shopView(runtime),
+		};
+	}
+
+	/** The open shop session as everyone may see it (SPEC-012 / SPEC-039). */
+	private shopView(
+		runtime: TournamentRuntime,
+	): TournamentSnapshotV1["shop"] {
+		const shop = runtime.gameEngines.shop;
+		const session = shop.serialize().session;
+		if (!session) {
+			return null;
+		}
+		return {
+			playerId: session.playerId,
+			deadlineAt: session.deadlineAt,
+			offers: shop
+				.getCatalogView(session.playerId, runtime.currentRound)
+				.map((offer) => ({
+					id: offer.id,
+					name: offer.name,
+					description: offer.description,
+					icon: offer.icon,
+					price: offer.price,
+					available: offer.available,
+				})),
 		};
 	}
 

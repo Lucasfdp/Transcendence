@@ -80,9 +80,9 @@ export const WS_EVENT_CHAT_REMOVED = "chat:removed" as const;
 /**
  * Pushed to a group room when its metadata changes so open clients patch the
  * conversation without a full refetch (Decision 1). Payload carries whichever
- * field changed: `name` (owner rename) and/or `ownerId` (ownership transfer
- * when the owner leaves) — so the successor's owner-only controls light up
- * live.
+ * field changed: `name` (owner rename), `avatar` (owner photo change) and/or
+ * `ownerId` (ownership transfer when the owner leaves) — so the successor's
+ * owner-only controls light up live.
  */
 export const WS_EVENT_CHAT_CONVERSATION_UPDATED = "chat:conversation-updated" as const;
 
@@ -93,8 +93,10 @@ export interface ConversationSummaryView {
 	name: string | null;
 	/** The other participant's id, for a dm. Null for groups. */
 	otherUserId: number | null;
-	/** The other participant's avatar, for a dm. Null for groups. */
+	/** The other participant's avatar for a dm; the group photo for a group. */
 	avatar: string | null;
+	/** The other participant's equipped shell, for a dm's avatar fallback. Null for groups. */
+	shellSkin: string | null;
 	/** Group owner's user id (null for dms / owner-deleted groups) — lets the UI gate owner-only controls (Decision 1). */
 	ownerId: number | null;
 	lastMessageAt: string | null;
@@ -658,6 +660,52 @@ export class ChatService {
 				throw err;
 			}
 			throw new InternalServerErrorException("Failed to rename group");
+		}
+	}
+
+	/**
+	 * Owner-only: set the group photo to an already-uploaded file. Mirrors
+	 * renameGroup — posts a system message and pushes a
+	 * `chat:conversation-updated` carrying the new avatar so open clients patch
+	 * the list without a refetch. The controller owns the multipart handling;
+	 * this receives only the multer-written filename.
+	 */
+	async updateGroupAvatar(
+		conversationId: number,
+		actorId: number,
+		filename: string,
+	): Promise<{ avatarUrl: string }> {
+		try {
+			const conversation = await this.loadOwnedGroup(conversationId, actorId);
+			const avatarUrl = `/api/uploads/avatars/${filename}`;
+			conversation.avatar = avatarUrl;
+
+			const actor = await this.userRepo.findOne({ where: { id: actorId } });
+			// postSystemMessage persists the conversation (including the new avatar).
+			await this.postSystemMessage(
+				conversation,
+				actorId,
+				actor?.username ?? "",
+				`${actor?.username ?? "The owner"} changed the group photo`,
+			);
+
+			this.server
+				?.to(chatRoomName(conversationId))
+				.emit(WS_EVENT_CHAT_CONVERSATION_UPDATED, {
+					conversationId,
+					avatar: avatarUrl,
+				});
+
+			return { avatarUrl };
+		} catch (err) {
+			if (
+				err instanceof NotFoundException ||
+				err instanceof BadRequestException ||
+				err instanceof ForbiddenException
+			) {
+				throw err;
+			}
+			throw new InternalServerErrorException("Failed to update group photo");
 		}
 	}
 
@@ -1279,7 +1327,8 @@ export class ChatService {
 		allParticipants: ConversationParticipant[],
 	): ConversationSummaryView {
 		let name = conversation.name;
-		let avatar: string | null = null;
+		let avatar: string | null = conversation.avatar ?? null;
+		let shellSkin: string | null = null;
 		let otherUserId: number | null = null;
 
 		if (conversation.type === "dm") {
@@ -1289,6 +1338,7 @@ export class ChatService {
 			);
 			name = other?.user?.username ?? null;
 			avatar = other?.user?.avatar ?? null;
+			shellSkin = other?.user?.shellSkin ?? null;
 			otherUserId = other?.userId ?? null;
 		}
 
@@ -1298,6 +1348,7 @@ export class ChatService {
 			name,
 			otherUserId,
 			avatar,
+			shellSkin,
 			ownerId: conversation.type === "group" ? conversation.ownerId : null,
 			lastMessageAt: conversation.lastMessageAt
 				? conversation.lastMessageAt.toISOString()

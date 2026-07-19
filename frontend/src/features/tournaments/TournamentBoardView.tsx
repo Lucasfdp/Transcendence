@@ -136,6 +136,7 @@ export function TournamentBoardView({
 	const [rollBanner, setRollBanner] = useState<RollBanner | null>(null);
 	/** Transient gambling feedback (e.g. "not enough points"). */
 	const [gamblingNotice, setGamblingNotice] = useState<string | null>(null);
+	const [shopNotice, setShopNotice] = useState<string | null>(null);
 	const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
 	const seqRef = useRef(-1);
 	const navigate = useNavigate();
@@ -282,17 +283,43 @@ export function TournamentBoardView({
 		};
 
 		socket.on(TOURNAMENT_WS_EVENTS.SNAPSHOT, apply);
-		socket.emit(
-			TOURNAMENT_WS_MESSAGES.JOIN,
-			{ tournamentId },
-			(ack: TournamentJoinAck) => {
-				if (ack.ok) apply(ack.envelope);
-				else setJoinError(ack.reason);
-			},
-		);
+		// A fresh page load's join (direct URL, F5) can race the server-side
+		// auth stamping of the just-connected socket (handleConnection verifies
+		// the cookie asynchronously before socket.data.user exists), which
+		// rejects a legitimate participant with "not_participant". Those
+		// rejections are transient — retry briefly before surfacing an error.
+		// "left" is permanent (quit for good) and never retried.
+		let joinAttempts = 0;
+		let retryTimer: number | null = null;
+		const attemptJoin = () => {
+			socket.emit(
+				TOURNAMENT_WS_MESSAGES.JOIN,
+				{ tournamentId },
+				(ack: TournamentJoinAck) => {
+					if (disposed) return;
+					if (ack.ok) {
+						setJoinError(null);
+						apply(ack.envelope);
+						return;
+					}
+					if (
+						(ack.reason === "not_participant" ||
+							ack.reason === "not_running") &&
+						joinAttempts < 5
+					) {
+						joinAttempts += 1;
+						retryTimer = window.setTimeout(attemptJoin, 800);
+						return;
+					}
+					setJoinError(ack.reason);
+				},
+			);
+		};
+		attemptJoin();
 		return () => {
 			disposed = true;
 			if (timer !== null) window.clearTimeout(timer);
+			if (retryTimer !== null) window.clearTimeout(retryTimer);
 			socket.off(TOURNAMENT_WS_EVENTS.SNAPSHOT, apply);
 			socket.emit(TOURNAMENT_WS_MESSAGES.LEAVE);
 			setRollBanner(null);
@@ -351,13 +378,43 @@ export function TournamentBoardView({
 	};
 
 	const sendIntent = (
-		name: "StartGamblingIntent" | "LeaveGamblingIntent",
+		name: "StartGamblingIntent" | "LeaveGamblingIntent" | "EndTurnIntent",
 	) => {
 		getGameSocket().emit(
 			TOURNAMENT_WS_MESSAGES.INTENT,
 			{ tournamentId, intent: { name } },
 			(_ack: TournamentIntentAck) => {
 				/* the next snapshot renders the outcome */
+			},
+		);
+	};
+
+	// Buy with feedback (SPEC-012): an unaffordable offer is caught locally
+	// (and the server re-validates — a rejected ack lands in the same notice).
+	// A rejection keeps the session open, so the shopper may try another offer.
+	const buyOffer = (offerId: string, price: number, myPoints: number) => {
+		if (myPoints < price) {
+			setShopNotice(
+				`Not enough points — it costs ${price} and you have ${myPoints}.`,
+			);
+			return;
+		}
+		setShopNotice(null);
+		getGameSocket().emit(
+			TOURNAMENT_WS_MESSAGES.INTENT,
+			{ tournamentId, intent: { name: "BuyOfferIntent", offerId } },
+			(ack: TournamentIntentAck) => {
+				if (!ack.accepted) {
+					setShopNotice(
+						ack.reason === "insufficient_points"
+							? `Not enough points — it costs ${price}.`
+							: ack.reason === "out_of_stock"
+								? "That offer is sold out."
+								: ack.reason === "requirements_unmet"
+									? "That offer is not available yet."
+									: "The purchase was rejected.",
+					);
+				}
 			},
 		);
 	};
@@ -430,6 +487,22 @@ export function TournamentBoardView({
 	useEffect(() => {
 		setGamblingNotice(null);
 	}, [gamblingKey]);
+
+	// The open shop session (SPEC-012): the shopper decides, everyone watches.
+	const shop = snapshot?.shop ?? null;
+	const shopSeconds =
+		shop !== null
+			? Math.max(0, Math.ceil((shop.deadlineAt - nowMs) / 1000))
+			: null;
+	const shopPlayer =
+		shop && snapshot
+			? (snapshot.players.find((p) => p.userId === shop.playerId) ?? null)
+			: null;
+	// A new shop session (or its close) clears any stale purchase feedback.
+	const shopKey = shop ? `${shop.playerId}:${shop.deadlineAt}` : null;
+	useEffect(() => {
+		setShopNotice(null);
+	}, [shopKey]);
 	const champion =
 		snapshot?.winnerUserId != null
 			? (snapshot.players.find(
@@ -631,11 +704,13 @@ export function TournamentBoardView({
 										key={tile.id}
 										className={`tournament-board__tile tournament-board__tile--${tile.kind}`}
 										title={
-											tile.kind === "bonus"
-												? `Bonus step ${tile.order}`
-												: tile.order === 0
-													? "Starting clearing"
-													: `Step ${tile.order}`
+											tile.kind === "shop"
+												? "Pagoda shop"
+												: tile.kind === "bonus"
+													? `Bonus step ${tile.order}`
+													: tile.order === 0
+														? "Starting clearing"
+														: `Step ${tile.order}`
 										}
 										style={{
 											left: `${position.x}%`,
@@ -643,11 +718,13 @@ export function TournamentBoardView({
 										}}
 									>
 										<span className="tournament-board__tile-label">
-											{tile.kind === "bonus"
-												? "★"
-												: tile.order === 0
-													? "S"
-													: ""}
+											{tile.kind === "shop"
+												? "🛒"
+												: tile.kind === "bonus"
+													? "★"
+													: tile.order === 0
+														? "S"
+														: ""}
 										</span>
 									</div>
 								);
@@ -932,6 +1009,125 @@ export function TournamentBoardView({
 								</div>
 							)}
 
+							{/* Pagoda shop (SPEC-012): the shopper buys or closes;
+							    everyone else watches live (SPEC-039). */}
+							{shop && (
+								<div style={gamblingBox}>
+									{shop.playerId === myUserId ? (
+										<>
+											<div style={{ fontWeight: 700 }}>
+												🛒 Welcome to the pagoda shop!
+											</div>
+											<div style={mutedLabel}>
+												You have {myPoints} points ·{" "}
+												{shopSeconds}s
+											</div>
+											{shopNotice && (
+												<div
+													style={gamblingNoticeStyle}
+													role="alert"
+												>
+													{shopNotice}
+												</div>
+											)}
+											{shop.offers.map((offer) => {
+												const affordable =
+													offer.available &&
+													myPoints >= offer.price;
+												return (
+													<div
+														key={offer.id}
+														style={shopOfferRow}
+													>
+														<span
+															style={{
+																fontSize: 18,
+															}}
+														>
+															{offer.icon}
+														</span>
+														<span
+															style={{
+																flex: 1,
+																minWidth: 0,
+															}}
+														>
+															<span
+																style={{
+																	fontWeight: 700,
+																	fontSize: 12,
+																}}
+															>
+																{offer.name}
+															</span>
+															<span
+																style={{
+																	...mutedLabel,
+																	display:
+																		"block",
+																}}
+															>
+																{offer.available
+																	? offer.description
+																	: "Not available"}
+															</span>
+														</span>
+														<button
+															type="button"
+															style={{
+																...primaryBtn,
+																padding:
+																	"4px 10px",
+																fontSize: 12,
+																opacity:
+																	affordable
+																		? 1
+																		: 0.45,
+																cursor: affordable
+																	? "pointer"
+																	: "not-allowed",
+															}}
+															disabled={
+																!offer.available
+															}
+															onClick={() =>
+																buyOffer(
+																	offer.id,
+																	offer.price,
+																	myPoints,
+																)
+															}
+														>
+															{offer.price} pts
+														</button>
+													</div>
+												);
+											})}
+											<button
+												type="button"
+												style={{
+													...secondaryBtn,
+													marginTop: 4,
+												}}
+												onClick={() =>
+													sendIntent("EndTurnIntent")
+												}
+											>
+												Done shopping
+											</button>
+										</>
+									) : (
+										<div style={mutedLabel}>
+											🛒{" "}
+											{shopPlayer?.username ??
+												"The shopper"}{" "}
+											is browsing the pagoda shop…{" "}
+											{shopSeconds}s
+										</div>
+									)}
+								</div>
+							)}
+
 							{/* The bet's outcome (SPEC-016): shown while the server
 							    holds the round for the reveal. */}
 							{gambleReveal && (
@@ -1092,6 +1288,12 @@ const gamblingBox: CSSProperties = {
 	display: "flex",
 	flexDirection: "column",
 	gap: 6,
+};
+const shopOfferRow: CSSProperties = {
+	display: "flex",
+	alignItems: "center",
+	gap: 8,
+	padding: "4px 0",
 };
 const tieBreakOverlayStyle: CSSProperties = {
 	position: "absolute",

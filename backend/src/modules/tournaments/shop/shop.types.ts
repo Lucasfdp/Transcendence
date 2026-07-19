@@ -94,6 +94,25 @@ export type ShopContextFactory = (input: {
 	round: number;
 }) => ActionContext;
 
+// ── Read-only views ─────────────────────────────────────────────────────────
+
+/**
+ * A displayable offer for one viewing player (SPEC-022 presentation): the
+ * rule-modified price plus current availability (minRound + stock). The
+ * balance check stays out — the client knows the player's points, and `buy`
+ * re-validates everything server-side anyway.
+ */
+export interface ShopOfferView {
+	readonly id: string;
+	readonly name: string;
+	readonly description: string;
+	readonly icon: string;
+	/** Price after the Rule Engine price seam, as `buy` would charge it. */
+	readonly price: number;
+	/** False when stock is exhausted or requirements are unmet. */
+	readonly available: boolean;
+}
+
 // ── Command results ─────────────────────────────────────────────────────────
 
 /** Result of `open` (SPEC-012 "Protocolo"). */

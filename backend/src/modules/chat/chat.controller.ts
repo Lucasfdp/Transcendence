@@ -13,10 +13,16 @@ import {
 	Query,
 	Req,
 	Request,
+	UploadedFile,
 	UseGuards,
+	UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { randomUUID } from "crypto";
 import type { Request as ExpressRequest } from "express";
+import { diskStorage } from "multer";
+import { extname, join } from "path";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RateLimiterService } from "../auth/rate-limiter.service";
 import {
@@ -55,6 +61,31 @@ const MESSAGE_SEND_RATE_LIMIT_WINDOW_MS = 10_000;
 
 /** Hard cap on a single message-history page, to bound the query (Bug Audit M6). */
 const MESSAGE_PAGE_MAX_LIMIT = 100;
+
+/** Group-photo uploads — same accepted types, size cap, and destination as user avatars (users.controller.ts). */
+const ALLOWED_IMAGE_MIMES = [
+	"image/jpeg",
+	"image/png",
+	"image/webp",
+	"image/gif",
+] as const;
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+const AVATAR_UPLOAD_DIR = join(
+	process.env.UPLOADS_DIR ?? join(process.cwd(), "uploads"),
+	"avatars",
+);
+
+/**
+ * Minimal type for the file object injected by multer's diskStorage — mirrors
+ * the local definition in users.controller.ts to avoid a hard dependency on
+ * @types/multer at the module boundary.
+ */
+interface MulterFile {
+	mimetype: string;
+	size: number;
+	filename: string;
+	path: string;
+}
 
 @ApiTags("chat")
 @ApiBearerAuth()
@@ -271,6 +302,51 @@ export class ChatController {
 	): Promise<{ ok: boolean }> {
 		await this.chatService.renameGroup(conversationId, req.user.id, body.name);
 		return { ok: true };
+	}
+
+	/**
+	 * POST /api/chat/conversations/:id/avatar — owner-only: set the group
+	 * photo. Accepts a single multipart file under the field name "avatar",
+	 * written to the same persistent uploads volume as user avatars (served
+	 * through /api/uploads/). Owner check lives in the service.
+	 */
+	@Post("conversations/:id/avatar")
+	@HttpCode(200)
+	@UseInterceptors(
+		FileInterceptor("avatar", {
+			storage: diskStorage({
+				destination: AVATAR_UPLOAD_DIR,
+				filename: (_req, file, cb) => {
+					const ext = extname(file.originalname);
+					cb(null, `${randomUUID()}${ext}`);
+				},
+			}),
+			limits: { fileSize: AVATAR_MAX_BYTES },
+			fileFilter: (_req, file, cb) => {
+				cb(
+					null,
+					(ALLOWED_IMAGE_MIMES as readonly string[]).includes(
+						file.mimetype,
+					),
+				);
+			},
+		}),
+	)
+	uploadGroupAvatar(
+		@Request() req: { user: { id: number } },
+		@Param("id", ParseIntPipe) conversationId: number,
+		@UploadedFile() file: MulterFile,
+	): Promise<{ avatarUrl: string }> {
+		if (!file) {
+			throw new BadRequestException(
+				"No valid image file provided. Accepted types: JPEG, PNG, WebP, GIF. Max size: 2 MB.",
+			);
+		}
+		return this.chatService.updateGroupAvatar(
+			conversationId,
+			req.user.id,
+			file.filename,
+		);
 	}
 
 	/**

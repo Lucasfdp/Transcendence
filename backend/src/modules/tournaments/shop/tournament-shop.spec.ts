@@ -221,4 +221,56 @@ describe("TournamentShop (SPEC-012)", () => {
 		clock.advance(SHOP_TIMEOUT_MS);
 		expect(dateNowSpy).not.toHaveBeenCalled();
 	});
+
+	describe("getCatalogView (SPEC-022 presentation)", () => {
+		it("lists every offer with price and availability, without a session and without events", () => {
+			const { shop, events } = makeShop();
+			const view = shop.getCatalogView(10);
+			expect(view.map((o) => o.id)).toEqual([
+				V1_SHOP_OFFER_IDS.pointsPack,
+				V1_SHOP_OFFER_IDS.luckyDice,
+				V1_SHOP_OFFER_IDS.badge,
+			]);
+			// getRound() = 3 ≥ the badge's minRound 2 — everything available.
+			expect(view.every((o) => o.available)).toBe(true);
+			expect(view[0]).toMatchObject({ name: "Points Pack", price: 40 });
+			expect(events).toHaveLength(0);
+		});
+
+		it("marks a minRound-gated offer unavailable before its round", () => {
+			const { shop } = makeShop();
+			const view = shop.getCatalogView(10, 1);
+			const badge = view.find((o) => o.id === V1_SHOP_OFFER_IDS.badge);
+			expect(badge?.available).toBe(false);
+		});
+
+		it("marks an offer unavailable once the buyer's stock is exhausted", () => {
+			const { shop } = makeShop();
+			// luckyDice is perPlayer limit 2 — buy it twice as player 10.
+			shop.open(10);
+			shop.buy(10, V1_SHOP_OFFER_IDS.luckyDice);
+			shop.open(10);
+			shop.buy(10, V1_SHOP_OFFER_IDS.luckyDice);
+
+			const mine = shop.getCatalogView(10);
+			expect(
+				mine.find((o) => o.id === V1_SHOP_OFFER_IDS.luckyDice)?.available,
+			).toBe(false);
+			// Another player still has stock (perPlayer, not perGame).
+			const theirs = shop.getCatalogView(20);
+			expect(
+				theirs.find((o) => o.id === V1_SHOP_OFFER_IDS.luckyDice)?.available,
+			).toBe(true);
+		});
+
+		it("shows the rule-modified price buy would charge", () => {
+			const { shop } = makeShop({
+				priceModifier: { apply: ({ basePrice }) => basePrice * 2 },
+			});
+			const view = shop.getCatalogView(10);
+			expect(
+				view.find((o) => o.id === V1_SHOP_OFFER_IDS.pointsPack)?.price,
+			).toBe(80);
+		});
+	});
 });

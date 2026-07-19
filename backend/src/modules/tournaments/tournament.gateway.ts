@@ -157,6 +157,22 @@ export class TournamentGateway implements OnGatewayInit, OnGatewayDisconnect {
 					? { accepted: true }
 					: { accepted: false, reason: result.reason };
 			}
+			case "BuyOfferIntent": {
+				const offerId = (body.intent as { offerId?: unknown }).offerId;
+				if (typeof offerId !== "string" || offerId === "") {
+					return { accepted: false, reason: "invalid_offer" };
+				}
+				const result = runtime.handleBuyOffer(userId, offerId);
+				return result.status === "ok"
+					? { accepted: true }
+					: { accepted: false, reason: result.reason };
+			}
+			case "EndTurnIntent": {
+				const result = runtime.handleEndTurn(userId);
+				return result.status === "ok"
+					? { accepted: true }
+					: { accepted: false, reason: result.reason };
+			}
 			default:
 				return { accepted: false, reason: "unknown_intent" };
 		}

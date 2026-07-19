@@ -453,6 +453,170 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 	});
 });
 
+describe("TournamentRuntime — shop window (SPEC-012 interaction, SPEC-005)", () => {
+	beforeEach(() => {
+		jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "debug").mockImplementation(() => undefined);
+		jest.spyOn(Logger.prototype, "verbose").mockImplementation(() => undefined);
+	});
+	afterEach(() => jest.restoreAllMocks());
+
+	function makeShopHarness() {
+		const clock = new ManualClock(1_000);
+		const runtime = new TournamentRuntime({
+			tournamentId: TOURNAMENT_ID,
+			seed: "seed-a",
+			participantIds: PARTICIPANT_IDS,
+			settings: makeSettings(),
+			clock,
+			onSnapshot: () => undefined,
+			interactiveTurns: true,
+		});
+		const events: AnyTournamentEvent[] = [];
+		runtime.events.onAny((e) => events.push(e));
+		const order = deriveTurnOrder("seed-a", [...PARTICIPANT_IDS]);
+		return { runtime, clock, events, order };
+	}
+
+	/**
+	 * Opens a shop session for the active player and resolves their turn —
+	 * exactly what landing on the shop tile produces (the tile's `openShop`
+	 * Action opens the session DURING board resolution, before
+	 * PlayerTurnFinished), without depending on a seeded roll hitting tile-18.
+	 */
+	function rollIntoShop(harness: ReturnType<typeof makeShopHarness>): void {
+		const { runtime, order } = harness;
+		runtime.start();
+		runtime.gameEngines.shop.open(order[0]);
+		expect(runtime.handleRollDice(order[0])).toEqual({ status: "ok" });
+	}
+
+	it("holds the baton while the shop session is open and resumes on EndTurnIntent", () => {
+		const harness = makeShopHarness();
+		const { runtime, clock, order } = harness;
+		rollIntoShop(harness);
+
+		// The handoff pause alone must NOT pass the baton — the shop is open.
+		clock.advance(3_000);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBeNull();
+		expect(runtime.gameEngines.shop.openSessionPlayerId).toBe(order[0]);
+
+		expect(runtime.handleEndTurn(order[0])).toEqual({ status: "ok" });
+		expect(runtime.gameEngines.shop.openSessionPlayerId).toBeNull();
+		clock.advance(3_000);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[1]);
+	});
+
+	it("a BuyOfferIntent purchases, credits the reward, closes the shop and hands on", () => {
+		const harness = makeShopHarness();
+		const { runtime, clock, events, order } = harness;
+		rollIntoShop(harness);
+
+		const before = runtime.gameEngines.economy.getBalance(order[0]) ?? 0;
+		expect(runtime.handleBuyOffer(order[0], "pointsPack")).toEqual({
+			status: "ok",
+		});
+		// Points Pack: pay 40, reward 100 → net +60 (through the real resolver).
+		expect(runtime.gameEngines.economy.getBalance(order[0])).toBe(before + 60);
+		expect(
+			events.find((e) => e.name === "ShopClosed")?.payload,
+		).toEqual({ outcome: "purchased" });
+
+		clock.advance(3_000);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[1]);
+	});
+
+	it("a rejected purchase keeps the session (and the hold) open", () => {
+		const harness = makeShopHarness();
+		const { runtime, clock, order } = harness;
+		rollIntoShop(harness);
+
+		// The badge requires round 2 — round 1 rejects requirements_unmet.
+		expect(runtime.handleBuyOffer(order[0], "badgeOffer")).toEqual({
+			status: "rejected",
+			reason: "requirements_unmet",
+		});
+		expect(runtime.gameEngines.shop.openSessionPlayerId).toBe(order[0]);
+		clock.advance(3_000);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBeNull();
+
+		expect(runtime.handleEndTurn(order[0])).toEqual({ status: "ok" });
+		clock.advance(3_000);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[1]);
+	});
+
+	it("the session timeout is the backstop: the round resumes on its own", () => {
+		const harness = makeShopHarness();
+		const { runtime, clock, events, order } = harness;
+		rollIntoShop(harness);
+
+		clock.advance(30_000); // settings.timeouts.shopInteractionSeconds
+		expect(
+			events.find((e) => e.name === "ShopClosed")?.payload,
+		).toEqual({ outcome: "timeout" });
+		clock.advance(3_000);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[1]);
+	});
+
+	it("rejects shop intents without an open session or outside PLAYER_TURNS", () => {
+		const { runtime, order } = makeShopHarness();
+
+		// Before start(): wrong phase.
+		expect(runtime.handleBuyOffer(order[0], "pointsPack")).toEqual({
+			status: "rejected",
+			reason: "not_in_player_turns",
+		});
+		expect(runtime.handleEndTurn(order[0])).toEqual({
+			status: "rejected",
+			reason: "not_in_player_turns",
+		});
+
+		runtime.start();
+		// In phase but no session open (and never someone else's session).
+		expect(runtime.handleBuyOffer(order[0], "pointsPack")).toEqual({
+			status: "rejected",
+			reason: "no_open_shop",
+		});
+		runtime.gameEngines.shop.open(order[0]);
+		expect(runtime.handleEndTurn(order[1])).toEqual({
+			status: "rejected",
+			reason: "no_open_shop",
+		});
+	});
+
+	it("a disconnected shopper's session is cancelled after the grace and the round resumes", () => {
+		const harness = makeShopHarness();
+		const { runtime, clock, events, order } = harness;
+		rollIntoShop(harness);
+
+		runtime.handlePlayerDisconnect(order[0]);
+		clock.advance(3_000); // disconnect grace → cancel
+		expect(
+			events.find((e) => e.name === "ShopClosed")?.payload,
+		).toEqual({ outcome: "cancelled" });
+		clock.advance(3_000);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[1]);
+	});
+
+	it("a quitter converted mid-shop is decided by the CPU (buys when affordable) and play continues", () => {
+		const harness = makeShopHarness();
+		const { runtime, clock, events, order } = harness;
+		rollIntoShop(harness);
+
+		runtime.convertPlayerToBot(order[0]);
+		clock.advance(2_000); // BOT_SHOP_DELAY_MS
+		// initialPoints 100 ≥ 40: the CPU buys the Points Pack.
+		expect(
+			events.find((e) => e.name === "ItemPurchased")?.payload,
+		).toMatchObject({ offerId: "pointsPack" });
+		expect(runtime.gameEngines.shop.openSessionPlayerId).toBeNull();
+		clock.advance(3_000);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[1]);
+	});
+});
+
 describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SPEC-015/016/020/021)", () => {
 	beforeEach(() => {
 		jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);

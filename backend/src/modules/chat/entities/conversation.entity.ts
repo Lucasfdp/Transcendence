@@ -33,6 +33,14 @@ export class Conversation {
 	@Column({ nullable: true, default: null })
 	name: string | null;
 
+	/**
+	 * Group photo URL (served through /api/uploads/). Always null for "dm"
+	 * conversations — a dm's list avatar is the other participant's avatar,
+	 * resolved per-viewer in ChatService.toConversationSummaryView.
+	 */
+	@Column({ type: "text", nullable: true, default: null })
+	avatar: string | null;
+
 	/** Group creator. Always null for "dm" conversations. */
 	@ManyToOne(() => User, { onDelete: "SET NULL", nullable: true })
 	owner: User | null;

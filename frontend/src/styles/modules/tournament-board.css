@@ -110,7 +110,8 @@
 }
 
 .tournament-board__tile--start,
-.tournament-board__tile--bonus {
+.tournament-board__tile--bonus,
+.tournament-board__tile--shop {
 	width: clamp(1rem, 1.55vw, 1.55rem);
 	height: clamp(1rem, 1.55vw, 1.55rem);
 }
@@ -125,6 +126,15 @@
 	background: rgba(118, 87, 20, 0.88);
 	box-shadow:
 		0 0 12px rgba(255, 213, 84, 0.72),
+		0 1px 3px rgba(15, 9, 4, 0.95);
+}
+
+/* The pagoda shop stop (SPEC-012) at the map's top-right corner. */
+.tournament-board__tile--shop {
+	border-color: rgba(148, 199, 255, 0.95);
+	background: rgba(30, 62, 105, 0.88);
+	box-shadow:
+		0 0 12px rgba(122, 180, 255, 0.68),
 		0 1px 3px rgba(15, 9, 4, 0.95);
 }
 

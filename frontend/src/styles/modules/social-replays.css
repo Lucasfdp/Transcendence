@@ -360,8 +360,8 @@
 	gap: 0.4rem;
 }
 .hub-modal__chat-conversation-btn {
-	@apply flex flex-col items-start;
-	gap: 0.15rem;
+	@apply flex items-center;
+	gap: 0.5rem;
 	@apply w-full;
 	background: none;
 	border: none;
@@ -369,6 +369,11 @@
 	color: inherit;
 	@apply cursor-pointer;
 	font-family: inherit;
+}
+.hub-modal__chat-conversation-text {
+	@apply flex flex-col items-start;
+	gap: 0.15rem;
+	@apply min-w-0 flex-1;
 }
 .hub-modal__chat-preview {
 	opacity: 0.6;
@@ -411,6 +416,26 @@
 .hub-modal__chat-members-toggle:disabled {
 	opacity: 0.5;
 	@apply cursor-default;
+}
+/* Owner-only group photo upload — a members-toggle-styled <label> wrapping a
+ * visually hidden file input (same hiding technique as the portrait editor's
+ * upload control in profiles.css). The shared modal button skin comes from the
+ * base rule in hub-modals.css, which includes this label alongside buttons. */
+.hub-modal__chat-photo-upload {
+	@apply inline-flex items-center justify-center;
+}
+.hub-modal__chat-photo-upload input {
+	@apply absolute;
+	width: 1px;
+	height: 1px;
+	@apply overflow-hidden;
+	clip: rect(0, 0, 0, 0);
+	clip-path: inset(50%);
+	@apply whitespace-nowrap;
+}
+.hub-modal__chat-photo-upload:has(input:disabled) {
+	cursor: wait;
+	opacity: 0.5;
 }
 .hub-modal__chat-rename {
 	@apply flex;

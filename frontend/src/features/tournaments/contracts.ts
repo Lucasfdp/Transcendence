@@ -109,12 +109,29 @@ export interface ConfirmMinigameIntent {
 	name: "ConfirmMinigameIntent";
 }
 
+/** The open shop session's player asks to buy an offer (SPEC-012 "Compra"). */
+export interface BuyOfferIntent {
+	name: "BuyOfferIntent";
+	/** The catalog offer to buy (`TournamentShopOfferSummary.id`). */
+	offerId: string;
+}
+
+/**
+ * The shopper is done browsing — close the shop session without buying
+ * (SPEC-005 interaction window / SPEC-012 "Cancel"), letting the turn hand on.
+ */
+export interface EndTurnIntent {
+	name: "EndTurnIntent";
+}
+
 /** Union of the intents a client may send today; grows per phase. */
 export type TournamentIntent =
 	| RollDiceIntent
 	| StartGamblingIntent
 	| LeaveGamblingIntent
-	| ConfirmMinigameIntent;
+	| ConfirmMinigameIntent
+	| BuyOfferIntent
+	| EndTurnIntent;
 
 /** Payload of the `tournament:intent` message. */
 export interface TournamentIntentEnvelope {
@@ -338,6 +355,36 @@ export interface TournamentSnapshotV1 {
 	 * or the deadline before launching. Null when no gate is open.
 	 */
 	minigameGate: TournamentMinigameGateSummary | null;
+	/**
+	 * The open shop session (SPEC-012): the player who landed on the shop tile
+	 * is browsing; the turn holds until they buy, close, or the deadline
+	 * passes. Everyone watches live (SPEC-039); only the session's player may
+	 * send BuyOfferIntent / EndTurnIntent. Null when no session is open.
+	 */
+	shop: TournamentShopSummary | null;
+}
+
+/** The open shop session as everyone sees it (SPEC-012 / SPEC-039). */
+export interface TournamentShopSummary {
+	/** The browsing player (the only one who may buy or close). */
+	playerId: number;
+	/** ms-epoch session deadline — the shop closes itself when it passes. */
+	deadlineAt: number;
+	/** The catalog as priced for the browsing player. */
+	offers: TournamentShopOfferSummary[];
+}
+
+/** One purchasable offer as displayed on the boards (SPEC-012 "Shop Offer"). */
+export interface TournamentShopOfferSummary {
+	id: string;
+	name: string;
+	description: string;
+	/** Emoji glyph for the offer card. */
+	icon: string;
+	/** Price in tournament points, rule price seam already applied. */
+	price: number;
+	/** False when out of stock or its requirements are unmet this round. */
+	available: boolean;
 }
 
 /** The live pre-launch confirmation gate as everyone sees it (SPEC-015 v2). */

@@ -169,6 +169,59 @@ describe("TournamentGateway (SPEC-022)", () => {
 		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(active);
 	});
 
+	it("intent: routes BuyOfferIntent / EndTurnIntent through the shop window (SPEC-012)", async () => {
+		const { gateway, runtime, clock } = await makeHarness();
+		const active = runtime.gameEngines.turnSystem.activePlayerId as number;
+		const bystander = PARTICIPANT_IDS.find((id) => id !== active) as number;
+
+		// No open session: both shop intents reject.
+		expect(
+			gateway.handleIntent(makeSocket(active) as unknown as Socket, {
+				tournamentId: TOURNAMENT_ID,
+				intent: { name: "BuyOfferIntent", offerId: "pointsPack" },
+			}),
+		).toEqual({ accepted: false, reason: "no_open_shop" });
+
+		// A malformed BuyOffer (no offerId) never reaches the Runtime.
+		expect(
+			gateway.handleIntent(makeSocket(active) as unknown as Socket, {
+				tournamentId: TOURNAMENT_ID,
+				intent: { name: "BuyOfferIntent" } as never,
+			}),
+		).toEqual({ accepted: false, reason: "invalid_offer" });
+
+		// The shop window: session open + the shopper's turn resolved (what
+		// landing on the shop tile produces).
+		runtime.gameEngines.shop.open(active);
+		gateway.handleIntent(makeSocket(active) as unknown as Socket, {
+			tournamentId: TOURNAMENT_ID,
+			intent: { name: "RollDiceIntent" },
+		});
+		clock.advance(3_000);
+		// The baton is held for the shop — no next turn yet.
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBeNull();
+
+		// A bystander can neither close nor buy on the shopper's session.
+		expect(
+			gateway.handleIntent(makeSocket(bystander) as unknown as Socket, {
+				tournamentId: TOURNAMENT_ID,
+				intent: { name: "EndTurnIntent" },
+			}),
+		).toEqual({ accepted: false, reason: "no_open_shop" });
+
+		// The shopper buys; the session closes and the baton moves on.
+		expect(
+			gateway.handleIntent(makeSocket(active) as unknown as Socket, {
+				tournamentId: TOURNAMENT_ID,
+				intent: { name: "BuyOfferIntent", offerId: "pointsPack" },
+			}),
+		).toEqual({ accepted: true });
+		expect(runtime.gameEngines.shop.openSessionPlayerId).toBeNull();
+		clock.advance(3_000);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).not.toBeNull();
+		expect(runtime.gameEngines.turnSystem.activePlayerId).not.toBe(active);
+	});
+
 	it("disconnect: exits the room and auto-resolves the leaver's active turn after the grace", async () => {
 		const { gateway, runtime, sync, clock } = await makeHarness();
 		const active = runtime.gameEngines.turnSystem.activePlayerId as number;

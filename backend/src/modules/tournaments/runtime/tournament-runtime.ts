@@ -33,6 +33,7 @@
 import { TournamentEventBus } from "../events/tournament-event-bus";
 import {
 	AnyTournamentEvent,
+	PurchaseRejectionReason,
 	TournamentEventPayloadMap,
 	createTournamentEvent,
 } from "../events/tournament-event.types";
@@ -175,6 +176,21 @@ export type GamblingIntentResult =
 				| "error";
 	  };
 
+/**
+ * Result of a BuyOfferIntent (SPEC-012/SPEC-022 validation). The rejection
+ * reasons mirror the Shop System's own `PurchaseRejectionReason` plus the
+ * Runtime-level gates (wrong phase / not the open session's player).
+ */
+export type ShopIntentResult =
+	| { readonly status: "ok" }
+	| {
+			readonly status: "rejected";
+			readonly reason:
+				| "not_in_player_turns"
+				| "no_open_shop"
+				| PurchaseRejectionReason;
+	  };
+
 /** Safety bound for `runToCompletion` — see the method's doc comment. */
 const DEFAULT_MAX_RUN_STEPS = 1000;
 
@@ -184,6 +200,7 @@ const FINAL_CHALLENGE_RETRY_MS = 30_000;
 /** Human-ish pause before a CPU participant acts (deterministic clock delay). */
 const BOT_TURN_DELAY_MS = 1_500;
 const BOT_GAMBLING_DELAY_MS = 2_500;
+const BOT_SHOP_DELAY_MS = 2_000;
 
 /**
  * Grace before a disconnect auto-resolves the leaver's active turn (or open
@@ -242,6 +259,13 @@ export class TournamentRuntime {
 	private readonly interactive: boolean;
 	/** Index into `turnOrder` of the turn being played (interactive mode). */
 	private turnIndex = 0;
+	/**
+	 * True while the baton is held for an open shop session (SPEC-012
+	 * "Protocolo": the turn waits for ShopClosed). Set when a turn finishes
+	 * with the shopper still browsing; the ShopClosed subscription resumes
+	 * the normal handoff.
+	 */
+	private shopHoldPending = false;
 	/** The champion once VICTORY resolves (SPEC-021); null until then. */
 	private winnerUserId: number | null = null;
 	/**
@@ -394,6 +418,17 @@ export class TournamentRuntime {
 			this.bus.on("PlayerTurnFinished", () => {
 				this.onInteractiveTurnFinished();
 			});
+			// ShopClosed fires on EVERY session close (purchase, cancel, timeout,
+			// empty catalog — SPEC-012 "Protocolo"), so one subscription resumes
+			// a turn held for the shop window: the shopper landed on the shop
+			// tile, the turn finished, and the baton waited for this fact.
+			this.bus.on("ShopClosed", () => {
+				if (!this.shopHoldPending || this.machine.currentPhase !== "PLAYER_TURNS") {
+					return;
+				}
+				this.shopHoldPending = false;
+				this.scheduleTurnHandoff();
+			});
 			// GamblingFinished fires on EVERY close (bet won/lost, abandon,
 			// timeout — SPEC-016), so one subscription resumes the round. A
 			// RESOLVED bet holds first so every board presents the outcome;
@@ -442,6 +477,38 @@ export class TournamentRuntime {
 					this.decideBotGambling(winnerId);
 				});
 			});
+			this.bus.on("ShopOpened", (event) => {
+				const playerId = event.playerId;
+				if (playerId === null || !this.botPlayerIds.has(playerId)) {
+					return;
+				}
+				this.clock.schedule(BOT_SHOP_DELAY_MS, () => {
+					this.decideBotShop(playerId);
+				});
+			});
+		}
+	}
+
+	/**
+	 * CPU shop policy: buy the first offer that is available and affordable,
+	 * else browse away — through the SAME intent entry points as humans. The
+	 * session timeout is the backstop if the buy is rejected anyway.
+	 */
+	private decideBotShop(playerId: number): void {
+		if (this.engines.shop.openSessionPlayerId !== playerId) {
+			return; // session already closed (timeout raced the delay)
+		}
+		const balance = this.engines.economy.getBalance(playerId) ?? 0;
+		const pick = this.engines.shop
+			.getCatalogView(playerId, this.round)
+			.find((offer) => offer.available && offer.price <= balance);
+		if (pick === undefined) {
+			this.handleEndTurn(playerId);
+			return;
+		}
+		const result = this.handleBuyOffer(playerId, pick.id);
+		if (result.status !== "ok") {
+			this.handleEndTurn(playerId);
 		}
 	}
 
@@ -679,6 +746,43 @@ export class TournamentRuntime {
 	}
 
 	/**
+	 * BuyOfferIntent (SPEC-012 "Compra"): the open shop session's player asks
+	 * to buy. Valid only in interactive mode during PLAYER_TURNS while THEIR
+	 * session is open; the Shop re-validates the offer (exists / requirements /
+	 * stock / funds) and keeps the session open on a rejection so the player
+	 * may try another offer. A successful purchase closes the session, which
+	 * resumes the held turn handoff via ShopClosed.
+	 */
+	handleBuyOffer(playerId: number, offerId: string): ShopIntentResult {
+		if (!this.interactive || this.machine.currentPhase !== "PLAYER_TURNS") {
+			return { status: "rejected", reason: "not_in_player_turns" };
+		}
+		if (this.engines.shop.openSessionPlayerId !== playerId) {
+			return { status: "rejected", reason: "no_open_shop" };
+		}
+		const result = this.engines.shop.buy(playerId, offerId);
+		return result.status === "purchased"
+			? { status: "ok" }
+			: { status: "rejected", reason: result.reason };
+	}
+
+	/**
+	 * EndTurnIntent (SPEC-005 interaction window): the shopper is done — close
+	 * the shop session without buying (SPEC-012 "Cancel"). ShopClosed then
+	 * resumes the held handoff. Rejected when the caller has no open session.
+	 */
+	handleEndTurn(playerId: number): ShopIntentResult {
+		if (!this.interactive || this.machine.currentPhase !== "PLAYER_TURNS") {
+			return { status: "rejected", reason: "not_in_player_turns" };
+		}
+		if (this.engines.shop.openSessionPlayerId !== playerId) {
+			return { status: "rejected", reason: "no_open_shop" };
+		}
+		this.engines.shop.cancel(playerId);
+		return { status: "ok" };
+	}
+
+	/**
 	 * A participant disconnected (SPEC-005 "Desconexión" / SPEC-023): after a
 	 * short grace, if they have not reconnected, the Turn System auto-resolves
 	 * their active turn and any open gambling decision of theirs closes as
@@ -698,6 +802,9 @@ export class TournamentRuntime {
 			if (this.machine.currentPhase === "GAMBLING_PHASE") {
 				this.engines.gambling.abandon(playerId);
 			}
+			// An open shop session of theirs closes too (SPEC-012: cancel only
+			// acts on the caller's own session) so the held baton moves on.
+			this.engines.shop.cancel(playerId);
 		});
 	}
 
@@ -739,6 +846,10 @@ export class TournamentRuntime {
 		) {
 			this.clock.schedule(BOT_GAMBLING_DELAY_MS, () => {
 				this.decideBotGambling(playerId);
+			});
+		} else if (this.engines.shop.openSessionPlayerId === playerId) {
+			this.clock.schedule(BOT_SHOP_DELAY_MS, () => {
+				this.decideBotShop(playerId);
 			});
 		}
 
@@ -885,12 +996,26 @@ export class TournamentRuntime {
 	 * The baton passes AFTER a handoff pause — the boards are presenting the
 	 * resolved roll (value reveal + token walk), so the next turn (or the
 	 * round's minigame) only opens once the piece has visibly landed.
+	 *
+	 * Landing on the shop tile opens a shop session DURING tile resolution
+	 * (SPEC-012), so by the time this fact arrives the session is already open:
+	 * the baton then waits for ShopClosed (the interaction window, SPEC-005)
+	 * before the handoff pause runs — the session's own timeout is the backstop.
 	 */
 	private onInteractiveTurnFinished(): void {
 		if (this.machine.currentPhase !== "PLAYER_TURNS") {
 			return;
 		}
 		this.turnIndex += 1;
+		if (this.engines.shop.openSessionPlayerId !== null) {
+			this.shopHoldPending = true;
+			return; // the ShopClosed subscription schedules the handoff
+		}
+		this.scheduleTurnHandoff();
+	}
+
+	/** The handoff pause → next turn or round close (see onInteractiveTurnFinished). */
+	private scheduleTurnHandoff(): void {
 		this.clock.schedule(TURN_HANDOFF_MS, () => {
 			if (this.machine.isTerminal || this.machine.currentPhase !== "PLAYER_TURNS") {
 				return;

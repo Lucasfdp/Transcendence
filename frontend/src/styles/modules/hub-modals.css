@@ -71,6 +71,7 @@
 }
 
 .hub-modal__panel header button,
+.hub-modal__body :where(label.hub-modal__chat-photo-upload),
 .hub-modal__body :where(button:not(.hub-modal__shell-card):not(.hub-modal__cosmetic-toggle):not(.hub-modal__showcase-slot):not(.hub-modal__shell-detail-backdrop)) {
 	border: 1px solid rgba(123, 183, 111, 0.58);
 	border-radius: 0.72rem;
@@ -96,6 +97,7 @@
 }
 
 .hub-modal__panel header button:hover,
+.hub-modal__body :where(label.hub-modal__chat-photo-upload:not(:has(input:disabled)):hover),
 .hub-modal__body :where(button:not(:disabled):not(.hub-modal__shell-card):not(.hub-modal__cosmetic-toggle):not(.hub-modal__showcase-slot):not(.hub-modal__shell-detail-backdrop):hover) {
 	transform: translateY(-1px);
 	border-color: rgba(216, 255, 159, 0.82);
