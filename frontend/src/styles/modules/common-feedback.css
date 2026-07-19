@@ -163,3 +163,141 @@
 	line-height: 1.6;
 }
 
+.game-confirm {
+	@apply fixed inset-0 grid place-items-center;
+	z-index: 2100;
+	padding: clamp(1rem, 4vw, 2rem);
+}
+
+.game-confirm__backdrop {
+	@apply absolute inset-0 cursor-pointer;
+	border: 0;
+	background:
+		radial-gradient(
+			circle at 50% 35%,
+			rgba(218, 174, 83, 0.14),
+			transparent 34%
+		),
+		rgba(3, 5, 8, 0.82);
+	backdrop-filter: blur(9px);
+}
+
+.game-confirm__panel {
+	@apply relative overflow-hidden;
+	width: min(34rem, 100%);
+	border: 1px solid rgba(226, 186, 104, 0.52);
+	border-radius: 1.35rem;
+	padding: clamp(1.35rem, 4vw, 2rem);
+	background:
+		linear-gradient(180deg, rgba(38, 38, 25, 0.98), rgba(8, 12, 14, 0.99)),
+		rgba(7, 10, 16, 0.98);
+	box-shadow:
+		0 34px 100px rgba(0, 0, 0, 0.62),
+		0 0 34px rgba(218, 174, 83, 0.16),
+		inset 0 0 0 1px rgba(255, 239, 196, 0.06);
+}
+
+.game-confirm__panel::before {
+	content: "";
+	@apply pointer-events-none absolute;
+	inset: 0.7rem;
+	border: 1px solid rgba(241, 211, 145, 0.12);
+	border-radius: 0.9rem;
+}
+
+.game-confirm__header,
+.game-confirm__description,
+.game-confirm__actions {
+	@apply relative;
+}
+
+.game-confirm__header {
+	padding-bottom: 1rem;
+	border-bottom: 1px solid rgba(241, 211, 145, 0.24);
+}
+
+.game-confirm__eyebrow {
+	@apply m-0 uppercase;
+	color: rgba(241, 211, 145, 0.68);
+	font-size: 0.7rem;
+	font-weight: 800;
+	letter-spacing: 0.22em;
+}
+
+.game-confirm__header h2 {
+	@apply m-0;
+	margin-top: 0.4rem;
+	color: #f5e4b8;
+	font-family: var(--blowbrush-font);
+	font-size: clamp(2rem, 7vw, 3rem);
+	font-weight: 400;
+	line-height: 0.95;
+	letter-spacing: 0.05em;
+	text-shadow:
+		0 2px 0 rgba(70, 43, 18, 0.72),
+		0 0 16px rgba(218, 174, 83, 0.24);
+}
+
+.game-confirm__description {
+	@apply m-0;
+	padding: 1.25rem 0 1.4rem;
+	color: rgba(255, 247, 230, 0.8);
+	font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+	line-height: 1.6;
+}
+
+.game-confirm__actions {
+	@apply flex justify-end;
+	gap: 0.7rem;
+}
+
+.game-confirm__button {
+	@apply cursor-pointer uppercase;
+	min-width: 8rem;
+	border: 1px solid rgba(226, 186, 104, 0.42);
+	border-radius: 0.72rem;
+	padding: 0.7rem 1rem;
+	font-family: var(--rowdy-font);
+	font-size: 0.82rem;
+	font-weight: 800;
+	letter-spacing: 0.06em;
+	transition:
+		transform 160ms ease,
+		border-color 160ms ease,
+		box-shadow 160ms ease,
+		background 160ms ease;
+}
+
+.game-confirm__button:hover,
+.game-confirm__button:focus-visible {
+	transform: translateY(-1px);
+	border-color: rgba(255, 230, 164, 0.8);
+}
+
+.game-confirm__button--cancel {
+	background: rgba(14, 20, 20, 0.9);
+	color: #f1d391;
+}
+
+.game-confirm__button--danger {
+	background: linear-gradient(135deg, #3b1716, #9c4034);
+	color: #fff3df;
+	box-shadow: 0 8px 22px rgba(76, 17, 14, 0.28);
+}
+
+.game-confirm__button--danger:hover,
+.game-confirm__button--danger:focus-visible {
+	background: linear-gradient(135deg, #4b1c19, #bb5142);
+	box-shadow: 0 10px 26px rgba(110, 25, 20, 0.36);
+}
+
+@media (max-width: 520px) {
+	.game-confirm__actions {
+		@apply grid;
+		grid-template-columns: 1fr;
+	}
+
+	.game-confirm__button {
+		@apply w-full;
+	}
+}

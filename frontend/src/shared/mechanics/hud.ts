@@ -6,16 +6,10 @@ import Phaser from "phaser";
 import { THEME } from "../theme";
 
 /**
- * Fired by the in-arena "LEAVE GAME" button of a tournament minigame after the
- * player confirms. GamePage listens: it emits `tournament:quit` (permanent —
- * CPU takes over, counts as a loss) and navigates back to the hub.
+ * Fired by the in-arena "LEAVE GAME" button of a tournament minigame.
+ * GamePage listens and opens the styled confirmation modal before quitting.
  */
 export const TOURNAMENT_QUIT_EVENT = "shellsmash:quit-tournament";
-
-const TOURNAMENT_QUIT_CONFIRM =
-	"Are you sure you want to quit the game? This counts as a LOSS on your " +
-	"record. A CPU will take your place for the rest of the tournament and " +
-	"you won't be able to rejoin.";
 
 /**
  * Add a "Return to Hub" link under the right score panel area.
@@ -24,8 +18,8 @@ const TOURNAMENT_QUIT_CONFIRM =
  * Tournament minigames (the online-match context carries `tournamentId`) get
  * a "LEAVE GAME" button instead: there is no hub to casually return to
  * mid-tournament — leaving means quitting the WHOLE tournament for good, so
- * it asks for confirmation and then fires TOURNAMENT_QUIT_EVENT (handled by
- * GamePage, which owns the socket emit + navigation).
+ * it fires TOURNAMENT_QUIT_EVENT so GamePage can show the confirmation and own
+ * the socket emit + navigation.
  */
 export function buildReturnButton(
 	scene: Phaser.Scene,
@@ -40,8 +34,7 @@ export function buildReturnButton(
 	const isTournament = Boolean(
 		(
 			scene.registry.get("onlineMatch") as
-				| { tournamentId?: string }
-				| undefined
+				{ tournamentId?: string } | undefined
 		)?.tournamentId,
 	);
 
@@ -67,9 +60,7 @@ export function buildReturnButton(
 		.setDepth(22)
 		.on("pointerup", () => {
 			if (isTournament) {
-				if (window.confirm(TOURNAMENT_QUIT_CONFIRM)) {
-					window.dispatchEvent(new CustomEvent(TOURNAMENT_QUIT_EVENT));
-				}
+				window.dispatchEvent(new CustomEvent(TOURNAMENT_QUIT_EVENT));
 				return;
 			}
 			beforeReturn?.();

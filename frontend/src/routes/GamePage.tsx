@@ -6,6 +6,7 @@ import {
 	useNavigate,
 	useParams,
 } from "react-router-dom";
+import { GameConfirmModal } from "../components/common/GameConfirmModal";
 import { api, type User } from "../features/hub/api";
 import { RETURN_TO_HUB_EVENT } from "../features/hub/ReturnToHubScene";
 import { TOURNAMENT_WS_MESSAGES } from "../features/tournaments/contracts";
@@ -101,6 +102,7 @@ export default function GamePage(): JSX.Element {
 	const [launchData, setLaunchData] = useState<ShellSmashStartData | null>(
 		null,
 	);
+	const [isTournamentQuitOpen, setIsTournamentQuitOpen] = useState(false);
 
 	const sceneData = useMemo(() => {
 		if (!gameId) return null;
@@ -160,8 +162,7 @@ export default function GamePage(): JSX.Element {
 		// arena.
 		const handleQuitTournament = () => {
 			if (!tournamentId) return;
-			getGameSocket().emit(TOURNAMENT_WS_MESSAGES.QUIT, { tournamentId });
-			navigate("/?view=normal", { replace: true });
+			setIsTournamentQuitOpen(true);
 		};
 		window.addEventListener(TOURNAMENT_QUIT_EVENT, handleQuitTournament);
 
@@ -193,16 +194,34 @@ export default function GamePage(): JSX.Element {
 		);
 	}
 
+	const tournamentId = launchData.onlineMatch?.tournamentId;
+	const confirmTournamentQuit = () => {
+		if (!tournamentId) return;
+		setIsTournamentQuitOpen(false);
+		getGameSocket().emit(TOURNAMENT_WS_MESSAGES.QUIT, { tournamentId });
+		navigate("/?view=normal", { replace: true });
+	};
+
 	return (
-		<div
-			ref={hostRef}
-			className={`game-host game-host-fullscreen ${hubBackgroundClass(
-				"game-host",
-				hubBackground,
-				hubBackgroundAlter,
-			)}`}
-			aria-label="Shell Smash game canvas"
-		/>
+		<>
+			<div
+				ref={hostRef}
+				className={`game-host game-host-fullscreen ${hubBackgroundClass(
+					"game-host",
+					hubBackground,
+					hubBackgroundAlter,
+				)}`}
+				aria-label="Shell Smash game canvas"
+			/>
+			<GameConfirmModal
+				isOpen={isTournamentQuitOpen}
+				title="Leave tournament?"
+				description="This counts as a loss on your record. A CPU will take your place for the rest of the tournament and you will not be able to rejoin."
+				confirmLabel="Leave tournament"
+				onConfirm={confirmTournamentQuit}
+				onCancel={() => setIsTournamentQuitOpen(false)}
+			/>
+		</>
 	);
 }
 
@@ -263,6 +282,7 @@ function PowerupMatchmakingPanel({
 	const [isSearchingOnline, setIsSearchingOnline] = useState(false);
 	const [activeMatchStatus, setActiveMatchStatus] =
 		useState<MatchStatusPayload | null>(null);
+	const [isAbandonConfirmOpen, setIsAbandonConfirmOpen] = useState(false);
 	const isSearchingOnlineRef = useRef(false);
 	const togglePowerups = (
 		setEnabled: (updater: (enabled: boolean) => boolean) => void,
@@ -589,30 +609,34 @@ function PowerupMatchmakingPanel({
 			tournamentId,
 		} = activeMatchStatus;
 		const onRejoinedState = (snapshot: GameSnapshot) => {
-			if (snapshot.matchId !== matchId || snapshot.gameId !== activeGameId) return;
+			if (
+				snapshot.matchId !== matchId ||
+				snapshot.gameId !== activeGameId
+			)
+				return;
 			socket.off("game:state", onRejoinedState);
 			socket.emit(
-			"game:physics-request",
-			{ matchId },
-			(physicsState: OnlineMatchContext["physicsState"] | null) => {
-				onLaunch({
-					gameId: activeGameId as GameId,
+				"game:physics-request",
+				{ matchId },
+				(physicsState: OnlineMatchContext["physicsState"] | null) => {
+					onLaunch({
+						gameId: activeGameId as GameId,
 						targetScene,
 						user: currentUser ?? undefined,
 						shellSelection: { player0: [], player1: [] },
 						...replayAvailability(snapshot.powerupsEnabled),
 						onlineMatch: {
-						matchId,
-						side,
-						tournamentId,
-						rejoining: true,
+							matchId,
+							side,
+							tournamentId,
+							rejoining: true,
 							snapshot,
 							physicsState: physicsState ?? undefined,
 							...replayAvailability(snapshot.powerupsEnabled),
 						},
 					});
-			},
-		);
+				},
+			);
 		};
 		socket.on("game:state", onRejoinedState);
 		socket.emit("match:rejoin");
@@ -620,11 +644,11 @@ function PowerupMatchmakingPanel({
 
 	const abandonActiveMatch = () => {
 		if (!activeMatchStatus) return;
-		const confirmed = window.confirm(
-			"Abandon this match? It counts as a LOSS on your record and your " +
-				"opponent is awarded the win. You can search for a new match afterwards.",
-		);
-		if (!confirmed) return;
+		setIsAbandonConfirmOpen(true);
+	};
+
+	const confirmAbandonActiveMatch = () => {
+		setIsAbandonConfirmOpen(false);
 		getGameSocket().emit("match:abandon");
 		setActiveMatchStatus(null);
 		setMessage("Match abandoned. You can search for a new match.");
@@ -722,6 +746,14 @@ function PowerupMatchmakingPanel({
 
 	return (
 		<main className={`power-picker-page game-host ${backgroundClass}`}>
+			<GameConfirmModal
+				isOpen={isAbandonConfirmOpen}
+				title="Abandon match?"
+				description="This counts as a loss on your record and your opponent is awarded the win. You can search for a new match afterwards."
+				confirmLabel="Abandon match"
+				onConfirm={confirmAbandonActiveMatch}
+				onCancel={() => setIsAbandonConfirmOpen(false)}
+			/>
 			<section className="power-picker-page__panel">
 				<header className="power-picker-page__header">
 					<button

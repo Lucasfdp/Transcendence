@@ -16,6 +16,7 @@ import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 
+import { GameConfirmModal } from "../../components/common/GameConfirmModal";
 import { getGameSocket } from "../../services/network/gameSocket";
 import { INGAME_PLAYER_ASSET } from "../../shared/assets";
 import { hubBackgroundClass } from "../../shared/backgrounds";
@@ -31,6 +32,7 @@ import {
 import { TieBreakRoulette } from "./TieBreakRoulette";
 import {
 	TOURNAMENT_BOARD_PATH,
+	tournamentPlayerPosition,
 	tournamentTilePosition,
 } from "./tournament-board-layout";
 
@@ -134,6 +136,7 @@ export function TournamentBoardView({
 	const [rollBanner, setRollBanner] = useState<RollBanner | null>(null);
 	/** Transient gambling feedback (e.g. "not enough points"). */
 	const [gamblingNotice, setGamblingNotice] = useState<string | null>(null);
+	const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
 	const seqRef = useRef(-1);
 	const navigate = useNavigate();
 
@@ -338,15 +341,13 @@ export function TournamentBoardView({
 	// tournament. Plain navigation/disconnect still goes through the
 	// reconnectable LEAVE in the join effect's cleanup.
 	const leaveMatch = () => {
-		const confirmed = window.confirm(
-			"Leave this tournament for good? This counts as a LOSS on your record. " +
-				"A CPU will take your place for the rest of the match and you won't be " +
-				"able to rejoin. You can start or join a new tournament afterwards.",
-		);
-		if (confirmed) {
-			getGameSocket().emit(TOURNAMENT_WS_MESSAGES.QUIT, { tournamentId });
-			onExit();
-		}
+		setIsLeaveConfirmOpen(true);
+	};
+
+	const confirmLeaveMatch = () => {
+		setIsLeaveConfirmOpen(false);
+		getGameSocket().emit(TOURNAMENT_WS_MESSAGES.QUIT, { tournamentId });
+		onExit();
 	};
 
 	const sendIntent = (
@@ -489,6 +490,14 @@ export function TournamentBoardView({
 			aria-modal="true"
 			aria-label="Tournament board"
 		>
+			<GameConfirmModal
+				isOpen={isLeaveConfirmOpen}
+				title="Leave tournament?"
+				description="This counts as a loss on your record. A CPU will take your place for the rest of the tournament and you will not be able to rejoin. You can start or join a new tournament afterwards."
+				confirmLabel="Leave tournament"
+				onConfirm={confirmLeaveMatch}
+				onCancel={() => setIsLeaveConfirmOpen(false)}
+			/>
 			{/* Tie-break roulette: covers the board until the server resumes the
 			    round (the wheel lands on the server-chosen winner everywhere). */}
 			{tieBreak && tieBreakPlayers.length >= 2 && !isTerminal && (
@@ -647,7 +656,10 @@ export function TournamentBoardView({
 								const tileId =
 									displayedTiles?.[player.userId] ??
 									player.tileId;
-								const position = tournamentTilePosition(tileId);
+								const position = tournamentPlayerPosition(
+									tileId,
+									player.seat,
+								);
 								if (!position) return null;
 								const occupants = snapshot.players
 									.filter(
@@ -662,8 +674,10 @@ export function TournamentBoardView({
 										candidate.userId === player.userId,
 								);
 								const offset =
-									TOKEN_OFFSETS[occupantIndex] ??
-									TOKEN_OFFSETS[0];
+									tileId === "tile-0"
+										? TOKEN_OFFSETS[0]
+										: (TOKEN_OFFSETS[occupantIndex] ??
+											TOKEN_OFFSETS[0]);
 								return (
 									<div
 										key={player.userId}

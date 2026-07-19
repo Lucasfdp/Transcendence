@@ -51,12 +51,11 @@ describe("buildReturnButton", () => {
 		expect(scene.scene.start).toHaveBeenCalledWith("HubScene");
 	});
 
-	it("tournament minigames get LEAVE GAME: confirm quits the whole tournament", () => {
+	it("tournament minigames request the styled quit confirmation", () => {
 		const { scene, pointerHandlers } = makeScene({
 			onlineMatch: { tournamentId: "t-1" },
 		});
 		const beforeReturn = vi.fn();
-		vi.spyOn(window, "confirm").mockReturnValue(true);
 		const onQuit = vi.fn();
 		window.addEventListener(TOURNAMENT_QUIT_EVENT, onQuit);
 
@@ -66,29 +65,9 @@ describe("buildReturnButton", () => {
 		pointerHandlers.get("pointerup")?.();
 		window.removeEventListener(TOURNAMENT_QUIT_EVENT, onQuit);
 
-		// GamePage owns the socket emit + navigation — the button only asks
-		// for confirmation and fires the quit event; no scene switch here.
-		expect(window.confirm).toHaveBeenCalledWith(
-			expect.stringContaining("count"),
-		);
+		// GamePage owns both the confirmation modal and the final action.
 		expect(onQuit).toHaveBeenCalledTimes(1);
 		expect(beforeReturn).not.toHaveBeenCalled();
-		expect(scene.scene.start).not.toHaveBeenCalled();
-	});
-
-	it("declining the confirmation leaves the match untouched", () => {
-		const { scene, pointerHandlers } = makeScene({
-			onlineMatch: { tournamentId: "t-1" },
-		});
-		vi.spyOn(window, "confirm").mockReturnValue(false);
-		const onQuit = vi.fn();
-		window.addEventListener(TOURNAMENT_QUIT_EVENT, onQuit);
-
-		buildReturnButton(scene as never, "HubScene");
-		pointerHandlers.get("pointerup")?.();
-		window.removeEventListener(TOURNAMENT_QUIT_EVENT, onQuit);
-
-		expect(onQuit).not.toHaveBeenCalled();
 		expect(scene.scene.start).not.toHaveBeenCalled();
 	});
 });

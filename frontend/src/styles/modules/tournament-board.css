@@ -34,15 +34,35 @@
 }
 
 .tournament-board__title {
-	@apply absolute m-0 text-center font-extrabold tracking-wide;
+	@apply absolute m-0 text-center tracking-wide;
 	top: clamp(0.8rem, 2vw, 1.75rem);
 	left: clamp(1rem, 2.5vw, 2.5rem);
 	z-index: 7;
 	font-size: clamp(1.35rem, 2.2vw, 2.25rem);
+	font-family: var(--blowbrush-font);
+	font-weight: 400;
+	line-height: 1;
 	color: #f5e4b8;
 	text-shadow:
 		0 2px 2px rgba(8, 7, 4, 0.94),
 		0 0 18px rgba(218, 174, 83, 0.35);
+}
+
+.tournament-board__title::after {
+	content: "";
+	@apply block;
+	width: 72%;
+	height: 1px;
+	margin: 0.5rem auto 0;
+	background: linear-gradient(
+		90deg,
+		transparent,
+		#e2ba68 18%,
+		#f5e4b8 50%,
+		#e2ba68 82%,
+		transparent
+	);
+	box-shadow: 0 0 8px rgba(218, 174, 83, 0.48);
 }
 
 .tournament-board__content {
