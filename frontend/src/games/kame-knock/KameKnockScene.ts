@@ -74,6 +74,10 @@ import {
 	DEFAULT_PLAYER_SHELL_SKINS,
 	resolvePlayerShellSkins,
 } from "../../shared/mechanics/player-config";
+import {
+	BUMPER_FLASH_MS,
+	drawBumper,
+} from "../../shared/mechanics/bumper-renderer";
 import { type PlayerTrailOptions } from "../../shared/mechanics/player-trails";
 import {
 	buildTurnStateFromGameRuleHooks,
@@ -258,6 +262,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 
 	private targetSprites = new Map<number, Phaser.GameObjects.Image>();
+	private solidTargetFlashes = new Map<number, number>();
 	nextTargetId = 0;
 	currentBallIndex = 0;
 	private localTurnNumber = 0;
@@ -355,6 +360,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		this.localReplay.reset();
 
 		this.targets = [];
+		this.solidTargetFlashes.clear();
 		this.nextTargetId = 0;
 		this.currentBallIndex = 0;
 		this.localTurnNumber = 0;
@@ -519,6 +525,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	}
 
 	private updateKameKnock(delta: number): void {
+		this.updateSolidTargetFlashes(delta);
 		if (this.online.isActive) {
 			this.online.update(delta);
 			return;
@@ -752,6 +759,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			if (!target.breakable) {
 				this.bounceOffSolidTarget(
 					ball,
+					target.id,
 					pos.x,
 					pos.y,
 					timedTargetRadius(target, this.arena),
@@ -792,8 +800,24 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		}
 	}
 
+	public flashSolidTarget(targetId: number): void {
+		this.solidTargetFlashes.set(targetId, BUMPER_FLASH_MS);
+		this.drawTargets();
+	}
+
+	private updateSolidTargetFlashes(delta: number): void {
+		if (this.solidTargetFlashes.size === 0) return;
+		for (const [targetId, timer] of this.solidTargetFlashes) {
+			const nextTimer = timer - delta;
+			if (nextTimer > 0) this.solidTargetFlashes.set(targetId, nextTimer);
+			else this.solidTargetFlashes.delete(targetId);
+		}
+		this.drawTargets();
+	}
+
 	private bounceOffSolidTarget(
 		ball: BallState,
+		targetId: number,
 		targetX: number,
 		targetY: number,
 		targetRadius: number,
@@ -815,6 +839,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 
 		ball.vx = (ball.vx - 2 * dot * nx) * SOLID_BOUNCE_DAMP;
 		ball.vy = (ball.vy - 2 * dot * ny) * SOLID_BOUNCE_DAMP;
+		this.flashSolidTarget(targetId);
 		popKameKnockBounce(this, targetX, targetY);
 	}
 
@@ -1651,9 +1676,21 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	private drawTarget(target: TimedTarget): void {
 		const pos = timedTargetPosition(target, this.arena);
 		const radius = timedTargetRadius(target, this.arena);
+		if (!target.breakable) {
+			this.targetSprites.get(target.id)?.destroy();
+			this.targetSprites.delete(target.id);
+			drawBumper(
+				this.targetMarkerGfx,
+				pos.x,
+				pos.y,
+				radius,
+				this.arena.scale,
+				this.solidTargetFlashes.get(target.id) ?? 0,
+			);
+			return;
+		}
 		const pulse = 0.88 + Math.sin(target.ageMs * 0.006) * 0.12;
-		const alpha = target.breakable ? 1 : 0.92;
-		this.targetGfx.fillStyle(0x000000, 0.2 * alpha);
+		this.targetGfx.fillStyle(0x000000, 0.2);
 		this.targetGfx.fillEllipse(
 			pos.x + radius * 0.25,
 			pos.y + radius * 0.45,
@@ -1674,29 +1711,8 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			.setTexture(TARGET_TEXTURES[target.kind])
 			.setPosition(pos.x, pos.y)
 			.setDisplaySize(size, size)
-			.setAlpha(alpha)
-			.setTint(target.breakable ? 0xffffff : 0x8d96aa);
-
-		if (target.breakable) return;
-
-		this.targetMarkerGfx.lineStyle(
-			Math.max(2, radius * 0.09),
-			0xffffff,
-			0.75,
-		);
-		this.targetMarkerGfx.strokeCircle(pos.x, pos.y, radius * 1.08);
-		this.targetMarkerGfx.lineBetween(
-			pos.x - radius * 0.45,
-			pos.y,
-			pos.x + radius * 0.45,
-			pos.y,
-		);
-		this.targetMarkerGfx.lineBetween(
-			pos.x,
-			pos.y - radius * 0.45,
-			pos.x,
-			pos.y + radius * 0.45,
-		);
+			.setAlpha(1)
+			.clearTint();
 	}
 
 	private destroyTargetSprites(): void {

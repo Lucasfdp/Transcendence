@@ -138,12 +138,7 @@
 	min-height: clamp(6.6rem, 12vw, 8.6rem);
 }
 
-.power-picker-page__back,
-.power-picker-page__primary,
-.power-picker-page__online-button,
-.power-picker-page__danger,
-.power-picker-page__toggle,
-.power-picker-page__player-picker button {
+.power-picker-page__danger {
 	border: 1px solid rgba(202, 204, 142, 0.42);
 	border-radius: 999px;
 	background: rgba(26, 16, 5, 0.86);
@@ -156,42 +151,12 @@
 		background 160ms ease;
 }
 
-.power-picker-page__primary:disabled,
-.power-picker-page__online-button:disabled,
-.power-picker-page__toggle:disabled,
-.power-picker-page__player-picker button:disabled {
-	@apply cursor-not-allowed;
-	filter: grayscale(0.45);
-	opacity: 0.45;
-}
-
 .power-picker-page__back {
-	@apply fixed;
-	left: 50%;
-	bottom: clamp(0.9rem, 2vw, 1.4rem);
-	z-index: 2;
-	padding: 0.6rem 1.15rem;
-	transform: translateX(-50%);
-	border-color: rgba(123, 183, 111, 0.68);
-	border-radius: 0.86rem;
-	background:
-		linear-gradient(180deg, rgba(33, 37, 24, 0.96), rgba(8, 18, 11, 0.98)),
-		rgba(7, 10, 16, 0.97);
-	color: #d9ddc2;
-	font-family: var(--blowbrush-font);
-	font-size: 1rem;
-	@apply font-bold;
-	letter-spacing: 0.05em;
-	@apply uppercase;
-	box-shadow:
-		0 0 0 2px rgba(0, 0, 0, 0.48),
-		0 0 18px rgba(143, 176, 128, 0.14),
-		inset 0 0 0 1px rgba(217, 221, 194, 0.08);
-}
-
-.power-picker-page__back::before {
-	content: "<";
-	margin-right: 0.4rem;
+	margin: 1.25rem auto 0;
+	width: min(12rem, calc(100% - 2rem));
+	aspect-ratio: 1600 / 430;
+	transform: none;
+	font-size: clamp(0.97rem, calc(1.15vw + 0.1875rem), 1.11rem);
 }
 
 .power-picker-page__title-card {
@@ -348,50 +313,38 @@ img.power-card__orb {
 	margin-top: 1.35rem;
 }
 
-.power-picker-page__primary,
-.power-picker-page__online-button,
-.power-picker-page__danger,
-.power-picker-page__toggle {
+.power-picker-page__danger {
 	width: min(17.5rem, 100%);
 	padding: 0.62rem 0.82rem;
 	border-radius: 0.86rem;
 	font-family: var(--blowbrush-font);
-	font-size: clamp(0.94rem, 1.18vw, 1.08rem);
+	font-size: clamp(1.13rem, calc(1.18vw + 0.1875rem), 1.27rem);
 	@apply font-bold;
 	letter-spacing: 0.05em;
 	@apply uppercase;
 }
 
-.power-picker-page__primary,
-.power-picker-page__online-button {
-	border-color: rgba(123, 183, 111, 0.68);
-	background: linear-gradient(135deg, #182519 0%, #4f5d48 100%);
-	color: #d9ddc2;
-	box-shadow: 0 8px 20px rgba(79, 93, 72, 0.22);
+.power-picker-page__stone-control {
+	width: min(15rem, 100%);
+	aspect-ratio: 1600 / 430;
+	font-size: clamp(0.97rem, calc(1.08vw + 0.1875rem), 1.14rem);
 }
 
-.power-picker-page__local-buttons {
-	@apply grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 0.75rem;
-	width: min(26rem, 100%);
+.power-picker-page__stone-control .stone-button__content {
+	padding: 0 2rem;
 }
 
-.power-picker-page__local-buttons .power-picker-page__primary {
-	@apply w-full;
+.power-picker-page__stone-control.is-selected .stone-button__image {
+	filter:
+		brightness(1.22)
+		drop-shadow(0 0 10px rgba(143, 176, 128, 0.42));
 }
 
-.power-picker-page__toggle {
-	border-color: rgba(123, 183, 111, 0.42);
-	background: rgba(12, 23, 15, 0.78);
-	color: #d9ddc2;
-}
-
-.power-picker-page__toggle.is-selected {
-	border-color: rgba(123, 183, 111, 0.72);
-	background: linear-gradient(135deg, #182519 0%, #8fb080 100%);
-	color: #061009;
-	box-shadow: 0 8px 20px rgba(79, 93, 72, 0.24);
+.power-picker-page__stone-control.is-selected:hover .stone-button__image {
+	filter:
+		brightness(1.3)
+		saturate(1.1)
+		drop-shadow(0 0 14px rgba(120, 255, 130, 0.4));
 }
 
 .power-picker-page__replay-warning {
@@ -401,9 +354,13 @@ img.power-card__orb {
 	line-height: 1.35;
 }
 
-.power-picker-page__mode-note {
+.power-picker-page__mode-card .power-picker-page__mode-note,
+.power-picker-page__mode-card .power-picker-page__online-status {
+	color: rgba(255, 247, 230, 0.82);
+	font-family: var(--rowdy-font);
 	font-size: 0.92rem;
-	opacity: 0.72;
+	line-height: 1.32;
+	opacity: 1;
 }
 
 .power-picker-page__mode-card {
@@ -416,7 +373,9 @@ img.power-card__orb {
 }
 
 .power-picker-page__mode-card h2 {
+	@apply grid place-items-center;
 	@apply w-full;
+	height: 4.8rem;
 	padding-bottom: 0.58rem;
 	border-bottom: 1px solid rgba(123, 183, 111, 0.24);
 }
@@ -430,6 +389,11 @@ img.power-card__orb {
 	@apply text-center;
 }
 
+.power-picker-page__mode-card > p:first-of-type {
+	@apply grid place-items-center;
+	height: 3.75rem;
+}
+
 .power-picker-page__pin-word {
 	font-family: var(--body-font);
 	font-size: 0.9em;
@@ -439,18 +403,24 @@ img.power-card__orb {
 
 .power-picker-page__pin-row {
 	@apply grid;
-	grid-template-columns: minmax(4.6rem, 1fr) auto auto;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: 0.45rem;
-	width: min(18.5rem, 100%);
+	margin-top: 2rem;
+	width: min(26rem, 100%);
 }
 
-.power-picker-page__pin-row .power-picker-page__primary,
-.power-picker-page__pin-row .power-picker-page__online-button {
-	width: auto;
-	padding-inline: 0.78rem;
+.power-picker-page__stone-action {
+	@apply w-full;
+	aspect-ratio: 1312 / 816;
+	font-size: clamp(0.91rem, calc(1vw + 0.1875rem), 1.07rem);
+}
+
+.power-picker-page__stone-action .stone-button__content {
+	padding: 0 0.45rem;
 }
 
 .power-picker-page__pin-input {
+	grid-column: 1 / -1;
 	@apply min-w-0;
 	border: 1px solid rgba(123, 183, 111, 0.42);
 	border-radius: 0.86rem;
@@ -474,34 +444,35 @@ img.power-card__orb {
 }
 
 .power-picker-page__player-picker {
-	@apply flex items-center justify-center;
-	gap: clamp(0.35rem, 0.85vw, 0.58rem);
-	margin-bottom: 0.66rem;
+	@apply grid justify-center;
+	grid-template-columns: repeat(2, minmax(0, 7rem));
+	column-gap: clamp(0.5rem, 0.85vw, 0.7rem);
+	row-gap: clamp(1.15rem, 1.5vw, 1.35rem);
+	margin-bottom: 0.8rem;
 }
 
-.power-picker-page__player-picker button {
-	@apply relative;
-	width: clamp(2.25rem, 3.65vw, 2.9rem);
-	height: clamp(2.25rem, 3.65vw, 2.9rem);
-	border-color: rgba(123, 183, 111, 0.56);
-	background: rgba(12, 23, 15, 0.78);
+.power-picker-page__player-picker .stone-button {
+	width: clamp(6.4rem, 8vw, 7rem);
+	aspect-ratio: 1312 / 816;
 	font-family: var(--blowbrush-font);
 	font-size: clamp(1.05rem, 1.95vw, 1.48rem);
 	@apply font-black;
 	color: #d9ddc2;
 }
 
-.power-picker-page__player-picker button:disabled {
-	opacity: 0.4;
-	@apply cursor-not-allowed;
+.power-picker-page__player-picker .stone-button__content {
+	padding-top: 0.5rem;
 }
 
-.power-picker-page__player-picker button.is-selected {
-	border-color: rgba(143, 176, 128, 0.92);
-	background: radial-gradient(circle at 50% 35%, rgba(143, 176, 128, 0.28), rgba(8, 24, 14, 0.95));
-	box-shadow:
-		0 0 0 2px rgba(143, 176, 128, 0.16),
-		0 0 18px rgba(143, 176, 128, 0.18);
+.power-picker-page__player-picker-spacer {
+	height: 10.1rem;
+	margin-bottom: 0.8rem;
+}
+
+.power-picker-page__player-picker .stone-button.is-selected .stone-button__image {
+	filter:
+		brightness(1.18)
+		drop-shadow(0 0 9px rgba(143, 176, 128, 0.46));
 }
 
 .power-picker-page__shell-icon {
@@ -519,7 +490,7 @@ img.power-card__orb {
 	@apply pointer-events-none;
 }
 
-.power-picker-page__player-picker button.is-selected .power-picker-page__shell-icon {
+.power-picker-page__player-picker .stone-button.is-selected .power-picker-page__shell-icon {
 	@apply block;
 }
 
@@ -531,30 +502,16 @@ img.power-card__orb {
 	color: #ffd7d7;
 }
 
-.power-picker-page__back:hover,
-.power-picker-page__primary:hover,
-.power-picker-page__online-button:hover,
-.power-picker-page__danger:hover,
-.power-picker-page__player-picker button:hover:not(:disabled) {
+.power-picker-page__danger:hover {
 	border-color: rgba(143, 176, 128, 0.82);
 }
 
-.power-picker-page__back:hover {
-	transform: translate(-50%, -1px);
-	background:
-		linear-gradient(180deg, rgba(43, 52, 28, 0.96), rgba(10, 28, 14, 0.98)),
-		rgba(7, 10, 16, 0.97);
-	color: #d9ddc2;
-	box-shadow:
-		0 0 0 2px rgba(0, 0, 0, 0.48),
-		0 0 24px rgba(143, 176, 128, 0.18),
-		inset 0 0 0 1px rgba(217, 221, 194, 0.1);
+.power-picker-page__back:hover:not(:disabled),
+.power-picker-page__back:active:not(:disabled) {
+	transform: none;
 }
 
-.power-picker-page__primary:hover,
-.power-picker-page__online-button:hover,
-.power-picker-page__danger:hover,
-.power-picker-page__player-picker button:hover:not(:disabled) {
+.power-picker-page__danger:hover {
 	transform: translateY(-1px);
 }
 
@@ -786,6 +743,14 @@ img.power-card__orb {
 		grid-template-columns: 1fr;
 	}
 
+	.power-picker-page__pin-row {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+
+	.power-picker-page__pin-input {
+		grid-column: 1 / -1;
+	}
+
 	.power-picker-page__header {
 		grid-template-columns: auto 1fr;
 		gap: 0.8rem;
@@ -803,18 +768,10 @@ img.power-card__orb {
 		font-size: clamp(3.1rem, 15vw, 4.8rem);
 	}
 
-	.power-picker-page__primary,
-	.power-picker-page__online-button {
-		@apply w-full;
-	}
-
 	.power-picker-page__grid {
 		@apply justify-start;
 	}
 
-	.power-picker-page__player-picker {
-		@apply flex-wrap;
-	}
 }
 
 @media (max-width: 920px) {
@@ -826,4 +783,3 @@ img.power-card__orb {
 		@apply min-h-0;
 	}
 }
-

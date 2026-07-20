@@ -1077,43 +1077,15 @@
 	background-image: url("/assets/ui/gamesButtons/curlButton.png");
 }
 
-.hub-page__mode-back-button {
-	@apply relative grid place-items-center;
+.hub-page__mode-return {
 	align-self: center;
 	width: min(17rem, 100%);
-	@apply p-0;
-	border: 0;
-	background: transparent;
-	color: #d9ddc2;
-	font-family: var(--blowbrush-font);
+	aspect-ratio: 1600 / 430;
 	font-size: clamp(0.78rem, 1.6vw, 0.95rem);
-	@apply font-bold;
-	letter-spacing: 0.05em;
-	@apply uppercase cursor-pointer;
-	transition:
-		transform 160ms ease,
-		color 160ms ease;
 }
 
-.hub-page__mode-back-button-image {
-	@apply block;
-	grid-area: 1 / 1;
-	@apply w-full;
-	height: auto;
-	filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.3));
-	transition: filter 160ms ease;
-}
-
-.hub-page__mode-back-button span {
-	@apply relative;
-	grid-area: 1 / 1;
-	z-index: 1;
+.hub-page__mode-return .stone-button__content {
 	padding: 0 2.7rem;
-	line-height: 1.05;
-	@apply text-center;
-	text-shadow:
-		0 2px 0 rgba(8, 18, 11, 0.9),
-		0 0 8px rgba(216, 255, 159, 0.18);
 }
 
 .hub-panel__button + .hub-panel__button {
@@ -1230,18 +1202,6 @@
 
 .hub-game-card:active {
 	transform: translateY(1px) scale(0.985);
-}
-
-.hub-page__mode-back-button:hover {
-	transform: translateY(-1px);
-	color: #eaffc8;
-}
-
-.hub-page__mode-back-button:hover .hub-page__mode-back-button-image {
-	filter:
-		brightness(1.12)
-		drop-shadow(0 10px 14px rgba(0, 0, 0, 0.34))
-		drop-shadow(0 0 10px rgba(120, 255, 130, 0.12));
 }
 
 .hub-page__game-grid {

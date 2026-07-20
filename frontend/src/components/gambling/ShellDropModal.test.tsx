@@ -105,6 +105,9 @@ describe("ShellDropModal", () => {
 				fillRect: vi.fn(),
 				beginPath: vi.fn(),
 				arc: vi.fn(),
+				createRadialGradient: vi.fn().mockReturnValue({
+					addColorStop: vi.fn(),
+				}),
 				fill: vi.fn(),
 				stroke: vi.fn(),
 				fillText: vi.fn(),
@@ -120,6 +123,27 @@ describe("ShellDropModal", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 		vi.restoreAllMocks();
+	});
+
+	it("should load the player's equipped shell as the falling token", async () => {
+		vi.mocked(gamblingApi.getPlinko).mockResolvedValue(twoTierView());
+		const image = {
+			decoding: "auto",
+			onload: null,
+			src: "",
+		} as unknown as HTMLImageElement;
+		vi.stubGlobal("Image", vi.fn(() => image));
+
+		render(
+			<ShellDropModal
+				coins={500}
+				shellSkin="dragon"
+				onCoinsChange={() => undefined}
+			/>,
+		);
+
+		await screen.findByRole("button", { name: "Drop" });
+		expect(image.src).toBe("/assets/character/shells/dragonShell.png");
 	});
 
 	it("should show a neutral push, not a loss, when a drop settles at net 0", async () => {
@@ -138,7 +162,13 @@ describe("ShellDropModal", () => {
 		};
 		vi.mocked(gamblingApi.dropPlinko).mockResolvedValue(outcome);
 
-		render(<ShellDropModal coins={500} onCoinsChange={() => undefined} />);
+		render(
+			<ShellDropModal
+				coins={500}
+				shellSkin="dragon"
+				onCoinsChange={() => undefined}
+			/>,
+		);
 		fireEvent.click(await screen.findByRole("button", { name: "Drop" }));
 
 		const result = await screen.findByText(/Push — stake returned/);
@@ -163,7 +193,13 @@ describe("ShellDropModal", () => {
 		};
 		vi.mocked(gamblingApi.dropPlinko).mockResolvedValue(outcome);
 
-		render(<ShellDropModal coins={500} onCoinsChange={() => undefined} />);
+		render(
+			<ShellDropModal
+				coins={500}
+				shellSkin="dragon"
+				onCoinsChange={() => undefined}
+			/>,
+		);
 		fireEvent.click(await screen.findByRole("button", { name: "Drop" }));
 
 		await screen.findByText(/Bucket 4/);

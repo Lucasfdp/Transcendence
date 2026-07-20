@@ -111,6 +111,31 @@
 		inset 0 0 0 1px rgba(216, 255, 159, 0.08);
 }
 
+.hub-modal__panel header .hub-modal__close-button {
+	width: 6rem;
+	height: 3.73rem;
+	flex: 0 0 auto;
+	padding: 0.2rem 0.9rem 0.1rem;
+	border: 0;
+	border-radius: 0;
+	background: url("/assets/ui/closeButton.png") center / 100% 100% no-repeat;
+	color: #eaffc8;
+	font-size: 0.78rem;
+	text-shadow: 0 2px 3px rgba(0, 0, 0, 0.9);
+	box-shadow: none;
+}
+
+.hub-modal__panel header .hub-modal__close-button:hover {
+	background: url("/assets/ui/closeButton.png") center / 100% 100% no-repeat;
+	filter: brightness(1.14);
+	box-shadow: none;
+}
+
+.hub-modal__panel header .hub-modal__close-button:focus-visible {
+	outline: 2px solid #d8ff9f;
+	outline-offset: 2px;
+}
+
 .hub-modal__body button:disabled {
 	opacity: 0.55;
 	@apply cursor-default;
@@ -917,6 +942,77 @@
 	gap: 0.9rem;
 }
 
+.hub-modal__list article.hub-modal__achievement-card {
+	@apply relative flex flex-col overflow-hidden;
+	isolation: isolate;
+	min-height: 12rem;
+	padding: calc(2.35rem + 8px) 2.35rem 2.6rem;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+}
+
+.hub-modal__list--achievements .hub-modal__achievement-card > strong {
+	font-size: calc(1.05rem + 8px);
+	transform: translateY(2px);
+}
+
+.hub-modal__list--achievements .hub-modal__achievement-card > p {
+	margin-top: 0.2rem;
+}
+
+.hub-modal__achievement-card::before,
+.hub-modal__achievement-card::after {
+	content: "";
+	@apply absolute pointer-events-none;
+}
+
+.hub-modal__achievement-card::before {
+	inset: 0;
+	z-index: -2;
+	background: var(--achievement-panel-image, url("/assets/ui/baseButton.png")) center / 100% 100%
+		no-repeat;
+	filter: grayscale(0.42) brightness(0.72);
+	transition: filter 160ms ease;
+}
+
+.hub-modal__achievement-card::after {
+	inset: 13% 10%;
+	z-index: -1;
+	border-radius: 0.45rem;
+	background: linear-gradient(180deg, rgba(3, 7, 5, 0.08), rgba(3, 7, 5, 0.38));
+}
+
+.hub-modal__achievement-card.is-unlocked::before {
+	filter: brightness(1.04) drop-shadow(0 8px 10px rgba(0, 0, 0, 0.24));
+}
+
+.hub-modal__achievement-card--kame-knock {
+	--achievement-panel-image: url("/assets/ui/gamesButtons/kameButton.png");
+}
+
+.hub-modal__achievement-card--bamboo-bash {
+	--achievement-panel-image: url("/assets/ui/gamesButtons/bambooButton.png");
+}
+
+.hub-modal__achievement-card--bell-clash {
+	--achievement-panel-image: url("/assets/ui/gamesButtons/bellButton.png");
+}
+
+.hub-modal__achievement-card--temple-curling {
+	--achievement-panel-image: url("/assets/ui/gamesButtons/curlButton.png");
+}
+
+.hub-modal__achievement-card .hub-modal__achievement-status {
+	margin-top: auto;
+	padding-top: 0.7rem;
+	transform: translateY(-16px);
+}
+
+.hub-modal__achievement-card .hub-modal__achievement-progress {
+	transform: translateY(-16px);
+}
+
 .hub-modal__achievements-toolbar {
 	@apply flex items-center justify-between;
 	gap: 0.85rem;
@@ -974,6 +1070,15 @@
 		@apply items-stretch flex-col;
 	}
 
+	.hub-modal__list--achievements {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.hub-modal__list article.hub-modal__achievement-card {
+		min-height: 11rem;
+		padding: calc(2.15rem + 8px) 2.15rem 2.4rem;
+	}
+
 	.hub-modal__achievement-filter {
 		@apply flex-auto;
 	}
@@ -1007,4 +1112,3 @@
 .hub-modal__list article.is-unlocked .hub-modal__achievement-progress span {
 	background: linear-gradient(90deg, #7dff9a, #d8ff9f);
 }
-

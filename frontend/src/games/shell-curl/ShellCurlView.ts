@@ -20,12 +20,16 @@ import type { CurlingBallState } from "../../shared/mechanics/ball";
 import type { RectArenaPixels } from "../../shared/mechanics/rect-arena";
 import type { ArenaBallTrailRuntime } from "../common";
 import type { PowerPickupManager } from "../../shared/mechanics/power-pickups";
+import {
+	BUMPER_FLASH_MS,
+	drawBumper,
+} from "../../shared/mechanics/bumper-renderer";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DEPTH_BALLS = 2;
 const DEPTH_HUD = 20;
-export const BUMPER_FLASH_MS = 130;
+export { BUMPER_FLASH_MS };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -156,27 +160,14 @@ export function drawShellCurlBumpers(
 		});
 		const position = resolveObstaclePosition(descriptor);
 		const radius = resolveObstacleRadius(descriptor) ?? b.r;
-		const flashing = b.flashTimer > 0;
-
-		if (flashing) {
-			const glowAlpha = (b.flashTimer / BUMPER_FLASH_MS) * 0.55;
-			bumperGfx.fillStyle(0xffd700, glowAlpha);
-			bumperGfx.fillCircle(position.x, position.y, radius * 1.75);
-		}
-
-		bumperGfx.fillStyle(0x2a1a08, 1);
-		bumperGfx.fillCircle(position.x, position.y, radius);
-
-		const ringAlpha = flashing ? 1.0 : 0.85;
-		bumperGfx.lineStyle(
-			Math.max(1.5, 2.5 * arena.scale),
-			0xd4a843,
-			ringAlpha,
+		drawBumper(
+			bumperGfx,
+			position.x,
+			position.y,
+			radius,
+			arena.scale,
+			b.flashTimer,
 		);
-		bumperGfx.strokeCircle(position.x, position.y, radius);
-
-		bumperGfx.fillStyle(0xd4a843, flashing ? 1.0 : 0.6);
-		bumperGfx.fillCircle(position.x, position.y, radius * 0.22);
 	}
 }
 

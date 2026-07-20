@@ -7,6 +7,7 @@ import {
 	useParams,
 } from "react-router-dom";
 import { GameConfirmModal } from "../components/common/GameConfirmModal";
+import { StoneButton } from "../components/common/StoneButton";
 import { api, type User } from "../features/hub/api";
 import { RETURN_TO_HUB_EVENT } from "../features/hub/ReturnToHubScene";
 import { TOURNAMENT_WS_MESSAGES } from "../features/tournaments/contracts";
@@ -462,7 +463,7 @@ function PowerupMatchmakingPanel({
 	) => (
 		<div className="power-picker-page__player-picker" aria-label={label}>
 			{[2, 3, 4, 5].map((count) => (
-				<button
+				<StoneButton
 					key={count}
 					type="button"
 					className={selectedCount === count ? "is-selected" : ""}
@@ -474,7 +475,7 @@ function PowerupMatchmakingPanel({
 						className="power-picker-page__shell-icon"
 						aria-hidden="true"
 					/>
-				</button>
+				</StoneButton>
 			))}
 		</div>
 	);
@@ -756,13 +757,6 @@ function PowerupMatchmakingPanel({
 			/>
 			<section className="power-picker-page__panel">
 				<header className="power-picker-page__header">
-					<button
-						type="button"
-						className="power-picker-page__back"
-						onClick={onBack}
-					>
-						Back
-					</button>
 					<div className="power-picker-page__title-card">
 						<h1>{gameTitle}</h1>
 					</div>
@@ -820,31 +814,40 @@ function PowerupMatchmakingPanel({
 							Train alone and tune the chaos before facing other
 							turtles.
 						</p>
-						<button
+						<div
+							className="power-picker-page__player-picker-spacer"
+							aria-hidden="true"
+						/>
+						<StoneButton
+							variant="back"
 							type="button"
-							className={`power-picker-page__toggle ${soloPowerupsEnabled ? "is-selected" : ""}`}
+							className={`power-picker-page__stone-control ${soloPowerupsEnabled ? "is-selected" : ""}`}
 							aria-pressed={soloPowerupsEnabled}
 							onClick={() =>
 								togglePowerups(setSoloPowerupsEnabled)
 							}
 						>
 							Power-ups {soloPowerupsEnabled ? "On" : "Off"}
-						</button>
+						</StoneButton>
 						{soloPowerupsEnabled ? (
 							<p className="power-picker-page__replay-warning">
 								{REPLAY_DISABLED_MESSAGE}
 							</p>
 						) : null}
-						<button
+						<StoneButton
+							variant="back"
 							type="button"
-							className="power-picker-page__primary"
+							className="power-picker-page__stone-control"
 							disabled={!sceneData.localModes.solo}
 							onClick={() =>
 								launchLocalGame("solo", soloPowerupsEnabled)
 							}
 						>
 							Play Solo
-						</button>
+						</StoneButton>
+						<p className="power-picker-page__mode-note">
+							Play solo matches
+						</p>
 					</section>
 
 					<section className="power-picker-page__mode-card">
@@ -856,24 +859,26 @@ function PowerupMatchmakingPanel({
 							"Local VS player count",
 							!sceneData.localModes.versus,
 						)}
-						<button
+						<StoneButton
+							variant="back"
 							type="button"
-							className={`power-picker-page__toggle ${localVsPowerupsEnabled ? "is-selected" : ""}`}
+							className={`power-picker-page__stone-control ${localVsPowerupsEnabled ? "is-selected" : ""}`}
 							aria-pressed={localVsPowerupsEnabled}
 							onClick={() =>
 								togglePowerups(setLocalVsPowerupsEnabled)
 							}
 						>
 							Power-ups {localVsPowerupsEnabled ? "On" : "Off"}
-						</button>
+						</StoneButton>
 						{localVsPowerupsEnabled ? (
 							<p className="power-picker-page__replay-warning">
 								{REPLAY_DISABLED_MESSAGE}
 							</p>
 						) : null}
-						<button
+						<StoneButton
+							variant="back"
 							type="button"
-							className="power-picker-page__primary"
+							className="power-picker-page__stone-control"
 							disabled={!sceneData.localModes.versus}
 							onClick={() =>
 								launchLocalGame(
@@ -883,7 +888,7 @@ function PowerupMatchmakingPanel({
 							}
 						>
 							Start Local VS
-						</button>
+						</StoneButton>
 						<p className="power-picker-page__mode-note">
 							Players selected: {localVsPlayerCount}
 						</p>
@@ -901,9 +906,10 @@ function PowerupMatchmakingPanel({
 								"Online player count",
 								Boolean(activeMatchStatus),
 							)}
-							<button
+							<StoneButton
+								variant="back"
 								type="button"
-								className={`power-picker-page__toggle ${onlinePowerupsEnabled ? "is-selected" : ""}`}
+								className={`power-picker-page__stone-control ${onlinePowerupsEnabled ? "is-selected" : ""}`}
 								aria-pressed={onlinePowerupsEnabled}
 								disabled={
 									isSearchingOnline ||
@@ -914,15 +920,16 @@ function PowerupMatchmakingPanel({
 								}
 							>
 								Power-ups {onlinePowerupsEnabled ? "On" : "Off"}
-							</button>
+							</StoneButton>
 							{onlinePowerupsEnabled ? (
 								<p className="power-picker-page__replay-warning">
 									{REPLAY_DISABLED_MESSAGE}
 								</p>
 							) : null}
-							<button
+							<StoneButton
+								variant="back"
 								type="button"
-								className="power-picker-page__online-button"
+								className="power-picker-page__stone-control"
 								onClick={() => void findOnlineMatch()}
 							>
 								{activeMatchStatus
@@ -930,7 +937,7 @@ function PowerupMatchmakingPanel({
 									: isSearchingOnline
 										? "Cancel Search"
 										: "Find Online Match"}
-							</button>
+							</StoneButton>
 							<p className="power-picker-page__online-status">
 								{activeMatchStatus
 									? `Reconnect window: ${activeReconnectSeconds}s`
@@ -955,18 +962,18 @@ function PowerupMatchmakingPanel({
 						<p>
 							Create a room or prepare to enter a friend's{" "}
 							<span className="power-picker-page__pin-word">
-								PIN
+								PIN.
 							</span>
-							.
 						</p>
 						{renderPlayerPicker(
 							privateOnlinePlayerCount,
 							setPrivateOnlinePlayerCount,
 							"Private online player count",
 						)}
-						<button
+						<StoneButton
+							variant="back"
 							type="button"
-							className={`power-picker-page__toggle ${privateOnlinePowerupsEnabled ? "is-selected" : ""}`}
+							className={`power-picker-page__stone-control ${privateOnlinePowerupsEnabled ? "is-selected" : ""}`}
 							aria-pressed={privateOnlinePowerupsEnabled}
 							onClick={() =>
 								togglePowerups(setPrivateOnlinePowerupsEnabled)
@@ -974,7 +981,7 @@ function PowerupMatchmakingPanel({
 						>
 							Power-ups{" "}
 							{privateOnlinePowerupsEnabled ? "On" : "Off"}
-						</button>
+						</StoneButton>
 						{privateOnlinePowerupsEnabled ? (
 							<p className="power-picker-page__replay-warning">
 								{REPLAY_DISABLED_MESSAGE}
@@ -995,27 +1002,27 @@ function PowerupMatchmakingPanel({
 								maxLength={6}
 								aria-label="Private room PIN"
 							/>
-							<button
+							<StoneButton
 								type="button"
-								className="power-picker-page__primary"
+								className="power-picker-page__stone-action"
 								onClick={joinPrivateRoom}
 							>
 								Join
-							</button>
-							<button
+							</StoneButton>
+							<StoneButton
 								type="button"
-								className="power-picker-page__online-button"
+								className="power-picker-page__stone-action"
 								onClick={createPrivateRoom}
 							>
 								Create
-							</button>
-							<button
+							</StoneButton>
+							<StoneButton
 								type="button"
-								className="power-picker-page__online-button"
+								className="power-picker-page__stone-action"
 								onClick={spectatePrivateRoom}
 							>
 								Watch
-							</button>
+							</StoneButton>
 						</div>
 						{privateLobby ? (
 							<>
@@ -1035,6 +1042,14 @@ function PowerupMatchmakingPanel({
 						) : null}
 					</section>
 				</footer>
+				<StoneButton
+					variant="back"
+					type="button"
+					className="power-picker-page__back"
+					onClick={onBack}
+				>
+					← Back
+				</StoneButton>
 			</section>
 		</main>
 	);

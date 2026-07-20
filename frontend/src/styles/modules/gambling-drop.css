@@ -6,11 +6,12 @@
 }
 .hub-drop__board {
 	@apply relative w-full;
-	/* Actual height is set inline per row-count tier (see `boardHeightPx` in
-	   ShellDropModal.tsx) so higher-risk tiers with more peg rows visibly
+	/* The custom height is set per row-count tier (see `boardHeightPx` in
+	   ShellDropModal.tsx) so higher-risk tiers with more bumper rows visibly
 	   extend the board downward instead of squeezing every tier into the
 	   same fixed height. This is just the pre-JS/loading fallback. */
-	height: 220px;
+	height: min(var(--drop-board-height, 430px), 56vh);
+	min-height: 300px;
 	border-radius: 12px;
 	border: 2px solid var(--line);
 	background: radial-gradient(
@@ -225,3 +226,17 @@
 	@apply text-center m-0;
 }
 
+@media (max-width: 640px) {
+	.hub-drop {
+		gap: 11px;
+	}
+
+	.hub-drop__board {
+		height: min(var(--drop-board-height, 430px), 52vh);
+		min-height: 280px;
+	}
+
+	.hub-drop__tier {
+		padding: 8px 11px;
+	}
+}

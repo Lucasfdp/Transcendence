@@ -109,6 +109,9 @@ describe("casino modals hold the coin sync until the outcome animation reveals t
 				fillRect: vi.fn(),
 				beginPath: vi.fn(),
 				arc: vi.fn(),
+				createRadialGradient: vi.fn().mockReturnValue({
+					addColorStop: vi.fn(),
+				}),
 				fill: vi.fn(),
 				stroke: vi.fn(),
 				fillText: vi.fn(),
@@ -355,7 +358,11 @@ describe("casino modals hold the coin sync until the outcome animation reveals t
 
 		const onCoinsChange = vi.fn();
 		const { unmount } = render(
-			<ShellDropModal coins={500} onCoinsChange={onCoinsChange} />,
+			<ShellDropModal
+				coins={500}
+				shellSkin="base"
+				onCoinsChange={onCoinsChange}
+			/>,
 		);
 
 		fireEvent.click(await screen.findByRole("button", { name: "Drop" }));

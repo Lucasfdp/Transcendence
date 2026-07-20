@@ -162,6 +162,9 @@ Requirement breakdown:
 
 Evidence:
 - Reusable components in `frontend/src/components/`
+- `StoneButton` provides shared `back` and `base` artwork variants across the
+  Hub mode return control and the pre-game navigation, settings, player-count,
+  matchmaking, and private-room actions.
 - Theme primitives in `frontend/src/shared/theme.ts`, Tailwind CSS configuration
   in `frontend/tailwind.config.cjs`, and feature-scoped style modules in
   `frontend/src/styles/modules/`.
@@ -346,6 +349,10 @@ Evidence:
   with 70 frontend files / 389 tests, 100 backend suites / 1,414 tests, and both
   production builds. A two-guest Firefox run confirmed synchronised classic trails
   on both multiplayer clients at 1440×900 and responsive relayout at 1000×700.
+- Kame Knock's indestructible targets now use the same shared gold bumper rendering
+  and impact flash as Temple Curling instead of tinted destructible-target artwork;
+  local play, authoritative online impacts, responsive relayout, and replays use the
+  same visual primitive.
 - Player rings in all four games and replay rendering now match the tournament-map
   tokens: a coloured inner edge, dark separation, and a soft colour halo. Temple
   Curling's active ring also follows the current player's colour while retaining

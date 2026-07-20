@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { drawBumper } from "../../shared/mechanics/bumper-renderer";
 import type {
 	ReplayDetail,
 	ReplayEvent,
@@ -839,11 +840,14 @@ export class ReplayScene extends ResponsiveScene {
 		const x = this.arena.cx + target.nx * this.arena.rx;
 		const y = this.arena.cy + target.ny * this.arena.ry;
 		const radius = Math.max(18, target.radiusSrc * this.arena.scale);
+		if (!target.breakable) {
+			drawBumper(this.overlayGfx, x, y, radius, this.arena.scale);
+			return;
+		}
 		const pulse = 0.88 + Math.sin(target.ageMs * 0.006) * 0.12;
-		const alpha = target.breakable ? 1 : 0.92;
 		const texture = TARGET_TEXTURES[target.kind];
 
-		this.actorGfx.fillStyle(0x000000, 0.2 * alpha);
+		this.actorGfx.fillStyle(0x000000, 0.2);
 		this.actorGfx.fillEllipse(
 			x + radius * 0.25,
 			y + radius * 0.45,
@@ -865,11 +869,6 @@ export class ReplayScene extends ResponsiveScene {
 			this.drawFallbackTarget(target.kind, x, y, radius * pulse);
 		}
 
-		if (target.breakable) return;
-		this.overlayGfx.lineStyle(Math.max(2, radius * 0.09), 0xffffff, 0.75);
-		this.overlayGfx.strokeCircle(x, y, radius * 1.08);
-		this.overlayGfx.lineBetween(x - radius * 0.45, y, x + radius * 0.45, y);
-		this.overlayGfx.lineBetween(x, y - radius * 0.45, x, y + radius * 0.45);
 	}
 
 	private drawFallbackTarget(
@@ -1013,16 +1012,7 @@ export class ReplayScene extends ResponsiveScene {
 			const x = this.curlArena.sheetX + bumper.fx * this.curlArena.sheetW;
 			const y = this.curlArena.sheetY + bumper.fy * this.curlArena.sheetH;
 			const r = this.curlArena.scale * 28;
-			this.overlayGfx.fillStyle(0x2a1a08, 1);
-			this.overlayGfx.fillCircle(x, y, r);
-			this.overlayGfx.lineStyle(
-				Math.max(2, this.curlArena.scale * 3),
-				0xd4a843,
-				0.92,
-			);
-			this.overlayGfx.strokeCircle(x, y, r);
-			this.overlayGfx.fillStyle(0xd4a843, 0.75);
-			this.overlayGfx.fillCircle(x, y, r * 0.22);
+			drawBumper(this.overlayGfx, x, y, r, this.curlArena.scale);
 		}
 	}
 

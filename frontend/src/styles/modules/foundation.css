@@ -257,3 +257,67 @@ input {
 	border-image-repeat: stretch;
 }
 
+.stone-button {
+	@apply relative grid place-items-center p-0;
+	border: 0;
+	background: transparent;
+	color: #d9ddc2;
+	font-family: var(--blowbrush-font);
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	@apply uppercase cursor-pointer;
+	transition:
+		transform 160ms ease,
+		color 160ms ease,
+		filter 160ms ease;
+}
+
+.stone-button__image,
+.stone-button__content {
+	grid-area: 1 / 1;
+}
+
+.stone-button__image {
+	@apply block w-full h-full pointer-events-none;
+	object-fit: fill;
+	filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.3));
+	transition: filter 160ms ease;
+}
+
+.stone-button__content {
+	@apply relative grid place-items-center w-full h-full text-center;
+	z-index: 1;
+	line-height: 1.05;
+	text-shadow:
+		0 2px 0 rgba(8, 18, 11, 0.9),
+		0 0 8px rgba(216, 255, 159, 0.18);
+}
+
+.stone-button:hover:not(:disabled) {
+	transform: translateY(-1px);
+	color: #eaffc8;
+}
+
+.stone-button:hover:not(:disabled) .stone-button__image,
+.stone-button:focus-visible .stone-button__image {
+	filter:
+		brightness(1.18)
+		saturate(1.08)
+		drop-shadow(0 10px 14px rgba(0, 0, 0, 0.34))
+		drop-shadow(0 0 13px rgba(120, 255, 130, 0.26));
+}
+
+.stone-button:focus-visible {
+	outline: 2px solid rgba(210, 229, 179, 0.88);
+	outline-offset: 0.12rem;
+}
+
+.stone-button:active:not(:disabled) {
+	transform: translateY(1px) scale(0.985);
+}
+
+.stone-button:disabled {
+	@apply cursor-not-allowed;
+	filter: grayscale(0.45);
+	opacity: 0.45;
+}

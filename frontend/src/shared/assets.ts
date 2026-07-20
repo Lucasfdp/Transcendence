@@ -3,6 +3,11 @@ export const UI_9SLICE_BUTTON_PANEL = {
 	slice: 40,
 } as const;
 
+export const STONE_BUTTON_ASSETS = {
+	back: "/assets/ui/backButton.png",
+	base: "/assets/ui/baseButton.png",
+} as const;
+
 export const INGAME_PLAYER_ASSET = {
 	bodyKey: "ingame-base-char",
 	bodySource: "/assets/character/ingame_base_char.png",

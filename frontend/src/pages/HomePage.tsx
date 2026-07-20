@@ -11,6 +11,7 @@ import type { ChangeEvent, CSSProperties, ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RouteLoading } from "../components/common/RouteLoading";
 import { NineSliceButton } from "../components/common/NineSliceButton";
+import { StoneButton } from "../components/common/StoneButton";
 import { WorkInProgressModal } from "../components/common/WorkInProgressModal";
 import { TournamentLobbyModal } from "../features/tournaments/TournamentLobbyModal";
 import { WorkInProgressNotice } from "../components/common/WorkInProgressNotice";
@@ -104,11 +105,32 @@ import { ViewProfileLink } from "../features/profile/ViewProfileLink";
 
 type AchievementFilter = "all" | "unlocked" | "locked";
 
+type AchievementPanel =
+	| "base"
+	| "kame-knock"
+	| "bamboo-bash"
+	| "bell-clash"
+	| "temple-curling";
+
 const ACHIEVEMENT_FILTER_OPTIONS: { value: AchievementFilter; label: string }[] = [
 	{ value: "all", label: "All" },
 	{ value: "unlocked", label: "Unlocked" },
 	{ value: "locked", label: "Locked" },
 ];
+
+const GAME_ACHIEVEMENT_PANELS: Exclude<AchievementPanel, "base">[] = [
+	"kame-knock",
+	"bamboo-bash",
+	"bell-clash",
+	"temple-curling",
+];
+
+function getAchievementPanel(achievementId: string): AchievementPanel {
+	return (
+		GAME_ACHIEVEMENT_PANELS.find((gameId) => achievementId.startsWith(`${gameId}-`)) ??
+		"base"
+	);
+}
 
 /** How long a removed friend can be restored via the Undo toast before the
  *  deletion is committed to the server. */
@@ -3199,19 +3221,14 @@ function HomeMenu(): JSX.Element {
 									)}
 								</div>
 
-								<button
-									className="hub-page__mode-back-button"
+								<StoneButton
+									variant="back"
+									className="hub-page__mode-return"
 									type="button"
 									onClick={handleReturnToModeSelector}
 								>
-									<img
-										className="hub-page__mode-back-button-image"
-										src="/assets/ui/backButton.png"
-										alt=""
-										aria-hidden="true"
-									/>
-									<span>Back to mode selector</span>
-								</button>
+									Back to mode selector
+								</StoneButton>
 							</div>
 						)}
 					</section>
@@ -3608,11 +3625,14 @@ function HomeMenu(): JSX.Element {
 								<div className="hub-modal__list hub-modal__list--achievements">
 									{filteredAchievements.map((achievement) => {
 										const progress = getAchievementProgress(achievement);
+										const panel = getAchievementPanel(achievement.id);
 
 										return (
 											<article
 												key={achievement.id}
-												className={achievement.unlocked ? "is-unlocked" : ""}
+												className={`hub-modal__achievement-card hub-modal__achievement-card--${panel}${
+													achievement.unlocked ? " is-unlocked" : ""
+												}`}
 											>
 												<strong>{achievement.title}</strong>
 												<p>{achievement.description}</p>
@@ -5219,6 +5239,7 @@ function HomeMenu(): JSX.Element {
 				<HubModal title="Shell Drop" onClose={() => setActiveModal(null)}>
 					<ShellDropModal
 						coins={player?.coins ?? 0}
+						shellSkin={player?.shellSkin}
 						onCoinsChange={(coins) =>
 							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
 						}
@@ -5312,7 +5333,7 @@ function HubModal({
 						<h2 id={titleId}>{title}</h2>
 						{headerAddon}
 					</div>
-					<button type="button" onClick={onClose}>
+					<button className="hub-modal__close-button" type="button" onClick={onClose}>
 						Close
 					</button>
 				</header>

@@ -85,6 +85,7 @@ export interface KameKnockOnlineScene {
 	clearPowerBalls(): number;
 
 	drawTargets(): void;
+	flashSolidTarget(targetId: number): void;
 	drawBall(): void;
 	drawBallTrails(): void;
 	recordBallTrails(): void;
@@ -523,6 +524,7 @@ export class KameKnockOnlineController {
 			if (event.id <= this.lastImpactEventId) continue;
 			this.lastImpactEventId = event.id;
 			if (isInitialPhysicsProjection || event.kind !== "solid-target") continue;
+			this.scene.flashSolidTarget(event.objectId);
 			popKameKnockBounce(
 				this.scene,
 				this.scene.arena.cx + event.x * this.scene.arena.scale,

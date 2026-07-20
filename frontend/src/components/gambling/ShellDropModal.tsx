@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { api } from "../../features/hub/api";
 import {
 	type BoardStep,
@@ -21,6 +21,7 @@ import {
 	type SpinResolution,
 } from "../../features/gambling";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { resolveShellSkinAsset } from "../../shared/assets";
 
 /**
  * Total wall-clock time a drop animation takes, independent of the chosen
@@ -42,14 +43,14 @@ const BOARD_HORIZONTAL_INSET_PX = 10;
 /** Pixels of vertical margin above the first peg row. */
 const BOARD_TOP_INSET_PX = 10;
 
-/** Radius, in pixels, of each drawn peg. */
-const PEG_RADIUS_PX = 4;
+/** Radius, in pixels, of each miniature bumper. Its centre remains the peg point. */
+const PEG_RADIUS_PX = 6;
 
-/** Font size, in pixels, the shell emoji token is drawn at. */
-const SHELL_FONT_PX = 26;
+/** Display size of the equipped shell artwork; this has no bearing on the path. */
+const SHELL_SIZE_PX = 52;
 
 /** Board height, in pixels, for the lowest (baseline) row-count tier. */
-const BOARD_BASE_HEIGHT_PX = 220;
+const BOARD_BASE_HEIGHT_PX = 430;
 
 /** Row-count the baseline board height above is tuned for. */
 const BOARD_BASE_ROWS = 8;
@@ -60,7 +61,7 @@ const BOARD_BASE_ROWS = 8;
  * downward with more layers of pins, instead of squeezing every tier's pegs
  * into the same fixed height.
  */
-const BOARD_HEIGHT_PER_EXTRA_ROW_PX = 14;
+const BOARD_HEIGHT_PER_EXTRA_ROW_PX = 10;
 
 /** Board height, in pixels, for a given row-count tier. */
 function boardHeightPx(rows: number): number {
@@ -114,25 +115,62 @@ function buildFallSteps(
 	return steps;
 }
 
-/** Colours resolved once from the board's own computed style (dojo palette). */
+/** Miniature version of the shared Temple Curling/Kame Knock bumper palette. */
 interface BoardPalette {
-	pegLit: string;
-	pegDim: string;
+	pegEdge: string;
+	pegCore: string;
 }
 
-/** Reads the peg colours from the CSS custom properties already on the page. */
-function readPalette(canvas: HTMLCanvasElement): BoardPalette {
-	const style = getComputedStyle(canvas);
-	return {
-		pegLit: style.getPropertyValue("--accent-strong").trim() || "#e88a3d",
-		pegDim: style.getPropertyValue("--line").trim() || "rgba(241, 211, 145, 0.22)",
-	};
+const BOARD_PALETTE: BoardPalette = {
+	pegEdge: "#d4a843",
+	pegCore: "#2a1a08",
+};
+
+function drawPeg(
+	ctx: CanvasRenderingContext2D,
+	x: number,
+	y: number,
+	palette: BoardPalette,
+	lit: boolean,
+): void {
+	ctx.save();
+	if (lit) {
+		const glow = ctx.createRadialGradient(
+			x,
+			y,
+			PEG_RADIUS_PX * 0.25,
+			x,
+			y,
+			PEG_RADIUS_PX * 2.2,
+		);
+		glow.addColorStop(0, "rgba(255, 215, 0, 0.55)");
+		glow.addColorStop(1, "transparent");
+		ctx.fillStyle = glow;
+		ctx.beginPath();
+		ctx.arc(x, y, PEG_RADIUS_PX * 2.2, 0, Math.PI * 2);
+		ctx.fill();
+	}
+
+	ctx.fillStyle = palette.pegCore;
+	ctx.beginPath();
+	ctx.arc(x, y, PEG_RADIUS_PX, 0, Math.PI * 2);
+	ctx.fill();
+	ctx.lineWidth = 1.5;
+	ctx.strokeStyle = palette.pegEdge;
+	ctx.globalAlpha = lit ? 1 : 0.85;
+	ctx.stroke();
+	ctx.fillStyle = palette.pegEdge;
+	ctx.globalAlpha = lit ? 1 : 0.6;
+	ctx.beginPath();
+	ctx.arc(x, y, PEG_RADIUS_PX * 0.24, 0, Math.PI * 2);
+	ctx.fill();
+	ctx.restore();
 }
 
 /**
- * Draws one frame of the board: the peg lattice (pegs the shell has already
- * passed lit brighter) and the shell token at its current normalised
- * position. Pure canvas drawing — no animation state lives here.
+ * Draws one frame of the board: the bumper lattice, the bumper currently
+ * touched by the shell, and the equipped shell at its normalised position.
+ * Pure canvas drawing — no animation or collision state lives here.
  */
 function drawBoard(
 	ctx: CanvasRenderingContext2D,
@@ -142,6 +180,7 @@ function drawBoard(
 	shellX: number,
 	shellY: number,
 	palette: BoardPalette,
+	shellImage: HTMLImageElement | null,
 ): void {
 	ctx.clearRect(0, 0, width, height);
 	const usableWidth = width - BOARD_HORIZONTAL_INSET_PX * 2;
@@ -151,30 +190,46 @@ function drawBoard(
 		BOARD_TOP_INSET_PX + ny * usableHeight,
 	];
 
+	const [sx, sy] = toPx(shellX, shellY);
+	let hitPeg: PegPosition | null = null;
+	let hitDistance = Number.POSITIVE_INFINITY;
 	for (const peg of pegs) {
 		const [px, py] = toPx(peg.x, peg.y);
-		const passed = peg.y < shellY - 0.001;
-		ctx.beginPath();
-		ctx.arc(px, py, PEG_RADIUS_PX, 0, Math.PI * 2);
-		ctx.fillStyle = passed ? palette.pegLit : palette.pegDim;
-		ctx.fill();
+		const distance = Math.hypot(px - sx, py - sy);
+		if (distance < hitDistance) {
+			hitDistance = distance;
+			hitPeg = peg;
+		}
+	}
+	if (hitDistance > SHELL_SIZE_PX * 0.52) hitPeg = null;
+
+	for (const peg of pegs) {
+		const [px, py] = toPx(peg.x, peg.y);
+		drawPeg(ctx, px, py, palette, peg === hitPeg);
 	}
 
-	const [sx, sy] = toPx(shellX, shellY);
-	ctx.font = `${SHELL_FONT_PX}px sans-serif`;
-	ctx.textAlign = "center";
-	ctx.textBaseline = "middle";
-	ctx.fillText("🐚", sx, sy);
+	if (shellImage) {
+		ctx.drawImage(
+			shellImage,
+			sx - SHELL_SIZE_PX / 2,
+			sy - SHELL_SIZE_PX / 2,
+			SHELL_SIZE_PX,
+			SHELL_SIZE_PX,
+		);
+	}
 }
 
 export function ShellDropModal({
 	coins,
 	onCoinsChange,
+	shellSkin,
 }: {
 	/** Current coin balance, used to gate wagers. */
 	coins: number;
 	/** Sync the player's coin balance up to the hub after a drop. */
 	onCoinsChange: (coins: number) => void;
+	/** Equipped shell rendered as the falling token. */
+	shellSkin: string | null | undefined;
 }): JSX.Element {
 	const [view, setView] = useState<PlinkoView | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -196,7 +251,24 @@ export function ShellDropModal({
 		null,
 	);
 	const boardCanvasRef = useRef<HTMLCanvasElement | null>(null);
+	const shellImageRef = useRef<HTMLImageElement | null>(null);
+	const [shellImageVersion, setShellImageVersion] = useState(0);
 	const reducedMotion = useReducedMotion();
+
+	useEffect(() => {
+		let cancelled = false;
+		const image = new Image();
+		image.decoding = "async";
+		image.onload = () => {
+			if (cancelled) return;
+			shellImageRef.current = image;
+			setShellImageVersion((version) => version + 1);
+		};
+		image.src = resolveShellSkinAsset(shellSkin).source;
+		return () => {
+			cancelled = true;
+		};
+	}, [shellSkin]);
 
 	/**
 	 * `rows` and `reducedMotion` mirrored into refs so the animation effect
@@ -267,19 +339,27 @@ export function ShellDropModal({
 			const rect = canvas.getBoundingClientRect();
 			if (rect.width === 0 || rect.height === 0) return;
 			const ctx = setupCanvas(canvas, rect.width, rect.height);
-			const palette = readPalette(canvas);
 			const resultPath = result
 				? computeDropPath(tier.rows, result.fairness.rolls)
 				: null;
 			const restX = resultPath ? resultPath[resultPath.length - 1].x : 0.5;
 			const restY = result ? 1 : 0;
-			drawBoard(ctx, rect.width, rect.height, pegs, restX, restY, palette);
+			drawBoard(
+				ctx,
+				rect.width,
+				rect.height,
+				pegs,
+				restX,
+				restY,
+				BOARD_PALETTE,
+				shellImageRef.current,
+			);
 		};
 
 		draw();
 		globalThis.addEventListener("resize", draw);
 		return () => globalThis.removeEventListener("resize", draw);
-	}, [view, rows, result, pendingOutcome]);
+	}, [view, rows, result, pendingOutcome, shellImageVersion]);
 
 	// Active drop animation: steps the shell through the already-known
 	// left/right path (derived from `pendingOutcome.fairness.rolls`) and only
@@ -302,7 +382,6 @@ export function ShellDropModal({
 		const tier = tierFor(view, rows);
 		const rect = canvas.getBoundingClientRect();
 		const ctx = setupCanvas(canvas, rect.width, rect.height);
-		const palette = readPalette(canvas);
 		const pegs = pegLattice(tier.rows);
 		const path = computeDropPath(tier.rows, pendingOutcome.fairness.rolls);
 
@@ -330,7 +409,16 @@ export function ShellDropModal({
 
 		if (reducedMotionRef.current || rect.width === 0) {
 			const restX = path.length > 0 ? path[path.length - 1].x : 0.5;
-			drawBoard(ctx, rect.width, rect.height, pegs, restX, 1, palette);
+			drawBoard(
+				ctx,
+				rect.width,
+				rect.height,
+				pegs,
+				restX,
+				1,
+				BOARD_PALETTE,
+				shellImageRef.current,
+			);
 			finish();
 			return;
 		}
@@ -347,7 +435,16 @@ export function ShellDropModal({
 					data.kind === "fall"
 						? lerp(data.fromY, data.toY, easeInQuad(t))
 						: lerp(data.fromY, data.toY, easeOutBounce(t));
-				drawBoard(ctx, rect.width, rect.height, pegs, x, y, palette);
+				drawBoard(
+					ctx,
+					rect.width,
+					rect.height,
+					pegs,
+					x,
+					y,
+					BOARD_PALETTE,
+					shellImageRef.current,
+				);
 			},
 			finish,
 		);
@@ -413,7 +510,11 @@ export function ShellDropModal({
 
 			<div
 				className="hub-drop__board"
-				style={{ height: boardHeightPx(tier.rows) }}
+				style={
+					{
+						"--drop-board-height": `${boardHeightPx(tier.rows)}px`,
+					} as CSSProperties
+				}
 			>
 				<canvas className="hub-drop__canvas" ref={boardCanvasRef} aria-hidden="true" />
 				<div className="hub-drop__buckets">
