@@ -15,6 +15,7 @@ const BALL_DAMPING = 0.92;
 const BUMPER_BOOST = 1.1;
 const DELIVERY_X = 90;
 const DELIVERY_Y = SHEET_H / 2;
+const DELIVERY_CLEARANCE = 10;
 const MAX_TRAIL_POINTS = 40;
 const PICKUP_RADIUS = 18;
 const PICKUP_COUNT = 3;
@@ -52,6 +53,37 @@ export function launchShellCurlProjectile(
 	applyPower(physics, entity);
 	bump(physics);
 	return entity;
+}
+
+/**
+ * Nudge any stopped stone sitting on the delivery hack out of the way — the
+ * authoritative twin of the client's `resolveDeliverySpawnBlockers` (see
+ * ShellCurlScene.ts). Positions here are server truth, so unless this runs
+ * server-side too, the client's own local nudge just gets overwritten by the
+ * next physics snapshot and the "blocked" stone visually snaps back.
+ * Returns true if anything moved (caller should re-sync the snapshot).
+ */
+export function resolveShellCurlSpawnBlockers(
+	physics: ShellCurlPhysicsState,
+): boolean {
+	let moved = false;
+	let slot = 0;
+	for (const entity of physics.entities) {
+		if (!entity.stopped) continue;
+		const minDistance = entity.radius + BALL_RADIUS + DELIVERY_CLEARANCE;
+		if (Math.hypot(entity.x - DELIVERY_X, entity.y - DELIVERY_Y) >= minDistance)
+			continue;
+		const pad = 18;
+		const offset = slot++ * entity.radius * 0.45;
+		entity.x = entity.radius + pad + offset;
+		entity.y = SHEET_H - entity.radius - pad - offset;
+		entity.vx = 0;
+		entity.vy = 0;
+		entity.trail = [{ x: entity.x, y: entity.y }];
+		moved = true;
+	}
+	if (moved) bump(physics);
+	return moved;
 }
 
 export function resetShellCurlPhysicsEnd(

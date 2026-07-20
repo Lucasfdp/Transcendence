@@ -642,6 +642,15 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	// ── Launch handler ────────────────────────────────────────────────────────────
 
 	private onLaunch(): void {
+		// Held (start/round countdown): swallow the release — a drag started
+		// before GO already stamped a velocity via Slingshot, so zero it. This
+		// backstops the attach/detach toggling in syncSlingshotForTurn() against
+		// a drag that began while running was still true.
+		if (!this.running) {
+			this.ball.vx = 0;
+			this.ball.vy = 0;
+			return;
+		}
 		if (this.online.isActive) {
 			const sourceVx = this.ball.vx / this.arena.scale;
 			const sourceVy = this.ball.vy / this.arena.scale;
@@ -1743,8 +1752,16 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			onButton: () => {
 				this.overlayState = null;
 				this.overlay = undefined;
-				this.running = true;
-				onNext();
+				// "3, 2, 1, GO!" between rounds too, not just at match start —
+				// `running` stays false (set at the top of this method) until GO.
+				runStartCountdown(this, {
+					depth: DEPTH_OVERLAY,
+					onComplete: () => {
+						if (this.overlay) return; // ended while counting down
+						this.running = true;
+						onNext();
+					},
+				});
 			},
 			depth: DEPTH_OVERLAY,
 		});

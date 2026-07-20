@@ -200,7 +200,9 @@ export default function GamePage(): JSX.Element {
 		if (!tournamentId) return;
 		setIsTournamentQuitOpen(false);
 		getGameSocket().emit(TOURNAMENT_WS_MESSAGES.QUIT, { tournamentId });
-		navigate("/?view=normal", { replace: true });
+		// Leaving a tournament for good always returns to the main mode-select
+		// page (matches TournamentBoardView's onExit), never the Normal hub.
+		navigate("/", { replace: true });
 	};
 
 	return (

@@ -729,6 +729,13 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 	 */
 	private onLaunch(): void {
 		if (this.online.isActive) {
+			// Held (round countdown): swallow the release — a drag started
+			// before GO already stamped a velocity via Slingshot, so zero it.
+			if (!this.running) {
+				this.ball.vx = 0;
+				this.ball.vy = 0;
+				return;
+			}
 			const sourceVx = this.ball.vx / this.arena.scale;
 			const sourceVy = this.ball.vy / this.arena.scale;
 			const power = this.activePower;

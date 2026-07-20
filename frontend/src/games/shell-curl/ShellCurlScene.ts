@@ -159,9 +159,17 @@ const DEPTH_SHEET = 1;
 const DEPTH_BUMPERS = 1.5; // between ice sheet and balls
 const DEPTH_BALLS = 2;
 const DEPTH_AIM = 3;
-const DEPTH_PARTICLES = 4;
 const DEPTH_HUD = 20;
 const DEPTH_OVERLAY = 100;
+
+/**
+ * Gap in canvas px between the ice sheet and the surrounding viewport edge.
+ * rectArenaPlayableToScreenInRect fits the sheet edge-to-edge inside whatever
+ * rect it's given (it deliberately ignores CURL_SHEET's authored margins), so
+ * without this inset the rectangular sheet touches the window border — unlike
+ * the other games' round arenas, which never fill their rect that tightly.
+ */
+const ARENA_EDGE_MARGIN = 18;
 
 /** Pause in ms between end-of-throw and advancing to next turn. */
 const SETTLING_DELAY_MS = 800;
@@ -242,8 +250,12 @@ export class ShellCurlScene
 		(ball) => ball.id,
 	);
 	public readonly launchInput: SlingshotLaunchRuntime<CurlingBallState>;
-	/** True while the "3, 2, 1, GO!" opener holds play (no throws before GO). */
-	private startCountdownHold = false;
+	/**
+	 * True while the "3, 2, 1, GO!" opener holds play (no throws before GO).
+	 * Public: ShellCurlOnlineController re-arms this between ends too, not
+	 * just at match start.
+	 */
+	public startCountdownHold = false;
 	private readonly online: ShellCurlOnlineController;
 
 	public arena!: RectArenaPixels;
@@ -473,11 +485,7 @@ export class ShellCurlScene
 		this.launchInput.recreate();
 
 		// Sweep controller — created with a placeholder ball, swapped each turn
-		this.sweepCtrl = new SweepController(
-			this,
-			this.makeEmptyBall(),
-			DEPTH_PARTICLES,
-		);
+		this.sweepCtrl = new SweepController(this, this.makeEmptyBall());
 
 		this.scoreHud.update(this.buildScoreHudState());
 		// Build the side panels (TEMPLE CURLING info + SCORE LOG) unconditionally,
@@ -562,7 +570,7 @@ export class ShellCurlScene
 
 		if (phase === "sweeping" && this.activeBall) {
 			// Apply sweep friction to active ball only
-			const sweepMult = this.sweepCtrl.update(delta);
+			const sweepMult = this.sweepCtrl.update();
 			if (sweepMult < 1 && !this.activeBall.stopped) {
 				this.activeBall.vx *= sweepMult;
 				this.activeBall.vy *= sweepMult;
@@ -777,9 +785,6 @@ export class ShellCurlScene
 		this.powerSidePanel?.refresh();
 		this.clearActiveRing();
 
-		// Re-attach sweep controller to the active ball
-		(this.sweepCtrl as unknown as { ball: CurlingBallState }).ball =
-			this.activeBall;
 		this.sweepCtrl.attach();
 
 		this.turnManager.setPhase("sweeping");
@@ -1212,7 +1217,17 @@ export class ShellCurlScene
 			this.buildBumpers(true); // fresh random layout for new end
 			drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 			this.powerPickups?.draw();
-			this.beginTurn();
+
+			// "3, 2, 1, GO!" between ends too, not just at match start — held
+			// via the same startCountdownHold gate onLaunch() already checks.
+			this.startCountdownHold = true;
+			runStartCountdown(this, {
+				depth: DEPTH_OVERLAY,
+				onComplete: () => {
+					this.startCountdownHold = false;
+					this.beginTurn();
+				},
+			});
 		});
 	}
 
@@ -1716,10 +1731,10 @@ export class ShellCurlScene
 		const content = layout.contentRect;
 		return rectArenaPlayableToScreenInRect(
 			CURL_SHEET,
-			content.x,
-			content.y,
-			content.width,
-			content.height,
+			content.x + ARENA_EDGE_MARGIN,
+			content.y + ARENA_EDGE_MARGIN,
+			Math.max(1, content.width - ARENA_EDGE_MARGIN * 2),
+			Math.max(1, content.height - ARENA_EDGE_MARGIN * 2),
 		);
 	}
 

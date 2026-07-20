@@ -669,7 +669,8 @@ export class BellClashScene
 		this.replayPowerBySide[this.currentPlayerIndex()] = PowerType.NONE;
 		this.hitCooldownMs = 0;
 		this.bellPulseMs = 0;
-		if (this.localTurnNumber % this.localPlayerCount === 0) {
+		const isNewRound = this.localTurnNumber % this.localPlayerCount === 0;
+		if (isNewRound) {
 			this.zones = this.generateZones();
 			this.resetLocalBallsForRound();
 		} else {
@@ -681,6 +682,21 @@ export class BellClashScene
 		this.lastHitText?.setText("LAST HIT  -");
 		this.spawnPowerPickup();
 		this.updateSidePanels();
+
+		// "3, 2, 1, GO!" between rounds too, not just at match start — held via
+		// the same `running` gate onLaunch()/update() already check, so a drag
+		// started at the tail of the previous round can't fire into this one.
+		if (isNewRound) {
+			this.running = false;
+			this.launchInput.cancel();
+			runStartCountdown(this, {
+				depth: DEPTH_OVERLAY,
+				onComplete: () => {
+					if (this.overlay) return; // ended while counting down
+					this.running = true;
+				},
+			});
+		}
 	}
 
 	private finishShot(): void {

@@ -38,6 +38,7 @@ import {
 	AuthoritativeProjectionTimeline,
 	type AuthoritativePhysicsSample,
 } from "../common/runtime/authoritative-projection";
+import { runStartCountdown } from "../../shared/mechanics/start-countdown";
 
 export interface OnlineBallState extends BallState {
 	entityId?: number;
@@ -50,6 +51,8 @@ export interface OnlineBallState extends BallState {
 	syncTarget?: AuthoritativePhysicsSample;
 	syncSamples?: Array<NonNullable<OnlineBallState["syncTarget"]>>;
 }
+
+const DEPTH_OVERLAY = 30;
 
 interface GameInputAck {
 	accepted: boolean;
@@ -384,7 +387,7 @@ export class BellClashOnlineController {
 		}
 
 		if (snapshot.roundNumber !== this.appliedRound)
-			this.startRound(snapshot);
+			this.startRound(snapshot, initial);
 		const localSubmitted = snapshot.roundScores[this.side] !== null;
 		if (localSubmitted || this.roundSubmitted)
 			this.updateStatus("Waiting for opponents...");
@@ -403,7 +406,7 @@ export class BellClashOnlineController {
 		this.applyPhysicsState(state);
 	};
 
-	private startRound(snapshot: BellClashSnapshot): void {
+	private startRound(snapshot: BellClashSnapshot, initial = false): void {
 		this.scene.powerBallTexCount = clearBellClashPowerBalls(
 			this.scene,
 			this.scene.powerBalls,
@@ -422,6 +425,21 @@ export class BellClashOnlineController {
 		this.syncSlingshot();
 		this.scene.updateScoreTexts();
 		this.scene.showPowerPanel();
+
+		// "3, 2, 1, GO!" between rounds too — the very first round is already
+		// held by BellClashScene.create()'s own countdown, so only re-arm it
+		// here for round 2+.
+		if (!initial) {
+			this.scene.running = false;
+			runStartCountdown(this.scene, {
+				depth: DEPTH_OVERLAY,
+				onComplete: () => {
+					// The match may have finished while the countdown was playing.
+					if (this.snapshot?.phase !== "active") return;
+					this.scene.running = true;
+				},
+			});
+		}
 	}
 
 	private finishShot(): void {

@@ -11,6 +11,7 @@ import {
 	createShellCurlPhysicsState,
 	launchShellCurlProjectile,
 	resetShellCurlPhysicsEnd,
+	resolveShellCurlSpawnBlockers,
 	syncShellCurlSnapshot,
 } from "../shell-curl-physics";
 import { BaseEngine } from "./base.engine";
@@ -184,6 +185,11 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 		}
 
 		state.currentTurn = this.nextTurn(room);
+		// The next player's stone spawns on the delivery hack — clear it if the
+		// last throw settled there (P: keeps the "spawn blocked" client notice
+		// truthful instead of the stone snapping back on the next snapshot).
+		if (resolveShellCurlSpawnBlockers(physics))
+			syncShellCurlSnapshot(state, physics);
 		this.bumpRoomState(room);
 
 		if (

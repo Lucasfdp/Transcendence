@@ -34,6 +34,7 @@ import {
 	AuthoritativeProjectionTimeline,
 	type AuthoritativePhysicsSample,
 } from "../common/runtime/authoritative-projection";
+import { runStartCountdown } from "../../shared/mechanics/start-countdown";
 
 const DEPTH_BALLS = 2;
 const DEPTH_HUD = 20;
@@ -75,6 +76,7 @@ export interface ShellCurlOnlineScene {
 	powerSidePanel: GameInfoSidePanel | null;
 	launchInput: SlingshotLaunchRuntime<CurlingBallState>;
 	overlayContainer: Phaser.GameObjects.Container | null;
+	startCountdownHold: boolean;
 	get allBalls(): CurlingBallState[];
 	set allBalls(balls: readonly CurlingBallState[]);
 	beginTurn(): void;
@@ -112,6 +114,7 @@ export class ShellCurlOnlineController {
 	private rejoinTimer: ReturnType<typeof setInterval> | null = null;
 	private releasePending = false;
 	private lastImpactEventId = 0;
+	private appliedEnd = -1;
 
 	constructor(scene: Phaser.Scene & ShellCurlOnlineScene) {
 		this.scene = scene;
@@ -142,6 +145,7 @@ export class ShellCurlOnlineController {
 		this.projectionTimeline.reset();
 		this.releasePending = false;
 		this.lastImpactEventId = 0;
+		this.appliedEnd = -1;
 		this.projected.clear();
 		return this.isActive;
 	}
@@ -324,6 +328,25 @@ export class ShellCurlOnlineController {
 			this.showEndScreen(snapshot);
 			return;
 		}
+
+		// "3, 2, 1, GO!" between ends too, not just at match start (the scene's
+		// own create() already holds the very first end). Held via the same
+		// startCountdownHold gate onLaunch() checks, so an aim that started at
+		// the tail of the previous end can't throw into this one.
+		if (snapshot.currentEnd !== this.appliedEnd) {
+			const isInitialEnd = this.appliedEnd === -1;
+			this.appliedEnd = snapshot.currentEnd;
+			if (!isInitialEnd && snapshot.phase === "active") {
+				this.scene.startCountdownHold = true;
+				runStartCountdown(this.scene, {
+					depth: DEPTH_OVERLAY,
+					onComplete: () => {
+						this.scene.startCountdownHold = false;
+					},
+				});
+			}
+		}
+
 		const localTurn =
 			snapshot.phase === "active" &&
 			snapshot.currentTurn === this.side &&

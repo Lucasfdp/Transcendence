@@ -119,6 +119,7 @@ export class KameKnockOnlineController {
 	private lastPickupEventId = 0;
 	private lastImpactEventId = 0;
 	private readonly projectedEntities = new Map<number, OnlineBallState>();
+	private appliedRound = -1;
 	private readonly projectionTimeline = new AuthoritativeProjectionTimeline();
 	private latestPhysicsState: KameKnockPhysicsState | null = null;
 	private rejoinPhysicsTimer: ReturnType<typeof setInterval> | null = null;
@@ -219,6 +220,7 @@ export class KameKnockOnlineController {
 		this.scoreSignature = "";
 		this.physicsTurn = -1;
 		this.physicsMoving = false;
+		this.appliedRound = -1;
 	}
 
 	/** Register socket listeners for the live match. */
@@ -338,6 +340,15 @@ export class KameKnockOnlineController {
 		if (snapshot.phase !== "active") {
 			this.updateStatus("Waiting for players...");
 			return;
+		}
+
+		// "3, 2, 1, GO!" between rounds too — the very first round is already
+		// held by KameKnockScene.create()'s explicit startOnlineCountdown()
+		// call, so only re-arm `running` here for round 2+.
+		if (this.appliedRound !== snapshot.roundNumber) {
+			const isInitialRound = this.appliedRound === -1;
+			this.appliedRound = snapshot.roundNumber;
+			if (!isInitialRound) this.scene.running = false;
 		}
 
 		if (!this.scene.running && !this.countdownText)
