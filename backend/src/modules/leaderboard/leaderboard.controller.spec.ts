@@ -10,12 +10,14 @@ describe("LeaderboardController", () => {
 	let leaderboardService: {
 		getGameLeaderboard: jest.Mock;
 		getOverallLeaderboard: jest.Mock;
+		getTournamentLeaderboard: jest.Mock;
 	};
 
 	beforeEach(async () => {
 		leaderboardService = {
 			getGameLeaderboard: jest.fn().mockResolvedValue([]),
 			getOverallLeaderboard: jest.fn().mockResolvedValue([]),
+			getTournamentLeaderboard: jest.fn().mockResolvedValue([]),
 		};
 
 		const module: TestingModule = await Test.createTestingModule({
@@ -105,6 +107,37 @@ describe("LeaderboardController", () => {
 			expect(leaderboardService.getOverallLeaderboard).toHaveBeenCalledWith(
 				1,
 				"friends",
+			);
+		});
+	});
+
+	// ── GET /leaderboard/tournaments (Rankings Bug Audit §5.1) ────────────────
+
+	describe("getTournamentLeaderboard", () => {
+		it("should default to global scope", async () => {
+			await controller.getTournamentLeaderboard(req, undefined as unknown as string);
+
+			expect(leaderboardService.getTournamentLeaderboard).toHaveBeenCalledWith(
+				1,
+				"global",
+			);
+		});
+
+		it("should pass the friends scope through unchanged", async () => {
+			await controller.getTournamentLeaderboard(req, "friends");
+
+			expect(leaderboardService.getTournamentLeaderboard).toHaveBeenCalledWith(
+				1,
+				"friends",
+			);
+		});
+
+		it("should coerce an unrecognized scope value to global", async () => {
+			await controller.getTournamentLeaderboard(req, "bogus");
+
+			expect(leaderboardService.getTournamentLeaderboard).toHaveBeenCalledWith(
+				1,
+				"global",
 			);
 		});
 	});

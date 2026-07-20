@@ -457,6 +457,17 @@ export interface OverallLeaderboardEntry {
 	totalWins: number;
 }
 
+/** Tournament-championship entry returned by GET /api/leaderboard/tournaments */
+export interface TournamentLeaderboardEntry {
+	rank: number;
+	userId: number;
+	username: string;
+	turtleName: string | null;
+	avatar: string | null;
+	level: number;
+	tournamentWins: number;
+}
+
 export type ReplayContractVersion = 2;
 
 export interface ReplayVisualPlayer {
@@ -1031,6 +1042,17 @@ export const api = {
 	): Promise<OverallLeaderboardEntry[]> =>
 		apiFetch<OverallLeaderboardEntry[]>(
 			`/leaderboard/overall?scope=${scope}`,
+		),
+
+	/**
+	 * Tournament-championship leaderboard.
+	 * Ranked by finished "The Parrot's Shell" tournament wins.
+	 */
+	getTournamentLeaderboard: (
+		scope: LeaderboardScope = "global",
+	): Promise<TournamentLeaderboardEntry[]> =>
+		apiFetch<TournamentLeaderboardEntry[]>(
+			`/leaderboard/tournaments?scope=${scope}`,
 		),
 
 	getMyReplays: (): Promise<ReplaySummary[]> =>

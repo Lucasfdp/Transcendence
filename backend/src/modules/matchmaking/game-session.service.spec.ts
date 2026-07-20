@@ -188,6 +188,37 @@ describe("GameSessionService", () => {
 		expect(room.rewardsGranted).toBe(true);
 	});
 
+	// ── Rankings Bug Audit §5.2: tournament minigame wins → overall ranking ──
+	//
+	// Tournament minigames are launched by `TournamentMinigameAdapter.launch`
+	// as ordinary `mode: "casual"` matches on the normal matchmaking rail
+	// (`MatchFactoryService.createMatch`, carrying `MatchRoom.tournamentId`
+	// purely as metadata) — `persistFinishedRoom` has no special case for it.
+	// This regression test asserts that flow end-to-end at this layer: a
+	// tournament-launched room's finish reaches `submitResult` with a "win"
+	// outcome for the winner exactly like any other casual match, which is
+	// what increments the winner's `user_game_stats.totalWins` (covered at
+	// the persistence layer by `game-results.service.spec.ts`) and therefore
+	// the overall leaderboard total.
+	it("still grants a win to the winner of a tournament-launched minigame (Rankings Bug Audit §5.2)", async () => {
+		const room = makeRoom({ tournamentId: "tournament-1" });
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		expect(gameResultsService.submitResult).toHaveBeenCalledTimes(2);
+		expect(gameResultsService.submitResult).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({ id: 1 }),
+			{ gameId: "temple-curling", outcome: "win" },
+		);
+		expect(gameResultsService.submitResult).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({ id: 2 }),
+			{ gameId: "temple-curling", outcome: "loss" },
+		);
+	});
+
 	it("does not grant rewards twice for the same finished room", async () => {
 		const room = makeRoom();
 		roomService.getRoom.mockReturnValue(room);

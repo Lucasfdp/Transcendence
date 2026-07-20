@@ -14,6 +14,7 @@ import {
 	LeaderboardScope,
 	LeaderboardService,
 	OverallLeaderboardEntry,
+	TournamentLeaderboardEntry,
 } from "./leaderboard.service";
 
 @ApiTags("leaderboard")
@@ -77,6 +78,27 @@ export class LeaderboardController {
 		const resolvedScope: LeaderboardScope =
 			scope === "friends" ? "friends" : "global";
 		return this.leaderboardService.getOverallLeaderboard(
+			req.user.id,
+			resolvedScope,
+		);
+	}
+
+	/**
+	 * GET /api/leaderboard/tournaments?scope=global
+	 *
+	 * Rankings Bug Audit §5.1: a separate board ranked by finished
+	 * "The Parrot's Shell" tournament wins (`tournaments.winnerUserId`),
+	 * distinct from the per-match Total/per-game boards above.
+	 */
+	@Get("tournaments")
+	@ApiQuery({ name: "scope", enum: ["global", "friends"], required: false })
+	getTournamentLeaderboard(
+		@Request() req: { user: { id: number } },
+		@Query("scope") scope: string = "global",
+	): Promise<TournamentLeaderboardEntry[]> {
+		const resolvedScope: LeaderboardScope =
+			scope === "friends" ? "friends" : "global";
+		return this.leaderboardService.getTournamentLeaderboard(
 			req.user.id,
 			resolvedScope,
 		);

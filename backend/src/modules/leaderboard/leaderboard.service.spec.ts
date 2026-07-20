@@ -4,6 +4,7 @@ import { getRepositoryToken } from "@nestjs/typeorm";
 import { UserGameStats } from "../game-results/entities/user-game-stats.entity";
 import { FriendsService } from "../friends/friends.service";
 import { UserRating } from "../matchmaking/entities/user-rating.entity";
+import { Tournament } from "../tournaments/entities/tournament.entity";
 import { LeaderboardService } from "./leaderboard.service";
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,10 @@ const mockUserRatingRepo = (rows: Record<string, unknown>[] = []) => ({
 });
 
 const mockUserGameStatsRepo = (rows: Record<string, unknown>[] = []) => ({
+	createQueryBuilder: jest.fn(() => createQbMock(rows)),
+});
+
+const mockTournamentRepo = (rows: Record<string, unknown>[] = []) => ({
 	createQueryBuilder: jest.fn(() => createQbMock(rows)),
 });
 
@@ -62,6 +67,16 @@ const rawStatsRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
 	...overrides,
 });
 
+const rawTournamentRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
+	userId: "10",
+	username: "kame",
+	turtleName: "KameMaster",
+	avatar: null,
+	level: "5",
+	tournamentWins: "3",
+	...overrides,
+});
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -71,13 +86,16 @@ describe("LeaderboardService", () => {
 	let friendsService: ReturnType<typeof mockFriendsService>;
 	let userRatingRepo: ReturnType<typeof mockUserRatingRepo>;
 	let userGameStatsRepo: ReturnType<typeof mockUserGameStatsRepo>;
+	let tournamentRepo: ReturnType<typeof mockTournamentRepo>;
 
 	const buildModule = async (
 		ratingRows: Record<string, unknown>[] = [],
 		statsRows: Record<string, unknown>[] = [],
+		tournamentRows: Record<string, unknown>[] = [],
 	) => {
 		userRatingRepo = mockUserRatingRepo(ratingRows);
 		userGameStatsRepo = mockUserGameStatsRepo(statsRows);
+		tournamentRepo = mockTournamentRepo(tournamentRows);
 		friendsService = mockFriendsService();
 
 		const module: TestingModule = await Test.createTestingModule({
@@ -90,6 +108,10 @@ describe("LeaderboardService", () => {
 				{
 					provide: getRepositoryToken(UserGameStats),
 					useValue: userGameStatsRepo,
+				},
+				{
+					provide: getRepositoryToken(Tournament),
+					useValue: tournamentRepo,
 				},
 				{ provide: FriendsService, useValue: friendsService },
 			],
@@ -150,6 +172,10 @@ describe("LeaderboardService", () => {
 						provide: getRepositoryToken(UserGameStats),
 						useValue: mockUserGameStatsRepo([]),
 					},
+					{
+						provide: getRepositoryToken(Tournament),
+						useValue: mockTournamentRepo([]),
+					},
 					{ provide: FriendsService, useValue: friendsService },
 				],
 			}).compile();
@@ -204,6 +230,28 @@ describe("LeaderboardService", () => {
 			await service.getGameLeaderboard(1, "temple-curling", "global");
 
 			expect(qb.andWhere).toHaveBeenCalledWith("u.isDevAccount = false");
+		});
+
+		// ── Rankings Bug Audit N1/N3 (2026-07-20) ──────────────────────────────
+
+		it("should exclude bot accounts from the query", async () => {
+			await buildModule([rawRatingRow()]);
+			const qb = createQbMock([rawRatingRow()]);
+			userRatingRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getGameLeaderboard(1, "temple-curling", "global");
+
+			expect(qb.andWhere).toHaveBeenCalledWith("u.isBot = false");
+		});
+
+		it("should exclude merged-away accounts from the query", async () => {
+			await buildModule([rawRatingRow()]);
+			const qb = createQbMock([rawRatingRow()]);
+			userRatingRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getGameLeaderboard(1, "temple-curling", "global");
+
+			expect(qb.andWhere).toHaveBeenCalledWith("u.mergedIntoUserId IS NULL");
 		});
 	});
 
@@ -282,6 +330,119 @@ describe("LeaderboardService", () => {
 			await service.getOverallLeaderboard(1, "global");
 
 			expect(qb.andWhere).toHaveBeenCalledWith("u.isDevAccount = false");
+		});
+
+		// ── Rankings Bug Audit N1/N3 (2026-07-20) ──────────────────────────────
+
+		it("should exclude bot accounts from the query", async () => {
+			await buildModule([], [rawStatsRow()]);
+			const qb = createQbMock([rawStatsRow()]);
+			userGameStatsRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getOverallLeaderboard(1, "global");
+
+			expect(qb.andWhere).toHaveBeenCalledWith("u.isBot = false");
+		});
+
+		it("should exclude merged-away accounts from the query", async () => {
+			await buildModule([], [rawStatsRow()]);
+			const qb = createQbMock([rawStatsRow()]);
+			userGameStatsRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getOverallLeaderboard(1, "global");
+
+			expect(qb.andWhere).toHaveBeenCalledWith("u.mergedIntoUserId IS NULL");
+		});
+	});
+
+	// ── getTournamentLeaderboard (Rankings Bug Audit §5.1, 2026-07-20) ────────
+
+	describe("getTournamentLeaderboard", () => {
+		it("should return ranked entries with tournamentWins aggregated", async () => {
+			await buildModule([], [], [rawTournamentRow()]);
+
+			const result = await service.getTournamentLeaderboard(1, "global");
+
+			expect(result).toHaveLength(1);
+			expect(result[0]).toMatchObject({
+				rank: 1,
+				userId: 10,
+				username: "kame",
+				turtleName: "KameMaster",
+				avatar: null,
+				level: 5,
+				tournamentWins: 3,
+			});
+		});
+
+		it("should filter to finished tournaments with a non-null winner", async () => {
+			await buildModule([], [], [rawTournamentRow()]);
+			const qb = createQbMock([rawTournamentRow()]);
+			tournamentRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getTournamentLeaderboard(1, "global");
+
+			expect(qb.where).toHaveBeenCalledWith("t.status = :status", {
+				status: "finished",
+			});
+			expect(qb.andWhere).toHaveBeenCalledWith("t.winnerUserId IS NOT NULL");
+		});
+
+		it("should exclude guest, dev, bot and merged-away accounts", async () => {
+			await buildModule([], [], [rawTournamentRow()]);
+			const qb = createQbMock([rawTournamentRow()]);
+			tournamentRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getTournamentLeaderboard(1, "global");
+
+			expect(qb.andWhere).toHaveBeenCalledWith("u.isGuest = false");
+			expect(qb.andWhere).toHaveBeenCalledWith("u.isDevAccount = false");
+			expect(qb.andWhere).toHaveBeenCalledWith("u.isBot = false");
+			expect(qb.andWhere).toHaveBeenCalledWith("u.mergedIntoUserId IS NULL");
+		});
+
+		it("should order by tournamentWins desc, then level desc, then username asc", async () => {
+			await buildModule([], [], [rawTournamentRow()]);
+			const qb = createQbMock([rawTournamentRow()]);
+			tournamentRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getTournamentLeaderboard(1, "global");
+
+			expect(qb.orderBy).toHaveBeenCalledWith('"tournamentWins"', "DESC");
+			expect(qb.addOrderBy).toHaveBeenCalledWith("u.level", "DESC");
+			expect(qb.addOrderBy).toHaveBeenCalledWith("u.username", "ASC");
+		});
+
+		it("should include caller in allowedIds for friends scope even with no friends", async () => {
+			await buildModule([], [], [rawTournamentRow()]);
+			const qb = createQbMock([rawTournamentRow()]);
+			tournamentRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await service.getTournamentLeaderboard(99, "friends");
+
+			expect(friendsService.getFriendIds).toHaveBeenCalledWith(99);
+			expect(qb.andWhere).toHaveBeenCalledWith("u.id IN (:...allowedIds)", {
+				allowedIds: [99],
+			});
+		});
+
+		it("should return empty array when no tournament has finished", async () => {
+			await buildModule([], [], []);
+
+			const result = await service.getTournamentLeaderboard(1, "global");
+
+			expect(result).toEqual([]);
+		});
+
+		it("should throw InternalServerErrorException when the repository throws", async () => {
+			await buildModule([], [], []);
+			const qb = createQbMock([]);
+			(qb.getRawMany as jest.Mock).mockRejectedValue(new Error("DB error"));
+			tournamentRepo.createQueryBuilder.mockReturnValue(qb);
+
+			await expect(
+				service.getTournamentLeaderboard(1, "global"),
+			).rejects.toThrow(InternalServerErrorException);
 		});
 	});
 });
