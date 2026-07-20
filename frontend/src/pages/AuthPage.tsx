@@ -72,6 +72,15 @@ export function AuthPage(): JSX.Element {
 					setError(err.message);
 				} else if (err.status === 429) {
 					setError("Too many attempts. Wait a moment and try again.");
+				} else if (err.status >= 502 && err.status <= 504) {
+					// Rankings Bug Audit §3.3: nginx answers 502/503/504 while
+					// the backend is down or restarting. This used to fall into
+					// the generic "check your credentials" branch, which reads
+					// as an authentication problem and sent testers restarting
+					// the whole stack to "fix" logins.
+					setError(
+						"The game server is unreachable or restarting — this is not a problem with your credentials. Try again shortly.",
+					);
 				} else {
 					setError("Login failed. Check your credentials and try again.");
 				}
@@ -112,6 +121,12 @@ export function AuthPage(): JSX.Element {
 				} else if (err.status === 429) {
 					setError(
 						"Too many registration attempts. Wait a moment and try again.",
+					);
+				} else if (err.status >= 502 && err.status <= 504) {
+					// See the matching branch in handleLogin (§3.3): a gateway
+					// error means the backend is down, not a bad form.
+					setError(
+						"The game server is unreachable or restarting — try again shortly.",
 					);
 				} else if (err.status >= 500) {
 					setError("The server could not complete the registration.");

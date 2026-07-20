@@ -270,6 +270,13 @@ function PowerupMatchmakingPanel({
 	const [localVsPowerupsEnabled, setLocalVsPowerupsEnabled] = useState(false);
 	const [onlinePlayerCount, setOnlinePlayerCount] = useState(2);
 	const [onlinePowerupsEnabled, setOnlinePowerupsEnabled] = useState(false);
+	// Rankings Bug Audit N7 (2026-07-20): this is the real "Normal Mode"
+	// online-queue flow (reached via the game cards -> /play/:gameId), and its
+	// queue:join emit used to hardcode `mode: "casual"` — the backend's
+	// entire ranked pipeline (Elo, per-game leaderboard tabs) was live but
+	// unreachable from here. Guests never see the toggle (the backend
+	// rejects ranked for them regardless — `matchmaking.service.ts`).
+	const [onlineMode, setOnlineMode] = useState<"casual" | "ranked">("casual");
 	const [privateOnlinePlayerCount, setPrivateOnlinePlayerCount] = useState(2);
 	const [privateOnlinePowerupsEnabled, setPrivateOnlinePowerupsEnabled] =
 		useState(false);
@@ -501,6 +508,30 @@ function PowerupMatchmakingPanel({
 		</div>
 	);
 
+	// Rankings Bug Audit N7: mirrors renderPlayerPicker's segmented-control
+	// styling for the Casual/Ranked choice. Only rendered for non-guest
+	// players — see the `canRank` guard where this is called.
+	const renderModePicker = (
+		selectedMode: "casual" | "ranked",
+		onSelect: (mode: "casual" | "ranked") => void,
+		label: string,
+		disabled = false,
+	) => (
+		<div className="power-picker-page__player-picker" aria-label={label}>
+			{(["casual", "ranked"] as const).map((mode) => (
+				<StoneButton
+					key={mode}
+					type="button"
+					className={selectedMode === mode ? "is-selected" : ""}
+					disabled={disabled}
+					onClick={() => onSelect(mode)}
+				>
+					{mode === "casual" ? "Casual" : "Ranked"}
+				</StoneButton>
+			))}
+		</div>
+	);
+
 	const launchLocalGame = (
 		localMode: LocalGameMode,
 		localPowerupsEnabled: boolean,
@@ -714,8 +745,12 @@ function PowerupMatchmakingPanel({
 		const socket = getGameSocket();
 		let matchId: string | null = null;
 		let side = 0;
+		// Defensive fallback (see the `onlineMode` state comment above): never
+		// send "ranked" for a guest even if `onlineMode` were somehow stale,
+		// since the toggle that sets it is not rendered for guests at all.
+		const mode = currentUser?.isGuest ? "casual" : onlineMode;
 		setIsSearchingOnline(true);
-		setMessage(`Searching for ${onlinePlayerCount} online players...`);
+		setMessage(`Searching for ${onlinePlayerCount} ${mode} players...`);
 		setMessageTone("gold");
 		detachOnlineSearchHandlers();
 		const onMatchFound = (payload: { matchId: string; side: number }) => {
@@ -771,7 +806,7 @@ function PowerupMatchmakingPanel({
 		socket.on("queue:left", onQueueLeft);
 		socket.emit("queue:join", {
 			gameId,
-			mode: "casual",
+			mode,
 			playerCount: onlinePlayerCount,
 			powerupsEnabled: onlinePowerupsEnabled,
 			shellSelection: [],
@@ -933,6 +968,15 @@ function PowerupMatchmakingPanel({
 							<p>
 								Jump into matchmaking against online opponents.
 							</p>
+							{!currentUser?.isGuest
+								? renderModePicker(
+										onlineMode,
+										setOnlineMode,
+										"Online match mode",
+										isSearchingOnline ||
+											Boolean(activeMatchStatus),
+									)
+								: null}
 							{renderPlayerPicker(
 								onlinePlayerCount,
 								setOnlinePlayerCount,
@@ -976,7 +1020,9 @@ function PowerupMatchmakingPanel({
 									? `Reconnect window: ${activeReconnectSeconds}s`
 									: isSearchingOnline
 										? "Searching for opponents..."
-										: `Players selected: ${onlinePlayerCount}`}
+										: currentUser?.isGuest
+											? `Players selected: ${onlinePlayerCount}`
+											: `Players selected: ${onlinePlayerCount} · ${onlineMode === "ranked" ? "Ranked" : "Casual"}`}
 							</p>
 							{activeMatchStatus ? (
 								<button

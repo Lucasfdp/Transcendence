@@ -200,7 +200,7 @@ export class AuthController {
 
 		if (!this.rateLimiter.allow(req, "register", 5, 60_000)) {
 			throw TooManyRequests(
-				"Too many registration attempts — try again later.",
+				"Too many registration attempts — wait a minute and try again.",
 			);
 		}
 
@@ -229,7 +229,12 @@ export class AuthController {
 		this.validateCsrf(req);
 
 		if (!this.rateLimiter.allow(req, "login", 10, 60_000)) {
-			throw TooManyRequests("Too many login attempts — try again later.");
+			// Rankings Bug Audit §3.3: the lockout is 10 attempts per IP per
+			// minute, in memory — say so, or a locked-out tester assumes the
+			// backend is broken and restarts the whole stack to "fix" it.
+			throw TooManyRequests(
+				"Too many login attempts — wait a minute and try again.",
+			);
 		}
 
 		const identifier = (body.identifier ?? body.username)?.trim() ?? "";
