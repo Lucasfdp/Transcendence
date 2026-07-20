@@ -507,10 +507,13 @@ export class ShellCurlOnlineController {
 	}
 
 	private throwsUsedBySide(snapshot: CurlingSnapshot, side: number): number {
-		return Math.floor(
-			(snapshot.throwsInEnd + snapshot.score.length - 1 - side) /
-				Math.max(1, snapshot.score.length),
-		);
+		// Mirrors the server rotation (P2): the lead of end `e` is `e % n`, so a
+		// seat's throw count depends on its offset from that lead, not on its
+		// absolute index. With lead 0 this reduces to the original formula.
+		const n = Math.max(1, snapshot.score.length);
+		const lead = snapshot.currentEnd % n;
+		const offset = (((side - lead) % n) + n) % n;
+		return Math.floor((snapshot.throwsInEnd + n - 1 - offset) / n);
 	}
 
 	private startRejoinPolling(request: () => void): void {

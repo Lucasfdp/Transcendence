@@ -244,6 +244,7 @@ Evidence:
 - `backend/src/modules/achievements/`
 - Replays and match history in `backend/src/modules/matchmaking/replay.service.ts`
 - 2026-07-15 rankings hardening pass (see `docs/old_docs/rankings-bug-audit-2026-07-15.md`): added the missing `user_ratings` migration and its unique constraint, closed the client-forgeable overall-leaderboard endpoint, fixed ranked draws never updating ratings, made match-finish reward persistence idempotent at the DB level, added stable tie-break ordering and dev-account exclusion to both leaderboard queries, and reworked the Rankings modal to show fetch errors, refetch on open, and the caller's own rank.
+- 2026-07-20 rankings/tournament integration pass (see `docs/rankings-bug-audit-2026-07-20.md`): reclassified the reported "DB crash on Rankings" as a backend-process death/lockout (a rankings SELECT cannot take Postgres down) and hardened the actual cause — `main.ts` now logs `unhandledRejection`/`uncaughtException` instead of dying silently, and `BotPlayerService.tick()`'s whole body is wrapped so a bad tick is retried instead of killing the process. New `users.isBot` column (migration + entity + set on CPU-account minting in `tournament-lobby.service.ts`) and a `mergedIntoUserId IS NULL` filter close two ranking-integrity holes: tournament CPU bots and merged-away account duplicates could otherwise occupy public leaderboard rows; both are now excluded from all three leaderboard queries, alongside `isDevAccount` (which the demo account seed now also sets, closing a third — a level-99 KameMaster winning every overall tie-break). New `GET /leaderboard/tournaments` endpoint + `LeaderboardService.getTournamentLeaderboard` + a "Tournaments" tab in the Rankings modal surface a dedicated tournament-wins board off `tournaments.winnerUserId`; tournament minigame wins already flowed into the Total board by construction (same casual-match rail as any other game), confirmed by a new regression test in `game-session.service.spec.ts`. Fixed a leaderboard-fetch race (N5): the modal's cancellation flag used to be created only after the first `await`, so a stale request could resolve after a newer one and overwrite its rows — the flag is now a ref created synchronously before the fetch starts. The prior audit's claimed migration gap for the `tournaments` tables (N2) was verified stale — `20260713000000-create-tournaments.ts` already exists, ordered correctly. Open product decision (not actioned, flagged for the user): whether tournament-minigame XP/coin grants should also exclude CPU bot stand-ins in `GameSessionService.persistFinishedRoom` — currently unchanged, bots still accrue XP/coins/levels even though they're now excluded from every ranking display.
 
 Missing for completion:
 - Should review history coverage for all exposed games.
@@ -307,6 +308,10 @@ Requirement breakdown:
 Evidence:
 - `matchmaking.gateway.ts`, `room.service.ts`, `gameSocket.ts`
 - Rejoin, away, abandon, and reconnect timeout implemented.
+- 2026-07-20 technical audit of this module's bugs and optimisation gaps (seat
+  hijack on a second connection, room retention, 30 Hz forced replay
+  keyframes, missing game-input rate limiting, and fix options for each):
+  `docs/remote-multiplayer-modules-audit-2026-07-20.md`.
 - Bell Clash online matches now use a dedicated server-authoritative physics
   stream: fixed-step source-space simulation, immediate launch plus 30 Hz
   physics projections, backend collisions/powers/scoring, velocity-aware
@@ -360,6 +365,29 @@ Evidence:
   now marks the exact circular physics radius. Settled Temple Curling shells retain
   their coloured hitbox edge without the active shell's dark separator. Frontend
   validation passed with 72 files / 395 tests and a production build.
+- 2026-07-20 audit remediation. The stability and robustness findings from
+  `docs/remote-multiplayer-modules-audit-2026-07-20.md` were implemented with
+  regression tests: a second connection from the same user no longer hijacks a
+  live seat or triggers a false forfeit (R1, vacancy-guarded reconnect with a
+  liveness check); finished rooms are evicted on rematch resolution and by a
+  ten-minute TTL sweep, and disconnect/spectator lookups now use O(1) socket
+  indexes instead of scanning every room (R2); the 30 Hz physics broadcast no
+  longer forces a full replay keyframe, and the live replay buffer is bounded by
+  whole-round trimming (R3); `game:input` and `game:physics-request` are now
+  rate-limited per user with the previously unused `rate-limited` ack (R4); a
+  socket that dies between matchmaking and room creation now arms its
+  reconnect/forfeit window immediately, backed by a pending-room TTL (R5); the
+  Curling lifecycle snapshot no longer ships legacy per-ball trails (R8); and the
+  arena loop now broadcasts at 20 Hz while simulating at 30 Hz, cutting
+  steady-state bandwidth by a third within the client's interpolation buffer
+  (R9). Matchmaking observability was added to the Prometheus stack (tick-duration
+  histogram, active-rooms and buffered-replay-frame gauges, dropped catch-up
+  counter). The simulated-clock re-anchoring (R7) is instrumented via the dropped
+  catch-up counter and deferred as a metrics-gated follow-up. The client-side
+  cosmetic launch echo (R6) and the hub reconnect toast (R11) are designed but
+  deferred pending the interactive Firefox visual validation this repository
+  requires for visually significant changes. Backend suites for the touched
+  services and both production builds pass.
 
 Missing for completion:
 - Bell Clash and Bamboo Bash manual multiplayer validation, including live
@@ -424,9 +452,30 @@ Requirement breakdown:
 Evidence:
 - Engines for multiple games and sufficiently general matchmaking structure.
 - `shell-curl` points to modes with more than two participants.
+- Automated 3–5 player end-to-end proof (2026-07-20). A dedicated integration
+  spec (`backend/src/modules/matchmaking/nplayer-integration.spec.ts`) drives a
+  full five-seat match through the real engines and the real `RoomService` for
+  every game to a settled winner, asserting per-side scoring, turn rotation, a
+  mid-match disconnect and rejoin of a middle seat, and a live spectator join.
+  This is the repeatable, CI-friendly evidence the module previously lacked.
+- N-player fairness gaps from `docs/remote-multiplayer-modules-audit-2026-07-20.md`
+  are fixed with tests: Temple Curling now rotates the lead each end so the last
+  seat no longer always holds the hammer (P2); Bell Clash, Kame Knock and Bamboo
+  Bash enforce shell-selection ownership on powers, so a modified client can no
+  longer fire a power it did not select (P3); ranked Elo is now a proper pairwise
+  multiplayer construction scored by relative placement, so a clear last place
+  records a loss and cannot gain rating from a tie for first (P4); and abandon
+  resolution no longer excludes a temporarily disconnected leader, with 3+ player
+  matches continuing via a CPU stand-in rather than ending when one player leaves
+  (P5).
 
 Missing for completion:
-- Lacking clear, demonstrable proof of a functional 3+ match validated end-to-end.
+- The automated proof above closes the primary evidence gap; the remaining item
+  is the manual two-client Firefox matrix for the visual/UX half (turn banner
+  order, HUD score columns, spectator entry mid-match, responsive relayout across
+  3–5 seats), which requires the interactive stack this environment cannot run.
+- Rating-banded matchmaking for 3–5-seat ranked lobbies remains a documented
+  out-of-scope limitation (FIFO per game/mode/player-count is retained).
 
 ### Major: Add another game with user history and matchmaking
 Status: `Done`
@@ -509,6 +558,8 @@ Evidence:
 - FIVE-PLAYER TOURNAMENTS (2026-07-19): the tournament size moved from 4 to 5 players. The single source of truth is `playersPerTournament` in the SPEC-024 settings catalogue (`config/settings.catalog.ts`), from which `TOURNAMENT_PLAYERS` and every lobby capacity/start check derive; the four minigame engines already declared `maxPlayers = 5`, so no arena changes were needed. Frontend: lobby capacity mirror bumped to 5, a fifth seat colour (purple) and a fifth shared-tile token offset added to the board view. Backend 1410 and frontend 380 tests green (lobby specs reworked for five seats).
 
 - SHOP TILE + SHOP INTERACTION WINDOW (2026-07-19): the Shop System (SPEC-012, engine-complete since F6) is now playable. (a) **Board**: `tile-18` of the 28-step ring (`SHOP_TILE_INDEX`, directly in front of the pagoda at the map's top-right corner) carries the `openShop` tile Action and wire kind `"shop"`; the board view renders it as a highlighted 🛒 marker ("Pagoda shop", styled in `tournament-board.css`). (b) **Interaction window (SPEC-005 binding)**: landing on the tile opens the shop session during tile resolution; the runtime now HOLDS the turn baton while a session is open (`onInteractiveTurnFinished` defers, an always-on `ShopClosed` subscription resumes the normal 2.6 s handoff on purchase/cancel/timeout/empty — the 30 s `shopInteractionSeconds` timeout is the backstop), the disconnect grace also cancels the leaver's open session, and `convertPlayerToBot` takes over a quitter's live session. (c) **Intents**: `BuyOfferIntent {offerId}` and `EndTurnIntent` are live (both contract mirrors; gateway validates the payload shape and routes to new `handleBuyOffer`/`handleEndTurn` runtime entry points; a rejected purchase keeps the session open per SPEC-012). (d) **Wire**: snapshot gained `shop: {playerId, deadlineAt, offers} | null` (`TournamentShopSummary`/`TournamentShopOfferSummary`), filled by the sync service from a new engine read `TournamentShop.getCatalogView(playerId, round)` — per-offer rule-modified price (the exact amount `buy` charges) and availability (minRound + stock). (e) **UI** (`TournamentBoardView`): the shopper gets the offer list (icon/name/description, price buttons disabled when unavailable, dimmed when unaffordable, red notice on local/acked rejection) plus "Done shopping" and the session countdown; everyone else sees "X is browsing the pagoda shop… Ns". (f) **CPU policy**: a bot shopper buys the first available+affordable offer after a 2 s clock delay, else closes — through the same intent entry points. Also fixed en route: a fresh page load of `/tournament/:id` (direct URL/F5) could race the socket's async auth stamping and reject the join with `not_participant` — the board now retries transient join rejections briefly before surfacing the error. Backend 1427 green (17 new: shop catalog view, runtime shop-window hold/buy/reject/timeout/disconnect/CPU, gateway routing, sync fill + tile kind), frontend build + 393 vitest green, contracts drift green, backend tsc clean; live headless-Firefox validation confirms the 🛒 tile renders top-right (x≈0.80, y≈0.36 of the map) on a running 5-seat board with no console errors.
+
+- RANKINGS INTEGRATION (2026-07-20, see `docs/rankings-bug-audit-2026-07-20.md`): a durable `users.isBot` marker now excludes CPU tournament accounts from every public leaderboard (they were previously ordinary `users` rows whose match/tournament results could rank publicly), a new `GET /leaderboard/tournaments` board ranks players by finished tournament wins (`tournaments.winnerUserId`), and tournament minigame wins were confirmed (by a new regression test) to already flow into the Total leaderboard through the normal casual-match reward pipeline. `main.ts` gained `unhandledRejection`/`uncaughtException` logging and `BotPlayerService.tick()` is now fully guarded, closing the most likely cause of a reported backend outage traced to this module's CPU-bot load testing.
 
 Missing for completion:
 - Manual 5-player in-browser validation of the full loop (the minigame → CONTINUE → board handoff is now automatic; validate it live).

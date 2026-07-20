@@ -95,6 +95,9 @@ describe("GameSessionService", () => {
 		roomService = {
 			getRoom: jest.fn(),
 			start: jest.fn(),
+			convertSeatToBot: jest.fn((matchId: string) =>
+				roomService.getRoom(matchId),
+			),
 			finish: jest.fn((matchId, winnerSide, abandoned) => {
 				const room = roomService.getRoom(matchId);
 				if (!room) return null;
@@ -188,6 +191,37 @@ describe("GameSessionService", () => {
 		expect(room.rewardsGranted).toBe(true);
 	});
 
+	// ── Rankings Bug Audit §5.2: tournament minigame wins → overall ranking ──
+	//
+	// Tournament minigames are launched by `TournamentMinigameAdapter.launch`
+	// as ordinary `mode: "casual"` matches on the normal matchmaking rail
+	// (`MatchFactoryService.createMatch`, carrying `MatchRoom.tournamentId`
+	// purely as metadata) — `persistFinishedRoom` has no special case for it.
+	// This regression test asserts that flow end-to-end at this layer: a
+	// tournament-launched room's finish reaches `submitResult` with a "win"
+	// outcome for the winner exactly like any other casual match, which is
+	// what increments the winner's `user_game_stats.totalWins` (covered at
+	// the persistence layer by `game-results.service.spec.ts`) and therefore
+	// the overall leaderboard total.
+	it("still grants a win to the winner of a tournament-launched minigame (Rankings Bug Audit §5.2)", async () => {
+		const room = makeRoom({ tournamentId: "tournament-1" });
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		expect(gameResultsService.submitResult).toHaveBeenCalledTimes(2);
+		expect(gameResultsService.submitResult).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({ id: 1 }),
+			{ gameId: "temple-curling", outcome: "win" },
+		);
+		expect(gameResultsService.submitResult).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({ id: 2 }),
+			{ gameId: "temple-curling", outcome: "loss" },
+		);
+	});
+
 	it("does not grant rewards twice for the same finished room", async () => {
 		const room = makeRoom();
 		roomService.getRoom.mockReturnValue(room);
@@ -200,7 +234,7 @@ describe("GameSessionService", () => {
 
 	it("grants draw rewards to connected players on draw", async () => {
 		const room = makeRoom({
-			state: { ...makeRoom().state, winnerSide: null },
+			state: { ...makeRoom().state, winnerSide: null, score: [1, 1] },
 		});
 		roomService.getRoom.mockReturnValue(room);
 
@@ -336,6 +370,52 @@ describe("GameSessionService", () => {
 		engine.abandon.mockReturnValue(0);
 		await service.abandon(botRoom, botRoom.players[1]);
 		expect(profileRepo.save).not.toHaveBeenCalled();
+	});
+
+	it("abandon() keeps a 3+ player match alive with a CPU stand-in instead of ending it (P5)", async () => {
+		const room = makeRoom({
+			status: "active",
+			players: [makePlayer(0), makePlayer(1), makePlayer(2)],
+		});
+		roomService.getRoom.mockReturnValue(room);
+
+		const result = await service.abandon(room, room.players[1]);
+
+		expect(result?.outcome).toBe("continued");
+		expect(roomService.convertSeatToBot).toHaveBeenCalledWith(
+			"match-1",
+			room.players[1].user.id,
+		);
+		// The match is NOT settled: no forfeit finish, no persistence, no loss.
+		expect(roomService.finish).not.toHaveBeenCalled();
+		expect(engine.onRoomClosed).not.toHaveBeenCalled();
+		expect(profileRepo.save).not.toHaveBeenCalled();
+	});
+
+	it("abandon() still forfeits a 3+ match once only one human remains (P5)", async () => {
+		const room = makeRoom({
+			status: "active",
+			players: [
+				makePlayer(0),
+				makePlayer(1),
+				makePlayer(2, { socketId: "bot:3" }),
+			],
+		});
+		roomService.getRoom.mockReturnValue(room);
+		engine.abandon.mockReturnValue(0);
+
+		// Seat 1 leaves; the only other non-bot human is seat 0, so this still
+		// continues. Now seat 0 leaves — no other human remains → forfeit.
+		await service.abandon(room, room.players[1]);
+		room.players[1].socketId = "bot:2"; // seat 1 is now a stand-in
+		jest.clearAllMocks();
+		roomService.getRoom.mockReturnValue(room);
+		roomService.finish.mockReturnValue(room);
+		engine.abandon.mockReturnValue(2);
+
+		const result = await service.abandon(room, room.players[0]);
+		expect(result?.outcome).toBe("finished");
+		expect(roomService.finish).toHaveBeenCalledWith("match-1", 2, true);
 	});
 
 	it("abort() tears the match down as a winnerless abandon (no rewards, engine cleaned)", async () => {
@@ -521,7 +601,7 @@ describe("GameSessionService — applyEloRatings (Bug Audit H1)", () => {
 
 		const room = makeRoom({
 			mode: "ranked",
-			state: { ...makeRoom().state, winnerSide: null },
+			state: { ...makeRoom().state, winnerSide: null, score: [1, 1] },
 		});
 		roomService.getRoom.mockReturnValue(room);
 
@@ -549,7 +629,7 @@ describe("GameSessionService — applyEloRatings (Bug Audit H1)", () => {
 
 		const room = makeRoom({
 			mode: "ranked",
-			state: { ...makeRoom().state, winnerSide: null },
+			state: { ...makeRoom().state, winnerSide: null, score: [1, 1] },
 		});
 		roomService.getRoom.mockReturnValue(room);
 
@@ -559,6 +639,47 @@ describe("GameSessionService — applyEloRatings (Bug Audit H1)", () => {
 		// favorite drawing a lower-rated opponent loses rating.
 		expect(savedRatings[1]).toBeGreaterThan(900);
 		expect(savedRatings[2]).toBeLessThan(1100);
+	});
+
+	// ── P4: pairwise multiplayer Elo ──────────────────────────────────────────
+
+	it("scores a 3-player match pairwise: a clear loser loses rating and records a loss, not a draw", async () => {
+		const p0 = makeRating(1, 1000);
+		const p1 = makeRating(2, 1000);
+		const p2 = makeRating(3, 1000);
+		ratingRepo.findOne = jest
+			.fn()
+			.mockResolvedValueOnce(p0)
+			.mockResolvedValueOnce(p1)
+			.mockResolvedValueOnce(p2);
+
+		// Seats 0 and 1 tie for first; seat 2 is a clear last.
+		const room = makeRoom({
+			mode: "ranked",
+			players: [makePlayer(0), makePlayer(1), makePlayer(2)],
+			state: {
+				...makeRoom().state,
+				winnerSide: null,
+				score: [5, 5, 1],
+			},
+		});
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		// Tied leaders gain equally; the loser loses; the deltas are zero-sum.
+		expect(savedRatings[1]).toBe(1008);
+		expect(savedRatings[2]).toBe(1008);
+		expect(savedRatings[3]).toBe(984);
+		expect(
+			savedRatings[1] + savedRatings[2] + savedRatings[3],
+		).toBe(3000);
+		// The clear loser records a loss — the old average-based design recorded
+		// a draw here (winnerSide === null) and could even gain rating.
+		expect(p2.losses).toBe(1);
+		expect(p2.draws).toBe(0);
+		expect(p0.draws).toBe(1);
+		expect(p1.draws).toBe(1);
 	});
 
 	// ── Rankings Bug Audit L5: divide-by-zero guard ───────────────────────────

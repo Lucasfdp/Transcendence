@@ -518,6 +518,14 @@ export interface MatchRoom {
 	 */
 	tournamentId?: string;
 	status: "pending" | "active" | "finished" | "abandoned";
+	/** Wall-clock time (ms) the room was created (R5 pending-room TTL). */
+	createdAt?: number;
+	/**
+	 * Wall-clock time (ms) the room reached a terminal state. Set by
+	 * `RoomService.finish`; used by the finished-room TTL sweep to bound memory
+	 * (R2).
+	 */
+	finishedAt?: number;
 	players: RoomPlayer[];
 	spectators: Map<string, SocketUser>;
 	seq: number;

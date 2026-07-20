@@ -101,7 +101,7 @@ describe("MatchmakingGateway", () => {
 		getUserMatchStatus: jest.Mock;
 		convertSeatToBot: jest.Mock;
 	};
-	let matchmaking: { removeSocket: jest.Mock };
+	let matchmaking: { removeSocket: jest.Mock; joinQueue: jest.Mock };
 	let privateLobbies: {
 		removeLobbyForUser: jest.Mock;
 		joinLobby: jest.Mock;
@@ -143,7 +143,7 @@ describe("MatchmakingGateway", () => {
 			getUserMatchStatus: jest.fn().mockReturnValue(null),
 			convertSeatToBot: jest.fn().mockReturnValue(null),
 		};
-		matchmaking = { removeSocket: jest.fn() };
+		matchmaking = { removeSocket: jest.fn(), joinQueue: jest.fn() };
 		privateLobbies = {
 			removeLobbyForUser: jest.fn().mockReturnValue(null),
 			joinLobby: jest.fn(),
@@ -273,7 +273,10 @@ describe("MatchmakingGateway", () => {
 			emitPhysics();
 			emitPhysics();
 
-			expect(replays.captureFrame).toHaveBeenCalledWith(room, true);
+			// R3: the physics broadcast must NOT force a keyframe. Motion is
+			// captured by the logical sampler; this unforced call is throttled.
+			expect(replays.captureFrame).toHaveBeenCalledWith(room);
+			expect(replays.captureFrame).not.toHaveBeenCalledWith(room, true);
 			expect(gateway.server.to).toHaveBeenCalledWith(room.matchId);
 			expect(emit).toHaveBeenCalledWith(
 				"game:physics-state",
@@ -415,11 +418,15 @@ describe("MatchmakingGateway", () => {
 				join: jest.fn(),
 				emit: jest.fn(),
 			} as unknown as Socket;
-			rooms.reconnect.mockReturnValue(room);
+			rooms.reconnect.mockReturnValue({ room, outcome: "rebound" });
 
 			gateway.onMatchRejoin(socket);
 
-			expect(rooms.reconnect).toHaveBeenCalledWith("socket-rejoin", makePlayer(1).user);
+			expect(rooms.reconnect).toHaveBeenCalledWith(
+				"socket-rejoin",
+				makePlayer(1).user,
+				expect.any(Function),
+			);
 			expect(socket.join).toHaveBeenCalledWith(room.matchId);
 			expect(socket.emit).toHaveBeenCalledWith("game:state", room.state);
 			expect(socket.emit).toHaveBeenCalledWith(
@@ -534,6 +541,92 @@ describe("MatchmakingGateway", () => {
 			);
 		});
 	});
+
+	describe("game input rate limiting (R4)", () => {
+		it("rejects game input with reason 'rate-limited' when the limiter denies", async () => {
+			(
+				gateway as unknown as {
+					rateLimiter?: { allowKey: jest.Mock };
+				}
+			).rateLimiter = { allowKey: jest.fn().mockReturnValue(false) };
+
+			const ack = await gateway.onGameInput(
+				makeSocket({ data: { user: makePlayer(1).user } }),
+				{ matchId: "match-1", action: "release", payload: {} },
+			);
+
+			expect(ack).toEqual({ accepted: false, reason: "rate-limited" });
+			// The engine pipeline must not run for a throttled input.
+			expect(sessions.handleInput).not.toHaveBeenCalled();
+		});
+
+		it("passes input to the engine pipeline when the limiter allows", async () => {
+			(
+				gateway as unknown as {
+					rateLimiter?: { allowKey: jest.Mock };
+				}
+			).rateLimiter = { allowKey: jest.fn().mockReturnValue(true) };
+			sessions.handleInput.mockReturnValue(null);
+
+			const ack = await gateway.onGameInput(
+				makeSocket({ data: { user: makePlayer(1).user } }),
+				{ matchId: "match-1", action: "release", payload: {} },
+			);
+
+			expect(ack).toEqual({ accepted: false, reason: "invalid-input" });
+			expect(sessions.handleInput).toHaveBeenCalled();
+		});
+	});
+
+	describe("matchmaking race backstop (R5)", () => {
+		it("arms the reconnect window for a matched seat whose socket already died", async () => {
+			const room = makeRoom({
+				status: "pending",
+				matchId: "match-r5",
+				players: [
+					makePlayer(1, { socketId: "socket-1" }),
+					makePlayer(2, { socketId: "socket-2", side: 1 }),
+				],
+			});
+			matchmaking.joinQueue.mockResolvedValue({
+				matched: true,
+				roomMatchId: room.matchId,
+			});
+			rooms.getRoom.mockReturnValue(room);
+			// Only seat 0's socket is still connected; seat 1's socket is gone.
+			const liveSocket = {
+				id: "socket-1",
+				join: jest.fn(),
+				emit: jest.fn(),
+			};
+			gateway.server = {
+				sockets: { sockets: new Map([["socket-1", liveSocket]]) },
+				to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+			} as never;
+
+			await gateway.onQueueJoin(
+				makeSocket({ id: "socket-1", data: { user: makePlayer(1).user } }),
+				{
+					gameId: "temple-curling",
+					mode: "casual",
+					playerCount: 2,
+				} as never,
+			);
+
+			// The dead seat's forfeit window is armed; the live seat is seated.
+			expect(rooms.markDisconnected).toHaveBeenCalledWith(
+				"socket-2",
+				expect.any(Function),
+				expect.any(Number),
+			);
+			expect(liveSocket.join).toHaveBeenCalledWith(room.matchId);
+			expect(liveSocket.emit).toHaveBeenCalledWith(
+				"match:found",
+				expect.objectContaining({ matchId: room.matchId }),
+			);
+		});
+	});
+
 	// ── syncRoomPresence (private — invoked via cast, no public seam) ──────────
 
 	describe("syncRoomPresence", () => {

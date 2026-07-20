@@ -441,6 +441,9 @@ export class TournamentLobbyService {
 						username: `${baseName}${suffix}`,
 						email: `cpu-${Date.now()}-${attempt}@${TOURNAMENT_BOT_EMAIL_DOMAIN}`,
 						isGuest: false,
+						// Rankings Bug Audit N1: durable marker so bot accounts can
+						// never rank on a public leaderboard or tournament board.
+						isBot: true,
 					}),
 				);
 				return await this.ensureBotProfile(bot);

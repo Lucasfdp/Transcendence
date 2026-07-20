@@ -116,7 +116,12 @@ export function syncShellCurlSnapshot(
 		updatedAt: physics.serverTime,
 		stopped: entity.stopped,
 		power: entity.power,
-		trail: (entity.trail ?? []).map((point) => ({ x: point.x / SHEET_W, y: point.y / SHEET_H })),
+		// R8: the per-ball trail is deliberately NOT shipped in the lifecycle
+		// snapshot. It is legacy — clients rebuild trails from interpolated
+		// positions (the 30 Hz physics channel already strips it), and every
+		// `game:state` emit previously carried up to 40 trail points per ball to
+		// every player and spectator, then deep-cloned them into replay capture.
+		// Trails are absent from the `entities` copy below too.
 	}));
 	snapshot.entities = snapshot.objects.map((object) => ({
 		...object,

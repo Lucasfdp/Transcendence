@@ -10,7 +10,37 @@ import { MetricsInterceptor } from "./modules/metrics/metrics.interceptor";
 import { MetricsService } from "./modules/metrics/metrics.service";
 import { isAllowedOrigin } from "./cors.util";
 
+/**
+ * Rankings Bug Audit §3.3 (2026-07-20): Node kills the process on any
+ * unhandled promise rejection from v16 onward, and `main.ts` registered no
+ * handlers — Nest catches HTTP-path errors, but background timers/listeners
+ * (e.g. `BotPlayerService`'s `setInterval`) are not on that path. A floating
+ * rejection there silently took the whole backend down; nginx then served
+ * 502/503 for every request, which the hub misread as an "authentication
+ * issue" until `make re` restarted the container. These handlers log the
+ * failure — with a stack where available — so the next incident is
+ * diagnosable from `make logs SERVICE=backend` instead of leaving no trace.
+ * Logging only (no `process.exit`): keeping the process alive is strictly
+ * better than a silent Node-default crash for a bug we want to catch and fix
+ * at the source, not paper over by restarting.
+ */
+function registerProcessSafetyNets(): void {
+	const logger = new Logger("Process");
+	process.on("unhandledRejection", (reason) => {
+		logger.error(
+			`Unhandled promise rejection: ${
+				reason instanceof Error ? reason.message : String(reason)
+			}`,
+			reason instanceof Error ? reason.stack : undefined,
+		);
+	});
+	process.on("uncaughtException", (err) => {
+		logger.error(`Uncaught exception: ${err.message}`, err.stack);
+	});
+}
+
 async function bootstrap() {
+	registerProcessSafetyNets();
 	const app = await NestFactory.create<NestExpressApplication>(AppModule, {
 		bodyParser: false,
 	});

@@ -260,14 +260,50 @@ describe("AuthService", () => {
 			expect(usersService.create).not.toHaveBeenCalled();
 		});
 
-		it("does not write when the demo account already has full coins", async () => {
-			const existing = { ...mockUser, coins: DEMO_COINS } as unknown as User;
+		it("does not write when the demo account already has full coins and isDevAccount set", async () => {
+			const existing = {
+				...mockUser,
+				coins: DEMO_COINS,
+				isDevAccount: true,
+			} as unknown as User;
 			usersService.findByUsername.mockResolvedValue(existing);
 
 			await service.seedDemoAccount();
 
 			expect(usersService.create).not.toHaveBeenCalled();
 			expect(usersService.save).not.toHaveBeenCalled();
+		});
+
+		// ── Rankings Bug Audit N4: demo account flagged as a dev account ──────────
+
+		it("backfills isDevAccount on an existing demo account seeded before the fix", async () => {
+			const existing = {
+				...mockUser,
+				coins: DEMO_COINS,
+				isDevAccount: false,
+			} as unknown as User;
+			usersService.findByUsername.mockResolvedValue(existing);
+			usersService.save.mockImplementation(async (u: User) => u);
+
+			const result = await service.seedDemoAccount();
+
+			expect(usersService.save).toHaveBeenCalledWith(
+				expect.objectContaining({ isDevAccount: true }),
+			);
+			expect(result?.isDevAccount).toBe(true);
+		});
+
+		it("sets isDevAccount on a freshly created demo account", async () => {
+			const created = { ...mockUser, profile: null } as unknown as User;
+			usersService.findByUsername.mockResolvedValue(null);
+			usersService.create.mockResolvedValue(created);
+			usersService.save.mockImplementation(async (u: User) => u);
+
+			await service.seedDemoAccount();
+
+			expect(usersService.create).toHaveBeenCalledWith(
+				expect.objectContaining({ isDevAccount: true }),
+			);
 		});
 
 		it("returns null and does not throw when seeding fails", async () => {

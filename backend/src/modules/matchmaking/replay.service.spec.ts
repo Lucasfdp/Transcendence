@@ -170,4 +170,38 @@ describe("ReplayService replay v2", () => {
 			expect(delta.changes.score).toEqual([3, 0]);
 		});
 	});
+
+	it("bounds the live frame buffer by trimming the oldest whole round (R3)", () => {
+		const room = {
+			replayEnabled: true,
+			state: {
+				powerupsEnabled: false,
+				roundNumber: 0,
+				players: [{ side: 0, userId: 1, username: "A" }],
+				score: [0],
+				entities: [{ id: "a", x: 0, y: 0 }],
+			},
+			replayFrames: [],
+			replayEvents: [],
+			replayStartedAt: null,
+			replayLastSampleAt: null,
+			replayLastSnapshot: null,
+			replayLastKeyframeAt: null,
+		} as unknown as MatchRoom;
+		const service = makeService();
+		// Two rounds of 2,000 forced frames each (4,000 > MAX_LIVE_REPLAY_FRAMES).
+		for (let index = 0; index < 4_000; index += 1) {
+			(room.state as unknown as { roundNumber: number }).roundNumber =
+				index < 2_000 ? 0 : 1;
+			service.captureFrame(room, true, 50);
+		}
+		// The oldest complete round is dropped; only the in-progress round remains.
+		expect(room.replayFrames.length).toBeLessThanOrEqual(3_600);
+		expect(room.replayFrames.every((frame) => frame.round === 1)).toBe(true);
+		expect(room.replayFrames[0].type).toBe("keyframe");
+		// Sequence numbers stay contiguous from zero after trimming.
+		room.replayFrames.forEach((frame, index) =>
+			expect(frame.seq).toBe(index),
+		);
+	});
 });

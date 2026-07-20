@@ -182,7 +182,7 @@ export class BambooBashEngine extends BaseArenaEngine implements GameEngine {
 		)
 			return null;
 		if (Math.hypot(vx, vy) > 5_000) return null;
-		const power = this.consumeArenaPower(state, player.side, payload.power);
+		const power = this.consumeArenaPower(state, player, payload.power);
 		const physics = (room.physicsState ?? createBambooPhysicsState(room.matchId)) as ReturnType<typeof createBambooPhysicsState>;
 		room.physicsState = physics;
 		const previous = physics.entities.find(

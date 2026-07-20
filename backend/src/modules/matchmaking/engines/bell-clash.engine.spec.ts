@@ -145,6 +145,36 @@ describe("BellClashEngine", () => {
 		expect(state.balls[0]?.power).toBe("none");
 	});
 
+	it("rejects a power the player did not select, but allows a selected one (P3)", () => {
+		const engine = new BellClashEngine();
+		const room = makeRoom(true);
+		const state = room.state as BellClashSnapshot;
+		// This player owns only "giant"; a modified client asking for "rocket"
+		// must not get it.
+		room.players[0].shellSelection = ["giant"];
+		engine.start(room);
+
+		engine.handleInput(room, 1, {
+			matchId: room.matchId,
+			action: "release",
+			payload: { roundNumber: 1, x: 0, y: 0, vx: 260, vy: -90, power: "rocket" },
+		});
+		expect(state.balls[0]?.power).toBe("none");
+
+		for (let step = 0; step < 600; step++) {
+			engine.advanceSimulation(room, 1000 / 30);
+			if (room.physicsState?.entities.every((entity) => entity.stopped))
+				break;
+		}
+
+		engine.handleInput(room, 1, {
+			matchId: room.matchId,
+			action: "release",
+			payload: { roundNumber: 1, x: 0, y: 0, vx: 230, vy: -110, power: "giant" },
+		});
+		expect(state.balls[0]?.power).toBe("giant");
+	});
+
 	it("rejects client-authored scoring", () => {
 		const engine = new BellClashEngine();
 		const room = makeRoom();

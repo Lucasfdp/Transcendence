@@ -70,15 +70,25 @@ export abstract class BaseArenaEngine extends BaseEngine {
 
 	protected consumeArenaPower(
 		state: { powerupsEnabled: boolean; usedPowersBySide: string[][] },
-		side: number,
+		player: RoomPlayer,
 		value: unknown,
 	): string {
 		if (!state.powerupsEnabled) return "none";
 		const power = String(value ?? "none");
 		if (power === "none" || !ARENA_ALLOWED_POWERS.has(power)) return "none";
-		state.usedPowersBySide[side] ??= [];
-		if (state.usedPowersBySide[side].includes(power)) return "none";
-		state.usedPowersBySide[side].push(power);
+		// Ownership check (P3): a player with a non-empty shell selection may only
+		// invoke powers they actually selected/own — a modified client can no
+		// longer fire any of the eight powers regardless of loadout. An empty
+		// selection (guests, no loadout) keeps the permissive "anything allowed"
+		// behaviour, matching Temple Curling's `consumePower`.
+		if (
+			player.shellSelection.length > 0 &&
+			!player.shellSelection.includes(power)
+		)
+			return "none";
+		state.usedPowersBySide[player.side] ??= [];
+		if (state.usedPowersBySide[player.side].includes(power)) return "none";
+		state.usedPowersBySide[player.side].push(power);
 		return power;
 	}
 }

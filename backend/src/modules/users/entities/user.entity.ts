@@ -99,6 +99,15 @@ export class User {
 	mergedIntoUserId: number | null;
 
 	/**
+	 * True for pooled tournament CPU accounts (`tournament-lobby.service.ts`'s
+	 * `acquireBotUser`, reserved `@bots.tournament.local` email domain).
+	 * Rankings Bug Audit N1: excluded from every public leaderboard query so a
+	 * CPU can never occupy a ranking position or "win" a tournament.
+	 */
+	@Column({ default: false })
+	isBot: boolean;
+
+	/**
 	 * When the user was last seen online (their last socket disconnect).
 	 * Null until they have connected and disconnected at least once.
 	 * Used to render "last online" for offline friends.

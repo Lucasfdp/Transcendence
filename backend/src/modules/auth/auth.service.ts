@@ -306,6 +306,10 @@ export class AuthService implements OnApplicationBootstrap {
 					username,
 					email: `${username}@demo.local`,
 					passwordHash,
+					// Rankings Bug Audit N4 (2026-07-20): the demo account used to
+					// rank as a normal player (level 99 wins every overall-board
+					// tie-break) because this flag was never set at seeding.
+					isDevAccount: true,
 				});
 				await this.identities.save(
 					this.identities.create({
@@ -329,10 +333,17 @@ export class AuthService implements OnApplicationBootstrap {
 					user.profile.gamesPlayed = DEMO_GAMES;
 					await this.usersService.saveProfile(user.profile);
 				}
-			} else if (user.coins < DEMO_COINS) {
-				// Top the demo account back up so packs can always be showcased.
-				user.coins = DEMO_COINS;
-				user = await this.usersService.save(user);
+			} else {
+				// Rankings Bug Audit N4 (2026-07-20): backfill `isDevAccount` on
+				// every boot for a demo account seeded before this fix — top up
+				// coins in the same write when due so this stays a single save.
+				const needsBackfill = !user.isDevAccount;
+				const needsTopUp = user.coins < DEMO_COINS;
+				if (needsBackfill || needsTopUp) {
+					if (needsBackfill) user.isDevAccount = true;
+					if (needsTopUp) user.coins = DEMO_COINS;
+					user = await this.usersService.save(user);
+				}
 			}
 
 			return user;

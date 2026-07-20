@@ -208,7 +208,13 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 
 	private nextTurn(room: MatchRoom): number {
 		const state = room.state as CurlingSnapshot;
-		if (state.throwsInEnd === 0) return 0;
+		// At an end boundary, rotate the lead so the same seat does not throw
+		// first — and therefore the last seat does not hold the hammer — in every
+		// end (P2). The lead of end `e` is `e % playerCount`; within an end the
+		// turn advances round-robin. The client's `throwsUsedBySide` mirrors this
+		// exact rotation.
+		if (state.throwsInEnd === 0)
+			return state.currentEnd % room.players.length;
 		return (state.currentTurn + 1) % room.players.length;
 	}
 

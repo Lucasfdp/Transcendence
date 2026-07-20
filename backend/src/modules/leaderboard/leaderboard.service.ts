@@ -8,6 +8,7 @@ import { Repository } from "typeorm";
 import { UserGameStats } from "../game-results/entities/user-game-stats.entity";
 import { FriendsService } from "../friends/friends.service";
 import { UserRating } from "../matchmaking/entities/user-rating.entity";
+import { Tournament } from "../tournaments/entities/tournament.entity";
 
 export interface GameLeaderboardEntry {
 	rank: number;
@@ -32,6 +33,17 @@ export interface OverallLeaderboardEntry {
 	totalWins: number;
 }
 
+/** Tournament-championship entry: how many finished tournaments a user has won. */
+export interface TournamentLeaderboardEntry {
+	rank: number;
+	userId: number;
+	username: string;
+	turtleName: string | null;
+	avatar: string | null;
+	level: number;
+	tournamentWins: number;
+}
+
 export type LeaderboardScope = "global" | "friends";
 
 const MAX_LEADERBOARD_ROWS = 100;
@@ -45,6 +57,8 @@ export class LeaderboardService {
 		private readonly userRatingRepo: Repository<UserRating>,
 		@InjectRepository(UserGameStats)
 		private readonly userGameStatsRepo: Repository<UserGameStats>,
+		@InjectRepository(Tournament)
+		private readonly tournamentRepo: Repository<Tournament>,
 		private readonly friendsService: FriendsService,
 	) {}
 
@@ -80,6 +94,14 @@ export class LeaderboardService {
 				// here defensively so a manually-flagged test/dev account can never
 				// pollute the public board.
 				.andWhere("u.isDevAccount = false")
+				// Rankings Bug Audit N1 (2026-07-20): tournament CPU accounts are
+				// real `users` rows whose match results persist — excluded so a
+				// bot can never occupy a ranking position.
+				.andWhere("u.isBot = false")
+				// Rankings Bug Audit N3 (2026-07-20): a merged-away duplicate keeps
+				// its pre-merge stats row; excluded so it can't occupy a second
+				// board position under the canonical account's identity.
+				.andWhere("u.mergedIntoUserId IS NULL")
 				// Rankings Bug Audit M5: rating alone gives no stable order for
 				// ties, so tied players could flip position between refreshes and
 				// the LIMIT 100 cutoff would be arbitrary among a tie at #100.
@@ -162,6 +184,9 @@ export class LeaderboardService {
 				// Rankings Bug Audit L4: see getGameLeaderboard — same defensive
 				// exclusion of the legacy dev-account flag.
 				.andWhere("u.isDevAccount = false")
+				// Rankings Bug Audit N1/N3 (2026-07-20): see getGameLeaderboard.
+				.andWhere("u.isBot = false")
+				.andWhere("u.mergedIntoUserId IS NULL")
 				.groupBy("u.id")
 				.addGroupBy("u.username")
 				.addGroupBy("u.turtleName")
@@ -207,6 +232,87 @@ export class LeaderboardService {
 			);
 			throw new InternalServerErrorException(
 				"Failed to fetch overall leaderboard",
+			);
+		}
+	}
+
+	/**
+	 * Rankings Bug Audit §5.1 (2026-07-20): a separate tournament-wins board,
+	 * ranked by how many "The Parrot's Shell" tournaments a user has won.
+	 * Source of truth is `tournaments.winnerUserId`, written durably once a
+	 * tournament reaches VICTORY (`tournament-runtime.service.ts`); a
+	 * collective DEFEAT leaves it null and is correctly excluded below.
+	 */
+	async getTournamentLeaderboard(
+		callerId: number,
+		scope: LeaderboardScope,
+	): Promise<TournamentLeaderboardEntry[]> {
+		try {
+			const qb = this.tournamentRepo
+				.createQueryBuilder("t")
+				.innerJoin("t.winnerUser", "u")
+				.select([
+					"u.id             AS \"userId\"",
+					"u.username       AS username",
+					"u.turtleName     AS \"turtleName\"",
+					"u.avatar         AS avatar",
+					"u.level          AS level",
+					"COUNT(*)         AS \"tournamentWins\"",
+				])
+				.where("t.status = :status", { status: "finished" })
+				.andWhere("t.winnerUserId IS NOT NULL")
+				.andWhere("u.isGuest = false")
+				.andWhere("u.isDevAccount = false")
+				// Rankings Bug Audit N1: a CPU can technically win a tournament —
+				// excluded here for the same reason as the other two boards.
+				.andWhere("u.isBot = false")
+				// Rankings Bug Audit N3: see getGameLeaderboard.
+				.andWhere("u.mergedIntoUserId IS NULL")
+				.groupBy("u.id")
+				.addGroupBy("u.username")
+				.addGroupBy("u.turtleName")
+				.addGroupBy("u.avatar")
+				.addGroupBy("u.level")
+				// Rankings Bug Audit M5: stable tie-break, mirroring the other boards.
+				.orderBy("\"tournamentWins\"", "DESC")
+				.addOrderBy("u.level", "DESC")
+				.addOrderBy("u.username", "ASC")
+				.limit(MAX_LEADERBOARD_ROWS);
+
+			if (scope === "friends") {
+				const friendIds = await this.friendsService.getFriendIds(callerId);
+				const allowedIds = [...new Set([callerId, ...friendIds])];
+				qb.andWhere("u.id IN (:...allowedIds)", { allowedIds });
+			}
+
+			const rows = await qb.getRawMany<{
+				userId: string;
+				username: string;
+				turtleName: string | null;
+				avatar: string | null;
+				level: string;
+				tournamentWins: string;
+			}>();
+
+			return rows.map((row, index) => ({
+				rank: index + 1,
+				userId: Number(row.userId),
+				username: row.username,
+				turtleName: row.turtleName ?? null,
+				avatar: row.avatar ?? null,
+				level: Number(row.level),
+				tournamentWins: Number(row.tournamentWins),
+			}));
+		} catch (err) {
+			if (err instanceof InternalServerErrorException) throw err;
+			this.logger.error(
+				`getTournamentLeaderboard failed for callerId=${callerId}: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+				err instanceof Error ? err.stack : undefined,
+			);
+			throw new InternalServerErrorException(
+				"Failed to fetch tournament leaderboard",
 			);
 		}
 	}

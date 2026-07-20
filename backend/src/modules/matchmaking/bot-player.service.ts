@@ -1,10 +1,12 @@
 /**
  * bot-player.service.ts — server-side CPU players for the arena minigames.
  *
- * A bot seat is a RoomPlayer whose socketId carries the `bot:` prefix — today
- * they are seated ONLY by the Tournament's minigame adapter as stand-ins for
- * participants with no live connection (and, next wave, for CPU tournament
- * participants). Public-queue / private-lobby matches never contain bot seats.
+ * A bot seat is a RoomPlayer whose socketId carries the `bot:` prefix. They are
+ * seated by the Tournament's minigame adapter as stand-ins for participants with
+ * no live connection, and — since P5 — by the abandon flow, which hands a leaving
+ * seat in a 3+ player match to a CPU stand-in so the match plays on for everyone
+ * else. Any bot seat in an active room is driven here regardless of how it was
+ * seated.
  *
  * Bots play through EXACTLY the same rail as human clients —
  * `MatchmakingGateway.handleUserInput` — so every engine validation, throw
@@ -158,34 +160,50 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 		this.roomHoldUntil.clear();
 	}
 
-	/** One pass over the active rooms; public for tests. */
+	/**
+	 * One pass over the active rooms; public for tests.
+	 *
+	 * Rankings Bug Audit §3.3: `onModuleInit` fires this from a bare
+	 * `setInterval(() => void this.tick(), …)` — a synchronous throw anywhere
+	 * in this body (not just inside `stepSeat`, which already guards its own
+	 * per-seat work) becomes a floating, un-awaited promise rejection that
+	 * kills the Node process. The whole body is wrapped so the tick loop can
+	 * never take the backend down; a failed pass is simply retried next tick.
+	 */
 	async tick(): Promise<void> {
-		const activeMatchIds = new Set<string>();
-		for (const room of this.rooms.getActiveRooms()) {
-			activeMatchIds.add(room.matchId);
-			// Match the clients' "3, 2, 1, GO!": bots sit out the countdown
-			// window after the room goes active, so nothing moves before GO.
-			let holdUntil = this.roomHoldUntil.get(room.matchId);
-			if (holdUntil === undefined) {
-				holdUntil = Date.now() + BOT_START_COUNTDOWN_HOLD_MS;
-				this.roomHoldUntil.set(room.matchId, holdUntil);
+		try {
+			const activeMatchIds = new Set<string>();
+			for (const room of this.rooms.getActiveRooms()) {
+				activeMatchIds.add(room.matchId);
+				// Match the clients' "3, 2, 1, GO!": bots sit out the countdown
+				// window after the room goes active, so nothing moves before GO.
+				let holdUntil = this.roomHoldUntil.get(room.matchId);
+				if (holdUntil === undefined) {
+					holdUntil = Date.now() + BOT_START_COUNTDOWN_HOLD_MS;
+					this.roomHoldUntil.set(room.matchId, holdUntil);
+				}
+				if (Date.now() < holdUntil) continue;
+				for (const player of room.players) {
+					if (!isBotSeat(player)) continue;
+					await this.stepSeat(room, player);
+				}
 			}
-			if (Date.now() < holdUntil) continue;
-			for (const player of room.players) {
-				if (!isBotSeat(player)) continue;
-				await this.stepSeat(room, player);
+			// Drop plans of rooms that ended (results already settled by the rail).
+			for (const key of [...this.plans.keys()]) {
+				if (!activeMatchIds.has(key.split("|")[0])) {
+					this.plans.delete(key);
+				}
 			}
-		}
-		// Drop plans of rooms that ended (results already settled by the rail).
-		for (const key of [...this.plans.keys()]) {
-			if (!activeMatchIds.has(key.split("|")[0])) {
-				this.plans.delete(key);
+			for (const matchId of [...this.roomHoldUntil.keys()]) {
+				if (!activeMatchIds.has(matchId)) {
+					this.roomHoldUntil.delete(matchId);
+				}
 			}
-		}
-		for (const matchId of [...this.roomHoldUntil.keys()]) {
-			if (!activeMatchIds.has(matchId)) {
-				this.roomHoldUntil.delete(matchId);
-			}
+		} catch (err) {
+			this.logger.error(
+				"bot tick failed",
+				err instanceof Error ? err.stack : String(err),
+			);
 		}
 	}
 

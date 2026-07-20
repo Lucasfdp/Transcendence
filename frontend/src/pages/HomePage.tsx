@@ -53,6 +53,7 @@ import {
 	ReplayDetail,
 	ReplaySummary,
 	type LeaderboardScope,
+	type TournamentLeaderboardEntry,
 	type UnreadConversationView,
 	type User,
 } from "../features/hub/api";
@@ -665,6 +666,9 @@ function HomeMenu(): JSX.Element {
 	};
 	const [gameLeaderboard, setGameLeaderboard] = useState<GameLeaderboardEntry[]>([]);
 	const [overallLeaderboard, setOverallLeaderboard] = useState<OverallLeaderboardEntry[]>([]);
+	const [tournamentLeaderboard, setTournamentLeaderboard] = useState<
+		TournamentLeaderboardEntry[]
+	>([]);
 	const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 	// Rankings Bug Audit M2: distinct from "no rows returned" — a fetch
 	// failure (e.g. the backend 500ing under H1) must not render as the same
@@ -893,37 +897,50 @@ function HomeMenu(): JSX.Element {
 		};
 	}, []);
 
-	const loadLeaderboard = useCallback(async (): Promise<() => void> => {
-		let cancelled = false;
-		setLeaderboardLoading(true);
-		setLeaderboardError(null);
-		// Rankings Bug Audit M2: clear the previous game/scope's rows before
-		// fetching so a slow or failed request can't leave stale entries on
-		// screen mislabelled as the newly-selected tab.
-		if (leaderboardGame === "overall") setOverallLeaderboard([]);
-		else setGameLeaderboard([]);
-		try {
-			if (leaderboardGame === "overall") {
-				const rows = await api.getOverallLeaderboard(leaderboardScope);
-				if (!cancelled) setOverallLeaderboard(rows);
-			} else {
-				const rows = await api.getGameLeaderboard(leaderboardGame, leaderboardScope);
-				if (!cancelled) setGameLeaderboard(rows);
+	// Rankings Bug Audit N5: this used to create its `cancelled` flag INSIDE
+	// the async function and only hand it back to the caller after the first
+	// `await` resolved — so the effect's cleanup below (`return () =>
+	// cancel?.()`) ran against a still-`undefined` `cancel` for the entire
+	// in-flight request. Rapid tab/scope switching could then let a stale
+	// request resolve after a newer one and overwrite its rows with
+	// mislabelled data (the exact bug M2's "clear rows before fetching" was
+	// meant to prevent). The flag is now a ref created synchronously by the
+	// caller, before the request starts, so cleanup can flip it immediately
+	// regardless of the fetch's timing.
+	const loadLeaderboard = useCallback(
+		async (cancelledRef: { current: boolean } = { current: false }) => {
+			setLeaderboardLoading(true);
+			setLeaderboardError(null);
+			// Rankings Bug Audit M2: clear the previous game/scope's rows before
+			// fetching so a slow or failed request can't leave stale entries on
+			// screen mislabelled as the newly-selected tab.
+			if (leaderboardGame === "overall") setOverallLeaderboard([]);
+			else if (leaderboardGame === "tournaments") setTournamentLeaderboard([]);
+			else setGameLeaderboard([]);
+			try {
+				if (leaderboardGame === "overall") {
+					const rows = await api.getOverallLeaderboard(leaderboardScope);
+					if (!cancelledRef.current) setOverallLeaderboard(rows);
+				} else if (leaderboardGame === "tournaments") {
+					const rows = await api.getTournamentLeaderboard(leaderboardScope);
+					if (!cancelledRef.current) setTournamentLeaderboard(rows);
+				} else {
+					const rows = await api.getGameLeaderboard(leaderboardGame, leaderboardScope);
+					if (!cancelledRef.current) setGameLeaderboard(rows);
+				}
+			} catch (err) {
+				console.warn("[HomeMenu] Failed to load leaderboard:", err);
+				if (!cancelledRef.current) {
+					setLeaderboardError(
+						"Couldn't load rankings. Check your connection and try again.",
+					);
+				}
+			} finally {
+				if (!cancelledRef.current) setLeaderboardLoading(false);
 			}
-		} catch (err) {
-			console.warn("[HomeMenu] Failed to load leaderboard:", err);
-			if (!cancelled) {
-				setLeaderboardError(
-					"Couldn't load rankings. Check your connection and try again.",
-				);
-			}
-		} finally {
-			if (!cancelled) setLeaderboardLoading(false);
-		}
-		return () => {
-			cancelled = true;
-		};
-	}, [leaderboardGame, leaderboardScope]);
+		},
+		[leaderboardGame, leaderboardScope],
+	);
 
 	// Re-fetch the leaderboard whenever the Rankings modal is open and the
 	// selected game or scope changes.
@@ -937,11 +954,11 @@ function HomeMenu(): JSX.Element {
 	// players who never look at it.
 	useEffect(() => {
 		if (activeModal !== "rankings") return;
-		let cancel: (() => void) | undefined;
-		void loadLeaderboard().then((c) => {
-			cancel = c;
-		});
-		return () => cancel?.();
+		const cancelledRef = { current: false };
+		void loadLeaderboard(cancelledRef);
+		return () => {
+			cancelledRef.current = true;
+		};
 	}, [activeModal, loadLeaderboard]);
 
 	// Rankings Bug Audit M6: up to 100 rows are fetched but only the top 10
@@ -956,6 +973,11 @@ function HomeMenu(): JSX.Element {
 	const ownGameRank = useMemo(
 		() => gameLeaderboard.find((entry) => entry.userId === player?.id) ?? null,
 		[gameLeaderboard, player],
+	);
+	const ownTournamentRank = useMemo(
+		() =>
+			tournamentLeaderboard.find((entry) => entry.userId === player?.id) ?? null,
+		[tournamentLeaderboard, player],
 	);
 
 	// Hydrate the notification inbox on every mount via REST (Bug Audit H1).
@@ -3512,6 +3534,13 @@ function HomeMenu(): JSX.Element {
 								>
 									Total
 								</button>
+								<button
+									type="button"
+									className={`hub-ranking-tab${leaderboardGame === "tournaments" ? " hub-ranking-tab--active" : ""}`}
+									onClick={() => setLeaderboardGame("tournaments")}
+								>
+									Tournaments
+								</button>
 								{RANKED_GAMES.map((g) => (
 									<button
 										key={g.id}
@@ -3582,6 +3611,40 @@ function HomeMenu(): JSX.Element {
 											<span>Your rank</span>
 											<strong>#{ownOverallRank.rank}</strong>
 											<small>{ownOverallRank.totalWins} wins</small>
+										</div>
+									) : null}
+								</>
+							) : (
+								<p className="hub-panel__muted">No rankings yet.</p>
+							)
+						) : leaderboardGame === "tournaments" ? (
+							tournamentLeaderboard.length > 0 ? (
+								<>
+									<ol className="hub-ranking-list hub-ranking-list--scrollable">
+										{tournamentLeaderboard.map((entry) => (
+											<li
+												key={entry.userId}
+												className={
+													entry.userId === player?.id
+														? "hub-ranking-list__self"
+														: undefined
+												}
+											>
+												<span className="hub-ranking-list__rank">#{entry.rank}</span>
+												<strong className="hub-ranking-list__name">
+													{entry.turtleName ?? entry.username}
+												</strong>
+												<small className="hub-ranking-list__stat">
+													{entry.tournamentWins} tournaments won
+												</small>
+											</li>
+										))}
+									</ol>
+									{ownTournamentRank ? (
+										<div className="hub-ranking-list__own-rank">
+											<span>Your rank</span>
+											<strong>#{ownTournamentRank.rank}</strong>
+											<small>{ownTournamentRank.tournamentWins} tournaments won</small>
 										</div>
 									) : null}
 								</>
