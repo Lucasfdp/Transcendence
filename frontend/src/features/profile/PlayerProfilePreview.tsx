@@ -56,8 +56,12 @@ export function PlayerProfilePreview({
 				{achievements.map((achievement, index) => (
 					<article key={achievement?.id ?? `empty-${index}`}>
 						<span>{index + 1}</span>
-						<strong>{achievement?.title ?? "Empty showcase slot"}</strong>
-						<small>{achievement?.description ?? "Choose an unlocked achievement"}</small>
+						<strong>
+							{achievement
+								? `${achievement.unlocked ? "" : "🔒 "}${achievement.title}`
+								: "Empty showcase slot"}
+						</strong>
+						<small>{achievement?.description ?? "Choose an achievement"}</small>
 					</article>
 				))}
 			</div>

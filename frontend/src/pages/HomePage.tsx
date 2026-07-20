@@ -100,11 +100,39 @@ import {
 } from "../features/social/presence";
 import { useToast } from "../features/social/toast/ToastContext";
 import { ConnectedAccounts } from "../features/account-links/ConnectedAccounts";
-import { AchievementGrid } from "../features/achievements/AchievementGrid";
 import { ExperienceProgress } from "../features/profile/ExperienceProgress";
 import { ShellPortrait } from "../features/profile/ShellPortrait";
 import { PlayerProfilePreview } from "../features/profile/PlayerProfilePreview";
 import { ViewProfileLink } from "../features/profile/ViewProfileLink";
+
+type AchievementFilter = "all" | "unlocked" | "locked";
+
+type AchievementPanel =
+	| "base"
+	| "kame-knock"
+	| "bamboo-bash"
+	| "bell-clash"
+	| "temple-curling";
+
+const ACHIEVEMENT_FILTER_OPTIONS: { value: AchievementFilter; label: string }[] = [
+	{ value: "all", label: "All" },
+	{ value: "unlocked", label: "Unlocked" },
+	{ value: "locked", label: "Locked" },
+];
+
+const GAME_ACHIEVEMENT_PANELS: Exclude<AchievementPanel, "base">[] = [
+	"kame-knock",
+	"bamboo-bash",
+	"bell-clash",
+	"temple-curling",
+];
+
+function getAchievementPanel(achievementId: string): AchievementPanel {
+	return (
+		GAME_ACHIEVEMENT_PANELS.find((gameId) => achievementId.startsWith(`${gameId}-`)) ??
+		"base"
+	);
+}
 
 /** How long a removed friend can be restored via the Undo toast before the
  *  deletion is committed to the server. */
@@ -218,6 +246,36 @@ function getCosmeticDisplayDescription(cosmetic: Cosmetic): string {
 		return "The plain starter shell. No special colour, no decoration, just the shell every player begins with.";
 	}
 	return cosmetic.description;
+}
+
+function getAchievementProgress(achievement: Achievement): {
+	ratio: number;
+	label: string;
+	current: number;
+	target: number;
+} {
+	const target = Math.max(achievement.progressTarget, 1);
+
+	if (achievement.unlocked) {
+		return {
+			ratio: 1,
+			label: "Complete",
+			current: target,
+			target,
+		};
+	}
+
+	const current = Math.max(
+		0,
+		Math.min(achievement.progressCurrent, target),
+	);
+
+	return {
+		ratio: current / target,
+		label: `${current}/${target}`,
+		current,
+		target,
+	};
 }
 
 function getReplayGameLabel(gameId: string): string {
@@ -642,6 +700,8 @@ function HomeMenu(): JSX.Element {
 	const [wipGameId, setWipGameId] = useState<"river-rush" | "oni-dodge" | null>(null);
 	const [infoModal, setInfoModal] = useState<InfoModal>(null);
 	const [achievements, setAchievements] = useState<Achievement[] | null>(null);
+	const [achievementFilter, setAchievementFilter] =
+		useState<AchievementFilter>("all");
 	const [cosmetics, setCosmetics] = useState<Cosmetic[] | null>(null);
 	const [activeCosmeticTab, setActiveCosmeticTab] = useState<CosmeticTabType>("all");
 	const [selectedShellCosmetic, setSelectedShellCosmetic] =
@@ -2878,6 +2938,17 @@ function HomeMenu(): JSX.Element {
 			return tag ? [tag] : [];
 		});
 
+	const unlockedAchievementCount =
+		achievements?.filter((achievement) => achievement.unlocked).length ?? 0;
+	const totalAchievementCount = achievements?.length ?? 0;
+	const filteredAchievements = achievements
+		? achievements.filter((achievement) => {
+				if (achievementFilter === "unlocked") return achievement.unlocked;
+				if (achievementFilter === "locked") return !achievement.unlocked;
+				return true;
+			})
+		: [];
+
 	const displayedNow =
 		manualMinutes === null ? now : createManualTime(now, manualMinutes);
 	const currentTimeParts = formatClockParts(displayedNow);
@@ -3624,7 +3695,70 @@ function HomeMenu(): JSX.Element {
 
 			{activeModal === "achievements" ? (
 				<HubModal title="Achievements" onClose={() => setActiveModal(null)} variant="wide">
-					<AchievementGrid achievements={achievements} error={modalError} />
+					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
+					{achievements ? (
+						<div className="hub-modal__achievements">
+							<div className="hub-modal__achievements-toolbar">
+								<p className="hub-modal__achievement-count">
+									{unlockedAchievementCount}/{totalAchievementCount} unlocked
+								</p>
+								<div className="hub-modal__achievement-filters" aria-label="Achievement filter">
+									{ACHIEVEMENT_FILTER_OPTIONS.map((option) => (
+										<button
+											key={option.value}
+											type="button"
+											className={
+												achievementFilter === option.value
+													? "hub-modal__achievement-filter hub-modal__achievement-filter--active"
+													: "hub-modal__achievement-filter"
+											}
+											onClick={() => setAchievementFilter(option.value)}
+										>
+											{option.label}
+										</button>
+									))}
+								</div>
+							</div>
+							{filteredAchievements.length > 0 ? (
+								<div className="hub-modal__list hub-modal__list--achievements">
+									{filteredAchievements.map((achievement) => {
+										const progress = getAchievementProgress(achievement);
+										const panel = getAchievementPanel(achievement.id);
+
+										return (
+											<article
+												key={achievement.id}
+												className={`hub-modal__achievement-card hub-modal__achievement-card--${panel}${
+													achievement.unlocked ? " is-unlocked" : ""
+												}`}
+											>
+												<strong>{achievement.title}</strong>
+												<p>{achievement.description}</p>
+												<div className="hub-modal__achievement-status">
+													<small>{achievement.unlocked ? "Unlocked" : "Locked"}</small>
+													<small>{progress.label}</small>
+												</div>
+												<div
+													className="hub-modal__achievement-progress"
+													role="progressbar"
+													aria-label={`${achievement.title} progress`}
+													aria-valuemin={0}
+													aria-valuemax={progress.target}
+													aria-valuenow={progress.current}
+												>
+													<span style={{ width: `${progress.ratio * 100}%` }} />
+												</div>
+											</article>
+										);
+									})}
+								</div>
+							) : (
+								<p className="hub-modal__empty">No achievements match this filter.</p>
+							)}
+						</div>
+					) : (
+						<p>Loading achievements...</p>
+					)}
 				</HubModal>
 			) : null}
 
@@ -3724,8 +3858,13 @@ function HomeMenu(): JSX.Element {
 											? achievements?.find((a) => a.id === achievementId)
 											: null;
 										const isOpen = showcasePickerSlot === slotIdx;
-										const unlockedAchievements =
-											achievements?.filter((a) => a.unlocked) ?? [];
+										// The showcase accepts any achievement in the catalog, not
+										// just unlocked ones — the backend already validates
+										// `showcasedAchievements` against the full achievement list
+										// with no unlock check (`update-profile.dto.ts`), so the
+										// picker offering only unlocked entries was a needless
+										// client-side restriction the server never enforced.
+										const pickableAchievements = achievements ?? [];
 
 										return (
 									<div
@@ -3765,12 +3904,14 @@ function HomeMenu(): JSX.Element {
 												role="listbox"
 												aria-label={`Choose achievement for slot ${slotIdx + 1}`}
 											>
-												{unlockedAchievements.length === 0 ? (
+												{pickableAchievements.length === 0 ? (
 													<p className="hub-modal__showcase-picker-empty">
-														Earn achievements to showcase them here.
+														{achievements
+															? "No achievements available."
+															: "Loading achievements…"}
 													</p>
 												) : (
-													unlockedAchievements.map((a) => {
+													pickableAchievements.map((a) => {
 														const isSelected =
 															profileShowcasedAchievements[slotIdx] === a.id;
 														const usedInOtherSlot =
@@ -3804,6 +3945,7 @@ function HomeMenu(): JSX.Element {
 																	setShowcasePickerSlot(null);
 																}}
 															>
+																{a.unlocked ? "" : "🔒 "}
 																{a.title}
 															</button>
 														);
