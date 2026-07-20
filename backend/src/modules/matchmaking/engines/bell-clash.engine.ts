@@ -140,7 +140,7 @@ export class BellClashEngine extends BaseArenaEngine implements GameEngine {
 
 		state.shotCounts[player.side] =
 			(state.shotCounts[player.side] ?? 0) + 1;
-		const power = this.consumeArenaPower(state, player.side, payload.power);
+		const power = this.consumeArenaPower(state, player, payload.power);
 		room.physicsState ??= createBellPhysicsState(room.matchId);
 		const previous = room.physicsState.entities.find(
 			(entity) => entity.ownerSide === player.side && entity.primary,

@@ -1,4 +1,4 @@
-import { Logger, Optional } from "@nestjs/common";
+import { Logger, OnModuleDestroy, Optional } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import {
 	ConnectedSocket,
@@ -53,6 +53,23 @@ const RECONNECT_TIMEOUT_MS = 45_000;
  */
 const CHAT_SEND_RATE_LIMIT_MAX = 30;
 const CHAT_SEND_RATE_LIMIT_WINDOW_MS = 10_000;
+// Game input is accepted-action amplifying (one release fans out to the whole
+// room), so it needs its own bucket (R4). 20 inputs/second is generous for a
+// human aiming and launching, but caps a hostile/broken client's spam loop.
+const GAME_INPUT_RATE_LIMIT_MAX = 20;
+const GAME_INPUT_RATE_LIMIT_WINDOW_MS = 1_000;
+// A physics projection is only needed at join/rejoin, so its bucket is tight.
+const PHYSICS_REQUEST_RATE_LIMIT_MAX = 5;
+const PHYSICS_REQUEST_RATE_LIMIT_WINDOW_MS = 2_000;
+// R5 backstop: a room still `pending` this long after creation is aborted
+// winnerless — it means a matched seat never readied (a dead socket the
+// liveness check somehow missed, or a client that vanished before `room:ready`).
+const PENDING_ROOM_TTL_MS = 2 * 60 * 1000;
+const PENDING_ROOM_SWEEP_INTERVAL_MS = 30 * 1000;
+// Retry bounds for persisting an authoritative match settlement (R10 — named
+// instead of inline magic numbers). Backoff is linear: base × (attempt + 1).
+const FINISH_PERSIST_MAX_RETRIES = 2;
+const FINISH_PERSIST_RETRY_BASE_MS = 1_000;
 
 interface GameInputAck {
 	accepted: boolean;
@@ -81,7 +98,11 @@ function parseCookie(
 	},
 })
 export class MatchmakingGateway
-	implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+	implements
+		OnGatewayInit,
+		OnGatewayConnection,
+		OnGatewayDisconnect,
+		OnModuleDestroy
 {
 	@WebSocketServer()
 	server: Server;
@@ -89,6 +110,7 @@ export class MatchmakingGateway
 	private readonly logger = new Logger(MatchmakingGateway.name);
 	private readonly lastBroadcastLifecycleSeq = new Map<string, number>();
 	private readonly finishingMatchIds = new Set<string>();
+	private pendingSweepTimer: NodeJS.Timeout | null = null;
 
 	constructor(
 		private readonly jwtService: JwtService,
@@ -156,6 +178,32 @@ export class MatchmakingGateway
 		);
 	}
 
+	/** True if the user is within the game-input window (or no limiter wired). */
+	private allowGameInput(userId: number): boolean {
+		return (
+			!this.rateLimiter ||
+			this.rateLimiter.allowKey(
+				"game-input",
+				String(userId),
+				GAME_INPUT_RATE_LIMIT_MAX,
+				GAME_INPUT_RATE_LIMIT_WINDOW_MS,
+			)
+		);
+	}
+
+	/** True if the user is within the physics-request window (or no limiter). */
+	private allowPhysicsRequest(userId: number): boolean {
+		return (
+			!this.rateLimiter ||
+			this.rateLimiter.allowKey(
+				"game-physics-request",
+				String(userId),
+				PHYSICS_REQUEST_RATE_LIMIT_MAX,
+				PHYSICS_REQUEST_RATE_LIMIT_WINDOW_MS,
+			)
+		);
+	}
+
 	/**
 	 * Wire the Socket.io server into the services that push real-time events
 	 * outside of a direct request/response (NotificationsService for the bell,
@@ -165,6 +213,31 @@ export class MatchmakingGateway
 		this.notificationsService.setServer(server);
 		this.chatService.setServer(server);
 		this.arenaSimulation.start((matchId) => this.emitPhysicsState(matchId));
+		this.pendingSweepTimer = setInterval(
+			() => void this.sweepPendingRooms(),
+			PENDING_ROOM_SWEEP_INTERVAL_MS,
+		);
+		// Never keep the process alive solely for the sweep.
+		this.pendingSweepTimer.unref?.();
+	}
+
+	onModuleDestroy(): void {
+		if (this.pendingSweepTimer) clearInterval(this.pendingSweepTimer);
+		this.pendingSweepTimer = null;
+	}
+
+	/**
+	 * R5 backstop: abort any room stuck in `pending` past the TTL so a match that
+	 * never readied cannot hang forever or keep its seated users locked out of
+	 * re-queueing. Aborts are winnerless and idempotent.
+	 */
+	private async sweepPendingRooms(): Promise<void> {
+		for (const room of this.rooms.getStalePendingRooms(PENDING_ROOM_TTL_MS)) {
+			await this.abortMatch(
+				room.matchId,
+				"pending timeout — a matched seat never readied",
+			);
+		}
 	}
 
 	async handleConnection(socket: Socket): Promise<void> {
@@ -213,8 +286,13 @@ export class MatchmakingGateway
 				}, remainingMs);
 			}
 
-			const room = this.rooms.reconnect(socket.id, socketUser);
-			if (room) {
+			const reconnected = this.rooms.reconnect(
+				socket.id,
+				socketUser,
+				(id) => this.isSocketLive(id),
+			);
+			if (reconnected?.outcome === "rebound") {
+				const room = reconnected.room;
 				socket.join(room.matchId);
 				socket.emit("reconnect", {
 					matchId: room.matchId,
@@ -225,6 +303,11 @@ export class MatchmakingGateway
 					socket.emit("game:physics-state", this.publicPhysicsState(room));
 				this.emitUserMatchStatus(socket);
 				this.emitState(room.matchId);
+			} else if (reconnected?.outcome === "occupied") {
+				// R1: a second tab/device — do not steal the live seat.
+				socket.emit("match:active-elsewhere", {
+					matchId: reconnected.room.matchId,
+				});
 			}
 
 			// Push unread notification inbox + join chat rooms — guests have no
@@ -328,8 +411,25 @@ export class MatchmakingGateway
 				const playerSocket = this.server.sockets.sockets.get(
 					player.socketId,
 				);
-				playerSocket?.join(room.matchId);
-				playerSocket?.emit("match:found", {
+				if (!playerSocket) {
+					// R5: this seat's socket died between the queue splice and room
+					// creation (createMatch does two DB round-trips). Arm the
+					// reconnect/forfeit window now, otherwise the seat sits
+					// `connected: true` on a dead socket, never readies, and hangs
+					// the room in `pending` for everyone else.
+					this.rooms.markDisconnected(
+						player.socketId,
+						(timedOutRoom, timedOutPlayer) =>
+							void this.finishAbandonedMatch(
+								timedOutRoom,
+								timedOutPlayer,
+							),
+						RECONNECT_TIMEOUT_MS,
+					);
+					continue;
+				}
+				playerSocket.join(room.matchId);
+				playerSocket.emit("match:found", {
 					matchId: room.matchId,
 					side: player.side,
 					playerCount: room.players.length,
@@ -392,11 +492,18 @@ export class MatchmakingGateway
 			this.emitUserMatchStatus(socket);
 			return;
 		}
-		const room = this.rooms.reconnect(socket.id, user);
-		if (!room) {
+		const reconnected = this.rooms.reconnect(socket.id, user, (id) =>
+			this.isSocketLive(id),
+		);
+		if (reconnected?.outcome !== "rebound") {
+			if (reconnected?.outcome === "occupied")
+				socket.emit("match:active-elsewhere", {
+					matchId: reconnected.room.matchId,
+				});
 			this.emitUserMatchStatus(socket);
 			return;
 		}
+		const room = reconnected.room;
 		socket.join(room.matchId);
 		socket.emit("game:state", room.state);
 		if (room.physicsState)
@@ -485,6 +592,11 @@ export class MatchmakingGateway
 	): Promise<GameInputAck> {
 		const user = this.resolveSocketUser(socket);
 		if (!user) return { accepted: false, reason: "invalid-input" };
+		// R4: rate-limit the socket entry point only. Server-side seats (bots,
+		// tournament stand-ins) call handleUserInput directly and are never
+		// throttled — they cannot spam by construction.
+		if (!this.allowGameInput(user.id))
+			return { accepted: false, reason: "rate-limited" };
 		return this.handleUserInput(user.id, payload);
 	}
 
@@ -689,6 +801,9 @@ export class MatchmakingGateway
 		const user = this.resolveSocketUser(socket);
 		const room = payload?.matchId ? this.rooms.getRoom(payload.matchId) : null;
 		if (!user || !room?.physicsState) return null;
+		// R4: a full physics projection is serialised per call; throttle it (only
+		// needed at join/rejoin).
+		if (!this.allowPhysicsRequest(user.id)) return null;
 		const isPlayer = room.players.some((player) => player.user.id === user.id);
 		if (!isPlayer && !room.spectators.has(socket.id)) return null;
 		return this.publicPhysicsState(room);
@@ -1154,6 +1269,16 @@ export class MatchmakingGateway
 		}
 	}
 
+	/**
+	 * Whether a socket id is still connected to this gateway (R1). Used by
+	 * `RoomService.reconnect` to decide if a seat is genuinely vacant before a
+	 * (re)connecting socket may take it over. Defensive against a partially
+	 * mocked/torn-down server in tests.
+	 */
+	private isSocketLive(socketId: string): boolean {
+		return this.server?.sockets?.sockets?.has(socketId) ?? false;
+	}
+
 	private emitState(matchId: string): void {
 		const room = this.rooms.getRoom(matchId);
 		if (room) {
@@ -1172,7 +1297,12 @@ export class MatchmakingGateway
 		this.server
 			.to(matchId)
 			.emit("game:physics-state", this.publicPhysicsState(room));
-		this.replays.captureFrame(room, true);
+		// Do NOT force a keyframe here. The 30 Hz logical sampler
+		// (ArenaSimulationService → captureReplayFrame) already captures motion on a
+		// single logical time base, and this unforced call is de-duplicated by the
+		// 50 ms sample throttle. Forcing a keyframe on every broadcast produced a full
+		// deep-clone ~30 times per second per room (R3).
+		this.replays.captureFrame(room);
 		if (this.lastBroadcastLifecycleSeq.get(matchId) !== room.state.seq)
 			this.emitState(matchId);
 		if (
@@ -1195,10 +1325,10 @@ export class MatchmakingGateway
 			this.finishingMatchIds.delete(room.matchId);
 			this.lastBroadcastLifecycleSeq.delete(room.matchId);
 		} catch (error) {
-			if (attempt < 2) {
+			if (attempt < FINISH_PERSIST_MAX_RETRIES) {
 				setTimeout(
 					() => void this.finishAuthoritativeMatch(room, attempt + 1),
-					1_000 * (attempt + 1),
+					FINISH_PERSIST_RETRY_BASE_MS * (attempt + 1),
 				);
 				return;
 			}
@@ -1386,6 +1516,10 @@ export class MatchmakingGateway
 			"match:rematch-start",
 			room.matchId,
 		);
+		// The superseded room is no longer reachable by any player (they are now
+		// mapped to the rematch), so evict it immediately rather than waiting for
+		// the TTL sweep — this is the primary bound on retained-room memory (R2).
+		this.rooms.deleteRoom(room.matchId);
 	}
 
 	/**
@@ -1442,8 +1576,20 @@ export class MatchmakingGateway
 		room: MatchRoom,
 		player: RoomPlayer,
 	): Promise<void> {
-		const finished = await this.sessions.abandon(room, player);
-		if (!finished) return;
+		// Capture the leaver's socket before `abandon` may rebind the seat to a
+		// bot, so we can still refresh their (now match-free) status.
+		const leaverSocketId = player.socketId;
+		const result = await this.sessions.abandon(room, player);
+		if (!result) return;
+		if (result.outcome === "continued") {
+			// The match plays on with a CPU stand-in (P5): broadcast the updated
+			// lifecycle state, and free the leaver's own client.
+			this.emitState(result.room.matchId);
+			const leaverSocket = this.server.sockets.sockets.get(leaverSocketId);
+			if (leaverSocket) this.emitUserMatchStatus(leaverSocket);
+			return;
+		}
+		const finished = result.room;
 		this.emitState(finished.matchId);
 		this.server.to(finished.matchId).emit("game:end", finished.state);
 		for (const roomPlayer of finished.players) {

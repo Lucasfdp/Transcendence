@@ -308,6 +308,10 @@ Requirement breakdown:
 Evidence:
 - `matchmaking.gateway.ts`, `room.service.ts`, `gameSocket.ts`
 - Rejoin, away, abandon, and reconnect timeout implemented.
+- 2026-07-20 technical audit of this module's bugs and optimisation gaps (seat
+  hijack on a second connection, room retention, 30 Hz forced replay
+  keyframes, missing game-input rate limiting, and fix options for each):
+  `docs/remote-multiplayer-modules-audit-2026-07-20.md`.
 - Bell Clash online matches now use a dedicated server-authoritative physics
   stream: fixed-step source-space simulation, immediate launch plus 30 Hz
   physics projections, backend collisions/powers/scoring, velocity-aware
@@ -361,6 +365,29 @@ Evidence:
   now marks the exact circular physics radius. Settled Temple Curling shells retain
   their coloured hitbox edge without the active shell's dark separator. Frontend
   validation passed with 72 files / 395 tests and a production build.
+- 2026-07-20 audit remediation. The stability and robustness findings from
+  `docs/remote-multiplayer-modules-audit-2026-07-20.md` were implemented with
+  regression tests: a second connection from the same user no longer hijacks a
+  live seat or triggers a false forfeit (R1, vacancy-guarded reconnect with a
+  liveness check); finished rooms are evicted on rematch resolution and by a
+  ten-minute TTL sweep, and disconnect/spectator lookups now use O(1) socket
+  indexes instead of scanning every room (R2); the 30 Hz physics broadcast no
+  longer forces a full replay keyframe, and the live replay buffer is bounded by
+  whole-round trimming (R3); `game:input` and `game:physics-request` are now
+  rate-limited per user with the previously unused `rate-limited` ack (R4); a
+  socket that dies between matchmaking and room creation now arms its
+  reconnect/forfeit window immediately, backed by a pending-room TTL (R5); the
+  Curling lifecycle snapshot no longer ships legacy per-ball trails (R8); and the
+  arena loop now broadcasts at 20 Hz while simulating at 30 Hz, cutting
+  steady-state bandwidth by a third within the client's interpolation buffer
+  (R9). Matchmaking observability was added to the Prometheus stack (tick-duration
+  histogram, active-rooms and buffered-replay-frame gauges, dropped catch-up
+  counter). The simulated-clock re-anchoring (R7) is instrumented via the dropped
+  catch-up counter and deferred as a metrics-gated follow-up. The client-side
+  cosmetic launch echo (R6) and the hub reconnect toast (R11) are designed but
+  deferred pending the interactive Firefox visual validation this repository
+  requires for visually significant changes. Backend suites for the touched
+  services and both production builds pass.
 
 Missing for completion:
 - Bell Clash and Bamboo Bash manual multiplayer validation, including live
@@ -425,9 +452,30 @@ Requirement breakdown:
 Evidence:
 - Engines for multiple games and sufficiently general matchmaking structure.
 - `shell-curl` points to modes with more than two participants.
+- Automated 3–5 player end-to-end proof (2026-07-20). A dedicated integration
+  spec (`backend/src/modules/matchmaking/nplayer-integration.spec.ts`) drives a
+  full five-seat match through the real engines and the real `RoomService` for
+  every game to a settled winner, asserting per-side scoring, turn rotation, a
+  mid-match disconnect and rejoin of a middle seat, and a live spectator join.
+  This is the repeatable, CI-friendly evidence the module previously lacked.
+- N-player fairness gaps from `docs/remote-multiplayer-modules-audit-2026-07-20.md`
+  are fixed with tests: Temple Curling now rotates the lead each end so the last
+  seat no longer always holds the hammer (P2); Bell Clash, Kame Knock and Bamboo
+  Bash enforce shell-selection ownership on powers, so a modified client can no
+  longer fire a power it did not select (P3); ranked Elo is now a proper pairwise
+  multiplayer construction scored by relative placement, so a clear last place
+  records a loss and cannot gain rating from a tie for first (P4); and abandon
+  resolution no longer excludes a temporarily disconnected leader, with 3+ player
+  matches continuing via a CPU stand-in rather than ending when one player leaves
+  (P5).
 
 Missing for completion:
-- Lacking clear, demonstrable proof of a functional 3+ match validated end-to-end.
+- The automated proof above closes the primary evidence gap; the remaining item
+  is the manual two-client Firefox matrix for the visual/UX half (turn banner
+  order, HUD score columns, spectator entry mid-match, responsive relayout across
+  3–5 seats), which requires the interactive stack this environment cannot run.
+- Rating-banded matchmaking for 3–5-seat ranked lobbies remains a documented
+  out-of-scope limitation (FIFO per game/mode/player-count is retained).
 
 ### Major: Add another game with user history and matchmaking
 Status: `Done`

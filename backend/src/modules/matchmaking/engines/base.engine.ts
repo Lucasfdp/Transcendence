@@ -40,11 +40,12 @@ export abstract class BaseEngine {
 		abandonedPlayer: RoomPlayer,
 		score: number[],
 	): number | null {
+		// Include every non-abandoning seat, even one currently inside its 45s
+		// reconnect window (P5). A temporarily disconnected leader is still a
+		// participant: excluding them could hand the win to a trailing connected
+		// seat. Only the abandoning side is dropped.
 		const remaining = room.players
-			.filter(
-				(player) =>
-					player.side !== abandonedPlayer.side && player.connected,
-			)
+			.filter((player) => player.side !== abandonedPlayer.side)
 			.map((player) => ({
 				side: player.side,
 				score: score[player.side] ?? 0,

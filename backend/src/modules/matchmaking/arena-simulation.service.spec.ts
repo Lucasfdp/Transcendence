@@ -138,6 +138,46 @@ describe("ArenaSimulationService", () => {
 		expect(broadcast).toHaveBeenCalledWith(activeRoom.matchId);
 	});
 
+	it("decimates sustained-motion broadcasts to below the 30 Hz tick rate (R9)", () => {
+		const activeRoom = room();
+		activeRoom.physicsState?.entities.push({
+			id: 1,
+			ownerSide: 0,
+			shotNumber: 1,
+			primary: true,
+			x: 0,
+			y: 0,
+			vx: 100,
+			vy: 0,
+			radius: 52,
+			rotation: 0,
+			angularVelocity: 0,
+			power: "none",
+			stopped: false,
+			alpha: 1,
+			ghostCollisionAvailable: false,
+		});
+		const rooms = {
+			getActiveRooms: jest.fn().mockReturnValue([activeRoom]),
+		} as unknown as RoomService;
+		const sessions = {
+			// Always moving, never settled → the decimation path (not the settle
+			// fast-path) governs broadcasting.
+			advanceSimulation: jest.fn().mockReturnValue(true),
+			captureReplayFrame: jest.fn(),
+		} as unknown as GameSessionService;
+		const service = new ArenaSimulationService(rooms, sessions);
+		const broadcast = jest.fn();
+
+		const ticks = 30;
+		for (let i = 0; i < ticks; i++) service.tick(broadcast);
+
+		// 30 simulation ticks must yield fewer broadcasts (≈20) — strictly fewer
+		// than one-per-tick, proving the decimation is now live.
+		expect(broadcast.mock.calls.length).toBeLessThan(ticks);
+		expect(broadcast.mock.calls.length).toBeGreaterThanOrEqual(ticks - 12);
+	});
+
 	it("forces the final empty projection after a lifecycle transition", () => {
 		const activeRoom = room();
 		activeRoom.physicsState?.entities.push({

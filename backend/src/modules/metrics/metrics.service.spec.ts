@@ -80,6 +80,22 @@ describe("MetricsService", () => {
 		});
 	});
 
+	describe("matchmaking simulation metrics", () => {
+		it("exposes the arena/room/replay metrics after they are recorded", async () => {
+			service.observeArenaTick(0.004);
+			service.setSimulationGauges(3, 250);
+			service.incDroppedCatchUpSteps(2);
+
+			const metrics = await service.getMetrics();
+			expect(metrics).toMatch(/shellsmash_active_rooms 3/);
+			expect(metrics).toMatch(/shellsmash_replay_frames 250/);
+			expect(metrics).toMatch(
+				/shellsmash_arena_dropped_catchup_steps_total 2/,
+			);
+			expect(metrics).toMatch(/shellsmash_arena_tick_duration_seconds/);
+		});
+	});
+
 	describe("getContentType", () => {
 		it("returns the Prometheus registry content type", () => {
 			expect(service.getContentType()).toMatch(/^text\/plain/);

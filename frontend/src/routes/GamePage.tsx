@@ -285,6 +285,26 @@ function PowerupMatchmakingPanel({
 		useState<MatchStatusPayload | null>(null);
 	const [isAbandonConfirmOpen, setIsAbandonConfirmOpen] = useState(false);
 	const isSearchingOnlineRef = useRef(false);
+	// R10: hold references to the online-search socket handlers so they can be
+	// detached precisely. Bare `socket.off("game:state")` on the shared singleton
+	// socket would strip a live scene's own listener too.
+	const onlineSearchHandlersRef = useRef<{
+		matchFound?: (payload: { matchId: string; side: number }) => void;
+		state?: (snapshot: GameSnapshot) => void;
+		queueError?: (payload: { message?: string }) => void;
+		queueLeft?: () => void;
+	}>({});
+	const detachOnlineSearchHandlers = () => {
+		const socket = getGameSocket();
+		const handlers = onlineSearchHandlersRef.current;
+		if (handlers.matchFound)
+			socket.off("match:found", handlers.matchFound);
+		if (handlers.state) socket.off("game:state", handlers.state);
+		if (handlers.queueError)
+			socket.off("queue:error", handlers.queueError);
+		if (handlers.queueLeft) socket.off("queue:left", handlers.queueLeft);
+		onlineSearchHandlersRef.current = {};
+	};
 	const togglePowerups = (
 		setEnabled: (updater: (enabled: boolean) => boolean) => void,
 	) => {
@@ -428,10 +448,9 @@ function PowerupMatchmakingPanel({
 			socket.off("lobby:expired", handleLobbyClosed);
 			socket.off("lobby:cancelled", handleLobbyClosed);
 			socket.off("lobby:error", handleLobbyError);
-			socket.off("match:found");
-			socket.off("game:state");
-			socket.off("queue:error");
-			socket.off("queue:left");
+			// R10: remove the online-search listeners by reference, never with a
+			// bare event-name off that would also detach a live scene's handler.
+			detachOnlineSearchHandlers();
 		};
 	}, [currentUser, gameId, onLaunch, sceneData.targetScene]);
 
@@ -624,7 +643,11 @@ function PowerupMatchmakingPanel({
 						gameId: activeGameId as GameId,
 						targetScene,
 						user: currentUser ?? undefined,
-						shellSelection: { player0: [], player1: [] },
+						// P6: size the (empty) shell selection to the real player
+						// count so N>2 online rejoins do not silently assume 2 seats.
+						shellSelection: buildEmptyShellSelection(
+							snapshot.players.length,
+						),
 						...replayAvailability(snapshot.powerupsEnabled),
 						onlineMatch: {
 							matchId,
@@ -692,19 +715,13 @@ function PowerupMatchmakingPanel({
 		setIsSearchingOnline(true);
 		setMessage(`Searching for ${onlinePlayerCount} online players...`);
 		setMessageTone("gold");
-		socket.off("match:found");
-		socket.off("game:state");
-		socket.off("queue:error");
-		socket.off("queue:left");
-		socket.on(
-			"match:found",
-			(payload: { matchId: string; side: number }) => {
-				matchId = payload.matchId;
-				side = payload.side;
-				setIsSearchingOnline(false);
-				socket.emit("room:ready", { matchId: payload.matchId });
-			},
-		);
+		detachOnlineSearchHandlers();
+		const onMatchFound = (payload: { matchId: string; side: number }) => {
+			matchId = payload.matchId;
+			side = payload.side;
+			setIsSearchingOnline(false);
+			socket.emit("room:ready", { matchId: payload.matchId });
+		};
 		const onState = (snapshot: GameSnapshot) => {
 			if (
 				!matchId ||
@@ -719,7 +736,10 @@ function PowerupMatchmakingPanel({
 				gameId,
 				targetScene: sceneData.targetScene,
 				user: currentUser ?? undefined,
-				shellSelection: { player0: [], player1: [] },
+				// P6: size the (empty) shell selection to the real player count.
+				shellSelection: buildEmptyShellSelection(
+					snapshot.players.length,
+				),
 				...replayAvailability(snapshot.powerupsEnabled),
 				onlineMatch: {
 					matchId: snapshot.matchId,
@@ -729,13 +749,24 @@ function PowerupMatchmakingPanel({
 				} satisfies OnlineMatchContext,
 			});
 		};
-		socket.on("game:state", onState);
-		socket.once("queue:error", (payload: { message?: string }) => {
+		const onQueueError = (payload: { message?: string }) => {
 			setIsSearchingOnline(false);
 			setMessage(payload.message ?? "Matchmaking failed.");
 			setMessageTone("error");
-		});
-		socket.once("queue:left", () => setIsSearchingOnline(false));
+		};
+		const onQueueLeft = () => setIsSearchingOnline(false);
+		// Track every handler so both the pre-subscribe detach above and the
+		// effect cleanup can remove exactly these listeners by reference (R10).
+		onlineSearchHandlersRef.current = {
+			matchFound: onMatchFound,
+			state: onState,
+			queueError: onQueueError,
+			queueLeft: onQueueLeft,
+		};
+		socket.on("match:found", onMatchFound);
+		socket.on("game:state", onState);
+		socket.on("queue:error", onQueueError);
+		socket.on("queue:left", onQueueLeft);
 		socket.emit("queue:join", {
 			gameId,
 			mode: "casual",

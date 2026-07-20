@@ -100,3 +100,117 @@ describe("RoomService.convertSeatToBot", () => {
 		expect(service.getUserMatchStatus(10)).toBeNull();
 	});
 });
+
+describe("RoomService seat-hijack protection (R1)", () => {
+	it("a second live socket for the same user does not steal the seat or arm a forfeit", () => {
+		jest.useFakeTimers();
+		try {
+			const { service, room } = makeService();
+			const seat = room.players[0];
+			const onTimeout = jest.fn();
+			// Tab A (sock-10) is live and playing.
+			const liveSockets = new Set(["sock-10", "sock-20"]);
+			const isLive = (id: string) => liveSockets.has(id);
+
+			// Tab B connects for the same user while tab A is still live.
+			const result = service.reconnect("sock-10b", makeUser(10), isLive);
+			expect(result?.outcome).toBe("occupied");
+			// The seat is untouched — still bound to tab A, still connected.
+			expect(seat.socketId).toBe("sock-10");
+			expect(seat.connected).toBe(true);
+
+			// Tab B closing must not disconnect the live seat (it never held it).
+			expect(
+				service.markDisconnected("sock-10b", onTimeout, 45_000),
+			).toBeNull();
+			jest.advanceTimersByTime(60_000);
+			expect(onTimeout).not.toHaveBeenCalled();
+			expect(seat.connected).toBe(true);
+
+			// A genuine drop of tab A then arms the forfeit window as normal, and a
+			// real reconnect (tab A now dead) rebinds the vacant seat.
+			liveSockets.delete("sock-10");
+			expect(service.markDisconnected("sock-10", onTimeout, 45_000)).toBe(
+				room,
+			);
+			expect(seat.connected).toBe(false);
+			const rebind = service.reconnect("sock-10c", makeUser(10), isLive);
+			expect(rebind?.outcome).toBe("rebound");
+			expect(seat.socketId).toBe("sock-10c");
+			expect(seat.connected).toBe(true);
+
+			service.deleteRoom("match-1");
+		} finally {
+			jest.clearAllTimers();
+			jest.useRealTimers();
+		}
+	});
+});
+
+describe("RoomService memory bounds (R2)", () => {
+	it("resolves markDisconnected through the socket index, including after reconnect rebinds the seat", () => {
+		jest.useFakeTimers();
+		try {
+			const { service, room } = makeService();
+			const onTimeout = jest.fn();
+
+			// Original socket.
+			expect(service.markDisconnected("sock-10", onTimeout, 45_000)).toBe(
+				room,
+			);
+			// Reconnect on a fresh socket, then the old socket id must no longer
+			// resolve to the seat (index rebound), while the new one does.
+			service.reconnect("sock-10b", makeUser(10));
+			expect(
+				service.markDisconnected("sock-10", onTimeout, 45_000),
+			).toBeNull();
+			expect(service.markDisconnected("sock-10b", onTimeout, 45_000)).toBe(
+				room,
+			);
+			service.deleteRoom("match-1");
+		} finally {
+			jest.clearAllTimers();
+			jest.useRealTimers();
+		}
+	});
+
+	it("evicts a room and purges its indexes on deleteRoom", () => {
+		const { service } = makeService();
+		service.addSpectator("match-1", "spec-1", makeUser(30));
+
+		expect(service.deleteRoom("match-1")).toBe(true);
+		expect(service.getRoom("match-1")).toBeNull();
+		// Seat and spectator sockets no longer resolve anywhere.
+		expect(
+			service.markDisconnected("sock-10", jest.fn(), 45_000),
+		).toBeNull();
+		expect(service.removeSpectator("spec-1")).toBeNull();
+		// Idempotent.
+		expect(service.deleteRoom("match-1")).toBe(false);
+	});
+
+	it("sweeps finished rooms only once the retention window has elapsed", () => {
+		const { service, room } = makeService();
+		service.finish("match-1", 0);
+		expect(room.finishedAt).toBeDefined();
+
+		// Fresh finish: retained.
+		expect(service.sweepFinishedRooms(room.finishedAt! + 1_000)).toBe(0);
+		expect(service.getRoom("match-1")).not.toBeNull();
+
+		// Past the TTL: evicted.
+		expect(
+			service.sweepFinishedRooms(room.finishedAt! + 11 * 60 * 1000),
+		).toBe(1);
+		expect(service.getRoom("match-1")).toBeNull();
+	});
+
+	it("removes a spectator through the index without scanning rooms", () => {
+		const { service, room } = makeService();
+		service.addSpectator("match-1", "spec-1", makeUser(30));
+
+		expect(service.removeSpectator("spec-1")).toBe(room);
+		expect(room.spectators.has("spec-1")).toBe(false);
+		expect(service.removeSpectator("spec-1")).toBeNull();
+	});
+});

@@ -21,6 +21,16 @@ import { RoomService } from "./room.service";
 const ELO_K = 32;
 const ELO_SCALE = 400;
 
+/**
+ * Outcome of resolving an abandon (P5). `finished` — the match settled (forfeit
+ * or natural end). `continued` — the seat was handed to a CPU stand-in and the
+ * match plays on.
+ */
+export interface AbandonResult {
+	room: MatchRoom;
+	outcome: "finished" | "continued";
+}
+
 @Injectable()
 export class GameSessionService implements OnModuleInit {
 	private readonly logger = new Logger(GameSessionService.name);
@@ -114,24 +124,53 @@ export class GameSessionService implements OnModuleInit {
 		);
 	}
 
+	/**
+	 * Resolve a seat leaving/forfeiting (P5). In a match with three or more
+	 * players where at least one other human seat remains, the match plays on:
+	 * the leaving seat is handed to a CPU stand-in (`convertSeatToBot`, the same
+	 * mechanism the tournament layer uses) so the remaining players are not
+	 * robbed of their game by one drop-out. Otherwise (two-player matches, or a
+	 * 3+ match reduced to a single human) the match settles as a forfeit, with
+	 * the leaver taking the loss on their record.
+	 */
 	async abandon(
 		room: MatchRoom,
 		abandonedPlayer: RoomPlayer,
-	): Promise<MatchRoom | null> {
+	): Promise<AbandonResult | null> {
+		if (this.shouldContinueWithBot(room, abandonedPlayer)) {
+			const continued = this.roomService.convertSeatToBot(
+				room.matchId,
+				abandonedPlayer.user.id,
+			);
+			if (continued) return { room: continued, outcome: "continued" };
+			// convertSeatToBot no-op (already resolved / unseated) — fall through
+			// and settle as a forfeit rather than leaving the match hanging.
+		}
 		const winnerSide = this.engines
 			.get(room.gameId)
 			.abandon(room, abandonedPlayer);
-		const finished = this.roomService.finish(
-			room.matchId,
-			winnerSide,
-			true,
+		const finished = this.roomService.finish(room.matchId, winnerSide, true);
+		if (!finished) return null;
+		this.cleanupEngineRoomState(finished);
+		// The player who left/forfeited takes the loss on their record.
+		await this.persistFinishedRoom(finished, true, abandonedPlayer);
+		return { room: finished, outcome: "finished" };
+	}
+
+	/**
+	 * Whether an abandon should keep the match alive with a CPU stand-in rather
+	 * than ending it: only for 3+ player matches that still have another human
+	 * (non-bot) seat besides the one leaving.
+	 */
+	private shouldContinueWithBot(
+		room: MatchRoom,
+		abandonedPlayer: RoomPlayer,
+	): boolean {
+		if (room.players.length < 3) return false;
+		return room.players.some(
+			(player) =>
+				player.side !== abandonedPlayer.side && !isBotSeat(player),
 		);
-		if (finished) {
-			this.cleanupEngineRoomState(finished);
-			// The player who left/forfeited takes the loss on their record.
-			await this.persistFinishedRoom(finished, true, abandonedPlayer);
-		}
-		return finished;
 	}
 
 	/**
@@ -278,7 +317,7 @@ export class GameSessionService implements OnModuleInit {
 					) {
 						await this.applyEloRatings(
 							room,
-							winnerSide,
+							forfeitPlayer?.side ?? null,
 							ratingRepo,
 						);
 					}
@@ -311,9 +350,23 @@ export class GameSessionService implements OnModuleInit {
 		}
 	}
 
+	/**
+	 * Apply ranked Elo as a sum of pairwise games (P4). Each player is scored
+	 * against every opponent by relative final placement (1 ahead / 0.5 tied / 0
+	 * behind), the pairwise deltas are summed against the expected scores from
+	 * pre-match ratings, and the total is normalised by the opponent count. This
+	 * is the standard multiplayer-Elo construction: it stays zero-sum in
+	 * expectation for any player count and — unlike the previous average-opponent
+	 * design — a player can never gain rating from a tie for first they did not
+	 * actually lead (a clear last place records a loss and loses rating).
+	 *
+	 * Placement comes from the per-side `score` array every engine maintains. A
+	 * forfeiting seat (`forfeitSide`) is forced to last place regardless of the
+	 * score it held when it left, preserving forfeit semantics.
+	 */
 	private async applyEloRatings(
 		room: MatchRoom,
-		winnerSide: number | null,
+		forfeitSide: number | null,
 		ratingRepo: Repository<UserRating>,
 	): Promise<void> {
 		const ratings: UserRating[] = [];
@@ -346,37 +399,59 @@ export class GameSessionService implements OnModuleInit {
 		// whole match) order-dependent and no longer zero-sum (Bug Audit H1).
 		const preMatchRatings = ratings.map((r) => r.rating);
 
-		for (let i = 0; i < room.players.length; i++) {
-			const player = room.players[i];
+		// Per-side final scores drive placement; a forfeiting seat is forced last.
+		const rawScores = (room.state as { score?: number[] }).score ?? [];
+		const effectiveScore = room.players.map((player) =>
+			player.side === forfeitSide
+				? Number.NEGATIVE_INFINITY
+				: (rawScores[player.side] ?? 0),
+		);
+
+		const playerCount = room.players.length;
+		// Rankings Bug Audit L5: a lone ranked player has no opponents to score
+		// against; skip rather than divide by zero and persist a NaN rating.
+		if (playerCount < 2) return;
+
+		for (let i = 0; i < playerCount; i++) {
 			const rating = ratings[i];
 			const playerRating = preMatchRatings[i];
 
-			const opponentRatings = preMatchRatings.filter((_, j) => j !== i);
-			// Rankings Bug Audit L5: unreachable today (`MIN_PLAYERS = 2` in
-			// matchmaking.service.ts), but a future solo/practice ranked mode
-			// reaching this method with a single player would otherwise divide
-			// by zero below and persist a NaN rating.
-			if (opponentRatings.length === 0) continue;
-			const opponentRating =
-				opponentRatings.reduce((sum, r) => sum + r, 0) /
-				opponentRatings.length;
+			let scoreSum = 0;
+			let expectedSum = 0;
+			let strictlyAhead = 0;
+			let tiedWith = 0;
+			for (let j = 0; j < playerCount; j++) {
+				if (j === i) continue;
+				const relative =
+					effectiveScore[i] > effectiveScore[j]
+						? 1
+						: effectiveScore[i] < effectiveScore[j]
+							? 0
+							: 0.5;
+				scoreSum += relative;
+				expectedSum +=
+					1 /
+					(1 +
+						Math.pow(
+							10,
+							(preMatchRatings[j] - playerRating) / ELO_SCALE,
+						));
+				if (relative === 1) strictlyAhead += 1;
+				else if (relative === 0.5) tiedWith += 1;
+			}
 
-			// Rankings Bug Audit M3: a draw (`winnerSide === null`) is scored 0.5
-			// per the standard Elo formula — previously this method was never
-			// even called for a ranked draw (see the caller's guard), so `draws`
-			// never incremented and rating never moved for a drawn ranked match.
-			const won = winnerSide !== null && player.side === winnerSide;
-			const score = winnerSide === null ? 0.5 : won ? 1 : 0;
-
-			const expected =
-				1 /
-				(1 + Math.pow(10, (opponentRating - playerRating) / ELO_SCALE));
-			const delta = Math.round(ELO_K * (score - expected));
+			const delta = Math.round(
+				(ELO_K * (scoreSum - expectedSum)) / (playerCount - 1),
+			);
 			rating.rating = Math.max(0, playerRating + delta);
 
-			if (winnerSide === null) rating.draws += 1;
-			else if (won) rating.wins += 1;
-			else rating.losses += 1;
+			// Win/loss/draw record from placement (P4): sole first is a win,
+			// tied-for-first is a draw, anyone an opponent finished ahead of is a
+			// loss — so a clear loser in a tie-for-first no longer records a draw.
+			const opponentsAhead = playerCount - 1 - strictlyAhead - tiedWith;
+			if (opponentsAhead > 0) rating.losses += 1;
+			else if (tiedWith > 0) rating.draws += 1;
+			else rating.wins += 1;
 
 			await ratingRepo.save(rating);
 		}

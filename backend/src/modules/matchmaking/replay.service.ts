@@ -27,6 +27,12 @@ const REPLAY_SAMPLE_MS = 50;
 const REPLAY_KEYFRAME_MS = 1_000;
 const MAX_SAVED_REPLAYS_PER_USER = 20;
 const MAX_IMPORTED_REPLAY_FRAMES = 3_600;
+// Upper bound on frames retained in memory for a single live match, so a
+// pathological or unusually long match can never grow the room's replay buffer
+// without limit (R3). When exceeded, the oldest complete rounds are trimmed —
+// never the round in progress — which keeps the delta chain valid because the
+// first frame of every round is always a keyframe.
+const MAX_LIVE_REPLAY_FRAMES = 3_600;
 const IMPORTABLE_REPLAY_GAME_IDS = new Set([
 	"temple-curling",
 	"bamboo-bash",
@@ -266,6 +272,49 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 		room.replayLastSnapshot = snapshot;
 		room.replayLastSampleAt = now;
 		if (keyframe) room.replayLastKeyframeAt = tMs;
+		this.trimLiveFramesToBudget(room);
+	}
+
+	/**
+	 * Bound the in-memory live replay buffer (R3). Drops the oldest complete
+	 * rounds — never the round currently in progress — because the first frame
+	 * of every round is a keyframe, so whole-round trimming preserves the
+	 * "buffer starts with a keyframe" invariant the delta reconstructor relies
+	 * on. Sequence numbers are then compacted so `seq` stays contiguous from
+	 * zero, which both the next push (`seq: replayFrames.length`) and the import
+	 * contract (`seq === index`) require. A single round longer than the budget
+	 * is left intact rather than corrupting the delta chain; that is not
+	 * reachable in normal play for these launch-based games.
+	 */
+	private trimLiveFramesToBudget(room: MatchRoom): void {
+		if (room.replayFrames.length <= MAX_LIVE_REPLAY_FRAMES) return;
+		const currentRound =
+			room.replayFrames[room.replayFrames.length - 1].round;
+		let trimmed = false;
+		while (
+			room.replayFrames.length > MAX_LIVE_REPLAY_FRAMES &&
+			room.replayFrames[0].round < currentRound
+		) {
+			const oldestRound = room.replayFrames[0].round;
+			let cut = 0;
+			while (
+				cut < room.replayFrames.length &&
+				room.replayFrames[cut].round === oldestRound
+			)
+				cut += 1;
+			room.replayFrames.splice(0, cut);
+			room.replayEvents = room.replayEvents.filter(
+				(event) => event.round !== oldestRound,
+			);
+			trimmed = true;
+		}
+		if (!trimmed) return;
+		room.replayFrames.forEach((frame, index) => {
+			frame.seq = index;
+		});
+		room.replayEvents.forEach((event, index) => {
+			event.seq = index;
+		});
 	}
 
 	recordEvent(

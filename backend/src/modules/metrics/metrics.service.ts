@@ -24,6 +24,12 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
 	private readonly guestSessionsGauge: Gauge;
 	private guestPollTimer: ReturnType<typeof setInterval> | null = null;
 
+	// ── Matchmaking / real-time simulation metrics ────────────────────────────
+	private readonly arenaTickDurationSeconds: Histogram;
+	private readonly activeRoomsGauge: Gauge;
+	private readonly replayFramesGauge: Gauge;
+	private readonly droppedCatchUpStepsTotal: Counter;
+
 	constructor(
 		private readonly config: ConfigService,
 		@InjectDataSource() private readonly dataSource: DataSource,
@@ -58,6 +64,50 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
 			help: "Current number of active guest user accounts in the database",
 			registers: [this.registry],
 		});
+
+		// Real-time simulation observability (converts the matchmaking capacity
+		// findings from speculation into graphs): how long the 30 Hz fixed-step
+		// loop takes, how many rooms/replay frames are live, and how often the
+		// catch-up loop saturates (a proxy for the server clock falling behind
+		// wall clock — R7).
+		this.arenaTickDurationSeconds = new Histogram({
+			name: "shellsmash_arena_tick_duration_seconds",
+			help: "Duration of one arena fixed-step simulation pass in seconds",
+			// Sub-millisecond to ~100 ms: a pass should be well under one 33 ms tick.
+			buckets: [0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.033, 0.05, 0.1],
+			registers: [this.registry],
+		});
+		this.activeRoomsGauge = new Gauge({
+			name: "shellsmash_active_rooms",
+			help: "Current number of active match rooms being simulated",
+			registers: [this.registry],
+		});
+		this.replayFramesGauge = new Gauge({
+			name: "shellsmash_replay_frames",
+			help: "Total replay frames buffered in memory across active rooms",
+			registers: [this.registry],
+		});
+		this.droppedCatchUpStepsTotal = new Counter({
+			name: "shellsmash_arena_dropped_catchup_steps_total",
+			help: "Fixed-step catch-up steps dropped because the loop saturated",
+			registers: [this.registry],
+		});
+	}
+
+	/** Record one arena fixed-step pass duration (seconds). */
+	observeArenaTick(seconds: number): void {
+		this.arenaTickDurationSeconds.observe(seconds);
+	}
+
+	/** Set the current active-room and buffered-replay-frame gauges. */
+	setSimulationGauges(activeRooms: number, replayFrames: number): void {
+		this.activeRoomsGauge.set(activeRooms);
+		this.replayFramesGauge.set(replayFrames);
+	}
+
+	/** Count catch-up steps the fixed-step loop had to drop under load. */
+	incDroppedCatchUpSteps(count: number): void {
+		if (count > 0) this.droppedCatchUpStepsTotal.inc(count);
 	}
 
 	onModuleInit(): void {

@@ -1,10 +1,12 @@
 /**
  * bot-player.service.ts — server-side CPU players for the arena minigames.
  *
- * A bot seat is a RoomPlayer whose socketId carries the `bot:` prefix — today
- * they are seated ONLY by the Tournament's minigame adapter as stand-ins for
- * participants with no live connection (and, next wave, for CPU tournament
- * participants). Public-queue / private-lobby matches never contain bot seats.
+ * A bot seat is a RoomPlayer whose socketId carries the `bot:` prefix. They are
+ * seated by the Tournament's minigame adapter as stand-ins for participants with
+ * no live connection, and — since P5 — by the abandon flow, which hands a leaving
+ * seat in a 3+ player match to a CPU stand-in so the match plays on for everyone
+ * else. Any bot seat in an active room is driven here regardless of how it was
+ * seated.
  *
  * Bots play through EXACTLY the same rail as human clients —
  * `MatchmakingGateway.handleUserInput` — so every engine validation, throw

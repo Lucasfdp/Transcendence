@@ -145,7 +145,7 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 		if (Math.hypot(vx, vy) > 5_000) return null;
 
 		state.activeTurnNumber = state.turnNumber;
-		const power = this.consumeArenaPower(state, player.side, payload.power);
+		const power = this.consumeArenaPower(state, player, payload.power);
 		room.physicsState ??= createKamePhysicsState(room.matchId);
 		launchKameProjectile(
 			room.physicsState as ReturnType<typeof createKamePhysicsState>,

@@ -83,6 +83,17 @@ describe("ShellCurlEngine", () => {
 		expect(engine.abandon(room, room.players[0])).toBe(1);
 	});
 
+	it("includes a temporarily disconnected leader in abandon resolution (P5)", () => {
+		const engine = new ShellCurlEngine();
+		const room = makeRoom(4);
+		const state = room.state as CurlingSnapshot;
+		state.score = [1, 9, 3, 2]; // seat 1 leads
+		room.players[1].connected = false; // leader briefly inside its reconnect window
+		// Seat 2 abandons: the disconnected leader (seat 1) must still take the
+		// win, not a trailing but connected seat.
+		expect(engine.abandon(room, room.players[2])).toBe(1);
+	});
+
 	it("owns source-space movement and rejects client settlement claims", () => {
 		const engine = new ShellCurlEngine();
 		const room = makeRoom();
@@ -198,6 +209,26 @@ describe("ShellCurlEngine", () => {
 				{ id: 2, side: 1, x: centreX + offset, y: 0.5, power: "none" },
 			]),
 		).toEqual({ scoringSide: null, points: 0 });
+	});
+
+	it("rotates the lead each end so the hammer is not always the last seat (P2)", () => {
+		const engine = new ShellCurlEngine();
+		const room = makeRoom(3);
+		const state = room.state as CurlingSnapshot;
+		engine.start(room);
+		const leadByEnd: number[] = [];
+		let observedEnd = -1;
+		for (let throwNumber = 0; throwNumber < state.maxTurns; throwNumber++) {
+			if (state.currentEnd !== observedEnd) {
+				observedEnd = state.currentEnd;
+				leadByEnd[observedEnd] = state.currentTurn;
+			}
+			const side = state.currentTurn;
+			expect(release(engine, room, side + 1, { vx: 0, vy: 0 })).toBe(room);
+			settle(engine, room);
+		}
+		// End 0 leads with seat 0, end 1 with seat 1, end 2 with seat 2.
+		expect(leadByEnd).toEqual([0, 1, 2]);
 	});
 
 	it.each([2, 5])(
