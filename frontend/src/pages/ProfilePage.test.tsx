@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api, AuthError, type Achievement, type PublicUserView } from "../features/hub/api";
@@ -97,7 +97,6 @@ describe("ProfilePage", () => {
 		expect(screen.getByText("@kame")).toBeInTheDocument();
 		expect(screen.getByText("Online")).toBeInTheDocument();
 		expect(screen.getByText("🛡️ Shell First")).toBeInTheDocument();
-		expect(screen.getByText("First Victory")).toBeInTheDocument();
 		expect(screen.getByText("Bamboo Bash")).toBeInTheDocument();
 		expect(screen.getByText("Total matches")).toBeInTheDocument();
 		expect(screen.getByText("Gold earned")).toBeInTheDocument();
@@ -105,12 +104,38 @@ describe("ProfilePage", () => {
 		expect(screen.getByText("Account age")).toBeInTheDocument();
 		expect(screen.getByText("198 days")).toBeInTheDocument();
 		expect(screen.getByText("Total losses")).toBeInTheDocument();
-		expect(screen.getByLabelText("Player card preview")).toHaveClass(
+		const preview = screen.getByLabelText("Player card preview");
+		expect(preview).toHaveClass(
 			"profile-preview--with-background",
 			"profile-preview--sunset",
 		);
+		expect(within(preview).getByText("First Victory")).toBeInTheDocument();
+		expect(within(preview).queryByRole("progressbar")).not.toBeInTheDocument();
 		expect(screen.getByRole("img", { name: "Kame Master's shell portrait" })).toBeInTheDocument();
-		expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+	});
+
+	it("shows the full achievement catalog below the showcase, not a page-local copy", async () => {
+		const lockedAchievement: Achievement = {
+			id: "matches-5-played",
+			title: "Getting Started",
+			description: "Play 5 matches.",
+			unlockDescription: "Play 5 matches.",
+			reward: { type: "none" },
+			progressCurrent: 2,
+			progressTarget: 5,
+			unlocked: false,
+			unlockedAt: null,
+		};
+		vi.mocked(api.getUser).mockResolvedValue(publicUser);
+		vi.mocked(api.getAchievements).mockResolvedValue([achievement, lockedAchievement]);
+
+		renderPage();
+
+		const section = await screen.findByRole("heading", { name: "Achievements" });
+		const achievementsSection = section.closest("section") as HTMLElement;
+		expect(within(achievementsSection).getByText("First Victory")).toBeInTheDocument();
+		expect(within(achievementsSection).getByText("Getting Started")).toBeInTheDocument();
+		expect(within(achievementsSection).getByText("1/2 unlocked")).toBeInTheDocument();
 	});
 
 	it("uses safe placeholders for no tag, no matches, and unknown achievement IDs", async () => {

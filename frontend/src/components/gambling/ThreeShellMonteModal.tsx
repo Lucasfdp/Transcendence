@@ -12,6 +12,7 @@ import {
 	type MonteSwap,
 } from "../../features/gambling";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { useSpacebarAction } from "../../hooks/useSpacebarAction";
 
 type MontePhase =
 	| "idle"
@@ -121,6 +122,13 @@ export function ThreeShellMonteModal({
 	const canStart =
 		Boolean(config) && stakeValid && coins >= stake && phase === "idle";
 	const canCheck = phase === "choosing" && selectedSlot !== null;
+	// Space mirrors whichever primary button the current phase has live —
+	// "Start game" while idle, "Check" once a cup is picked — the two guards
+	// are mutually exclusive by phase, so at most one ever fires.
+	useSpacebarAction(canStart || canCheck, () => {
+		if (canStart) void startRound();
+		else if (canCheck) void resolveRound();
+	});
 	const rtpPercent = config ? Math.round(config.rtp * 100) : 100;
 	const status = phaseMessage(phase, result, round);
 	const displayCupIds =

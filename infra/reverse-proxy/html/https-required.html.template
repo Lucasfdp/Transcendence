@@ -344,7 +344,7 @@
 					so no account or game data was sent.
 				</p>
 				<div class="protocol">Secure route ready</div>
-				<a class="cta" href="${SECURE_ORIGIN}">Enter with HTTPS</a>
+				<a class="cta" href="__SECURE_ORIGIN__">Enter with HTTPS</a>
 				<p class="hint">You will return to the ShellSmash entrance.</p>
 			</div>
 

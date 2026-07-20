@@ -21,6 +21,7 @@ import {
 	type SpinResolution,
 } from "../../features/gambling";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { useSpacebarAction } from "../../hooks/useSpacebarAction";
 import { resolveShellSkinAsset } from "../../shared/assets";
 
 /**
@@ -478,6 +479,17 @@ export function ShellDropModal({
 		}
 	};
 
+	// Computed ahead of the loading/error early returns so the spacebar
+	// shortcut below (a hook — must run unconditionally every render) can
+	// mirror the Drop button's own guard without duplicating it.
+	const stakeValid =
+		view !== null &&
+		Number.isInteger(stake) &&
+		stake >= view.minWager &&
+		stake <= view.maxWager;
+	const canDrop = stakeValid && coins >= stake && !dropping;
+	useSpacebarAction(canDrop, () => void runDrop());
+
 	if (loading) return <p>Loading Shell Drop...</p>;
 	if (!view)
 		return (
@@ -494,11 +506,6 @@ export function ShellDropModal({
 		);
 
 	const tier = tierFor(view, rows);
-	const stakeValid =
-		Number.isInteger(stake) &&
-		stake >= view.minWager &&
-		stake <= view.maxWager;
-	const canDrop = stakeValid && coins >= stake && !dropping;
 	const landedBucket = result ? bucketFromOutcome(result.outcomeId) : null;
 	const landedView =
 		landedBucket !== null ? bucketView(tier.buckets, landedBucket) : null;

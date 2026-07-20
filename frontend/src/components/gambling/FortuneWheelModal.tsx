@@ -15,6 +15,7 @@ import {
 	type WheelView,
 } from "../../features/gambling";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { useSpacebarAction } from "../../hooks/useSpacebarAction";
 
 /** Wheel geometry (SVG user units). */
 const VIEWBOX = 380;
@@ -278,6 +279,19 @@ export function FortuneWheelModal({
 		}
 	};
 
+	// Computed ahead of the loading/error early returns so the spacebar
+	// shortcut below (a hook — must run unconditionally every render) can
+	// mirror the paid Spin button's own guard without duplicating it.
+	const stakeValid =
+		wheel !== null &&
+		Number.isInteger(stake) &&
+		stake >= wheel.minWager &&
+		stake <= wheel.maxWager;
+	const canWager = stakeValid && coins >= stake && !spinning;
+	useSpacebarAction(canWager, () =>
+		void runSpin(() => gamblingApi.spinWheel(stake, clientSeed || undefined)),
+	);
+
 	if (loading) return <p>Loading the wheel...</p>;
 	if (!wheel)
 		return (
@@ -293,11 +307,6 @@ export function FortuneWheelModal({
 			</div>
 		);
 
-	const stakeValid =
-		Number.isInteger(stake) &&
-		stake >= wheel.minWager &&
-		stake <= wheel.maxWager;
-	const canWager = stakeValid && coins >= stake && !spinning;
 	const rtpPercent = Math.round(wheel.rtp * 100);
 	const showBigWinGlow =
 		!spinning && result !== null && isBigWinSegment(result.segment.multiplier);

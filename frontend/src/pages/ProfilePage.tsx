@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AchievementGrid } from "../features/achievements/AchievementGrid";
 import {
 	api,
 	AuthError,
@@ -180,6 +181,14 @@ export function ProfilePage(): JSX.Element {
 							{user.accountAgeDays === 1 ? "day" : "days"}
 						</strong>
 					</article>
+				</section>
+
+				<section
+					className="public-profile-page__achievements"
+					aria-labelledby="public-profile-achievements-heading"
+				>
+					<h2 id="public-profile-achievements-heading">Achievements</h2>
+					<AchievementGrid achievements={achievements} />
 				</section>
 			</div>
 		</main>

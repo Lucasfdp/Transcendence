@@ -18,6 +18,7 @@ import {
 	type SpinResolution,
 } from "../../features/gambling";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { useSpacebarAction } from "../../hooks/useSpacebarAction";
 
 /**
  * Total wall-clock time a roll animation takes — shared by the odometer
@@ -274,6 +275,25 @@ export function KoiDiceModal({
 		}
 	};
 
+	// Computed ahead of the loading/error early returns so the spacebar
+	// shortcut below (a hook — must run unconditionally every render) can
+	// mirror the Roll button's own guard without duplicating it. `bounds`
+	// itself is re-derived below once `config` is known non-null for the
+	// render body proper.
+	const preRollBounds = config ? boundsFor(config, direction) : null;
+	const targetValid =
+		preRollBounds !== null &&
+		Number.isInteger(target) &&
+		target >= preRollBounds.min &&
+		target <= preRollBounds.max;
+	const stakeValid =
+		config !== null &&
+		Number.isInteger(stake) &&
+		stake >= config.minWager &&
+		stake <= config.maxWager;
+	const canRoll = targetValid && stakeValid && coins >= stake && !rolling;
+	useSpacebarAction(canRoll, () => void runRoll());
+
 	if (loading) return <p>Loading Koi Dice...</p>;
 	if (!config)
 		return (
@@ -290,13 +310,6 @@ export function KoiDiceModal({
 		);
 
 	const bounds = boundsFor(config, direction);
-	const targetValid =
-		Number.isInteger(target) && target >= bounds.min && target <= bounds.max;
-	const stakeValid =
-		Number.isInteger(stake) &&
-		stake >= config.minWager &&
-		stake <= config.maxWager;
-	const canRoll = targetValid && stakeValid && coins >= stake && !rolling;
 	const winChance = targetValid ? diceWinChance(direction, target) : 0;
 	const payoutMultiplier = targetValid ? diceMultiplier(direction, target) : 0;
 

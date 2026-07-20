@@ -20,6 +20,7 @@ import {
 	type SpinResolution,
 } from "../../features/gambling";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { useSpacebarAction } from "../../hooks/useSpacebarAction";
 
 /** Height, in pixels, of one symbol cell on a scrolling reel strip. */
 const CELL_HEIGHT_PX = 84;
@@ -354,6 +355,17 @@ export function ShrineSlotsModal({
 		}
 	};
 
+	// Computed ahead of the loading/error early returns so the spacebar
+	// shortcut below (a hook — must run unconditionally every render) can
+	// mirror the Spin button's own guard without duplicating it.
+	const stakeValid =
+		view !== null &&
+		Number.isInteger(stake) &&
+		stake >= view.minWager &&
+		stake <= view.maxWager;
+	const canSpin = stakeValid && coins >= stake && !spinning;
+	useSpacebarAction(canSpin, () => void runSpin());
+
 	if (loading) return <p>Loading Shrine Slots...</p>;
 	if (!view)
 		return (
@@ -369,11 +381,6 @@ export function ShrineSlotsModal({
 			</div>
 		);
 
-	const stakeValid =
-		Number.isInteger(stake) &&
-		stake >= view.minWager &&
-		stake <= view.maxWager;
-	const canSpin = stakeValid && coins >= stake && !spinning;
 	const rtpPercent = Math.round(view.rtp * 100);
 
 	return (

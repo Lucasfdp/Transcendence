@@ -34,6 +34,15 @@ server {
         modsecurity off;
         root /usr/share/nginx/html;
         default_type text/html;
+        # The page is served once at build time with the CTA link left as the
+        # literal token "__SECURE_ORIGIN__" (see the Dockerfile/entrypoint) so
+        # it can be rewritten here, per request, from the Host header the
+        # visitor actually used — a baked-in DOMAIN_NAME would send every
+        # visitor back to https://localhost, which only resolves on the host
+        # machine itself. text/html is sub_filter's built-in default type, so
+        # no explicit sub_filter_types is needed here.
+        sub_filter_once off;
+        sub_filter '__SECURE_ORIGIN__' 'https://$http_host';
     }
 
     location / {

@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 
 import { GameConfirmModal } from "../../components/common/GameConfirmModal";
+import { useSpacebarAction } from "../../hooks/useSpacebarAction";
 import { getGameSocket } from "../../services/network/gameSocket";
 import { INGAME_PLAYER_ASSET } from "../../shared/assets";
 import { hubBackgroundClass } from "../../shared/backgrounds";
@@ -463,6 +464,17 @@ export function TournamentBoardView({
 	const myPoints =
 		snapshot?.players.find((p) => p.userId === myUserId)?.points ?? 0;
 	const canAffordGamble = gambling !== null && myPoints >= gambling.cost;
+
+	// Space bar shortcuts (mirror the on-screen buttons' own guards, D-key
+	// free): roll the dice on your turn, or gamble the round's winner decision
+	// while the panel is open — both re-validate server-side regardless.
+	useSpacebarAction(isMyTurn && !isTerminal, rollDice);
+	useSpacebarAction(
+		gambling !== null && gambling.winnerId === myUserId,
+		() => {
+			if (gambling) startGamble(gambling.cost, myPoints);
+		},
+	);
 
 	// A RESOLVED bet's outcome: while the phase is still GAMBLING_PHASE with
 	// no open session, the server is holding the round precisely so every

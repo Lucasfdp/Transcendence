@@ -20,6 +20,7 @@ import {
 	type SpinResolution,
 } from "../../features/gambling";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { useSpacebarAction } from "../../hooks/useSpacebarAction";
 
 /** The two sides offered, in display order. */
 const SIDES: readonly FlipSide[] = ["heads", "tails"];
@@ -289,6 +290,17 @@ export function ShellFlipModal({
 		}
 	};
 
+	// Computed ahead of the loading/error early returns so the spacebar
+	// shortcut below (a hook — must run unconditionally every render) can
+	// mirror the Flip button's own guard without duplicating it.
+	const stakeValid =
+		config !== null &&
+		Number.isInteger(stake) &&
+		stake >= config.minWager &&
+		stake <= config.maxWager;
+	const canFlip = stakeValid && coins >= stake && !flipping;
+	useSpacebarAction(canFlip, () => void runFlip());
+
 	if (loading) return <p>Loading Shell Flip...</p>;
 	if (!config)
 		return (
@@ -304,11 +316,6 @@ export function ShellFlipModal({
 			</div>
 		);
 
-	const stakeValid =
-		Number.isInteger(stake) &&
-		stake >= config.minWager &&
-		stake <= config.maxWager;
-	const canFlip = stakeValid && coins >= stake && !flipping;
 	const rtpPercent = Math.round(config.rtp * 100);
 	const landed = result ? (result.outcomeId as FlipSide) : null;
 	// Resting (non-animating) face: once a result has landed, `rotation` was
