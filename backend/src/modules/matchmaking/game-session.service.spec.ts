@@ -317,6 +317,29 @@ describe("GameSessionService", () => {
 		);
 	});
 
+	it("does not grant XP/coin rewards to CPU bot accounts (users.isBot)", async () => {
+		// A CPU-owned ACCOUNT (tournament add-cpu bot) earns nothing; note
+		// this is distinct from a bot SEAT standing in for an offline real
+		// player, which must keep crediting the real (isBot: false) user.
+		usersService.findById = jest.fn(async (id: number) => ({
+			id,
+			isGuest: false,
+			isBot: id === 2,
+		})) as never;
+		const room = makeRoom({
+			players: [makePlayer(0), makePlayer(1)],
+		});
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		expect(gameResultsService.submitResult).toHaveBeenCalledTimes(1);
+		expect(gameResultsService.submitResult).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 1 }),
+			{ gameId: "temple-curling", outcome: "win" },
+		);
+	});
+
 	it("persists winnerUserId by matching player.side instead of player array position", async () => {
 		const room = makeRoom({
 			players: [makePlayer(1), makePlayer(0)],
@@ -587,6 +610,41 @@ describe("GameSessionService — applyEloRatings (Bug Audit H1)", () => {
 		// Equal starting ratings, winner side 0 -> +16 / -16 at K=32.
 		expect(savedRatings[1]).toBe(1016);
 		expect(savedRatings[2]).toBe(984);
+	});
+
+	// ── Rankings Bug Audit N9: first ranked match for brand-new players ───────
+
+	it("initialises finite rating defaults for first-time ranked players (no NaN)", async () => {
+		// TypeORM's create() does NOT apply `@Column({ default })` values on
+		// the JS object — those are database-level defaults. With
+		// `findOne -> null` (a player's very first ranked match) the pre-fix
+		// code fed `undefined` into the Elo maths, saved NaN rating/wins,
+		// Postgres rejected the INSERT, and the entire match-persistence
+		// transaction rolled back: no rating, no XP, no recorded outcome.
+		// The mocked `create` above mirrors TypeORM by returning its input
+		// untouched, so this test fails on the pre-fix code.
+		ratingRepo.findOne = jest.fn().mockResolvedValue(null);
+
+		const room = makeRoom({ mode: "ranked" });
+		roomService.getRoom.mockReturnValue(room);
+
+		await service.finishIfEnded(room);
+
+		// Both start from the initialised 1000 default: +16 / -16 at K=32.
+		expect(savedRatings[1]).toBe(1016);
+		expect(savedRatings[2]).toBe(984);
+		for (const call of ratingRepo.save.mock.calls) {
+			const saved = call[0] as {
+				rating: number;
+				wins: number;
+				losses: number;
+				draws: number;
+			};
+			expect(Number.isFinite(saved.rating)).toBe(true);
+			expect(Number.isFinite(saved.wins)).toBe(true);
+			expect(Number.isFinite(saved.losses)).toBe(true);
+			expect(Number.isFinite(saved.draws)).toBe(true);
+		}
 	});
 
 	// ── Rankings Bug Audit M3: ranked draws ───────────────────────────────────

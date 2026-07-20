@@ -56,6 +56,149 @@ validation steps (fresh-DB migration run, in-browser Tournaments tab check,
 playing a tournament with CPUs end-to-end). Recommended as an immediate
 follow-up before considering this audit fully closed.
 
+### §4b follow-up (added 2026-07-20, second pass — post-fix play-testing findings)
+
+- **N7** (ranked mode unreachable from the UI): first attempt landed in the
+  wrong file — see the correction below. **N8** (KameMaster invisible on all
+  boards): no code change — this is today's N4 fix working exactly as
+  designed (`isDevAccount` filtering out a seeded level-99 demo account).
+  Recorded here for traceability only.
+
+### N7 correction (added 2026-07-20, third pass — reported live: per-game boards still not updating from Normal Mode)
+
+The first N7 fix added a Casual/Ranked toggle to `ShellPickerScene.ts`'s
+`findOnlineMatch()`. That code is **never executed** — a repo-wide grep for
+`scene.start("ShellPickerScene"` / `scene.start('ShellPickerScene'` turns up
+nothing; `ShellPickerScene` is registered in the Phaser scene list
+(`createShellSmashGame.ts`) but nothing in the current routing ever starts
+it. It appears to be dead code left over from an earlier matchmaking UI
+iteration.
+
+The **real** "Normal Mode" online-queue flow is: hub game card → `Link to=
+"/play/:gameId"` (`HomePage.tsx`) → `GamePage.tsx`'s `PowerupMatchmakingPanel`
+→ "Multiplayer Online" section → `findOnlineMatch()`. That function had its
+own, separate `queue:join` emitter, also hardcoding `mode: "casual"` — this
+is what was actually causing every per-game board to stay empty regardless
+of the first fix.
+
+**Fixed properly this time**, in `GamePage.tsx`: a `renderModePicker` helper
+(mirrors the existing `renderPlayerPicker` segmented-control styling) adds a
+Casual/Ranked selector to the Multiplayer Online section, rendered only when
+`!currentUser?.isGuest`; `findOnlineMatch()` now sends
+`currentUser?.isGuest ? "casual" : onlineMode` instead of the hardcoded
+value, and the picker disables while `isSearchingOnline` or
+`activeMatchStatus` is set. The `ShellPickerScene.ts` change from the first
+pass was left in place (harmless, and correct if that scene is ever
+resurrected) rather than reverted, but it is **not** what fixes this bug —
+`GamePage.tsx` is.
+
+**Flagged, not actioned:** `ShellPickerScene.ts` (and its dead-code status)
+deserves its own look — either delete it, or find out why it stopped being
+reachable and whether that was intentional.
+
+Not performed this pass: `GamePage.tsx` has no existing test harness in this
+codebase for `PowerupMatchmakingPanel`/`findOnlineMatch` — validated via a
+production build (`vite build`, 239 modules, no new errors) and the full
+frontend vitest suite (unaffected, no test imports this file's matchmaking
+logic), but not via a live in-browser click-through. Recommended manual
+check on the next `make dev` session: confirm the Ranked picker is absent
+for a guest session, confirm picking Ranked as a real account and finishing
+an online match updates that game's leaderboard tab with adjusted ELO, and
+confirm the picker greys out during an active search/match.
+
+---
+
+## Deep-dive addendum (2026-07-20, evening): why game boards STILL did not update after the N7 ranked toggle
+
+Reported symptom: after the ranked-toggle change, normal-mode play (a
+friend-invite game plus online multiplayer matches) still left every
+game-specific board empty, while Total updated.
+
+### N9 — CRITICAL (root cause, now fixed): a player's first ranked match always failed to persist — NaN Elo insert rolled back the whole transaction
+
+Found by driving the **real** `GameSessionService` and `LeaderboardService`
+through an in-memory Postgres (pg-mem harness, actual entities and services,
+stubbed collaborators only):
+
+- `applyEloRatings` creates a first-time player's row with
+  `ratingRepo.create({ userId, gameId })`. TypeORM's
+  `@Column({ default: … })` values are **database** defaults — `create()`
+  leaves `rating`/`wins`/`losses`/`draws` `undefined` on the JS object.
+- The Elo maths then degenerates: `preMatchRatings[i]` is `undefined` →
+  expected score is NaN → `rating.rating = Math.max(0, undefined + NaN)` =
+  NaN, and `rating.wins += 1` on `undefined` is also NaN.
+- Postgres rejects the NaN INSERT (`invalid input syntax for integer`), and
+  because Elo runs inside the match-persistence transaction, **everything
+  rolls back**: match status/outcomes, XP/coins/stats (`submitResult`), and
+  the ratings. The error is logged (`Failed to persist match …`) and
+  rethrown; the match row stays `active` until boot cleanup abandons it.
+- Harness proof: with no pre-existing rows the finish fails exactly this
+  way; with pre-seeded rows the same match persists perfectly (1016/984,
+  W/L recorded, board renders both players).
+
+This bug has existed since the leaderboard shipped on 27 June, hidden
+behind **two** layers: N7 (no UI could queue ranked) meant the code never
+ran, and the unit tests never caught it because their mocked repositories
+accept NaN without complaint. The moment the N7 toggle made ranked
+reachable, every first ranked match hit it — and since *nobody* had a
+rating row yet, that meant every ranked match, full stop.
+
+**Fix applied** (this session): `game-session.service.ts` now initialises
+the created row explicitly (`rating: 1000, wins: 0, losses: 0, draws: 0`,
+matching migration `20260715000000`'s DB defaults), with a comment
+explaining the `create()`/DB-default trap. Regression test added to
+`game-session.service.spec.ts` ("initialises finite rating defaults for
+first-time ranked players") — its mocked `create` mirrors TypeORM's
+behaviour, so it fails on the pre-fix code. Suite passes 24/24. The
+pg-mem harness re-run confirms first-time players now persist and appear
+on the per-game board.
+
+### Also confirmed while tracing (no code change needed)
+
+- The N7 toggle wiring is correct end-to-end: both queue surfaces
+  (`ShellPickerScene`, `GamePage`) send the selected mode; the gateway and
+  `MatchmakingService` pass it through; `MatchFactory` persists it and the
+  room carries it to `persistFinishedRoom`.
+- Two UX notes for the user, not bugs: the toggle **defaults to Casual**
+  every time the picker opens, and queue buckets are keyed by
+  `(gameId, mode, playerCount)` — **both** players must pick Ranked (and
+  the same player count) or they will never be matched together. A
+  friend-invite game is always casual by design and will never move the
+  game boards.
+- Remaining validation once the stack is up: play one ranked match
+  end-to-end (both clients on Ranked) and confirm both players appear on
+  that game's tab; confirm XP/coins were granted for that match.
+
+## Final fix pass (2026-07-20, late evening)
+
+The remaining actionable items were implemented after user sign-off:
+
+- **CPU bot accounts excluded from XP/coin/level grants** (open product
+  decision → resolved "exclude"): `persistFinishedRoom` now skips
+  `submitResult` for `users.isBot` accounts, exactly like guests. This is an
+  ACCOUNT check — a real player whose seat is driven by a CPU stand-in still
+  earns rewards. Regression test added
+  (`game-session.service.spec.ts`, "does not grant XP/coin rewards to CPU
+  bot accounts"); suite passes 25/25.
+- **Login/registration rate-limit messages** (§3.3): both 429 messages now
+  state the actual retry window ("wait a minute and try again") so a
+  locked-out tester does not mistake the lockout for a broken backend.
+- **Auth page distinguishes gateway errors from bad credentials** (§3.3):
+  `AuthPage.tsx` login/register handlers now map 502/503/504 (nginx
+  answering while the backend is down or restarting) to an explicit "game
+  server is unreachable or restarting" message instead of the misleading
+  "check your credentials" fallback — this was the exact confusion in the
+  original incident. `NetworkError` (nginx itself down) was already handled.
+- **Toggle default**: decision recorded — the Ranked toggle deliberately
+  resets to Casual each time the picker opens (no change).
+
+Validation: backend `jest game-session.service.spec` 25/25 and all auth
+suites 39/39 pass. Frontend toolchain binaries in `node_modules` are
+macOS-only and cannot run in this audit environment — `AuthPage.tsx` was
+syntax-verified with a standalone esbuild, but `cd frontend && npm run
+build && npm run test:run` must be run on the host before commit, along
+with the live ranked-match walkthrough above.
+
 ---
 
 Handoff document for the agent that will work on the rankings/leaderboard
@@ -264,6 +407,65 @@ All boards are currently empty post-reset. After the next play session,
 verify rows appear (overall + per-game ranked). If boards stay empty after
 real matches finish, `persistFinishedRoom` is failing server-side — check
 backend logs for `Failed to persist match`.
+
+## 4b. Findings added later on 2026-07-20 (post-fix live play-testing)
+
+Reported after real play (a friend-invite game plus online multiplayer
+games with a fresh account vs KameMaster): KameMaster appears on no board
+despite winning, and the fresh account's wins show on Total while every
+game-specific tab stays "No rankings yet." Both were diagnosed in code;
+neither is a regression from today's fixes.
+
+### N7 — HIGH (product gap): ranked mode is unreachable from the UI, so the per-game boards can never populate
+
+The game-specific tabs are the **ELO board** and read `user_ratings`, which
+is written only for `mode === "ranked"` matches
+(`game-session.service.ts`, `applyEloRatings`). But no client flow can ever
+produce a ranked match:
+
+- The only `queue:join` emitter hardcodes casual —
+  `frontend/src/features/hub/ShellPickerScene.ts:1064`
+  (`mode: "casual"`). There is no mode toggle anywhere in the online UI.
+- Friend invites are private lobbies, always casual by design
+  (`private-lobbies.service.ts:306`).
+- Tournament minigames are launched casual
+  (`tournament-minigame.adapter.ts`).
+
+The backend's entire ranked pipeline (guest gating, Elo, draws at 0.5,
+locks, unique constraint, the four per-game tabs) is live but unreachable —
+"No rankings yet." is permanent for every game tab in production. This
+explains the play-test exactly: Total (fed by `user_game_stats`, which all
+match types write) updates; game tabs never do.
+
+**Fix options (product decision, then implement):**
+1. *(Recommended — matches the built design)* Expose a Casual/Ranked toggle
+   in the online matchmaking UI (`ShellPickerScene`), sending
+   `mode: "ranked"` on `queue:join`. Backend needs zero changes. Hide or
+   disable the toggle for guests (backend already rejects them, but the UI
+   should not offer it). Acceptance: finish a ranked online match →
+   winner/loser appear on that game's tab with adjusted ELO.
+2. Alternatively (or additionally), make the per-game tabs meaningful for
+   casual play by showing per-game W/L from `user_game_stats`
+   (it is already keyed by `(userId, gameId)`) — either as a separate
+   "casual" column/toggle or by ranking on wins when no rating exists.
+   Keep the ELO ranking as the primary ordering for ranked play.
+
+### N8 — Working as intended (decision point): KameMaster is invisible on all boards
+
+This is today's N4 fix operating correctly: `seedDemoAccount` now sets
+`isDevAccount: true` (including a boot-time backfill,
+`auth.service.ts:337–343`), and every leaderboard query filters
+`u.isDevAccount = false` (2026-07-15 finding L4). KameMaster's results DO
+persist (`user_game_stats` rows are written; the fresh account's win over
+it counted toward Total) — the account is only excluded from board
+*display*, deliberately, because it is a seeded fake account with level 99
+that would win every overall tie-break.
+
+**If test visibility is wanted:** either register throwaway accounts for
+play-testing (recommended — this is what the fresh "lu" account already
+demonstrates works), or revert the backfill and accept a level-99 seeded
+account sitting on public boards. Do not special-case the filter per
+environment without flagging it in `docs/security.md`.
 
 ## 5. Tournament rankings integration — specification
 

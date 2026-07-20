@@ -288,7 +288,14 @@ export class GameSessionService implements OnModuleInit {
 							const user = await this.usersService.findById(
 								player.user.id,
 							);
-							if (!user || user.isGuest) continue;
+							// CPU-owned accounts (tournament `add-cpu` bots,
+							// `users.isBot`) earn no XP/coins/levels — they are
+							// already hidden from every leaderboard, so rewards
+							// would only accrete meaningless wallet/level state.
+							// Note this is an ACCOUNT check, not a seat check:
+							// a real player whose seat is driven by a CPU
+							// stand-in (`bot:` socket) still earns rewards.
+							if (!user || user.isGuest || user.isBot) continue;
 							await this.gameResultsService.submitResult(user, {
 								gameId: room.gameId,
 								outcome:
@@ -384,9 +391,23 @@ export class GameSessionService implements OnModuleInit {
 				lock: { mode: "pessimistic_write" },
 			});
 			if (!rating) {
+				// The entity's `@Column({ default: … })` values are DATABASE
+				// defaults — `create()` leaves these fields `undefined` on the
+				// JS object. Every calculation below then degenerates to NaN
+				// (`undefined + delta`, `undefined += 1`), Postgres rejects the
+				// NaN INSERT, and the whole match-persistence transaction rolls
+				// back — so a player's FIRST ranked match (when no row exists
+				// yet) lost its entire result: no rating, no XP, no outcome.
+				// Masked until now because no UI path could queue ranked
+				// (Rankings Bug Audit N7/N9). Initialise explicitly, matching
+				// the DB defaults in migration 20260715000000.
 				rating = ratingRepo.create({
 					userId: player.user.id,
 					gameId: room.gameId,
+					rating: 1000,
+					wins: 0,
+					losses: 0,
+					draws: 0,
 				});
 			}
 			ratings.push(rating);

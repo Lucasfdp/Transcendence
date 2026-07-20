@@ -115,6 +115,15 @@ export class ShellPickerScene extends ResponsiveScene {
 	private onlinePlayerCountGfx?: Phaser.GameObjects.Graphics;
 	private onlinePlayerCountText?: Phaser.GameObjects.Text;
 	private onlinePlayerCountControls: Phaser.GameObjects.Text[] = [];
+	// Rankings Bug Audit N7 (2026-07-20): the only queue:join emitter used to
+	// hardcode `mode: "casual"`, so the backend's whole ranked pipeline (Elo,
+	// per-game leaderboard tabs) was unreachable from the UI. Guests never see
+	// this toggle — the backend rejects ranked for them regardless, but the
+	// UI should not offer a mode it will reject.
+	private modeToggleGfx?: Phaser.GameObjects.Graphics;
+	private modeCasualBtn?: Phaser.GameObjects.Text;
+	private modeRankedBtn?: Phaser.GameObjects.Text;
+	private onlineMode: "casual" | "ranked" = "casual";
 	private pickCountText!: Phaser.GameObjects.Text;
 	private onlinePlayerCount = 2;
 	private isSearchingOnline = false;
@@ -147,6 +156,7 @@ export class ShellPickerScene extends ResponsiveScene {
 		this.currentPlayer = 0;
 		this.selections = [[], []];
 		this.onlinePlayerCount = 2;
+		this.onlineMode = "casual";
 		this.isSearchingOnline = false;
 		this.activeMatchStatus = null;
 		this.sentAwayStatus = false;
@@ -483,6 +493,17 @@ export class ShellPickerScene extends ResponsiveScene {
 		const selectorX = width / 2 - selectorW / 2;
 		const selectorY = btnY - 54;
 
+		// Rankings Bug Audit N7: guests can never queue ranked (the backend
+		// rejects it), so the toggle is not built for them at all — casual
+		// stays the only option, matching prior behaviour exactly.
+		const user = this.registry.get("user") as
+			| { isGuest?: boolean }
+			| undefined;
+		const canRank = !user?.isGuest;
+		if (canRank) {
+			this.buildModeToggle(selectorX, selectorY, selectorW);
+		}
+
 		this.onlineGfx = this.add.graphics().setDepth(DEPTH_HUD);
 		this.paintOnlineBtn(false, btnX, btnY, actionBtnW, btnH);
 		this.onlineBtn = this.add
@@ -629,6 +650,102 @@ export class ShellPickerScene extends ResponsiveScene {
 		this.refreshOnlineState();
 	}
 
+	/**
+	 * Rankings Bug Audit N7: a two-pill Casual/Ranked toggle sat above the
+	 * online-player-count selector. Only built for non-guest players (see
+	 * the `canRank` guard in `buildOnlineButton`); casual stays selected by
+	 * default, matching the pre-existing hardcoded behaviour.
+	 */
+	private buildModeToggle(
+		selectorX: number,
+		selectorY: number,
+		selectorW: number,
+	): void {
+		const toggleH = 30;
+		const toggleGap = 46;
+		const toggleY = selectorY - toggleGap;
+		const pillGap = 6;
+		const pillW = (selectorW - pillGap) / 2;
+
+		this.modeToggleGfx = this.add.graphics().setDepth(DEPTH_HUD);
+		this.modeCasualBtn = this.add
+			.text(selectorX + pillW / 2, toggleY + toggleH / 2, "Casual", {
+				fontSize: "13px",
+				color: THEME.textGold,
+				fontFamily: THEME.font,
+				fontStyle: "bold",
+			})
+			.setOrigin(0.5)
+			.setDepth(DEPTH_HUD + 1)
+			.setInteractive({ useHandCursor: true });
+		this.modeRankedBtn = this.add
+			.text(
+				selectorX + pillW + pillGap + pillW / 2,
+				toggleY + toggleH / 2,
+				"Ranked",
+				{
+					fontSize: "13px",
+					color: THEME.textGold,
+					fontFamily: THEME.font,
+					fontStyle: "bold",
+				},
+			)
+			.setOrigin(0.5)
+			.setDepth(DEPTH_HUD + 1)
+			.setInteractive({ useHandCursor: true });
+
+		this.paintModeToggle(selectorX, toggleY, pillW, toggleH, pillGap);
+
+		this.modeCasualBtn.on("pointerup", () =>
+			this.setOnlineMode("casual", selectorX, toggleY, pillW, toggleH, pillGap),
+		);
+		this.modeRankedBtn.on("pointerup", () =>
+			this.setOnlineMode("ranked", selectorX, toggleY, pillW, toggleH, pillGap),
+		);
+
+		this.uiLayer.push(this.modeToggleGfx, this.modeCasualBtn, this.modeRankedBtn);
+	}
+
+	private setOnlineMode(
+		mode: "casual" | "ranked",
+		selectorX: number,
+		toggleY: number,
+		pillW: number,
+		toggleH: number,
+		pillGap: number,
+	): void {
+		// Can't switch mode mid-search or while already in a match — the
+		// in-flight queue:join already carries the mode it was sent with.
+		if (this.isSearchingOnline || this.activeMatchStatus) return;
+		this.onlineMode = mode;
+		this.paintModeToggle(selectorX, toggleY, pillW, toggleH, pillGap);
+	}
+
+	private paintModeToggle(
+		selectorX: number,
+		toggleY: number,
+		pillW: number,
+		toggleH: number,
+		pillGap: number,
+	): void {
+		if (!this.modeToggleGfx) return;
+		this.modeToggleGfx.clear();
+		const paintPill = (x: number, active: boolean) => {
+			this.modeToggleGfx!.fillStyle(active ? THEME.gold : 0x161006, active ? 0.9 : 0.96);
+			this.modeToggleGfx!.fillRoundedRect(x, toggleY, pillW, toggleH, 8);
+			this.modeToggleGfx!.lineStyle(2, THEME.gold, active ? 0 : 0.65);
+			this.modeToggleGfx!.strokeRoundedRect(x, toggleY, pillW, toggleH, 8);
+		};
+		paintPill(selectorX, this.onlineMode === "casual");
+		paintPill(selectorX + pillW + pillGap, this.onlineMode === "ranked");
+		this.modeCasualBtn?.setColor(
+			this.onlineMode === "casual" ? "#1a1410" : THEME.textGold,
+		);
+		this.modeRankedBtn?.setColor(
+			this.onlineMode === "ranked" ? "#1a1410" : THEME.textGold,
+		);
+	}
+
 	private async onOnlineButton(): Promise<void> {
 		if (this.activeMatchStatus) {
 			this.rejoinActiveMatch();
@@ -730,6 +847,8 @@ export class ShellPickerScene extends ResponsiveScene {
 			);
 			for (const control of this.onlinePlayerCountControls)
 				control.setAlpha(0.35);
+			this.modeCasualBtn?.disableInteractive().setAlpha(0.35);
+			this.modeRankedBtn?.disableInteractive().setAlpha(0.35);
 			this.abandonGfx?.setVisible(true);
 			this.abandonBtn?.setVisible(true);
 			this.abandonZone?.setInteractive({ useHandCursor: true });
@@ -745,6 +864,13 @@ export class ShellPickerScene extends ResponsiveScene {
 
 		for (const control of this.onlinePlayerCountControls)
 			control.setAlpha(1);
+		if (this.isSearchingOnline) {
+			this.modeCasualBtn?.disableInteractive().setAlpha(0.35);
+			this.modeRankedBtn?.disableInteractive().setAlpha(0.35);
+		} else {
+			this.modeCasualBtn?.setInteractive({ useHandCursor: true }).setAlpha(1);
+			this.modeRankedBtn?.setInteractive({ useHandCursor: true }).setAlpha(1);
+		}
 		this.onlinePlayerCountText?.setText(this.onlinePlayerCountLabel());
 		this.onlineBtn.setText(
 			this.isSearchingOnline ? "Cancel Search" : "Find Online Match",
@@ -1001,11 +1127,17 @@ export class ShellPickerScene extends ResponsiveScene {
 		}
 
 		if (myRun !== this._confirmRunId || !this.scene.isActive()) return;
+		// Rankings Bug Audit N7: guests are never offered the toggle (see
+		// `buildOnlineButton`'s `canRank` guard), but this is the defensive
+		// backstop — the backend rejects `mode: "ranked"` for guests anyway
+		// (`matchmaking.service.ts`), so never send it for one regardless of
+		// stale in-memory state.
+		const mode = user?.isGuest ? "casual" : this.onlineMode;
 		this.registry.set("shellSelection", { player0: picks, player1: [] });
 		this.isSearchingOnline = true;
 		this.subText
 			.setText(
-				`Searching for ${this.onlinePlayerCount} online players...`,
+				`Searching for ${this.onlinePlayerCount} ${mode} players...`,
 			)
 			.setColor(THEME.textGold);
 		this.refreshOnlineState();
@@ -1061,7 +1193,7 @@ export class ShellPickerScene extends ResponsiveScene {
 		});
 		socket.emit("queue:join", {
 			gameId: this.gameId,
-			mode: "casual",
+			mode,
 			playerCount: this.onlinePlayerCount,
 			shellSelection: picks,
 		});
@@ -1084,6 +1216,9 @@ export class ShellPickerScene extends ResponsiveScene {
 		this.onlinePlayerCountGfx?.destroy();
 		this.onlinePlayerCountText?.destroy();
 		for (const control of this.onlinePlayerCountControls) control.destroy();
+		this.modeToggleGfx?.destroy();
+		this.modeCasualBtn?.destroy();
+		this.modeRankedBtn?.destroy();
 		this.onlineBtn = undefined;
 		this.onlineGfx = undefined;
 		this.abandonBtn = undefined;
@@ -1092,6 +1227,9 @@ export class ShellPickerScene extends ResponsiveScene {
 		this.onlinePlayerCountGfx = undefined;
 		this.onlinePlayerCountText = undefined;
 		this.onlinePlayerCountControls = [];
+		this.modeToggleGfx = undefined;
+		this.modeCasualBtn = undefined;
+		this.modeRankedBtn = undefined;
 		this.buildGrid();
 	}
 
