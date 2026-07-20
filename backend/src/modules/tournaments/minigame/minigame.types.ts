@@ -79,6 +79,14 @@ export interface MinigameLifecyclePort {
  */
 export interface MinigameReconcilerPort {
 	reconcile(matchId: string): Promise<MinigameFinalResult | null>;
+	/**
+	 * Optional liveness probe: true while the match is still genuinely being
+	 * played (its in-memory room is neither finished nor abandoned). When the
+	 * watchdog reconciles nothing but the match is live, the coordinator
+	 * re-arms the watchdog instead of cancelling a round whose players are
+	 * still in the arena. A dead/absent room resolves the round as before.
+	 */
+	isMatchLive?(matchId: string): Promise<boolean> | boolean;
 }
 
 /**

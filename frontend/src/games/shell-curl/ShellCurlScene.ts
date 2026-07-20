@@ -274,6 +274,8 @@ export class ShellCurlScene
 	public trailGfx!: Phaser.GameObjects.Graphics;
 	private hudObjects: Phaser.GameObjects.GameObject[] = [];
 	public ballTrails = new ArenaBallTrailRuntime();
+	/** Cached id→team map for trail drawing, revalidated against allBalls. */
+	private ballPlayersCache: Map<number | string, number> | null = null;
 
 	// ── Bumpers ───────────────────────────────────────────────────────────────
 	public bumpers: ShellCurlBumper[] = [];
@@ -682,6 +684,21 @@ export class ShellCurlScene
 			} else {
 				this.settlingTimer = 0;
 			}
+		}
+		// Outside the active phases the loop above no longer records trails,
+		// so settled stones' fading trails are drained here until they empty.
+		if (
+			phase !== "sweeping" &&
+			phase !== "settling" &&
+			this.hasFadingTrails()
+		) {
+			this.recordMovingBallTrails();
+			drawShellCurlBallTrails(
+				this.ballTrails,
+				this.trailGfx,
+				this.ballPlayersById(),
+				this.arena,
+			);
 		}
 		this.localReplay.captureTick(delta);
 	}
@@ -1123,9 +1140,21 @@ export class ShellCurlScene
 				ball: ball,
 			})),
 			isMoving: (ball) => !(ball as CurlingBallState).stopped,
-			trailOptions: { scale: this.arena.scale },
+			trailOptions: {
+				scale: this.arena.scale,
+				// Settled stones shed their trails gradually, so a crowded
+				// sheet stops re-tessellating dozens of polylines every frame.
+				stoppedFadePointsPerRecord: 3,
+			},
 			trailEffectByPlayer: (player) => this.trailEffectForPlayer(player),
 		});
+	}
+
+	/** True while any settled stone's trail still has segments left to dissolve. */
+	private hasFadingTrails(): boolean {
+		for (const [, trail] of this.ballTrails.entries())
+			if (trail.length > 1) return true;
+		return false;
 	}
 
 	private trailEffectForPlayer(player: number): string {
@@ -1138,7 +1167,25 @@ export class ShellCurlScene
 	}
 
 	public ballPlayersById(): Map<number | string, number> {
-		return new Map(this.allBalls.map((ball) => [ball.id, ball.teamId]));
+		// Called on every draw; validating the cached map in place avoids the
+		// per-frame Map and tuple-array allocations of a straight rebuild.
+		const balls = this.allBalls;
+		const cache = this.ballPlayersCache;
+		let valid = cache !== null && cache.size === balls.length;
+		if (valid && cache)
+			for (const ball of balls)
+				if (cache.get(ball.id) !== ball.teamId) {
+					valid = false;
+					break;
+				}
+		if (!valid || !cache) {
+			const rebuilt = new Map<number | string, number>(
+				balls.map((ball) => [ball.id, ball.teamId]),
+			);
+			this.ballPlayersCache = rebuilt;
+			return rebuilt;
+		}
+		return cache;
 	}
 
 	// ── Overlays ──────────────────────────────────────────────────────────────
@@ -1578,6 +1625,7 @@ export class ShellCurlScene
 			? remapPowerPickups(this.powerPickups.all(), (pickup) => pickup)
 			: [];
 		this.arena = this.resolveArena();
+		this.ballTrails.remapToRectArena(oldArena, this.arena);
 
 		const vScale = this.arena.scale / oldArena.scale;
 
@@ -1625,6 +1673,12 @@ export class ShellCurlScene
 		}
 		drawShellCurlPowerPickups(this.powerupsEnabled, this.powerPickups);
 		if (this.online.isActive) this.online.reprojectPhysicsState();
+		drawShellCurlBallTrails(
+			this.ballTrails,
+			this.trailGfx,
+			this.ballPlayersById(),
+			this.arena,
+		);
 		this.redrawAllBalls();
 
 		this.scoreHud.update(this.buildScoreHudState());

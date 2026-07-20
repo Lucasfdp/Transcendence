@@ -78,6 +78,7 @@ describe("TournamentRuntimeService (SPEC-001/SPEC-023)", () => {
 	let tournamentRepo: { findOne: jest.Mock; save: jest.Mock };
 	let participantRepo: { find: jest.Mock };
 	let tournament: Tournament;
+	let createdClocks: ManualClock[];
 
 	beforeEach(() => {
 		jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
@@ -94,7 +95,12 @@ describe("TournamentRuntimeService (SPEC-001/SPEC-023)", () => {
 				.fn()
 				.mockResolvedValue([10, 20, 30, 40].map((id, i) => makeParticipant(id, i))),
 		};
-		const clockFactory = (): TournamentClock => new ManualClock(0);
+		createdClocks = [];
+		const clockFactory = (): TournamentClock => {
+			const clock = new ManualClock(0);
+			createdClocks.push(clock);
+			return clock;
+		};
 		service = new TournamentRuntimeService(
 			tournamentRepo as never,
 			participantRepo as never,
@@ -158,6 +164,24 @@ describe("TournamentRuntimeService (SPEC-001/SPEC-023)", () => {
 		expect(tournament.status).toBe("cancelled");
 		expect(tournament.finishedAt).toBeInstanceOf(Date);
 		expect(service.hasRuntime("t-1")).toBe(false);
+	});
+
+	it("disposes the runtime's pending clock timers once the terminal snapshot lands", async () => {
+		await service.startTournament("t-1");
+		const clock = createdClocks[0];
+		expect(clock).toBeDefined();
+
+		// A probe standing in for any timer still pending at termination (turn
+		// handoff, roll timeout, CPU delay, Final Challenge retry, ...).
+		const probe = jest.fn();
+		clock.schedule(60_000, probe);
+
+		await service.cancelTournament("t-1", "administrative");
+		expect(service.hasRuntime("t-1")).toBe(false);
+
+		// Disposal cancelled every pending timer — nothing may fire afterwards.
+		clock.advance(600_000);
+		expect(probe).not.toHaveBeenCalled();
 	});
 
 	it("cancel with no live Runtime flips the persisted row directly", async () => {

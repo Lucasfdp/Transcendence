@@ -119,7 +119,12 @@ export class GameResultsService {
 					return { current: locked, xp, level, leveledUp };
 				});
 
-			await this.updateGameStats(current, dto.gameId, dto.outcome);
+			await this.updateGameStats(
+			current,
+			dto.gameId,
+			dto.outcome,
+			dto.perfectRounds ?? 0,
+		);
 
 			const unlockedAchievements =
 				await this.achievementsService.evaluateForUser(current);
@@ -193,6 +198,7 @@ export class GameResultsService {
 		user: User,
 		gameId: string,
 		outcome: SubmitResultDto["outcome"],
+		perfectRounds = 0,
 	): Promise<void> {
 		const stats =
 			(await this.userGameStatsRepo.findOne({
@@ -205,11 +211,13 @@ export class GameResultsService {
 				gamesPlayed: 0,
 				totalWins: 0,
 				totalLosses: 0,
+				perfectRounds: 0,
 			});
 
 		stats.gamesPlayed += 1;
 		if (outcome === "win") stats.totalWins += 1;
 		else if (outcome === "loss") stats.totalLosses += 1;
+		stats.perfectRounds = (stats.perfectRounds ?? 0) + perfectRounds;
 
 		await this.userGameStatsRepo.save(stats);
 	}

@@ -16,6 +16,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import {
 	InviteTournamentDto,
 	JoinTournamentByPinDto,
+	RemoveTournamentCpuDto,
 } from "./dto/tournaments.dto";
 import {
 	AddTournamentCpuResponse,
@@ -25,6 +26,7 @@ import {
 	JoinTournamentByPinResponse,
 	JoinTournamentResponse,
 	LeaveTournamentResponse,
+	RemoveTournamentCpuResponse,
 	StartTournamentResponse,
 } from "./tournaments.contracts";
 import { TournamentLobbyService } from "./tournament-lobby.service";
@@ -123,6 +125,18 @@ export class TournamentsController {
 		@Param("id", ParseUUIDPipe) id: string,
 	): Promise<AddTournamentCpuResponse> {
 		return this.lobbyService.addCpu(id, req.user.id);
+	}
+
+	/** POST /api/tournaments/:id/remove-cpu — creator unseats a CPU participant. */
+	@Post(":id/remove-cpu")
+	@HttpCode(200)
+	@UseGuards(CsrfGuard)
+	removeCpu(
+		@Request() req: AuthedRequest,
+		@Param("id", ParseUUIDPipe) id: string,
+		@Body() body: RemoveTournamentCpuDto,
+	): Promise<RemoveTournamentCpuResponse> {
+		return this.lobbyService.removeCpu(id, req.user.id, body.botUserId);
 	}
 
 	/** POST /api/tournaments/:id/leave — leave pre-start (creator cancels). */

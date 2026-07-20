@@ -26,6 +26,86 @@ describe("ArenaBallTrailRuntime", () => {
 		]);
 	});
 
+	it("fades stopped balls through recordSet without touching archived trails", () => {
+		const runtime = new ArenaBallTrailRuntime();
+		runtime.set("shell", [
+			{ x: 0, y: 0 },
+			{ x: 10, y: 0 },
+			{ x: 20, y: 0 },
+		]);
+		// Without fadeAbsentIds, trails stored under synthetic ids that are
+		// never present in the record call must persist untouched.
+		runtime.set("history-1", [
+			{ x: 5, y: 5 },
+			{ x: 6, y: 6 },
+		]);
+		const stoppedBall = { x: 20, y: 0, vx: 0, vy: 0, r: 8 };
+		const recordStopped = () =>
+			runtime.recordSet({
+				balls: [{ id: "shell", player: 0, ball: stoppedBall }],
+				isMoving: () => false,
+				trailOptions: { stoppedFadePointsPerRecord: 2 },
+			});
+
+		recordStopped();
+		expect(runtime.get("shell")).toEqual([{ x: 20, y: 0 }]);
+		recordStopped();
+		expect(runtime.get("shell")).toBeUndefined();
+		expect(runtime.get("history-1")).toEqual([
+			{ x: 5, y: 5 },
+			{ x: 6, y: 6 },
+		]);
+	});
+
+	it("dissolves orphaned trails when fadeAbsentIds is enabled", () => {
+		const runtime = new ArenaBallTrailRuntime();
+		// A settled power ball is pruned from the runtime, so its id stops
+		// appearing in record calls and its trail must fade out on its own.
+		runtime.set("power-0", [
+			{ x: 0, y: 0 },
+			{ x: 10, y: 0 },
+			{ x: 20, y: 0 },
+			{ x: 30, y: 0 },
+		]);
+		const movingBall = { x: 50, y: 50, vx: 1, vy: 0, r: 8 };
+		const record = () =>
+			runtime.recordSet({
+				balls: [{ id: "local", player: 0, ball: movingBall }],
+				isMoving: () => true,
+				trailOptions: {
+					minDistance: 1,
+					stoppedFadePointsPerRecord: 2,
+				},
+				fadeAbsentIds: true,
+			});
+
+		record();
+		expect(runtime.get("power-0")).toHaveLength(2);
+		expect(runtime.get("local")).toHaveLength(1);
+		record();
+		expect(runtime.get("power-0")).toBeUndefined();
+	});
+
+	it("records moving trails in place without replacing the stored array", () => {
+		const runtime = new ArenaBallTrailRuntime();
+		const trail = [{ x: 0, y: 0 }];
+		runtime.set("shell", trail);
+		runtime.recordSet({
+			balls: [
+				{
+					id: "shell",
+					player: 0,
+					ball: { x: 50, y: 0, vx: 1, vy: 0, r: 8 },
+				},
+			],
+			isMoving: () => true,
+			trailOptions: { minDistance: 1 },
+		});
+
+		expect(runtime.get("shell")).toBe(trail);
+		expect(trail).toHaveLength(2);
+	});
+
 	it("builds stable trail objects for arena power balls", () => {
 		const objects = buildArenaPowerBallTrailObjects(
 			[

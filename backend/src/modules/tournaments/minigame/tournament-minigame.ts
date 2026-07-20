@@ -512,8 +512,12 @@ export class TournamentMinigame {
 
 	/**
 	 * Awaits the FIRST of: a finished/abandoned lifecycle signal for this match,
-	 * or the watchdog (SPEC-015 "Espera"/"Watchdog"). The watchdog reconciles the
-	 * `matches` table ONCE; a missing result resolves to null (⇒ cancelled). A
+	 * or the watchdog (SPEC-015 "Espera"/"Watchdog"). When the watchdog fires it
+	 * reconciles the `matches` table; a missing result normally resolves to null
+	 * (⇒ cancelled), but while the reconciler reports the match as still LIVE
+	 * (players genuinely mid-game — a long temple-curling end can outlast the
+	 * watchdog window) the watchdog re-arms instead, so the round keeps waiting
+	 * for the real result and the true winner still gets their Gambling. A
 	 * `started` signal emits MinigameStarted. Subscriptions and the timer are
 	 * always cleaned up on settle.
 	 */
@@ -558,26 +562,48 @@ export class TournamentMinigame {
 				}
 			});
 
-			timer = this.clock.schedule(this.watchdogMs, () => {
-				// One reconciliation against the durable `matches` table (SPEC-015).
-				this.reconciler
-					.reconcile(matchId)
-					.then((reconciled) => {
-						this.logger.warn("minigame watchdog fired; reconciled once", {
-							metadata: { matchId, found: reconciled !== null },
+			const armWatchdog = (): void => {
+				timer = this.clock.schedule(this.watchdogMs, () => {
+					// Reconciliation against the durable `matches` table (SPEC-015).
+					this.reconciler
+						.reconcile(matchId)
+						.then(async (reconciled) => {
+							if (reconciled !== null) {
+								this.logger.warn("minigame watchdog fired; reconciled a result", {
+									metadata: { matchId, found: true },
+								});
+								settle(reconciled);
+								return;
+							}
+							const live = await this.reconciler.isMatchLive?.(matchId);
+							if (live === true && !settled) {
+								// The arena is still being played — the room dying in ANY
+								// way (finish, abandon, abort) fires a lifecycle signal
+								// that settles this wait, so extending is always safe.
+								this.logger.warn(
+									"minigame watchdog fired; match still live — extending the wait",
+									{ metadata: { matchId, minigameId } },
+								);
+								armWatchdog();
+								return;
+							}
+							this.logger.warn("minigame watchdog fired; reconciled once", {
+								metadata: { matchId, found: false },
+							});
+							settle(null);
+						})
+						.catch((error) => {
+							this.logger.error("minigame reconciliation failed; treating as no result", {
+								metadata: {
+									matchId,
+									error: error instanceof Error ? error.message : String(error),
+								},
+							});
+							settle(null);
 						});
-						settle(reconciled);
-					})
-					.catch((error) => {
-						this.logger.error("minigame reconciliation failed; treating as no result", {
-							metadata: {
-								matchId,
-								error: error instanceof Error ? error.message : String(error),
-							},
-						});
-						settle(null);
-					});
-			});
+				});
+			};
+			armWatchdog();
 		});
 	}
 

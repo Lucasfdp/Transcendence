@@ -16,6 +16,55 @@ interface PlayerRollState {
 }
 
 const rollStates = new WeakMap<Phaser.GameObjects.Image, PlayerRollState>();
+
+// Per-scene cache of resolved player images so steady-state frames avoid
+// linear display-list scans. A `null` entry records a confirmed miss; misses
+// are purged on the hide/destroy paths, the only windows in which scenes
+// create fallback images, so external creations are always re-discovered.
+const playerImageCaches = new WeakMap<
+	Phaser.Scene,
+	Map<string, Phaser.GameObjects.Image | null>
+>();
+
+function getPlayerImageCache(
+	scene: Phaser.Scene,
+): Map<string, Phaser.GameObjects.Image | null> {
+	let cache = playerImageCaches.get(scene);
+	if (!cache) {
+		cache = new Map();
+		playerImageCaches.set(scene, cache);
+	}
+	return cache;
+}
+
+function findPlayerImage(
+	scene: Phaser.Scene,
+	name: string,
+): Phaser.GameObjects.Image | undefined {
+	const cache = getPlayerImageCache(scene);
+	const cached = cache.get(name);
+	if (cached === null) return undefined;
+	if (cached) {
+		if (cached.active) return cached;
+		cache.delete(name);
+	}
+	const existing = scene.children.getByName(name);
+	if (existing instanceof Phaser.GameObjects.Image) {
+		cache.set(name, existing);
+		return existing;
+	}
+	cache.set(name, null);
+	return undefined;
+}
+
+// Drop cached entries so the next lookup rescans the display list. Called on
+// hide/destroy paths, after which scenes may create or remove fallbacks.
+function purgePlayerImageCache(scene: Phaser.Scene, names: string[]): void {
+	const cache = playerImageCaches.get(scene);
+	if (!cache) return;
+	for (const name of names) cache.delete(name);
+}
+
 const TELEPORT_DISTANCE_MIN = 180;
 const TELEPORT_DISTANCE_RADIUS_FACTOR = 8;
 const RETRACT_SPEED_MIN = 2;
@@ -95,8 +144,8 @@ export function drawIngameShellTexture(
 		return false;
 	}
 
-	const body = scene.children.getByName(`${name}-body`);
-	if (body instanceof Phaser.GameObjects.Image) body.setVisible(false);
+	const body = findPlayerImage(scene, `${name}-body`);
+	if (body) body.setVisible(false);
 
 	const shell = getOrCreatePlayerImage(
 		scene,
@@ -124,10 +173,11 @@ function getOrCreatePlayerImage(
 	textureKey: string,
 	state: PlayerVisualState,
 ): Phaser.GameObjects.Image {
-	const existing = scene.children.getByName(name);
-	return existing instanceof Phaser.GameObjects.Image
-		? existing
-		: scene.add.image(state.x, state.y, textureKey).setName(name);
+	const existing = findPlayerImage(scene, name);
+	if (existing) return existing;
+	const created = scene.add.image(state.x, state.y, textureKey).setName(name);
+	getPlayerImageCache(scene).set(name, created);
+	return created;
 }
 
 function isPlayerMoving(state: PlayerVisualState): boolean {
@@ -162,24 +212,29 @@ export function hideIngamePlayerTexture(
 	scene: Phaser.Scene,
 	name: string,
 ): void {
-	for (const childName of [`${name}-body`, `${name}-shell`, name]) {
+	// Purge and rescan directly: hide runs in the window where scenes create
+	// fallback images, so no cached miss may survive this call.
+	const names = [`${name}-body`, `${name}-shell`, `${name}-fallback`, name];
+	purgePlayerImageCache(scene, names);
+	for (const childName of names) {
 		const existing = scene.children.getByName(childName);
 		if (existing instanceof Phaser.GameObjects.Image) existing.setVisible(false);
 	}
-	hideFallbackTexture(scene, name);
 }
 
 export function destroyIngamePlayerTexture(
 	scene: Phaser.Scene,
 	name: string,
 ): void {
-	for (const childName of [`${name}-body`, `${name}-shell`, `${name}-fallback`, name]) {
+	const names = [`${name}-body`, `${name}-shell`, `${name}-fallback`, name];
+	purgePlayerImageCache(scene, names);
+	for (const childName of names) {
 		const existing = scene.children.getByName(childName);
 		if (existing instanceof Phaser.GameObjects.Image) existing.destroy();
 	}
 }
 
 function hideFallbackTexture(scene: Phaser.Scene, name: string): void {
-	const existing = scene.children.getByName(`${name}-fallback`);
-	if (existing instanceof Phaser.GameObjects.Image) existing.setVisible(false);
+	const existing = findPlayerImage(scene, `${name}-fallback`);
+	if (existing) existing.setVisible(false);
 }

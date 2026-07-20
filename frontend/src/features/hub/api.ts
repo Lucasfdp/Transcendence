@@ -705,10 +705,11 @@ export const api = {
 	submitGameResult: (
 		gameId: string,
 		outcome: "win" | "loss" | "draw" | "completed",
+		extras?: { perfectRounds?: number },
 	): Promise<ProgressionResult> =>
 		apiFetch<ProgressionResult>("/game-results", {
 			method: "POST",
-			body: JSON.stringify({ gameId, outcome }),
+			body: JSON.stringify({ gameId, outcome, ...extras }),
 		}),
 
 	/**

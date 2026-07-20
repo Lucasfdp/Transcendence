@@ -81,3 +81,49 @@ export function runStartCountdown(
 	showStep(0);
 	return text;
 }
+
+/**
+ * Flashes one big centred celebration label (e.g. "PERFECT!") with the same
+ * beat as the countdown's "GO!": pop in with Back.easeOut, quick fade, then
+ * the text destroys itself. Presentation-only; safe across scene shutdowns
+ * because the tweens ride the scene and die with it.
+ */
+export function runSplashText(
+	scene: Phaser.Scene,
+	label: string,
+	options: StartCountdownOptions = {},
+): Phaser.GameObjects.Text {
+	const text = scene.add
+		.text(scene.scale.width / 2, scene.scale.height / 2, label, {
+			fontSize: "120px",
+			color: THEME.textGold,
+			fontFamily: THEME.font,
+			fontStyle: "bold",
+			stroke: "#10150f",
+			strokeThickness: 8,
+		})
+		.setOrigin(0.5)
+		.setDepth(options.depth ?? 100)
+		.setShadow(0, 5, "rgba(8, 18, 11, 0.92)", 8)
+		.setScale(0.4)
+		.setAlpha(1);
+
+	scene.tweens.add({
+		targets: text,
+		scale: 1.6,
+		duration: 650,
+		ease: "Back.easeOut",
+	});
+	scene.tweens.add({
+		targets: text,
+		alpha: 0,
+		delay: 600,
+		duration: 320,
+		ease: "Cubic.easeIn",
+		onComplete: () => {
+			text.destroy();
+			options.onComplete?.();
+		},
+	});
+	return text;
+}

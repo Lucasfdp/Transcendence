@@ -169,6 +169,9 @@ const BALL_TRAIL_OPTIONS: PlayerTrailOptions = {
 	lineWidth: 7,
 	baseAlpha: 0.22,
 	alphaRange: 0.58,
+	// Settled balls shed trail points on every record call so old trails
+	// dissolve instead of persisting until the next reset.
+	stoppedFadePointsPerRecord: 3,
 };
 
 const BAMBOO_BASH_DESCRIPTOR: GameDescriptor = {
@@ -210,6 +213,8 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 	ball: BallState = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_SRC_R };
 	powerBalls = new ArenaPowerRuntime();
 	private powerBallTexCount = 0;
+	/** One-frame redraw latch so fully idle frames skip the ball/trail redraw. */
+	private ballsNeedRedraw = true;
 	private localParticipants: LocalParticipant[] = [];
 	playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
 	playerTrailEffects: string[] = [];
@@ -634,10 +639,21 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			this.updateLocalParticipants(delta);
 			this.updatePowerBalls(delta);
 			this.resolvePowerBallCollisions();
-			this.recordBallTrails();
 			this.drawBamboos();
-			this.drawBallTrails();
-			this.drawBalls();
+			// Idle-frame gate: the ball/trail layer only redraws while a ball
+			// is in motion (plus one trailing frame) or a trail is dissolving.
+			const anyMoving =
+				this.localParticipants.some((participant) =>
+					isBallMoving(participant.ball),
+				) || this.powerBalls.some((entry) => isBallMoving(entry.ball));
+			const redrawNeeded =
+				anyMoving || this.ballsNeedRedraw || this.hasFadingTrails();
+			this.ballsNeedRedraw = anyMoving;
+			if (redrawNeeded) {
+				this.recordBallTrails();
+				this.drawBallTrails();
+				this.drawBalls();
+			}
 			this.localReplay.captureTick(delta);
 			return;
 		}
@@ -682,11 +698,26 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		this.ballWasMoving = moving;
 		if (this.online.isActive) this.online.syncBamboos(delta);
 
-		this.recordBallTrails();
 		this.drawBamboos();
-		this.drawBallTrails();
-		this.drawBalls();
+		// Idle-frame gate mirroring the versus path above.
+		const anyMoving =
+			moving || this.powerBalls.some((entry) => isBallMoving(entry.ball));
+		const redrawNeeded =
+			anyMoving || this.ballsNeedRedraw || this.hasFadingTrails();
+		this.ballsNeedRedraw = anyMoving;
+		if (redrawNeeded) {
+			this.recordBallTrails();
+			this.drawBallTrails();
+			this.drawBalls();
+		}
 		this.localReplay.captureTick(delta);
+	}
+
+	/** True while any settled ball's trail still has segments left to dissolve. */
+	private hasFadingTrails(): boolean {
+		for (const [, trail] of this.ballTrails.entries())
+			if (trail.length > 1) return true;
+		return false;
 	}
 
 	// ── Launch handler ────────────────────────────────────────────────────────────
@@ -1335,6 +1366,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		this.ball.vy = 0;
 		this.ball.r = BALL_SRC_R * this.arena.scale;
 		this.ballTrails.reset("local", this.ball.x, this.ball.y);
+		this.ballsNeedRedraw = true;
 	}
 
 
@@ -1360,6 +1392,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		ball.vy = 0;
 		ball.r = BALL_SRC_R * this.arena.scale;
 		this.ballTrails.reset(`local-${index}`, ball.x, ball.y);
+		this.ballsNeedRedraw = true;
 	}
 
 	public recordBallTrails(): void {
@@ -1370,6 +1403,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 					player: side,
 					ball,
 				})),
+				fadeAbsentIds: true,
 				powerBalls: this.powerBalls,
 				isMoving: isBallMoving,
 				trailOptions: {
@@ -1388,6 +1422,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 					player: index,
 					ball: participant.ball,
 				})),
+				fadeAbsentIds: true,
 				powerBalls: this.powerBalls,
 				isMoving: isBallMoving,
 				trailOptions: {
@@ -1401,6 +1436,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 
 		this.ballTrails.recordSet({
 			balls: [{ id: "local", player: 0, ball: this.ball }],
+			fadeAbsentIds: true,
 			powerBalls: this.powerBalls,
 			isMoving: isBallMoving,
 			trailOptions: { ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
@@ -1727,6 +1763,7 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 	private relayoutBambooBash(): void {
 		const oldArena = this.arena;
 		this.arena = this.resolveArena();
+		this.ballTrails.remapToArena(oldArena, this.arena);
 
 		this.launchInput.cancel();
 		this.launchInput.syncScale();
@@ -1792,6 +1829,8 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 
 		drawBambooBashBackground(this.bgGfx, this.arenaSkin, this.arena, this.scale.width, this.scale.height);
 		this.drawBamboos();
+		this.ballsNeedRedraw = true;
+		this.drawBallTrails();
 		this.drawBalls();
 
 		this.hudObjects.forEach((o) => o.destroy());

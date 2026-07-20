@@ -24,6 +24,13 @@ export interface TournamentClock {
 	schedule(delayMs: number, callback: () => void): TimerHandle;
 	/** Cancels a scheduled callback; no-op if already fired or cancelled. */
 	cancel(handle: TimerHandle): void;
+	/**
+	 * Cancels every pending callback at once. Optional so bespoke test clocks
+	 * keep compiling; used by `TournamentRuntime.dispose()` when a tournament
+	 * reaches a terminal phase — each runtime owns its own clock instance, so
+	 * this can never cancel another tournament's timers.
+	 */
+	cancelAll?(): void;
 }
 
 /**
@@ -54,6 +61,13 @@ export class SystemClock implements TournamentClock {
 			clearTimeout(timeout);
 			this.timers.delete(handle.id);
 		}
+	}
+
+	cancelAll(): void {
+		for (const timeout of this.timers.values()) {
+			clearTimeout(timeout);
+		}
+		this.timers.clear();
 	}
 }
 
@@ -100,6 +114,10 @@ export class ManualClock implements TournamentClock {
 
 	cancel(handle: TimerHandle): void {
 		this.pending = this.pending.filter((timer) => timer.id !== handle.id);
+	}
+
+	cancelAll(): void {
+		this.pending = [];
 	}
 
 	/**

@@ -104,4 +104,70 @@ describe("ReplayService replay v2", () => {
 		makeService().captureFrame(room, true);
 		expect(room.replayFrames).toHaveLength(0);
 	});
+
+	// The capture pipeline works on a single owned clone of the live state:
+	// these invariants let it skip a second deep clone per frame safely.
+	describe("captureFrame snapshot ownership", () => {
+		function makeRoom(): MatchRoom {
+			return {
+				replayEnabled: true,
+				replayDisabledReason: null,
+				state: {
+					powerupsEnabled: false,
+					phase: "active",
+					roundNumber: 1,
+					score: [0, 0],
+					objects: [
+						{
+							id: 1,
+							side: 0,
+							x: 0.5,
+							y: 0.5,
+							trail: [{ x: 0.1, y: 0.1 }],
+						},
+					],
+				},
+				replayFrames: [],
+				replayEvents: [],
+				replayStartedAt: null,
+				replayLastSampleAt: null,
+				replayLastKeyframeAt: null,
+				replayLastSnapshot: null,
+			} as unknown as MatchRoom;
+		}
+
+		it("strips entity trails from the keyframe without touching the live state", () => {
+			const room = makeRoom();
+			makeService().captureFrame(room, true);
+
+			expect(room.replayFrames).toHaveLength(1);
+			const recorded = room.replayFrames[0].changes.objects as Array<
+				Record<string, unknown>
+			>;
+			expect(recorded[0].trail).toBeUndefined();
+			// The live snapshot keeps its trail — only the recorded clone is bare.
+			const live = (room.state as unknown as Record<string, unknown>)
+				.objects as Array<Record<string, unknown>>;
+			expect(live[0].trail).toEqual([{ x: 0.1, y: 0.1 }]);
+		});
+
+		it("records delta frames that later live-state mutations cannot alter", () => {
+			const room = makeRoom();
+			const service = makeService();
+			service.captureFrame(room, true, 0);
+
+			const state = room.state as unknown as { score: number[] };
+			state.score = [3, 0];
+			service.captureFrame(room, false, 50);
+
+			const delta = room.replayFrames[1];
+			expect(delta.type).toBe("delta");
+			expect(delta.changes.score).toEqual([3, 0]);
+			expect(delta.changes.objects).toBeUndefined();
+
+			// Mutating the live state afterwards must not rewrite history.
+			state.score[0] = 99;
+			expect(delta.changes.score).toEqual([3, 0]);
+		});
+	});
 });

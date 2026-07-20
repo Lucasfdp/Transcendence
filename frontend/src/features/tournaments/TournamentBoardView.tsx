@@ -114,6 +114,20 @@ function computeStepPath(
 	return path;
 }
 
+/**
+ * Self-ticking countdown leaf: renders the whole seconds left until
+ * `deadlineAt`. Owning the 500 ms presentation tick here (SPEC-022
+ * "Latencia") keeps the clock from re-rendering the whole board tree.
+ */
+function CountdownSeconds({ deadlineAt }: { deadlineAt: number }): JSX.Element {
+	const [nowMs, setNowMs] = useState(() => Date.now());
+	useEffect(() => {
+		const timer = window.setInterval(() => setNowMs(Date.now()), 500);
+		return () => window.clearInterval(timer);
+	}, []);
+	return <>{Math.max(0, Math.ceil((deadlineAt - nowMs) / 1000))}</>;
+}
+
 export function TournamentBoardView({
 	tournamentId,
 	onExit,
@@ -125,8 +139,6 @@ export function TournamentBoardView({
 		alterId: string | null;
 	} | null>(null);
 	const [joinError, setJoinError] = useState<string | null>(null);
-	/** Presentation-only clock tick for the turn countdown. */
-	const [nowMs, setNowMs] = useState(() => Date.now());
 	/** Token positions as RENDERED — lag the snapshot while a roll animates. */
 	const [displayedTiles, setDisplayedTiles] = useState<Record<
 		number,
@@ -344,12 +356,6 @@ export function TournamentBoardView({
 		};
 	}, [navigate]);
 
-	// 500 ms countdown tick — purely presentational (SPEC-022 "Latencia").
-	useEffect(() => {
-		const timer = window.setInterval(() => setNowMs(Date.now()), 500);
-		return () => window.clearInterval(timer);
-	}, []);
-
 	const rollDice = () => {
 		getGameSocket().emit(
 			TOURNAMENT_WS_MESSAGES.INTENT,
@@ -453,15 +459,7 @@ export function TournamentBoardView({
 		myUserId !== null &&
 		snapshot.phase === "PLAYER_TURNS" &&
 		snapshot.activePlayerId === myUserId;
-	const countdownSeconds =
-		snapshot?.turnDeadlineAt != null
-			? Math.max(0, Math.ceil((snapshot.turnDeadlineAt - nowMs) / 1000))
-			: null;
 	const gambling = snapshot?.gambling ?? null;
-	const gamblingSeconds =
-		gambling !== null
-			? Math.max(0, Math.ceil((gambling.deadlineAt - nowMs) / 1000))
-			: null;
 	const myPoints =
 		snapshot?.players.find((p) => p.userId === myUserId)?.points ?? 0;
 	const canAffordGamble = gambling !== null && myPoints >= gambling.cost;
@@ -490,10 +488,6 @@ export function TournamentBoardView({
 
 	// The open shop session (SPEC-012): the shopper decides, everyone watches.
 	const shop = snapshot?.shop ?? null;
-	const shopSeconds =
-		shop !== null
-			? Math.max(0, Math.ceil((shop.deadlineAt - nowMs) / 1000))
-			: null;
 	const shopPlayer =
 		shop && snapshot
 			? (snapshot.players.find((p) => p.userId === shop.playerId) ?? null)
@@ -537,11 +531,6 @@ export function TournamentBoardView({
 	const iConfirmedGate =
 		myUserId !== null &&
 		(minigameGate?.readyPlayerIds.includes(myUserId) ?? false);
-	const gateSeconds =
-		minigameGate !== null
-			? Math.max(0, Math.ceil((minigameGate.deadlineAt - nowMs) / 1000))
-			: null;
-
 	const confirmMinigame = () => {
 		getGameSocket().emit(
 			TOURNAMENT_WS_MESSAGES.INTENT,
@@ -601,9 +590,11 @@ export function TournamentBoardView({
 						</div>
 						<div style={mutedLabel}>
 							{gateReadyCount} / {gateHumans.length} players ready
-							{gateSeconds !== null
-								? ` · auto-starts in ${gateSeconds}s`
-								: ""}
+							{" · auto-starts in "}
+							<CountdownSeconds
+								deadlineAt={minigameGate.deadlineAt}
+							/>
+							s
 						</div>
 						<div style={gateReadyRow}>
 							{gateHumans.map((p) => (
@@ -866,9 +857,14 @@ export function TournamentBoardView({
 											{phaseLabel(snapshot)}
 										</div>
 										{snapshot.phase === "PLAYER_TURNS" &&
-											countdownSeconds !== null && (
+											snapshot.turnDeadlineAt != null && (
 												<div style={mutedLabel}>
-													{countdownSeconds}s
+													<CountdownSeconds
+														deadlineAt={
+															snapshot.turnDeadlineAt
+														}
+													/>
+													s
 												</div>
 											)}
 									</>
@@ -933,7 +929,13 @@ export function TournamentBoardView({
 												{Math.round(
 													gambling.winChance * 100,
 												)}
-												% chance · {gamblingSeconds}s
+												% chance ·{" "}
+												<CountdownSeconds
+													deadlineAt={
+														gambling.deadlineAt
+													}
+												/>
+												s
 											</div>
 											<div style={mutedLabel}>
 												You have {myPoints} points
@@ -1003,7 +1005,11 @@ export function TournamentBoardView({
 													gambling.winnerId,
 											)?.username ?? "The winner"}{" "}
 											is deciding whether to gamble for a
-											Key Item… {gamblingSeconds}s
+											Key Item…{" "}
+											<CountdownSeconds
+												deadlineAt={gambling.deadlineAt}
+											/>
+											s
 										</div>
 									)}
 								</div>
@@ -1020,7 +1026,10 @@ export function TournamentBoardView({
 											</div>
 											<div style={mutedLabel}>
 												You have {myPoints} points ·{" "}
-												{shopSeconds}s
+												<CountdownSeconds
+													deadlineAt={shop.deadlineAt}
+												/>
+												s
 											</div>
 											{shopNotice && (
 												<div
@@ -1122,7 +1131,10 @@ export function TournamentBoardView({
 											{shopPlayer?.username ??
 												"The shopper"}{" "}
 											is browsing the pagoda shop…{" "}
-											{shopSeconds}s
+											<CountdownSeconds
+												deadlineAt={shop.deadlineAt}
+											/>
+											s
 										</div>
 									)}
 								</div>
@@ -1170,9 +1182,25 @@ export function TournamentBoardView({
 										disabled={!isMyTurn}
 										onClick={rollDice}
 									>
-										{isMyTurn
-											? `🎲 Roll the dice${countdownSeconds !== null ? ` (${countdownSeconds}s)` : ""}`
-											: "Waiting for your turn…"}
+										{isMyTurn ? (
+											<>
+												🎲 Roll the dice
+												{snapshot.turnDeadlineAt !=
+													null && (
+													<>
+														{" ("}
+														<CountdownSeconds
+															deadlineAt={
+																snapshot.turnDeadlineAt
+															}
+														/>
+														{"s)"}
+													</>
+												)}
+											</>
+										) : (
+											"Waiting for your turn…"
+										)}
 									</button>
 									<button
 										type="button"

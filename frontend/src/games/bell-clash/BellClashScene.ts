@@ -177,6 +177,9 @@ const BALL_TRAIL_OPTIONS: PlayerTrailOptions = {
 	lineWidth: 7,
 	baseAlpha: 0.22,
 	alphaRange: 0.58,
+	// Settled balls shed trail points on every record call so old trails
+	// dissolve instead of persisting until the next reset.
+	stoppedFadePointsPerRecord: 3,
 };
 
 /** Fallback power pool when no ShellPicker selection is present. */
@@ -237,6 +240,10 @@ export class BellClashScene
 	private scoreEvents: string[] = [];
 
 	public ballTrails = new ArenaBallTrailRuntime();
+	/** Cached, sorted local physics ball list — rebuilt when the ball set changes. */
+	private localBallsPhysicsCache: Array<[number, BallState]> | null = null;
+	/** One-frame redraw latch so fully idle frames skip the ball/trail redraw. */
+	private ballsNeedRedraw = true;
 	private localMode: "solo" | "versus" = "solo";
 	public localPlayerCount = 1;
 	public playerShellSkins: string[] = [...DEFAULT_PLAYER_SHELL_SKINS];
@@ -300,6 +307,7 @@ export class BellClashScene
 
 	private set localBalls(localBalls: ReadonlyMap<number, BallState>) {
 		this.localBallWorld.replace(localBalls);
+		this.localBallsPhysicsCache = null;
 	}
 
 	preload(): void {
@@ -327,6 +335,8 @@ export class BellClashScene
 		this.localTurnNumber = 0;
 		this.localScores = [0];
 		this.localBalls.clear();
+		this.localBallsPhysicsCache = null;
+		this.ballsNeedRedraw = true;
 		this.localReplay.reset();
 
 		this.zones = [];
@@ -534,11 +544,10 @@ export class BellClashScene
 				this.clearStoppedPowerFlags(ext, ball === this.ball);
 		}
 		this.updatePowerBalls(delta);
-		this.resolveLocalBallCollisions();
+		this.resolveLocalBallCollisions(balls);
 		anyMoving =
-			this.localBallsForPhysics().some(([, ball]) =>
-				isBallMoving(ball),
-			) || this.powerBalls.some((entry) => isBallMoving(entry.ball));
+			balls.some(([, ball]) => isBallMoving(ball)) ||
+			this.powerBalls.some((entry) => isBallMoving(entry.ball));
 
 		if (this.launchedThisShot && !anyMoving)
 			notifyGameRuleProjectileSettled(
@@ -546,22 +555,40 @@ export class BellClashScene
 				this.ball,
 			);
 
-		this.recordBallTrails();
 		layoutBellClashBell(this.bellImage, this.arena, this.bellPulseMs);
-		this.drawBallTrails();
-		this.drawBalls();
+		// Idle-frame gate: skip the redraw when nothing moved this frame or
+		// last frame and no settled trail is still dissolving. External events
+		// (turn change, relayout) force one redraw through `ballsNeedRedraw`.
+		const redrawNeeded =
+			anyMoving || this.ballsNeedRedraw || this.hasFadingTrails();
+		this.ballsNeedRedraw = anyMoving;
+		if (redrawNeeded) {
+			this.recordBallTrails();
+			this.drawBallTrails();
+			this.drawBalls();
+		}
 		this.localReplay.captureTick(delta);
 	}
 
 	private localBallsForPhysics(): Array<[number, BallState]> {
-		if (this.localPlayerCount <= 1) return [[0, this.ball]];
-		return [...this.localBalls.entries()].sort(([a], [b]) => a - b);
+		this.localBallsPhysicsCache ??=
+			this.localPlayerCount <= 1
+				? [[0, this.ball]]
+				: [...this.localBalls.entries()].sort(([a], [b]) => a - b);
+		return this.localBallsPhysicsCache;
 	}
 
-	private resolveLocalBallCollisions(): void {
-		this.powerBalls.resolveCollisions(
-			this.localBallsForPhysics().map(([, ball]) => ball),
-		);
+	/** True while any settled ball's trail still has segments left to dissolve. */
+	private hasFadingTrails(): boolean {
+		for (const [, trail] of this.ballTrails.entries())
+			if (trail.length > 1) return true;
+		return false;
+	}
+
+	private resolveLocalBallCollisions(
+		balls: ReadonlyArray<[number, BallState]>,
+	): void {
+		this.powerBalls.resolveCollisions(balls.map(([, ball]) => ball));
 	}
 
 	public updatePowerBalls(delta: number): void {
@@ -659,6 +686,7 @@ export class BellClashScene
 	private finishShot(): void {
 		this.launchedThisShot = false;
 		this.ballGfx.setAlpha(1);
+		this.ballsNeedRedraw = true;
 		this.localTurnNumber += 1;
 
 		if (this.localTurnNumber >= this.localPlayerCount * SHOTS_TOTAL) {
@@ -1242,6 +1270,8 @@ export class BellClashScene
 		const ball = this.localBalls.get(side);
 		if (!ball) return;
 		this.ball = ball;
+		this.localBallsPhysicsCache = null;
+		this.ballsNeedRedraw = true;
 		this.recreateSlingshot();
 		this.launchInput.attach();
 		this.ballTrails.reset("local", this.ball.x, this.ball.y);
@@ -1255,6 +1285,7 @@ export class BellClashScene
 					player: side,
 					ball,
 				})),
+				fadeAbsentIds: true,
 				powerBalls: this.powerBalls,
 				isMoving: isBallMoving,
 				trailOptions: {
@@ -1275,6 +1306,7 @@ export class BellClashScene
 						ball,
 					}),
 				),
+				fadeAbsentIds: true,
 				powerBalls: this.powerBalls,
 				isMoving: isBallMoving,
 				trailOptions: {
@@ -1295,6 +1327,7 @@ export class BellClashScene
 					ball: this.ball,
 				},
 			],
+			fadeAbsentIds: true,
 			powerBalls: this.powerBalls,
 			isMoving: isBallMoving,
 			trailOptions: { ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
@@ -1830,6 +1863,7 @@ export class BellClashScene
 			? remapPowerPickups(this.powerPickups.all(), (pickup) => pickup)
 			: [];
 		this.arena = this.resolveArena();
+		this.ballTrails.remapToArena(oldArena, this.arena);
 		const nextPickupRadius = PICKUP_RADIUS_SRC * this.arena.scale;
 
 		this.launchInput.cancel();
@@ -1878,6 +1912,8 @@ export class BellClashScene
 				}),
 			);
 		else this.spawnPowerPickup();
+		this.ballsNeedRedraw = true;
+		this.drawBallTrails();
 		this.drawBalls();
 
 		this.hudObjects.forEach((object) => object.destroy());

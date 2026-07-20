@@ -576,6 +576,65 @@ describe("TournamentLobbyService (SPEC-038 entry & lobby)", () => {
 		});
 	});
 
+	// ── remove-cpu ────────────────────────────────────────────────────────────
+
+	describe("removeCpu", () => {
+		it("lets the creator unseat a CPU and prunes botUserIds", async () => {
+			const record = makeRecord({ botUserIds: [900] });
+			tournamentRepo.findOne.mockResolvedValue(makeTournament(record));
+			participantQueue = [
+				[makeParticipant(1, 0), makeParticipant(900, 1)],
+			];
+
+			const state = await service.removeCpu("t-1", 1, 900);
+
+			expect(participantRepo.delete).toHaveBeenCalledWith({ id: "p-900" });
+			expect(record.botUserIds).toEqual([]);
+			expect(state.participants.map((p) => p.userId)).toEqual([1]);
+			expect(lastPushedCause()).toBe("TournamentPlayerLeft");
+		});
+
+		it("re-opens the seats when a CPU leaves a completed lobby", async () => {
+			const record = makeRecord({ seatsAssigned: true, botUserIds: [900] });
+			tournamentRepo.findOne.mockResolvedValue(makeTournament(record));
+			participantQueue = [
+				[makeParticipant(1, 0), makeParticipant(900, 1)],
+			];
+
+			await service.removeCpu("t-1", 1, 900);
+
+			expect(record.seatsAssigned).toBe(false);
+		});
+
+		it("rejects a non-creator", async () => {
+			const record = makeRecord({ creatorUserId: 1, botUserIds: [900] });
+			tournamentRepo.findOne.mockResolvedValue(makeTournament(record));
+			participantQueue = [
+				[makeParticipant(1, 0), makeParticipant(900, 1)],
+			];
+
+			await expect(service.removeCpu("t-1", 2, 900)).rejects.toThrow(
+				ForbiddenException,
+			);
+			expect(participantRepo.delete).not.toHaveBeenCalled();
+		});
+
+		it("rejects a userId that is not a seated CPU", async () => {
+			const record = makeRecord({ botUserIds: [900] });
+			tournamentRepo.findOne.mockResolvedValue(makeTournament(record));
+			participantQueue = [
+				[makeParticipant(1, 0), makeParticipant(2, 1)],
+			];
+
+			// A human participant id is never in botUserIds — creator cannot
+			// kick a human through the CPU endpoint.
+			await expect(service.removeCpu("t-1", 1, 2)).rejects.toThrow(
+				NotFoundException,
+			);
+			expect(participantRepo.delete).not.toHaveBeenCalled();
+		});
+	});
+
 	// ── start ─────────────────────────────────────────────────────────────────
 
 	describe("start", () => {

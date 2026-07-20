@@ -13,6 +13,7 @@ import { IsInt, IsPositive, IsString, Length, Matches } from "class-validator";
 import {
 	InviteTournamentRequest,
 	JoinTournamentByPinRequest,
+	RemoveTournamentCpuRequest,
 	TOURNAMENT_PIN_LENGTH,
 } from "../tournaments.contracts";
 
@@ -21,6 +22,13 @@ export class InviteTournamentDto implements InviteTournamentRequest {
 	@IsInt()
 	@IsPositive()
 	userId: number;
+}
+
+/** Body of POST /tournaments/:id/remove-cpu. */
+export class RemoveTournamentCpuDto implements RemoveTournamentCpuRequest {
+	@IsInt()
+	@IsPositive()
+	botUserId: number;
 }
 
 /** Body of POST /tournaments/join-pin. */

@@ -27,4 +27,9 @@ export class UserGameStats {
 
 	@Column({ default: 0 })
 	totalLosses: number;
+
+	// PERFECT rounds (Kame Knock: every breakable target cleared in one ball
+	// round). Participation metric — feeds achievements, never the leaderboard.
+	@Column({ default: 0 })
+	perfectRounds: number;
 }

@@ -76,21 +76,24 @@ function clone<T>(value: T): T {
 	return JSON.parse(JSON.stringify(value)) as T;
 }
 
+/**
+ * Strips per-entity `trail` arrays from a snapshot, in place. The caller MUST
+ * pass an exclusively owned deep clone (captureFrame's fresh `clone(room.state)`)
+ * — mutating it directly saves a second full deep clone on every captured frame,
+ * which runs at up to 30 Hz per active room.
+ */
 function withoutRepeatedTrails(
 	snapshot: Record<string, unknown>,
 ): Record<string, unknown> {
-	const normalised = clone(snapshot);
 	for (const collection of ["entities", "balls", "objects"] as const) {
-		const values = normalised[collection];
+		const values = snapshot[collection];
 		if (!Array.isArray(values)) continue;
-		normalised[collection] = values.map((value) => {
-			if (!value || typeof value !== "object") return value;
-			const entity = { ...(value as Record<string, unknown>) };
-			delete entity.trail;
-			return entity;
-		});
+		for (const value of values) {
+			if (value && typeof value === "object")
+				delete (value as Record<string, unknown>).trail;
+		}
 	}
-	return normalised;
+	return snapshot;
 }
 
 function roundOf(snapshot: Record<string, unknown>): number {
@@ -118,8 +121,12 @@ function diffSnapshot(
 	const changes: Record<string, unknown> = {};
 	const removals: string[] = [];
 	for (const [key, value] of Object.entries(next)) {
+		// `next` is an exclusively owned clone that is stored wholesale and
+		// never mutated afterwards, so the recorded change can share the
+		// reference — re-cloning an already-JSON-cloned value was a pure
+		// identity operation paid on every delta frame.
 		if (JSON.stringify(previous[key]) !== JSON.stringify(value))
-			changes[key] = clone(value);
+			changes[key] = value;
 	}
 	for (const key of Object.keys(previous)) {
 		if (!(key in next)) removals.push(key);
@@ -332,6 +339,14 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 				expiresAt: new Date(Date.now() + REPLAY_TTL_MS),
 			}),
 		);
+		// The timeline is durable now — release the in-memory buffers. Finished
+		// rooms stay registered in RoomService for the rematch flow, so without
+		// this every match's full frame history would be retained for the life
+		// of the process. The caller's `rewardsGranted` guard ensures this
+		// method never runs twice for the same room, so nothing reads them again.
+		room.replayFrames = [];
+		room.replayEvents = [];
+		room.replayLastSnapshot = null;
 	}
 
 	async listForUser(userId: number): Promise<ReplaySummaryView[]> {

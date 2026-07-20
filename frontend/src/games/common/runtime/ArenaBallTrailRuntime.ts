@@ -33,6 +33,11 @@ export interface ArenaBallTrailSetOptions {
 	readonly isMoving: ArenaBallMovingResolver;
 	readonly trailOptions?: PlayerTrailOptions;
 	readonly trailEffectByPlayer?: (player: number) => string;
+	// Opt-in: trails whose id is absent from this record call (for example a
+	// power ball pruned on settling) dissolve at the stopped-fade rate instead
+	// of lingering for ever. Scenes that archive historical trails must leave
+	// this off.
+	readonly fadeAbsentIds?: boolean;
 }
 
 export function buildArenaBallTrailObjects(
@@ -111,6 +116,37 @@ export class ArenaBallTrailRuntime {
 		this.movingIds.delete(id);
 	}
 
+	remap(transform: (point: PlayerTrailPoint) => PlayerTrailPoint): void {
+		for (const [id, trail] of this.store)
+			this.store.set(
+				id,
+				trail.map((point) => transform(point)),
+			);
+	}
+
+	// Trail points are stored in screen pixels, so a resize/zoom relayout must
+	// remap them alongside the balls or the trails detach from their owners.
+	remapToArena(oldArena: ArenaPixels, newArena: ArenaPixels): void {
+		this.remap((point) => ({
+			x: newArena.cx + ((point.x - oldArena.cx) / oldArena.rx) * newArena.rx,
+			y: newArena.cy + ((point.y - oldArena.cy) / oldArena.ry) * newArena.ry,
+		}));
+	}
+
+	remapToRectArena(
+		oldArena: RectArenaPixels,
+		newArena: RectArenaPixels,
+	): void {
+		this.remap((point) => ({
+			x:
+				newArena.sheetX +
+				((point.x - oldArena.sheetX) / oldArena.sheetW) * newArena.sheetW,
+			y:
+				newArena.sheetY +
+				((point.y - oldArena.sheetY) / oldArena.sheetH) * newArena.sheetH,
+		}));
+	}
+
 	record(
 		objects: readonly PlayerTrailObject[],
 		options: PlayerTrailOptions = {},
@@ -137,6 +173,25 @@ export class ArenaBallTrailRuntime {
 				object.trailEffect ?? options.trailEffectByPlayer?.(object.player),
 		}));
 		this.record(objects, options.trailOptions);
+		if (options.fadeAbsentIds)
+			this.fadeAbsent(
+				new Set(objects.map((object) => object.id)),
+				options.trailOptions?.stoppedFadePointsPerRecord ?? 0,
+			);
+	}
+
+	// Balls removed from play stop appearing in record calls, so their trails
+	// would otherwise linger indefinitely and keep idle-frame gates open.
+	fadeAbsent(
+		activeIds: ReadonlySet<ArenaBallTrailId>,
+		pointsPerCall: number,
+	): void {
+		if (pointsPerCall <= 0) return;
+		for (const [id, trail] of this.store) {
+			if (activeIds.has(id)) continue;
+			trail.splice(0, pointsPerCall);
+			if (trail.length === 0) this.delete(id);
+		}
 	}
 
 	draw(

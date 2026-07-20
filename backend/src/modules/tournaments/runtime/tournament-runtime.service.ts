@@ -319,6 +319,12 @@ export class TournamentRuntimeService {
 		}
 
 		if (mapping.terminal) {
+			// Release the dead runtime's pending clock timers (turn handoffs,
+			// timeouts, CPU delays, the Final Challenge retry): all of them are
+			// guarded no-ops against a terminal machine, so cancelling them is
+			// unobservable — it only stops finished/cancelled tournaments from
+			// keeping live timers in the process.
+			this.runtimes.get(tournament.id)?.dispose();
 			this.runtimes.delete(tournament.id);
 		}
 	}

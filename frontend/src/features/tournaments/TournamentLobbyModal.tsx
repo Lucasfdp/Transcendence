@@ -16,6 +16,7 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 
+import { api } from "../hub/api";
 import { tournamentApi } from "./api";
 import type { TournamentLobbyState } from "./contracts";
 
@@ -43,9 +44,27 @@ export function TournamentLobbyModal({
 	const [busy, setBusy] = useState(false);
 	const [copied, setCopied] = useState(false);
 	const [hydrating, setHydrating] = useState(false);
+	const [meId, setMeId] = useState<number | null>(null);
 	const lobbyIdRef = useRef<string | null>(null);
 	lobbyIdRef.current = lobby?.id ?? null;
 	const navigate = useNavigate();
+
+	// The creator-only controls (add/remove CPU) need to know who we are.
+	useEffect(() => {
+		if (!isOpen || meId !== null) return;
+		let cancelled = false;
+		void api
+			.getMe()
+			.then((user) => {
+				if (!cancelled) setMeId(user.id);
+			})
+			.catch(() => {
+				/* non-fatal: leader-only controls stay hidden */
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [isOpen, meId]);
 
 	// On open, ask the backend whether the user is already in a lobby and show it
 	// (survives a refresh / reopen) instead of offering create/join while the user
@@ -145,6 +164,10 @@ export function TournamentLobbyModal({
 		if (!lobby) return;
 		void run(() => tournamentApi.addCpu(lobby.id));
 	};
+	const handleRemoveCpu = (botUserId: number | null) => {
+		if (!lobby || botUserId === null) return;
+		void run(() => tournamentApi.removeCpu(lobby.id, botUserId));
+	};
 	const handleLeave = () => {
 		if (!lobby) {
 			onClose();
@@ -182,6 +205,8 @@ export function TournamentLobbyModal({
 		? `${lobby.participants.length} / ${LOBBY_CAPACITY}`
 		: "";
 	const isFull = (lobby?.participants.length ?? 0) === LOBBY_CAPACITY;
+	const isLeader =
+		lobby !== null && meId !== null && lobby.creatorUserId === meId;
 	const isPending = lobby?.status === "pending";
 	const isActive = lobby?.status === "active";
 	const isCancelled = lobby?.status === "cancelled";
@@ -261,24 +286,39 @@ export function TournamentLobbyModal({
 									{lobby.participants.map((p, i) => (
 										<li key={p.userId ?? `slot-${i}`} style={playerItem}>
 											<span>
+												{p.userId === lobby.creatorUserId ? "👑 " : ""}
 												{p.isBot ? "🤖 " : ""}
 												{p.username}
 											</span>
-											<span style={mutedLabel}>
-												{p.isBot ? "CPU" : p.ready ? "connected" : "…"}
+											<span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+												<span style={mutedLabel}>
+													{p.isBot ? "CPU" : p.ready ? "connected" : "…"}
+												</span>
+												{p.isBot && isLeader && (
+													<button
+														type="button"
+														style={removeCpuBtn}
+														disabled={busy}
+														onClick={() => handleRemoveCpu(p.userId)}
+														title="Remove this CPU player"
+														aria-label={`Remove CPU ${p.username}`}
+													>
+														✕
+													</button>
+												)}
 											</span>
 										</li>
 									))}
 									{Array.from({ length: LOBBY_CAPACITY - lobby.participants.length }).map((_, i) => (
 										<li key={`empty-${i}`} style={{ ...playerItem, opacity: 0.55 }}>
 											<span style={{ opacity: 0.7 }}>Waiting for a player…</span>
-											{i === 0 && (
+											{i === 0 && isLeader && (
 												<button
 													type="button"
 													style={addCpuBtn}
 													disabled={busy}
 													onClick={handleAddCpu}
-													title="Creator only: fill this seat with a CPU player"
+													title="Fill this seat with a CPU player"
 												>
 													+ Add CPU
 												</button>
@@ -388,6 +428,17 @@ const addCpuBtn: CSSProperties = {
 	fontSize: 12,
 	fontWeight: 600,
 	cursor: "pointer",
+};
+const removeCpuBtn: CSSProperties = {
+	padding: "2px 8px",
+	borderRadius: 8,
+	border: "1px solid rgba(220,70,70,0.6)",
+	background: "rgba(220,60,60,0.18)",
+	color: "#ff9b9b",
+	fontSize: 12,
+	fontWeight: 700,
+	cursor: "pointer",
+	lineHeight: 1.4,
 };
 const leaveBtn: CSSProperties = {
 	border: "1px solid rgba(220,70,70,0.6)",

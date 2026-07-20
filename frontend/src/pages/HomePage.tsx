@@ -1,4 +1,5 @@
 import {
+	memo,
 	useCallback,
 	useEffect,
 	useId,
@@ -548,21 +549,39 @@ function applyCycleVisuals(
 	node.style.setProperty("--cycle-fg-brightness", fgBrightness.toFixed(3));
 }
 
-function CycleBackdrop({
-	now,
+const CycleBackdrop = memo(function CycleBackdrop({
+	manualMinutes,
 	theme,
 }: {
-	now: Date;
+	manualMinutes: number | null;
 	theme: CycleTheme;
 }): JSX.Element {
 	const backdropRef = useRef<HTMLDivElement | null>(null);
 	const stars = useMemo(() => createCycleStars(CYCLE_STAR_COUNT), []);
 
+	// The backdrop owns its own second-aligned tick, so it keeps its
+	// per-second cadence without re-rendering the whole hub tree. A manual
+	// debug time is static, so it is applied once per change instead.
 	useEffect(() => {
 		const node = backdropRef.current;
 		if (!node) return;
-		applyCycleVisuals(node, getDayProgress(now), theme);
-	}, [now, theme]);
+		if (manualMinutes !== null) {
+			applyCycleVisuals(
+				node,
+				getDayProgress(createManualTime(new Date(), manualMinutes)),
+				theme,
+			);
+			return;
+		}
+		let timerId = 0;
+		const tick = () => {
+			const current = new Date();
+			applyCycleVisuals(node, getDayProgress(current), theme);
+			timerId = window.setTimeout(tick, 1000 - current.getMilliseconds());
+		};
+		tick();
+		return () => window.clearTimeout(timerId);
+	}, [manualMinutes, theme]);
 
 	return (
 		<div
@@ -598,7 +617,7 @@ function CycleBackdrop({
 			<div className="hub-cycle__foreground" />
 		</div>
 	);
-}
+});
 
 /** Displays a live countdown to a lobby/invite expiry timestamp. */
 function LobbyCountdown({ expiresAt }: { expiresAt: number }): JSX.Element {
@@ -1355,7 +1374,18 @@ function HomeMenu(): JSX.Element {
 
 		const scheduleTick = () => {
 			const current = new Date();
-			setNow(current);
+			// Commit only when the displayed minute changes: the clock label,
+			// debug slider and manual-time label are all minute-granular, so
+			// finer ticks would re-render the whole hub for no visible change.
+			setNow((prev) =>
+				prev.getFullYear() === current.getFullYear() &&
+				prev.getMonth() === current.getMonth() &&
+				prev.getDate() === current.getDate() &&
+				prev.getHours() === current.getHours() &&
+				prev.getMinutes() === current.getMinutes()
+					? prev
+					: current,
+			);
 			timerId = window.setTimeout(scheduleTick, 1000 - current.getMilliseconds());
 		};
 
@@ -2905,7 +2935,12 @@ function HomeMenu(): JSX.Element {
 
 	return (
 		<main className={`menu-page hub-page ${backgroundClass}`}>
-			{cycleTheme ? <CycleBackdrop now={displayedNow} theme={cycleTheme} /> : null}
+			{cycleTheme ? (
+				<CycleBackdrop
+					manualMinutes={manualMinutes}
+					theme={cycleTheme}
+				/>
+			) : null}
 			<div className="menu-page__shell hub-page__shell">
 				<header className="menu-page__topbar hub-page__topbar">
 					<div className="hub-page__player-area">

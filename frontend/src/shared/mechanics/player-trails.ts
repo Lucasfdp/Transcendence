@@ -27,6 +27,10 @@ export interface PlayerTrailOptions {
 	readonly alphaRange?: number;
 	readonly trailEffectsById?: ReadonlyMap<number | string, string>;
 	readonly movingIds?: ReadonlySet<number | string>;
+	// Opt-in fade for stopped balls: when > 0, each record call removes this
+	// many points from the oldest end of a stopped ball's trail. Balls absent
+	// from the record call are never touched, so archived trails persist.
+	readonly stoppedFadePointsPerRecord?: number;
 }
 
 export type ClassicPlayerTrailOptions = Pick<
@@ -39,10 +43,22 @@ const DEFAULT_MIN_DISTANCE = 8;
 const DEFAULT_LINE_WIDTH = 4;
 const DEFAULT_BASE_ALPHA = 0.1;
 const DEFAULT_ALPHA_RANGE = 0.38;
-const TRAIL_SOFT_TEXTURE = "shellsmash-trail-soft";
-const TRAIL_RING_TEXTURE = "shellsmash-trail-ring";
-const TRAIL_SPARK_TEXTURE = "shellsmash-trail-spark";
-let trailLayerSequence = 0;
+
+// Only the most recent points are rendered, matching the retired stamp
+// textures' window so the polyline path stays visually identical.
+const RECENT_POINT_LIMIT = 32;
+
+const TRAIL_EFFECT_IDS = [
+	"trail_classic",
+	"trail_comet",
+	"trail_spark",
+	"trail_ghost",
+	"trail_ripple",
+];
+
+function resolveTrailEffectId(effect: string): string {
+	return TRAIL_EFFECT_IDS.includes(effect) ? effect : "trail_classic";
+}
 
 export interface PlayerTrailStamp {
 	readonly texture: "soft" | "ring" | "spark";
@@ -52,18 +68,6 @@ export interface PlayerTrailStamp {
 	readonly alpha: number;
 	readonly scale: number;
 }
-
-interface PlayerTrailTextureLayer {
-	readonly key: string;
-	readonly texture: Phaser.Textures.DynamicTexture;
-	readonly image: Phaser.GameObjects.Image;
-	signature: string;
-}
-
-const trailTextureLayers = new WeakMap<
-	Phaser.GameObjects.Graphics,
-	PlayerTrailTextureLayer
->();
 
 export function resetPlayerTrail(
 	store: PlayerTrailStore,
@@ -82,21 +86,43 @@ export function recordPlayerTrails(
 	const scale = options.scale ?? 1;
 	const minDistance = (options.minDistance ?? DEFAULT_MIN_DISTANCE) * scale;
 	const maxPoints = options.maxPoints ?? DEFAULT_MAX_POINTS;
+	const stoppedFade = options.stoppedFadePointsPerRecord ?? 0;
 
 	for (const object of objects) {
-		if (!object.moving) continue;
-		const trail = store.get(object.id) ?? [];
+		if (!object.moving) {
+			// Stopped balls optionally shed their oldest points so a settled
+			// field stops accumulating draw commands frame after frame.
+			if (stoppedFade > 0) {
+				const trail = store.get(object.id);
+				if (!trail) continue;
+				trail.splice(0, stoppedFade);
+				if (trail.length === 0) store.delete(object.id);
+			}
+			continue;
+		}
+		let trail = store.get(object.id);
+		if (!trail) {
+			trail = [];
+			store.set(object.id, trail);
+		}
 		const last = trail[trail.length - 1];
 		if (
 			!last ||
 			Math.hypot(object.x - last.x, object.y - last.y) >= minDistance
 		) {
+			// Mutate in place: trimming with splice avoids allocating a fresh
+			// array copy for every recorded point.
 			trail.push({ x: object.x, y: object.y });
-			store.set(object.id, trail.slice(-maxPoints));
+			if (maxPoints > 0 && trail.length > maxPoints)
+				trail.splice(0, trail.length - maxPoints);
 		}
 	}
 }
 
+// Trails are drawn immediately onto the supplied Graphics object every call,
+// exactly like the balls and arena borders. An earlier implementation cached
+// stamps in a DynamicTexture layer, which drifted out of sync with the scene
+// on resize/zoom relayouts.
 export function drawPlayerTrails(
 	gfx: Phaser.GameObjects.Graphics,
 	store: PlayerTrailStore,
@@ -104,13 +130,56 @@ export function drawPlayerTrails(
 	options: PlayerTrailOptions = {},
 ): void {
 	gfx.clear();
-	if (drawTexturedPlayerTrails(gfx, store, playersById, options)) return;
 	for (const [id, trail] of store) {
 		const player = playersById.get(id) ?? 0;
 		const colour =
 			PLAYER_COLOUR_VALUES[player % PLAYER_COLOUR_VALUES.length];
-		drawClassicPlayerTrail(gfx, trail, colour, options);
+		const effect = options.trailEffectsById?.get(id) ?? "trail_classic";
+		if (resolveTrailEffectId(effect) === "trail_classic") {
+			// The classic trail renders as polyline segments (~31 commands per
+			// ball) instead of hundreds of tessellated circle stamps; the old
+			// "soft" stamp was a flat filled circle, so visuals are identical.
+			drawClassicPlayerTrail(
+				gfx,
+				trail.length > RECENT_POINT_LIMIT
+					? trail.slice(-RECENT_POINT_LIMIT)
+					: trail,
+				colour,
+				options,
+			);
+			continue;
+		}
+		for (const stamp of buildPlayerTrailStamps(
+			trail,
+			colour,
+			effect,
+			options,
+		))
+			drawPlayerTrailStamp(gfx, stamp);
 	}
+}
+
+// Mirrors the shapes of the retired 32x32 stamp textures: a filled circle
+// (radius 15 at 16,16), a stroked ring (radius 12, width 4) and a spark cross.
+function drawPlayerTrailStamp(
+	gfx: Phaser.GameObjects.Graphics,
+	stamp: PlayerTrailStamp,
+): void {
+	const { x, y, tint, alpha, scale } = stamp;
+	if (stamp.texture === "soft") {
+		gfx.fillStyle(tint, alpha).fillCircle(x, y, 15 * scale);
+		return;
+	}
+	if (stamp.texture === "ring") {
+		gfx.lineStyle(4 * scale, tint, alpha).strokeCircle(x, y, 12 * scale);
+		return;
+	}
+	gfx.lineStyle(4 * scale, tint, alpha)
+		.lineBetween(x, y - 14 * scale, x, y + 14 * scale)
+		.lineBetween(x - 14 * scale, y, x + 14 * scale, y)
+		.lineStyle(2 * scale, tint, alpha * 0.85)
+		.lineBetween(x - 10 * scale, y - 10 * scale, x + 10 * scale, y + 10 * scale)
+		.lineBetween(x + 10 * scale, y - 10 * scale, x - 10 * scale, y + 10 * scale);
 }
 
 export function drawClassicPlayerTrail(
@@ -147,22 +216,14 @@ export function buildPlayerTrailStamps(
 	options: ClassicPlayerTrailOptions = {},
 ): PlayerTrailStamp[] {
 	if (positions.length < 2) return [];
-	const resolvedEffect = [
-		"trail_classic",
-		"trail_comet",
-		"trail_spark",
-		"trail_ghost",
-		"trail_ripple",
-	].includes(effect)
-		? effect
-		: "trail_classic";
+	const resolvedEffect = resolveTrailEffectId(effect);
 	const scale = options.scale ?? 1;
 	const lineWidth = Math.max(
 		2,
 		(options.lineWidth ?? DEFAULT_LINE_WIDTH) * scale,
 	);
 	const baseScale = lineWidth / 32;
-	const recent = positions.slice(-32);
+	const recent = positions.slice(-RECENT_POINT_LIMIT);
 	const stamps: PlayerTrailStamp[] = [];
 	if (resolvedEffect === "trail_classic") {
 		const spacing = Math.max(2, lineWidth * 0.72);
@@ -242,130 +303,6 @@ export function buildPlayerTrailStamps(
 		}
 	}
 	return stamps;
-}
-
-function drawTexturedPlayerTrails(
-	gfx: Phaser.GameObjects.Graphics,
-	store: PlayerTrailStore,
-	playersById: ReadonlyMap<number | string, number>,
-	options: PlayerTrailOptions,
-): boolean {
-	const scene = gfx.scene;
-	if (!scene?.textures?.addDynamicTexture) return false;
-	ensureTrailStampTextures(scene);
-	const width = Math.max(2, Math.ceil(scene.scale.width));
-	const height = Math.max(2, Math.ceil(scene.scale.height));
-	let layer = trailTextureLayers.get(gfx);
-	if (!layer || !layer.image.active) {
-		const key = `shellsmash-trail-layer-${++trailLayerSequence}`;
-		const texture = scene.textures.addDynamicTexture(key, width, height);
-		if (!texture) return false;
-		const image = scene.add
-			.image(0, 0, key)
-			.setOrigin(0)
-			.setDepth(gfx.depth + 0.01);
-		layer = { key, texture, image, signature: "" };
-		trailTextureLayers.set(gfx, layer);
-		scene.events.once("shutdown", () => {
-			if (layer?.image.active) layer.image.destroy();
-			if (scene.textures.exists(key)) scene.textures.remove(key);
-			trailTextureLayers.delete(gfx);
-		});
-	}
-	if (layer.texture.width !== width || layer.texture.height !== height) {
-		layer.texture.setSize(width, height);
-		layer.image.setDisplaySize(width, height);
-		layer.signature = "";
-	}
-	layer.image.setDepth(gfx.depth + 0.01);
-	const signature = trailTextureSignature(store, options, width, height);
-	if (signature === layer.signature) return true;
-	layer.signature = signature;
-	layer.texture.clear();
-	let drewStamp = false;
-	for (const [id, trail] of store) {
-		const player = playersById.get(id) ?? 0;
-		const colour =
-			PLAYER_COLOUR_VALUES[player % PLAYER_COLOUR_VALUES.length];
-		const effect = options.trailEffectsById?.get(id) ?? "trail_classic";
-		for (const stamp of buildPlayerTrailStamps(
-			trail,
-			colour,
-			effect,
-			options,
-		)) {
-			layer.texture.stamp(
-				trailStampTextureKey(stamp.texture),
-				undefined,
-				stamp.x,
-				stamp.y,
-				{
-					alpha: stamp.alpha,
-					tint: stamp.tint,
-					scale: stamp.scale,
-				},
-			);
-			drewStamp = true;
-		}
-	}
-	layer.image.setVisible(drewStamp);
-	return true;
-}
-
-function trailTextureSignature(
-	store: PlayerTrailStore,
-	options: PlayerTrailOptions,
-	width: number,
-	height: number,
-): string {
-	const parts = [`${width}x${height}`, String(options.scale ?? 1)];
-	for (const [id, trail] of store) {
-		const first = trail[0];
-		const last = trail[trail.length - 1];
-		parts.push(
-			String(id),
-			String(trail.length),
-			`${first?.x ?? 0},${first?.y ?? 0}`,
-			`${last?.x ?? 0},${last?.y ?? 0}`,
-			options.trailEffectsById?.get(id) ?? "trail_classic",
-		);
-	}
-	return parts.join("|");
-}
-
-function trailStampTextureKey(texture: PlayerTrailStamp["texture"]): string {
-	if (texture === "ring") return TRAIL_RING_TEXTURE;
-	if (texture === "spark") return TRAIL_SPARK_TEXTURE;
-	return TRAIL_SOFT_TEXTURE;
-}
-
-function ensureTrailStampTextures(scene: Phaser.Scene): void {
-	if (
-		scene.textures.exists(TRAIL_SOFT_TEXTURE) &&
-		scene.textures.exists(TRAIL_RING_TEXTURE) &&
-		scene.textures.exists(TRAIL_SPARK_TEXTURE)
-	)
-		return;
-	const gfx = scene.add.graphics().setVisible(false);
-	if (!scene.textures.exists(TRAIL_SOFT_TEXTURE)) {
-		gfx.clear().fillStyle(0xffffff, 1).fillCircle(16, 16, 15);
-		gfx.generateTexture(TRAIL_SOFT_TEXTURE, 32, 32);
-	}
-	if (!scene.textures.exists(TRAIL_RING_TEXTURE)) {
-		gfx.clear().lineStyle(4, 0xffffff, 1).strokeCircle(16, 16, 12);
-		gfx.generateTexture(TRAIL_RING_TEXTURE, 32, 32);
-	}
-	if (!scene.textures.exists(TRAIL_SPARK_TEXTURE)) {
-		gfx.clear()
-			.lineStyle(4, 0xffffff, 1)
-			.lineBetween(16, 2, 16, 30)
-			.lineBetween(2, 16, 30, 16)
-			.lineStyle(2, 0xffffff, 0.85)
-			.lineBetween(6, 6, 26, 26)
-			.lineBetween(26, 6, 6, 26);
-		gfx.generateTexture(TRAIL_SPARK_TEXTURE, 32, 32);
-	}
-	gfx.destroy();
 }
 
 function offsetTrailPoint(

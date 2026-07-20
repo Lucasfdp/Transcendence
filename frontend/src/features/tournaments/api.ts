@@ -14,6 +14,7 @@ import type {
 	GetTournamentResponse,
 	JoinTournamentByPinResponse,
 	LeaveTournamentResponse,
+	RemoveTournamentCpuResponse,
 	StartTournamentResponse,
 } from "./contracts";
 
@@ -53,5 +54,15 @@ export const tournamentApi = {
 	addCpu: (id: string): Promise<AddTournamentCpuResponse> =>
 		apiFetch<AddTournamentCpuResponse>(`/tournaments/${id}/add-cpu`, {
 			method: "POST",
+		}),
+
+	/** POST /tournaments/:id/remove-cpu — creator unseats a CPU participant. */
+	removeCpu: (
+		id: string,
+		botUserId: number,
+	): Promise<RemoveTournamentCpuResponse> =>
+		apiFetch<RemoveTournamentCpuResponse>(`/tournaments/${id}/remove-cpu`, {
+			method: "POST",
+			body: JSON.stringify({ botUserId }),
 		}),
 };

@@ -466,6 +466,12 @@ export interface JoinTournamentByPinRequest {
 	pin: string;
 }
 
+/** Body of POST /tournaments/:id/remove-cpu. */
+export interface RemoveTournamentCpuRequest {
+	/** The CPU participant to unseat (its pooled bot user id). */
+	botUserId: number;
+}
+
 // ── REST response shapes ───────────────────────────────────────────────────────
 
 /** POST /tournaments — lobby created in `pending`. */
@@ -487,3 +493,5 @@ export type LeaveTournamentResponse = TournamentLobbyState;
 export type StartTournamentResponse = TournamentLobbyState;
 /** POST /tournaments/:id/add-cpu — creator only; seats a CPU participant. */
 export type AddTournamentCpuResponse = TournamentLobbyState;
+/** POST /tournaments/:id/remove-cpu — creator only; unseats a CPU participant. */
+export type RemoveTournamentCpuResponse = TournamentLobbyState;

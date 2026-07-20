@@ -19,7 +19,7 @@ export default function TournamentPage(): JSX.Element {
 	return (
 		<TournamentBoardView
 			tournamentId={tournamentId}
-			onExit={() => navigate("/?view=normal", { replace: true })}
+			onExit={() => navigate("/", { replace: true })}
 		/>
 	);
 }

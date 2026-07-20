@@ -342,6 +342,70 @@ export class TournamentLobbyService {
 	}
 
 	/**
+	 * POST /tournaments/:id/remove-cpu — the creator unseats a CPU
+	 * participant. Runs under the tournament row lock so it can never race a
+	 * concurrent add-cpu/join mutating the same seats or `botUserIds` list.
+	 */
+	async removeCpu(
+		tournamentId: string,
+		requesterUserId: number,
+		botUserId: number,
+	): Promise<TournamentLobbyState> {
+		const tournament = await this.loadTournament(tournamentId);
+		const record = this.getLobbyRecord(tournament);
+		await this.assertOpenLobby(tournament, record);
+		if (record.creatorUserId !== requesterUserId) {
+			throw new ForbiddenException(
+				"Only the lobby creator can remove a CPU",
+			);
+		}
+
+		const { tournament: locked, record: lockedRecord, participants } =
+			await this.withLockedTournament(tournament.id, async (manager, lockedTournament) => {
+				const lockedRecord = this.getLobbyRecord(lockedTournament);
+				if (!(lockedRecord.botUserIds ?? []).includes(botUserId)) {
+					throw new NotFoundException("That CPU is not in this lobby");
+				}
+				const lockedParticipants = await this.loadParticipants(
+					lockedTournament.id,
+					manager,
+				);
+				const bot = lockedParticipants.find(
+					(p) => p.userId === botUserId,
+				);
+				if (!bot) {
+					throw new NotFoundException("That CPU is not in this lobby");
+				}
+
+				await manager
+					.getRepository(TournamentParticipant)
+					.delete({ id: bot.id });
+				lockedRecord.botUserIds = (
+					lockedRecord.botUserIds ?? []
+				).filter((id) => id !== botUserId);
+				if (lockedRecord.seatsAssigned) {
+					// The lobby is no longer complete — seats become
+					// provisional again and are re-derived from the seed on
+					// the next completion.
+					lockedRecord.seatsAssigned = false;
+				}
+				await this.persistLobbyRecord(lockedTournament, lockedRecord, manager);
+
+				return {
+					tournament: lockedTournament,
+					record: lockedRecord,
+					participants: lockedParticipants.filter(
+						(p) => p.id !== bot.id,
+					),
+				};
+			});
+
+		const state = this.toLobbyState(locked, lockedRecord, participants);
+		this.pushLobbyUpdate(state, "TournamentPlayerLeft");
+		return state;
+	}
+
+	/**
 	 * A free bot user row: pooled by the reserved email domain (unreachable
 	 * via registration/OAuth — a real account can never be picked), skipping
 	 * bots already seated in a pending/active tournament; created on demand

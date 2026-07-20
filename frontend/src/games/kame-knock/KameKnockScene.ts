@@ -26,7 +26,10 @@ import {
 	drawShellBallTexture,
 } from "../../shared/mechanics/ball";
 import { buildReturnButton } from "../../shared/mechanics/hud";
-import { runStartCountdown } from "../../shared/mechanics/start-countdown";
+import {
+	runSplashText,
+	runStartCountdown,
+} from "../../shared/mechanics/start-countdown";
 import { ScoreHud } from "../../shared/mechanics/score-hud";
 import type { TurnPhase, TurnState } from "../../shared/mechanics/turn-manager";
 import { showAchievementUnlocks } from "../../shared/achievement-popup";
@@ -228,6 +231,9 @@ const BALL_TRAIL_OPTIONS: PlayerTrailOptions = {
 	lineWidth: 7,
 	baseAlpha: 0.22,
 	alphaRange: 0.58,
+	// Settled balls shed trail points on every record call so each shot's
+	// trail dissolves instead of persisting into the following turns.
+	stoppedFadePointsPerRecord: 3,
 };
 
 /** Fallback power pool when no ShellPicker selection is present. */
@@ -297,7 +303,19 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 
 	localPlayerCount = 1;
 	ballTrails = new ArenaBallTrailRuntime();
-	private completedTrailPlayers = new Map<number | string, number>();
+	/** One-frame redraw latch so fully idle frames skip the ball/trail redraw. */
+	private ballsNeedRedraw = true;
+	/** Set when the target set changes so a frozen (non-pulsing) field still redraws once. */
+	private targetsNeedRedraw = true;
+	/** One PERFECT! splash per ball round (all breakable targets collected). */
+	private perfectSplashShown = false;
+	/** PERFECT rounds this match — submitted with the local game result. */
+	private perfectRoundsThisMatch = 0;
+	/** Cached trail id→player map plus the cheap keys that invalidate it. */
+	private trailPlayersById: Map<number | string, number> | null = null;
+	private trailPlayersCachedPlayer = -1;
+	private trailPlayersCachedPowerCount = -1;
+	private trailPlayersCachedOnlineCount = -1;
 	private localMode: "solo" | "versus" = "solo";
 	private readonly localReplay = new ReplayCaptureRuntime<
 		KameKnockSnapshot,
@@ -337,6 +355,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 
 	public set targets(targets: readonly TimedTarget[]) {
 		this.targetWorld.replace(targets);
+		this.targetsNeedRedraw = true;
 	}
 
 	preload(): void {
@@ -356,7 +375,11 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		const isOnline = this.online.bindFromRegistry();
 		this.powerBallTexCount = clearKameKnockPowerBalls(this, this.powerBalls, this.powerBallTexCount);
 		this.ballTrails.clear();
-		this.completedTrailPlayers.clear();
+		this.ballsNeedRedraw = true;
+		this.targetsNeedRedraw = true;
+		this.trailPlayersById = null;
+		this.perfectSplashShown = false;
+		this.perfectRoundsThisMatch = 0;
 		this.localReplay.reset();
 
 		this.targets = [];
@@ -515,7 +538,6 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		this.scoreHud = null;
 		this.trailGfx?.destroy();
 		this.ballTrails.clear();
-		this.completedTrailPlayers.clear();
 		this.ballText = null;
 		this.online.shutdown();
 	}
@@ -582,15 +604,39 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 				this.buildGameRuleHooks(),
 				this.activeBall(),
 			);
-		this.recordBallTrails();
-		this.drawTargets();
-		this.drawBallTrails();
-		this.drawBall();
+		// Idle-frame gate: the ball/trail layer only redraws while something is
+		// in motion (plus one trailing frame) or a trail is still dissolving;
+		// the target layer only redraws while targets pulse (age advancing) or
+		// the target set changed.
+		const ballsActive = moving || movingPowerBalls.length > 0;
+		const redrawBalls =
+			ballsActive || this.ballsNeedRedraw || this.hasFadingTrails();
+		this.ballsNeedRedraw = ballsActive;
+		if (redrawBalls) this.recordBallTrails();
+		if (
+			(this.targets.length > 0 && this.targetFreezeMs <= 0) ||
+			this.solidTargetFlashes.size > 0 ||
+			this.targetsNeedRedraw
+		) {
+			this.drawTargets();
+			this.targetsNeedRedraw = false;
+		}
+		if (redrawBalls) {
+			this.drawBallTrails();
+			this.drawBall();
+		}
 		const shouldCaptureReplayFrame =
 			!this.online.isActive && (this.launchedThisBall || moving);
 		if (shouldCaptureReplayFrame) {
 			this.localReplay.captureTick(delta);
 		} else this.localReplay.resetCaptureAccumulator();
+	}
+
+	/** True while any settled ball's trail still has segments left to dissolve. */
+	private hasFadingTrails(): boolean {
+		for (const [, trail] of this.ballTrails.entries())
+			if (trail.length > 1) return true;
+		return false;
 	}
 
 	// ── Launch handler ────────────────────────────────────────────────────────────
@@ -647,11 +693,13 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		const ball = this.activeBall();
 		const bx = ball.x;
 		const by = ball.y;
+		const before = this.targets.length;
 		this.targets = this.targets.filter((t) => {
 			if (!t.breakable) return true;
 			const pos = timedTargetPosition(t, this.arena);
 			return Math.hypot(pos.x - bx, pos.y - by) >= blastR;
 		});
+		if (this.targets.length < before) this.maybeCelebratePerfect();
 	}
 
 	private resolveStopRepel(): void {
@@ -659,11 +707,26 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		const ball = this.activeBall();
 		const bx = ball.x;
 		const by = ball.y;
+		const before = this.targets.length;
 		this.targets = this.targets.filter((t) => {
 			if (!t.breakable) return true;
 			const pos = timedTargetPosition(t, this.arena);
 			return Math.hypot(pos.x - bx, pos.y - by) >= repelR;
 		});
+		if (this.targets.length < before) this.maybeCelebratePerfect();
+	}
+
+	/**
+	 * PERFECT: the round's last breakable target was just collected. Splashes
+	 * once per ball round, mirroring the "GO!" beat, and counts towards the
+	 * Kame PERFECT! achievements submitted with the local result.
+	 */
+	private maybeCelebratePerfect(): void {
+		if (this.perfectSplashShown || this.online.isActive) return;
+		if (this.targets.some((target) => target.breakable)) return;
+		this.perfectSplashShown = true;
+		this.perfectRoundsThisMatch += 1;
+		runSplashText(this, "PERFECT!", { depth: DEPTH_OVERLAY });
 	}
 
 	// ── Turn helpers ──────────────────────────────────────────────────────────────
@@ -677,6 +740,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	private setupBallRound(): void {
 		this.targets = [];
 		this.powerBallTexCount = clearKameKnockPowerBalls(this, this.powerBalls, this.powerBallTexCount);
+		this.perfectSplashShown = false;
 		this.launchedThisBall = false;
 		this.replayPower = PowerType.NONE;
 		this.combo = 0;
@@ -797,6 +861,8 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			popKameKnockScore(this, pos.x, pos.y, gained, this.combo, perfect);
 			this.applyHitKick(ball, pos.x, pos.y);
 			this.targets.splice(i, 1);
+			this.targetsNeedRedraw = true;
+			this.maybeCelebratePerfect();
 		}
 	}
 
@@ -957,7 +1023,13 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			| undefined;
 		if (user?.isGuest) return;
 
-		api.submitGameResult("kame-knock", "completed")
+		api.submitGameResult(
+			"kame-knock",
+			"completed",
+			this.perfectRoundsThisMatch > 0
+				? { perfectRounds: Math.min(this.perfectRoundsThisMatch, 20) }
+				: undefined,
+		)
 			.then((result) => {
 				showAchievementUnlocks(this, result.unlockedAchievements ?? []);
 				showCardDropPopup(this, result.cardDrop);
@@ -1017,9 +1089,9 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	}
 
 	private finishBallRound(): void {
-		this.archiveLocalTrail();
 		this.launchedThisBall = false;
 		this.combo = 0;
+		this.ballsNeedRedraw = true;
 		this.localTurnNumber += 1;
 
 		if (
@@ -1572,6 +1644,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 						ball: this.ball,
 					},
 				],
+				fadeAbsentIds: true,
 				powerBalls: this.powerBalls,
 				isMoving: (ball) => this.isBallMoving(ball),
 				trailOptions: {
@@ -1589,6 +1662,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 				player: side,
 				ball,
 			})),
+			fadeAbsentIds: true,
 			powerBalls: this.powerBalls,
 			isMoving: (ball) => this.isBallMoving(ball),
 			trailOptions: { ...BALL_TRAIL_OPTIONS, scale: this.arena.scale },
@@ -1606,34 +1680,37 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 	}
 
 	drawBallTrails(): void {
-		const playersById = new Map<number | string, number>([
-			["local", this.currentPlayerIndex()],
-		]);
-		for (const [id, player] of this.completedTrailPlayers)
-			playersById.set(id, player);
-		for (let index = 0; index < this.powerBalls.length; index++)
-			playersById.set(
-				this.powerBalls.at(index)?.id ?? `power-${index}`,
-				this.powerBalls.at(index)?.player ?? 0,
-			);
-		for (const side of this.online.ballMap.keys()) playersById.set(side, side);
-		this.ballTrails.draw(this.trailGfx, playersById, {
+		// The id→player map only changes on turn switches, power-ball churn or
+		// online joins/leaves, so it is cached instead of being rebuilt on
+		// every frame.
+		const player = this.currentPlayerIndex();
+		const powerCount = this.powerBalls.length;
+		const onlineCount = this.online.ballMap.size;
+		if (
+			!this.trailPlayersById ||
+			this.trailPlayersCachedPlayer !== player ||
+			this.trailPlayersCachedPowerCount !== powerCount ||
+			this.trailPlayersCachedOnlineCount !== onlineCount
+		) {
+			const playersById = new Map<number | string, number>([
+				["local", player],
+			]);
+			for (let index = 0; index < this.powerBalls.length; index++)
+				playersById.set(
+					this.powerBalls.at(index)?.id ?? `power-${index}`,
+					this.powerBalls.at(index)?.player ?? 0,
+				);
+			for (const side of this.online.ballMap.keys())
+				playersById.set(side, side);
+			this.trailPlayersById = playersById;
+			this.trailPlayersCachedPlayer = player;
+			this.trailPlayersCachedPowerCount = powerCount;
+			this.trailPlayersCachedOnlineCount = onlineCount;
+		}
+		this.ballTrails.draw(this.trailGfx, this.trailPlayersById, {
 			...BALL_TRAIL_OPTIONS,
 			scale: this.arena.scale,
 		});
-	}
-
-
-
-	private archiveLocalTrail(): void {
-		const trail = this.ballTrails.get("local");
-		if (!trail || trail.length < 2) return;
-		const id = `local-history-${this.localTurnNumber}`;
-		this.ballTrails.set(
-			id,
-			trail.map((point) => ({ ...point })),
-		);
-		this.completedTrailPlayers.set(id, this.currentPlayerIndex());
 	}
 
 
@@ -1790,6 +1867,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			? remapPowerPickups(this.powerPickups.all(), (pickup) => pickup)
 			: [];
 		this.arena = this.resolveArena();
+		this.ballTrails.remapToArena(oldArena, this.arena);
 
 		this.launchInput.cancel();
 		this.launchInput.syncScale();
@@ -1828,6 +1906,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 
 		drawKameKnockBackground(this.bgGfx, this.arenaSkin, this.arena, this.scale.width, this.scale.height);
 		this.drawTargets();
+		this.drawBallTrails();
 		this.drawBall();
 
 		this.hudObjects.forEach((object) => object.destroy());

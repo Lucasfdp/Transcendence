@@ -1,4 +1,4 @@
-import { IsIn } from "class-validator";
+import { IsIn, IsInt, IsOptional, Max, Min } from "class-validator";
 import { KNOWN_GAME_IDS } from "../game-ids.constants";
 
 /**
@@ -33,4 +33,16 @@ export class SubmitLocalResultDto {
 
 	@IsIn(["completed"])
 	outcome: "completed";
+
+	/**
+	 * PERFECT rounds achieved this match (Kame Knock). Same trust class as the
+	 * `completed` participation claim itself: it feeds the achievement ladder
+	 * only, never win/loss counters or the leaderboard, and is bounded per
+	 * submission (a match has a handful of rounds at most).
+	 */
+	@IsOptional()
+	@IsInt()
+	@Min(0)
+	@Max(20)
+	perfectRounds?: number;
 }

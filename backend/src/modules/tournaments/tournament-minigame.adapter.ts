@@ -169,6 +169,11 @@ export class TournamentMinigameAdapter
 
 	// ── MinigameReconcilerPort ───────────────────────────────────────────────
 
+	/** Liveness probe for the watchdog: is the arena room still being played? */
+	isMatchLive(matchId: string): boolean {
+		return this.matchmakingGateway.isMatchLive(matchId);
+	}
+
 	async reconcile(matchId: string): Promise<MinigameFinalResult | null> {
 		const match = await this.matchRepo.findOne({ where: { id: matchId } });
 		if (!match || (match.status !== "finished" && match.status !== "abandoned")) {

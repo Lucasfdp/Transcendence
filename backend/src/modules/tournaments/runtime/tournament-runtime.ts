@@ -940,6 +940,21 @@ export class TournamentRuntime {
 		}
 	}
 
+	/**
+	 * Releases every pending clock timer of this tournament (turn handoffs,
+	 * roll/shop/gambling timeouts, CPU delays, watchdogs, the 30 s Final
+	 * Challenge retry). Called by the owning service once the TERMINAL
+	 * snapshot has been persisted and the instance is dropped: every such
+	 * callback is a guarded no-op against a terminal machine, so cancelling
+	 * them changes nothing observable — it only stops finished or cancelled
+	 * tournaments from holding live timers after they end. Safe to call more
+	 * than once; the runtime owns its clock instance, so no other
+	 * tournament's timers can be affected.
+	 */
+	dispose(): void {
+		this.clock.cancelAll?.();
+	}
+
 	// ── Internals ────────────────────────────────────────────────────────
 
 	/**

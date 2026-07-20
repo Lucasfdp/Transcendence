@@ -65,7 +65,7 @@ const profileValue = (
 const gameValue = (
 	ctx: AchievementContext,
 	gameId: string,
-	key: "gamesPlayed" | "totalWins" | "totalLosses",
+	key: "gamesPlayed" | "totalWins" | "totalLosses" | "perfectRounds",
 ): number => ctx.gameStats.get(gameId)?.[key] ?? 0;
 
 const globalProgress =
@@ -81,7 +81,7 @@ const globalProgress =
 const gameProgress =
 	(
 		gameId: string,
-		key: "gamesPlayed" | "totalWins" | "totalLosses",
+		key: "gamesPlayed" | "totalWins" | "totalLosses" | "perfectRounds",
 		target: number,
 	) =>
 	(ctx: AchievementContext): { current: number; target: number } => ({
@@ -167,6 +167,29 @@ const gamePlayedAchievements = (
 	}));
 
 /**
+ * Kame Knock PERFECT ladder: a PERFECT is clearing every breakable target in
+ * one ball round (the big "PERFECT!" splash in the arena). Counted through
+ * `user_game_stats.perfectRounds`, the same participation trust class as
+ * `gamesPlayed`.
+ */
+const kamePerfectMilestones = [1, 5, 10, 25, 50] as const;
+const kamePerfectAchievements = (): AchievementDefinition[] =>
+	kamePerfectMilestones.map((target) => ({
+		id: `kame-knock-${target}-perfects`,
+		title: target === 1 ? "Kame PERFECT!" : `Kame PERFECT! ${target}`,
+		description: `Clear every breakable target in a Kame Knock round ${
+			target === 1 ? "once" : `${target} times`
+		}.`,
+		unlockDescription:
+			target === 1
+				? "First PERFECT round achieved in Kame Knock."
+				: `${target} PERFECT rounds achieved in Kame Knock.`,
+		reward: noReward(`Kame Knock PERFECT ${target} milestone recorded`),
+		progress: gameProgress("kame-knock", "perfectRounds", target),
+		isUnlocked: reaches(gameProgress("kame-knock", "perfectRounds", target)),
+	}));
+
+/**
  * Tournament champion (SPEC-037/D10): win a Tournament and claim THE PARROT'S
  * SHELL. The 500-coin champion prize is granted directly by the Tournament
  * module when the win is recorded (idempotent, `lockUserForUpdate`); this
@@ -191,6 +214,7 @@ export const ACHIEVEMENTS: AchievementDefinition[] = [
 	...levelAchievements(),
 	...dojoCoinAchievements(),
 	...gamePlayedAchievements("kame-knock", "Kame Knock"),
+	...kamePerfectAchievements(),
 	...gamePlayedAchievements("bamboo-bash", "Bamboo Bash"),
 	...gamePlayedAchievements("bell-clash", "Bell Clash"),
 	...gamePlayedAchievements("temple-curling", "Temple Curling"),

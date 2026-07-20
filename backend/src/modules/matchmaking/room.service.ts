@@ -81,9 +81,13 @@ export class RoomService {
 	}
 
 	getActiveRooms(): MatchRoom[] {
-		return [...this.rooms.values()].filter(
-			(room) => room.status === "active",
-		);
+		// Called from the 30 Hz arena loop and the bot driver: build the result
+		// in one pass instead of spreading the whole map and filtering it.
+		const active: MatchRoom[] = [];
+		for (const room of this.rooms.values()) {
+			if (room.status === "active") active.push(room);
+		}
+		return active;
 	}
 
 	getRoomForUser(userId: number): MatchRoom | null {

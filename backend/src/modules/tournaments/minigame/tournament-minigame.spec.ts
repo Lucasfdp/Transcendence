@@ -60,10 +60,16 @@ class FakeLauncher {
 
 class FakeReconciler {
 	result: MinigameFinalResult | null = null;
+	live = false;
 	readonly calls: string[] = [];
+	readonly liveCalls: string[] = [];
 	reconcile = async (matchId: string): Promise<MinigameFinalResult | null> => {
 		this.calls.push(matchId);
 		return this.result;
+	};
+	isMatchLive = (matchId: string): boolean => {
+		this.liveCalls.push(matchId);
+		return this.live;
 	};
 }
 
@@ -471,6 +477,52 @@ describe("TournamentMinigame (SPEC-015)", () => {
 		clock.advance(WATCHDOG_MS);
 		const result = await p;
 		expect(reconciler.calls).toEqual(["match-1"]);
+		expect(result).toEqual({ status: "cancelled", reason: "no_result" });
+	});
+
+	it("re-arms the watchdog while the match is still live, then takes the real result", async () => {
+		const { mg, clock, reconciler, lifecycle } = makeMinigame();
+		reconciler.result = null;
+		reconciler.live = true;
+		const p = mg.run([10, 20]);
+		await tick();
+
+		// First watchdog: nothing durable, but the arena is still being played
+		// (a long temple-curling match) — the round must keep waiting.
+		clock.advance(WATCHDOG_MS);
+		await tick();
+		expect(reconciler.calls).toEqual(["match-1"]);
+		expect(reconciler.liveCalls).toEqual(["match-1"]);
+
+		// The match finishes for real inside the extended window: the true
+		// winner wins the round (and will get their Gambling prompt).
+		lifecycle.emit({
+			type: "finished",
+			matchId: "match-1",
+			result: {
+				matchId: "match-1",
+				winnerId: 20,
+				outcomes: outcomes({ 10: "loss", 20: "win" }),
+			},
+		});
+		const result = await p;
+		expect(result).toMatchObject({ status: "completed", winnerId: 20 });
+	});
+
+	it("stops re-arming once the match is no longer live", async () => {
+		const { mg, clock, reconciler } = makeMinigame();
+		reconciler.result = null;
+		reconciler.live = true;
+		const p = mg.run([10, 20]);
+		await tick();
+
+		clock.advance(WATCHDOG_MS);
+		await tick(); // first fire: live → re-armed
+
+		reconciler.live = false;
+		clock.advance(WATCHDOG_MS);
+		const result = await p;
+		expect(reconciler.calls).toEqual(["match-1", "match-1"]);
 		expect(result).toEqual({ status: "cancelled", reason: "no_result" });
 	});
 

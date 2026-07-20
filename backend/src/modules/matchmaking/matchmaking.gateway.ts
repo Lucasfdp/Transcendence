@@ -1484,6 +1484,21 @@ export class MatchmakingGateway
 	}
 
 	/**
+	 * True while the match's in-memory room is still being played. Public for
+	 * the tournament minigame adapter: its reconciliation watchdog extends the
+	 * wait for a legitimately long match instead of cancelling the round while
+	 * the players are still in the arena.
+	 */
+	isMatchLive(matchId: string): boolean {
+		const room = this.rooms.getRoom(matchId);
+		return (
+			room !== null &&
+			room.status !== "finished" &&
+			room.status !== "abandoned"
+		);
+	}
+
+	/**
 	 * Hand a live seat to a CPU stand-in mid-match: a tournament player quit
 	 * for good ("Leave game") while their round's minigame was in flight, so
 	 * the seat plays on server-side (BotPlayerService) instead of dangling
