@@ -516,6 +516,20 @@
 	--profile-preview-bg-image: url("/assets/backgrounds/night_cycle_part2.png");
 }
 
+/* Interim route: no per-theme part art yet, previews use the parent scene.
+   See docs/day-night-cycle-backgrounds-report.md §7 step 8b. */
+.profile-preview--cycle-sunset {
+	--profile-preview-bg-image: url("/assets/backgrounds/sunset_bg.png");
+}
+
+.profile-preview--cycle-sunrise {
+	--profile-preview-bg-image: url("/assets/backgrounds/sunrise_bg.png");
+}
+
+.profile-preview--cycle-login {
+	--profile-preview-bg-image: url("/assets/backgrounds/login_bg.png");
+}
+
 .profile-preview__identity {
 	@apply relative;
 	z-index: 1;

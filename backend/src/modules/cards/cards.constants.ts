@@ -599,6 +599,16 @@ const CHARACTER_CARDS: readonly CardDefinition[] = [
 		sourceRef: "rasta-turtle",
 		imageUrl: "/assets/character/rasta-turtle.png",
 	},
+	{
+		id: "char-presenter",
+		family: "character",
+		rarity: "gold",
+		name: "Shelly, El Conchudo",
+		flavor:
+			"Grabs the mic before anyone hands it to her, roasts both brackets, and somehow still gets invited back to host the final.",
+		sourceRef: "presenter-turtle",
+		imageUrl: "/assets/character/presenter-turtle.png",
+	},
 ];
 
 export const CARDS: readonly CardDefinition[] = [

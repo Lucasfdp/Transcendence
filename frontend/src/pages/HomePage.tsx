@@ -24,7 +24,9 @@ import { ShrineSlotsModal } from "../components/gambling/ShrineSlotsModal";
 import { ProtectedRoute } from "../routes/ProtectedRoute";
 import { ReplayViewer } from "../games/common/replay/ReplayViewer";
 import {
+	type CycleTheme,
 	hubBackgroundClass,
+	hubCycleTheme,
 	resolveHubBackgroundId,
 } from "../shared/backgrounds";
 import {
@@ -443,22 +445,54 @@ function interpolatePalette(
 	return rgbToCss(stops[stops.length - 1].color);
 }
 
-function applyCycleVisuals(node: HTMLDivElement, progress: number): void {
+type CycleArcConfig = {
+	xMin: number; // % at phase 0 (rise)
+	xMax: number; // % at phase 1 (set)
+	sunYBase: number; // % at horizon; y = base − arc·amp
+	sunYAmp: number;
+	moonYBase: number;
+	moonYAmp: number;
+};
+
+// Per-theme celestial arc box, so the sun/moon travel only through each
+// background's actual open-sky region instead of one arc tuned for the
+// night art. Hand-tuned against the static PNGs at a 16:9 desktop
+// breakpoint (see docs/cycle-sun-moon-occlusion-fix-report.md §2) —
+// `night` MUST keep the original constants unchanged (regression guard).
+const CYCLE_ARCS: Record<CycleTheme, CycleArcConfig> = {
+	night: { xMin: -12, xMax: 112, sunYBase: 72, sunYAmp: 62, moonYBase: 74, moonYAmp: 58 },
+	sunset: { xMin: -6, xMax: 106, sunYBase: 44, sunYAmp: 32, moonYBase: 45, moonYAmp: 30 },
+	sunrise: { xMin: 8, xMax: 92, sunYBase: 18, sunYAmp: 13, moonYBase: 19, moonYAmp: 12 },
+	login: { xMin: 12, xMax: 88, sunYBase: 13, sunYAmp: 9, moonYBase: 14, moonYAmp: 8 },
+};
+
+function applyCycleVisuals(
+	node: HTMLDivElement,
+	progress: number,
+	theme: CycleTheme,
+): void {
 	const normalized = ((progress % 1) + 1) % 1;
 	const isDay = normalized >= 0.25 && normalized < 0.75;
 	const dayPhase = clamp((normalized - 0.25) / 0.5, 0, 1);
 	const nightPhase = clamp(getNightPhase(normalized), 0, 1);
 	const dayArc = Math.sin(dayPhase * Math.PI);
 	const nightArc = Math.sin(nightPhase * Math.PI);
-	const sunX = -12 + dayPhase * 124;
-	const sunY = 72 - dayArc * 62;
-	const moonX = -12 + nightPhase * 124;
-	const moonY = 74 - nightArc * 58;
+	const arc = CYCLE_ARCS[theme];
+	const sunX = arc.xMin + dayPhase * (arc.xMax - arc.xMin);
+	const sunY = arc.sunYBase - dayArc * arc.sunYAmp;
+	const moonX = arc.xMin + nightPhase * (arc.xMax - arc.xMin);
+	const moonY = arc.moonYBase - nightArc * arc.moonYAmp;
 	const dawnBlend = clamp(1 - Math.abs(normalized - 0.25) / 0.08, 0, 1);
 	const duskBlend = clamp(1 - Math.abs(normalized - 0.75) / 0.08, 0, 1);
 	const twilight = Math.max(dawnBlend, duskBlend);
 	const nightStrength = isDay ? 0 : 0.55 + nightArc * 0.45;
 	const starsOpacity = clamp(nightStrength - twilight * 0.6, 0, 1);
+	// Relights themes whose foreground art has baked-in lighting (interim
+	// static-PNG route): full brightness by day, dimmest at solar midnight,
+	// eased back to 1 through the dawn/dusk twilight windows.
+	const fgBrightness = isDay
+		? 1
+		: lerp(0.45 + (1 - nightArc) * 0.15, 1, twilight);
 
 	const topColor = interpolatePalette(normalized, [
 		{ at: 0, color: { r: 7, g: 13, b: 28 } },
@@ -489,20 +523,31 @@ function applyCycleVisuals(node: HTMLDivElement, progress: number): void {
 	node.style.setProperty("--cycle-moon-opacity", isDay ? "0" : "1");
 	node.style.setProperty("--cycle-stars-opacity", starsOpacity.toFixed(3));
 	node.style.setProperty("--cycle-twilight-opacity", twilight.toFixed(3));
+	node.style.setProperty("--cycle-fg-brightness", fgBrightness.toFixed(3));
 }
 
-function CycleBackdrop({ now }: { now: Date }): JSX.Element {
+function CycleBackdrop({
+	now,
+	theme,
+}: {
+	now: Date;
+	theme: CycleTheme;
+}): JSX.Element {
 	const backdropRef = useRef<HTMLDivElement | null>(null);
 	const stars = useMemo(() => createCycleStars(CYCLE_STAR_COUNT), []);
 
 	useEffect(() => {
 		const node = backdropRef.current;
 		if (!node) return;
-		applyCycleVisuals(node, getDayProgress(now));
-	}, [now]);
+		applyCycleVisuals(node, getDayProgress(now), theme);
+	}, [now, theme]);
 
 	return (
-		<div className="hub-cycle" ref={backdropRef} aria-hidden="true">
+		<div
+			className={`hub-cycle hub-cycle--${theme}`}
+			ref={backdropRef}
+			aria-hidden="true"
+		>
 			<div className="hub-cycle__sky" />
 			<div className="hub-cycle__stars">
 				{stars.map((star, index) => (
@@ -771,7 +816,8 @@ function HomeMenu(): JSX.Element {
 		player?.hubBackground,
 		player?.hubBackgroundAlter,
 	);
-	const showCycleBackdrop = appliedBackgroundId === "night_cycle_bg";
+	const cycleTheme = hubCycleTheme(appliedBackgroundId);
+	const showCycleBackdrop = cycleTheme !== null;
 
 	useEffect(() => {
 		let cancelled = false;
@@ -2837,7 +2883,7 @@ function HomeMenu(): JSX.Element {
 
 	return (
 		<main className={`menu-page hub-page ${backgroundClass}`}>
-			{showCycleBackdrop ? <CycleBackdrop now={displayedNow} /> : null}
+			{cycleTheme ? <CycleBackdrop now={displayedNow} theme={cycleTheme} /> : null}
 			<div className="menu-page__shell hub-page__shell">
 				<header className="menu-page__topbar hub-page__topbar">
 					<div className="hub-page__player-area">

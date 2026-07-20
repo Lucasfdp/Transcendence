@@ -374,6 +374,7 @@
 	--cycle-moon-opacity: 0;
 	--cycle-stars-opacity: 0;
 	--cycle-twilight-opacity: 0;
+	--cycle-fg-brightness: 1;
 	@apply absolute inset-0;
 	z-index: 0;
 	@apply pointer-events-none overflow-hidden;
@@ -469,6 +470,97 @@
 	z-index: 5;
 	background:
 		url("/assets/backgrounds/night_cycle_part1.png") center bottom / cover no-repeat;
+}
+
+/* ── Cycle theme art overrides (interim route) ──────────────────────────
+   TODO(day-night-cycle art): replace masked static scenes below with real
+   cut-out sunset/sunrise/login cycle part1/2/3 art — constraints in
+   docs/day-night-cycle-backgrounds-report.md §6 / §7 step 8b.
+   The full static scenes have the sky baked in, so a vertical mask hides
+   the baked sky and lets the animated sky show through; the engine dims
+   the baked lighting at night via --cycle-fg-brightness. Clouds (part2)
+   and moon (part3) reuse the theme-neutral night sprites.
+   Mask cut points and the celestial arc box (CYCLE_ARCS in HomePage.tsx)
+   are hand-tuned together per image (horizon heights + sky-gap shape
+   differ) and shift with `cover` cropping — re-tune at responsive
+   breakpoints. See docs/cycle-sun-moon-occlusion-fix-report.md. */
+.hub-cycle--sunset .hub-cycle__foreground,
+.hub-cycle--sunrise .hub-cycle__foreground,
+.hub-cycle--login .hub-cycle__foreground {
+	filter: brightness(var(--cycle-fg-brightness, 1)) saturate(0.9);
+}
+
+/* Fix A — smaller sun/moon bodies for the narrower open-sky gaps in the
+   sunrise/login art (night/sunset keep the shared default size). */
+.hub-cycle--login .hub-cycle__sun,
+.hub-cycle--login .hub-cycle__moon {
+	width: clamp(2.6rem, 4.5vw, 4rem);
+}
+
+.hub-cycle--sunrise .hub-cycle__sun,
+.hub-cycle--sunrise .hub-cycle__moon {
+	width: clamp(3.2rem, 5.5vw, 5rem);
+}
+
+/* Fix D — scripted cut-out mask (scripts/generate-cycle-masks.py): a real
+   per-pixel alpha mask (scenery opaque, sky transparent) instead of a
+   horizontal-band approximation, so occlusion is correct at every arc
+   position, not just above/below one cut line. Accepted for `sunset` only
+   after inspection — `mask-size`/`position`/`repeat` must match the
+   `background-image` exactly (both `center bottom / cover`) so the mask
+   and the art stay pixel-aligned at every viewport ratio. */
+.hub-cycle--sunset .hub-cycle__foreground {
+	background-image: url("/assets/backgrounds/sunset_bg.png");
+	mask-image: url("/assets/backgrounds/sunset_cycle_mask.png");
+	-webkit-mask-image: url("/assets/backgrounds/sunset_cycle_mask.png");
+	mask-size: cover;
+	-webkit-mask-size: cover;
+	mask-position: center bottom;
+	-webkit-mask-position: center bottom;
+	mask-repeat: no-repeat;
+	-webkit-mask-repeat: no-repeat;
+}
+
+/* Fix B — hard mask edges (~3pt fade) instead of the old wide fade zones:
+   scenery is either fully hidden or fully opaque, so the sun/moon
+   (z-index 2, below the foreground's z-index 5) are cleanly occluded
+   rather than alpha-blending into a translucent ghost. Cut lines sit just
+   above each theme's tallest silhouette in the arc's travel band.
+   TODO(cycle-masks): sunrise/login stay on this approximation — the
+   scripted Fix D mask was tried and rejected for both after several
+   tuning passes (sunrise: eats 2 lanterns near the top-right corner;
+   login: leaks into the grey/green cliff rock at the left edge). Re-run
+   scripts/generate-cycle-masks.py with different tolerance/luminance
+   parameters to retry. */
+.hub-cycle--sunrise .hub-cycle__foreground {
+	background-image: url("/assets/backgrounds/sunrise_bg.png");
+	mask-image: linear-gradient(180deg, transparent 0%, transparent 12%, black 15%);
+	-webkit-mask-image: linear-gradient(180deg, transparent 0%, transparent 12%, black 15%);
+}
+
+.hub-cycle--login .hub-cycle__foreground {
+	background-image: url("/assets/backgrounds/login_bg.png");
+	mask-image: linear-gradient(180deg, transparent 0%, transparent 9%, black 12%);
+	-webkit-mask-image: linear-gradient(180deg, transparent 0%, transparent 9%, black 12%);
+}
+
+/* Fix C — blend the moon into the scene as light rather than a pasted disc
+   for any residual overlap the Fix B hard mask edge doesn't catch (e.g.
+   the sun/moon grazing a lantern string near the sunrise theme's screen
+   edges). Applied to the moon only: this was authored without a live
+   render to check the 12:00 case, and screen-blending the sun risks
+   washing it out against a bright midday sky (per the report's own
+   caveat), so the moon — where the ghosting is most jarring — is the
+   safer default; verify against the debug clock slider and consider
+   adding the sun back in if the moon-only look isn't enough. Applied only
+   on the two themes still using the Fix B approximation — `sunset` is
+   excluded since its Fix D cut-out mask occludes correctly at the true
+   pixel boundary (one fewer stacking context). Night is excluded too:
+   its cut-out art occludes correctly already and this is the regression
+   baseline. */
+.hub-cycle--sunrise .hub-cycle__moon,
+.hub-cycle--login .hub-cycle__moon {
+	mix-blend-mode: screen;
 }
 
 .hub-page__shell {

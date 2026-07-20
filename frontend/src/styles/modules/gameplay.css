@@ -52,6 +52,31 @@
 	will-change: background-position;
 }
 
+/* Interim route (no per-theme part art): in-game cycle variants fall back to
+   the plain static parent scene; the night cloud overlay is suppressed since
+   it clashes with the baked skies. `--cycle-night` needs no rule — the base
+   `--cycle` treatment is night. See docs/day-night-cycle-backgrounds-report.md §7 step 8b. */
+.game-host--cycle-sunset {
+	--game-bg-image: url("/assets/backgrounds/sunset_bg.png");
+	background-position: center;
+}
+
+.game-host--cycle-sunrise {
+	--game-bg-image: url("/assets/backgrounds/sunrise_bg.png");
+	background-position: center;
+}
+
+.game-host--cycle-login {
+	--game-bg-image: url("/assets/backgrounds/login_bg.png");
+	background-position: center;
+}
+
+.game-host--cycle-sunset::before,
+.game-host--cycle-sunrise::before,
+.game-host--cycle-login::before {
+	content: none;
+}
+
 .game-host-fullscreen {
 	@apply fixed inset-0;
 }

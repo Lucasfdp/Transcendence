@@ -73,9 +73,11 @@ Catalogue families (`CardFamily`) and current counts:
   and **Kabuto, the Bushido Shell** (`char-samurai`, gold,
   `imageUrl: /assets/character/samurai-turtle.webp`) — the last two were
   previously missing from this list even though they shipped in the catalogue
-  (Bug Audit L1, `docs/handoff-shell-cards-bug-audit-and-fix-plan.md`). Total
-  catalogue: **40 cards** (21 power_shell + 5 shrine + 3 shell_skin + 11
-  character).
+  (Bug Audit L1, `docs/handoff-shell-cards-bug-audit-and-fix-plan.md`). Also
+  includes **Shelly, El Conchudo** (`char-presenter`, gold,
+  `imageUrl: /assets/character/presenter-turtle.png`), the tournament-mode
+  presenter turtle. Total catalogue: **41 cards** (21 power_shell + 5 shrine +
+  3 shell_skin + 12 character).
 
 ### Rarity & foils
 

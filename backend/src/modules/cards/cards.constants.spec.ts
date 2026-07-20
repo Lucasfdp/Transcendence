@@ -152,6 +152,17 @@ describe("cards.constants", () => {
 			expect(rasta?.imageUrl).toBe("/assets/character/rasta-turtle.png");
 		});
 
+		it("should include the Shelly presenter character card with static art", () => {
+			const presenter = findCard("char-presenter");
+			expect(presenter).toBeDefined();
+			expect(presenter?.family).toBe("character");
+			expect(presenter?.rarity).toBe("gold");
+			expect(presenter?.name).toBe("Shelly, El Conchudo");
+			expect(presenter?.imageUrl).toBe(
+				"/assets/character/presenter-turtle.png",
+			);
+		});
+
 		// ── Power-shell cards with static art (public/assets/power-ups/) ────────
 		// Only the power-shell cards with a matching image get one; the rest
 		// keep the procedural frame + initial-letter fallback (see CardSlot).
