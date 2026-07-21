@@ -101,6 +101,7 @@ export interface BellClashOnlineScene {
 	showPowerPanel(): void;
 	showPowerPickupNotice(type: PowerType, x: number, y: number): void;
 	updateScoreTexts(): void;
+	updateScoreHud(): void;
 	updateSidePanels(): void;
 	syncOnlinePowerPickups(state: BellClashPhysicsState): void;
 }
@@ -116,6 +117,7 @@ export class BellClashOnlineController {
 	private totalRounds = 3;
 	private shotsPerRound = 3;
 	private scores: number[] = [];
+	private liveRoundScores: number[] = [];
 	private localShotNumber = 0;
 	private roundSubmitted = false;
 	private appliedRound = 0;
@@ -160,7 +162,12 @@ export class BellClashOnlineController {
 	}
 
 	get snapshotScore(): readonly number[] {
-		return this.snapshot?.score ?? this.scores;
+		// `score` only absorbs a round's points once every shot is in and the
+		// round locks (bell-clash.engine.ts `tryCompleteRound`); `liveRoundScores`
+		// is the in-progress round, kept live from the physics stream. Add them
+		// so the top-bar HUD moves as shells land, not just at round boundaries.
+		const locked = this.snapshot?.score ?? this.scores;
+		return locked.map((value, index) => value + (this.liveRoundScores[index] ?? 0));
 	}
 
 	get currentRound(): number {
@@ -197,6 +204,7 @@ export class BellClashOnlineController {
 		this.totalRounds = 3;
 		this.shotsPerRound = 3;
 		this.scores = [];
+		this.liveRoundScores = [];
 		this.localShotNumber = 0;
 		this.roundSubmitted = false;
 		this.appliedRound = 0;
@@ -358,6 +366,7 @@ export class BellClashOnlineController {
 		this.totalRounds = snapshot.totalRounds;
 		this.shotsPerRound = snapshot.shotsPerRound;
 		this.scores = snapshot.score;
+		this.liveRoundScores = snapshot.liveRoundScores;
 		this.localShotNumber =
 			snapshot.shotCounts[this.side] ?? this.localShotNumber;
 		this.scene.zones = snapshot.zones.map((zone) => ({ ...zone }));
@@ -535,6 +544,8 @@ export class BellClashOnlineController {
 		this.latestPhysicsState = state;
 		const isInitialPhysicsProjection = !this.hasPhysicsProjection;
 		this.hasPhysicsProjection = true;
+		this.liveRoundScores = state.liveRoundScores;
+		this.scene.updateScoreHud();
 		const activeIds = new Set(state.entities.map((entity) => entity.id));
 		for (const id of this.projectedEntities.keys()) {
 			if (!activeIds.has(id)) {

@@ -385,6 +385,7 @@ export interface BellClashPhysicsState {
 		zoneKind: "red" | "yellow" | "green" | "neutral";
 	}>;
 	pickupEvents?: Array<{ id: number; side: number; type: string; x: number; y: number }>;
+	liveRoundScores: number[];
 }
 
 export interface ShellCurlPhysicsEntity {

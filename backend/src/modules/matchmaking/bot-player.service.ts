@@ -61,6 +61,9 @@ const BOT_TICK_MS = 400;
 const BOT_SKILL = {
 	/** Delay between a bot's throws (ms, min..max jitter). */
 	actDelayMs: [1200, 2600] as const,
+	/** Extra human-ish pause after a round's countdown, before the first move
+	 *  of that round (ms, min..max jitter). */
+	roundStartDelayMs: [1_000, 3_000] as const,
 	/** Retry delay after the engine rejects an input (ms). */
 	rejectRetryMs: 800,
 	/** temple-curling: aim scatter around the button (px). */
@@ -136,6 +139,19 @@ const launchVelocity = (
  */
 const BOT_START_COUNTDOWN_HOLD_MS = 5_000;
 
+/**
+ * The client replays the same "3, 2, 1, GO!" beat at every round/end boundary,
+ * not just at match start (see `runStartCountdown` callers in each Scene). The
+ * engines advance `roundNumber`/`currentEnd` the instant a round ends — there
+ * is no server-side delay to ride out — so without this hold a bot's next
+ * `nextActionAt` (set right after its last throw) could fire mid-countdown.
+ * Matches the shared countdown's 4 steps × 800 ms. Applied per seat (see
+ * `armRoundHold`) so each bot's post-countdown pause is rolled independently —
+ * a shared room-wide hold would clear for every bot on the same tick and they
+ * would still all move at once.
+ */
+const BOT_ROUND_COUNTDOWN_HOLD_MS = 3_200;
+
 @Injectable()
 export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 	private readonly logger = new Logger(BotPlayerService.name);
@@ -143,6 +159,8 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 	private readonly plans = new Map<string, SeatPlan>();
 	/** matchId → when bots may start acting (the countdown hold). */
 	private readonly roomHoldUntil = new Map<string, number>();
+	/** matchId → last round/end key seen, to detect round boundaries. */
+	private readonly roomRoundKey = new Map<string, number>();
 
 	constructor(
 		private readonly rooms: RoomService,
@@ -158,6 +176,7 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 		this.timer = null;
 		this.plans.clear();
 		this.roomHoldUntil.clear();
+		this.roomRoundKey.clear();
 	}
 
 	/**
@@ -175,14 +194,31 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 			const activeMatchIds = new Set<string>();
 			for (const room of this.rooms.getActiveRooms()) {
 				activeMatchIds.add(room.matchId);
+				const now = Date.now();
+				const roundKey = this.roundKeyFor(room);
 				// Match the clients' "3, 2, 1, GO!": bots sit out the countdown
 				// window after the room goes active, so nothing moves before GO.
 				let holdUntil = this.roomHoldUntil.get(room.matchId);
 				if (holdUntil === undefined) {
-					holdUntil = Date.now() + BOT_START_COUNTDOWN_HOLD_MS;
+					holdUntil = now + BOT_START_COUNTDOWN_HOLD_MS;
 					this.roomHoldUntil.set(room.matchId, holdUntil);
+				} else {
+					// The same countdown replays at every round/end boundary too —
+					// re-arm each bot seat's own plan independently (see
+					// `armRoundHold`) rather than a shared room hold, so bots don't
+					// all resume on the same tick once it clears.
+					const lastRoundKey = this.roomRoundKey.get(room.matchId);
+					if (
+						roundKey !== null &&
+						lastRoundKey !== undefined &&
+						roundKey !== lastRoundKey
+					) {
+						this.armRoundHold(room, now);
+					}
 				}
-				if (Date.now() < holdUntil) continue;
+				if (roundKey !== null) this.roomRoundKey.set(room.matchId, roundKey);
+
+				if (now < holdUntil) continue;
 				for (const player of room.players) {
 					if (!isBotSeat(player)) continue;
 					await this.stepSeat(room, player);
@@ -197,6 +233,7 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 			for (const matchId of [...this.roomHoldUntil.keys()]) {
 				if (!activeMatchIds.has(matchId)) {
 					this.roomHoldUntil.delete(matchId);
+					this.roomRoundKey.delete(matchId);
 				}
 			}
 		} catch (err) {
@@ -238,6 +275,43 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 				err instanceof Error ? err.stack : String(err),
 			);
 			plan.nextActionAt = now + 1500;
+		}
+	}
+
+	/**
+	 * The round/end number a room's state is currently on, or `null` for a
+	 * game with no round concept (or one not yet recognized here). Used to
+	 * detect the boundary where the client replays "3, 2, 1, GO!".
+	 */
+	private roundKeyFor(room: MatchRoom): number | null {
+		switch (room.gameId) {
+			case "temple-curling":
+				return (room.state as CurlingSnapshot).currentEnd;
+			case "kame-knock":
+				return (room.state as KameKnockSnapshot).roundNumber;
+			case "bell-clash":
+				return (room.state as BellClashSnapshot).roundNumber;
+			case "bamboo-bash":
+				return (room.state as BambooBashSnapshot).roundNumber;
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * Re-arms every bot seat's own plan for a fresh round/end: hold through the
+	 * countdown, then an INDEPENDENTLY rolled 1–3 s pause per seat, so bots in
+	 * the same room don't all take their first shot of the round on the same
+	 * tick — the countdown itself is a shared beat, but nothing after it
+	 * should be.
+	 */
+	private armRoundHold(room: MatchRoom, now: number): void {
+		for (const player of room.players) {
+			if (!isBotSeat(player)) continue;
+			this.planFor(room, player).nextActionAt =
+				now +
+				BOT_ROUND_COUNTDOWN_HOLD_MS +
+				randomBetween(BOT_SKILL.roundStartDelayMs);
 		}
 	}
 

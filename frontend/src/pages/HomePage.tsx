@@ -2987,11 +2987,20 @@ function HomeMenu(): JSX.Element {
 									</span>
 								) : null}
 							</span>
-							<ExperienceProgress
-								level={player?.level ?? 1}
-								xp={player?.xp ?? 0}
-								compact
-							/>
+							<span className="hub-page__xp-row">
+								<ExperienceProgress
+									level={player?.level ?? 1}
+									xp={player?.xp ?? 0}
+									compact
+								/>
+								<span
+									className="hub-page__coins-badge"
+									aria-label={`${player?.coins ?? 0} coins`}
+								>
+									<span className="hub-page__coins-icon" aria-hidden="true">⬡</span>
+									{(player?.coins ?? 0).toLocaleString("en-GB")}
+								</span>
+							</span>
 							{player?.mostPlayedGame ? (
 								<span className="hub-page__most-played">
 									🐢 {player.mostPlayedGame.gameName} · {player.mostPlayedGame.gamesPlayed} {player.mostPlayedGame.gamesPlayed === 1 ? "match" : "matches"} · {player.mostPlayedGame.winRate}% wins
@@ -3945,7 +3954,6 @@ function HomeMenu(): JSX.Element {
 																	setShowcasePickerSlot(null);
 																}}
 															>
-																{a.unlocked ? "" : "🔒 "}
 																{a.title}
 															</button>
 														);

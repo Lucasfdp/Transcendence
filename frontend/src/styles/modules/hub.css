@@ -852,6 +852,28 @@
 	height: 0.28rem;
 }
 
+.hub-page__xp-row {
+	@apply flex items-center;
+	gap: 0.55rem;
+}
+
+.hub-page__coins-badge {
+	@apply flex items-center;
+	gap: 0.28rem;
+	padding: 0.08rem 0.5rem;
+	border: 1px solid rgba(226, 196, 119, 0.34);
+	border-radius: 999px;
+	background: rgba(2, 7, 8, 0.58);
+	color: #e7c985;
+	font-size: clamp(0.6rem, 0.9vw, 0.68rem);
+	font-variant-numeric: tabular-nums;
+	@apply font-bold whitespace-nowrap;
+}
+
+.hub-page__coins-icon {
+	font-size: 0.85em;
+}
+
 /* Name + tag on one line */
 .hub-page__player-name-row {
 	@apply flex;
@@ -1227,6 +1249,16 @@
 		0 3px 0 rgba(8, 18, 11, 0.9),
 		0 0 10px rgba(230, 197, 111, 0.2);
 	@apply uppercase;
+}
+
+/* "Three-Shell Monte" is the only gambit title long and hyphenated enough
+   that, once the shared title clamp above hits its upper bound on wide
+   viewports, it no longer fits on two lines inside this fixed-width card and
+   wraps to three — growing the card taller than its Fortune Wheel/Shell Flip
+   row siblings, which reads as the card sitting low/off-centre in its row.
+   Cap this title a touch smaller so it always keeps its two-line wrap. */
+.hub-game-card--three-shell-monte .hub-game-card__title {
+	font-size: clamp(1.25rem, 1.9vw, 1.62rem);
 }
 
 .hub-game-card small,

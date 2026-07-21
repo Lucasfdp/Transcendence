@@ -27,6 +27,7 @@ import {
 } from "./private-lobbies.service";
 import {
 	BellClashThrowEvent,
+	BellClashSnapshot,
 	BambooBashThrowEvent,
 	BambooBashSnapshot,
 	CurlingThrowEvent,
@@ -1370,6 +1371,10 @@ export class MatchmakingGateway
 		if (room.state.gameId === "bamboo-bash") {
 			const state = room.state as BambooBashSnapshot;
 			projection.bamboos = state.bamboos;
+			projection.liveRoundScores = state.liveRoundScores;
+		}
+		if (room.state.gameId === "bell-clash") {
+			const state = room.state as BellClashSnapshot;
 			projection.liveRoundScores = state.liveRoundScores;
 		}
 		if (room.state.gameId === "kame-knock") {

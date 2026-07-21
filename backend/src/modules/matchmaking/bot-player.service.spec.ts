@@ -170,6 +170,124 @@ describe("BotPlayerService — CPU players vs the real engines", () => {
 		}
 	});
 
+	it("bots also sit out the round-transition countdown at every round boundary", async () => {
+		const registry = new GameEngineRegistry(
+			new ShellCurlEngine(),
+			new BambooBashEngine(),
+			new KameKnockEngine(),
+			new BellClashEngine(),
+		);
+		const rooms = new RoomService(registry);
+		let virtualNow = 1_000_000;
+		const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => virtualNow);
+		try {
+			const room = rooms.createRoom("match-round-hold", "kame-knock", "casual", [
+				{ socketId: "bot:1", user: botUser(1), shellSelection: [] },
+				{ socketId: "bot:2", user: botUser(2), shellSelection: [] },
+			]);
+			for (const player of room.players) {
+				rooms.setReady(room.matchId, player.user.id);
+			}
+			rooms.start(room.matchId);
+
+			const handleUserInput = jest.fn().mockResolvedValue({ accepted: true });
+			const bots = new BotPlayerService(rooms, {
+				handleUserInput,
+			} as unknown as MatchmakingGateway);
+
+			// Clear the match-start hold (same margins as the test above) so the
+			// bot is actively playing before we simulate a round boundary.
+			for (let elapsed = 0; elapsed < 4_900; elapsed += 700) {
+				await bots.tick();
+				virtualNow += 700;
+			}
+			expect(handleUserInput).not.toHaveBeenCalled();
+			for (let elapsed = 0; elapsed < 4_000; elapsed += 700) {
+				virtualNow += 700;
+				await bots.tick();
+			}
+			expect(handleUserInput).toHaveBeenCalled();
+			handleUserInput.mockClear();
+
+			// The engine advances `roundNumber` the instant a round ends, with no
+			// server-side delay of its own — simulate that boundary directly.
+			(room.state as { roundNumber: number }).roundNumber += 1;
+
+			// Within the round's own "3, 2, 1, GO!" window (worst case 3.2s
+			// countdown + up to 3s pause = 6.2s): the bots must not move.
+			for (let elapsed = 0; elapsed < 4_100; elapsed += 700) {
+				await bots.tick();
+				virtualNow += 700;
+			}
+			expect(handleUserInput).not.toHaveBeenCalled();
+
+			// Past the round hold: the bots resume for the new round.
+			for (let elapsed = 0; elapsed < 4_000; elapsed += 700) {
+				virtualNow += 700;
+				await bots.tick();
+			}
+			expect(handleUserInput).toHaveBeenCalled();
+		} finally {
+			nowSpy.mockRestore();
+		}
+	});
+
+	it("rolls an independent round-start delay per bot seat, not a shared room-wide draw", async () => {
+		const registry = new GameEngineRegistry(
+			new ShellCurlEngine(),
+			new BambooBashEngine(),
+			new KameKnockEngine(),
+			new BellClashEngine(),
+		);
+		const rooms = new RoomService(registry);
+		let virtualNow = 1_000_000;
+		const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => virtualNow);
+		try {
+			// Bell Clash: both seats can shoot in the same round with no turn
+			// gating, so a shared room-wide hold would show up here as both
+			// bots' plans landing on the exact same instant.
+			const room = rooms.createRoom("match-independent-round-hold", "bell-clash", "casual", [
+				{ socketId: "bot:1", user: botUser(1), shellSelection: [] },
+				{ socketId: "bot:2", user: botUser(2), shellSelection: [] },
+			]);
+			for (const player of room.players) {
+				rooms.setReady(room.matchId, player.user.id);
+			}
+			rooms.start(room.matchId);
+
+			const handleUserInput = jest.fn().mockResolvedValue({ accepted: true });
+			const bots = new BotPlayerService(rooms, {
+				handleUserInput,
+			} as unknown as MatchmakingGateway);
+
+			// Clear the match-start hold so both seats already have a plan.
+			for (let elapsed = 0; elapsed < 8_900; elapsed += 700) {
+				await bots.tick();
+				virtualNow += 700;
+			}
+			expect(handleUserInput).toHaveBeenCalled();
+
+			// Simulate a round boundary — this is what re-arms each seat's plan.
+			(room.state as { roundNumber: number }).roundNumber += 1;
+			await bots.tick();
+
+			const plans = (bots as unknown as {
+				plans: Map<string, { nextActionAt: number }>;
+			}).plans;
+			const [seatA, seatB] = room.players;
+			const nextActionAtA = plans.get(`${room.matchId}|${seatA.side}`)?.nextActionAt;
+			const nextActionAtB = plans.get(`${room.matchId}|${seatB.side}`)?.nextActionAt;
+
+			expect(nextActionAtA).toBeDefined();
+			expect(nextActionAtB).toBeDefined();
+			// Two independent continuous draws landing on the exact same
+			// millisecond would indicate a shared room-wide value again.
+			expect(nextActionAtA).not.toEqual(nextActionAtB);
+		} finally {
+			nowSpy.mockRestore();
+		}
+	});
+
 	it("bots never act on rooms without bot seats", async () => {
 		const registry = new GameEngineRegistry(
 			new ShellCurlEngine(),

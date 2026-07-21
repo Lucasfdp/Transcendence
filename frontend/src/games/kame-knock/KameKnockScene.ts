@@ -1116,8 +1116,12 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		);
 		if (nextBallIndex !== this.currentBallIndex) {
 			this.currentBallIndex = nextBallIndex;
+			// Reset the shell/turtle to the arena centre and set up the next
+			// round's targets before the overlay shows, not after the "3, 2, 1,
+			// GO!" countdown completes — otherwise the turtle stays stranded at
+			// its previous landing spot for the whole "get ready" beat.
+			this.setupBallRound();
 			this.showNextRoundOverlay(() => {
-				this.setupBallRound();
 				this.prepareSlingshotForTurn();
 			});
 		} else {

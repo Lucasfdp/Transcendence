@@ -57,9 +57,7 @@ export function PlayerProfilePreview({
 					<article key={achievement?.id ?? `empty-${index}`}>
 						<span>{index + 1}</span>
 						<strong>
-							{achievement
-								? `${achievement.unlocked ? "" : "🔒 "}${achievement.title}`
-								: "Empty showcase slot"}
+							{achievement ? achievement.title : "Empty showcase slot"}
 						</strong>
 						<small>{achievement?.description ?? "Choose an achievement"}</small>
 					</article>

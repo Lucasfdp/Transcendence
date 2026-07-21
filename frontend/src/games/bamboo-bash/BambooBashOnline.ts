@@ -158,7 +158,14 @@ export class BambooBashOnlineController {
 	}
 
 	get snapshotScore(): number[] {
-		return this.snapshot?.score ?? [];
+		// `score` only absorbs a round's points once it locks in
+		// (bamboo-bash.engine.ts `completeRound`); `liveRoundScores` is the
+		// in-progress round, mutated live from the physics stream in
+		// `applyPhysicsState`. Add them so the top-bar HUD moves as bamboos are
+		// hit, not just at round boundaries.
+		const locked = this.snapshot?.score ?? this.scores;
+		const live = this.snapshot?.liveRoundScores ?? [];
+		return locked.map((value, index) => value + (live[index] ?? 0));
 	}
 
 	get snapshotRoundNumber(): number {

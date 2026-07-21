@@ -176,7 +176,11 @@ export class KameKnockOnlineController {
 	}
 
 	get snapshotScore(): number[] {
-		return this.snapshot?.score ?? [];
+		// Points land the instant a target breaks (see kame-knock-physics.ts), so
+		// the 30 Hz physics stream's `score` is already the live running total —
+		// prefer it over the lifecycle snapshot, which only refreshes on
+		// turn/round boundaries and would otherwise lag the top-bar HUD.
+		return this.latestPhysicsState?.score ?? this.snapshot?.score ?? [];
 	}
 
 	get snapshotRoundNumber(): number {

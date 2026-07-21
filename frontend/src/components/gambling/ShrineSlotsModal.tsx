@@ -467,6 +467,7 @@ export function ShrineSlotsModal({
 							<th>Three of a kind</th>
 							<th>Pays</th>
 							<th>Per reel</th>
+							<th>All 3 reels</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -483,6 +484,12 @@ export function ShrineSlotsModal({
 								</td>
 								<td>{symbol.payout}×</td>
 								<td>{(symbol.probability * 100).toFixed(1)}%</td>
+								<td>
+									{(
+										symbol.probability ** view.reelCount * 100
+									).toFixed(2)}
+									%
+								</td>
 							</tr>
 						))}
 					</tbody>

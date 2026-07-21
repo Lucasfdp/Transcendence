@@ -325,6 +325,43 @@ describe("MatchmakingGateway", () => {
 			);
 		});
 
+		it("includes Bell Clash live round scores in the physics projection", () => {
+			const room = makeRoom({
+				state: {
+					gameId: "bell-clash",
+					liveRoundScores: [120, 50],
+				} as MatchRoom["state"],
+				physicsState: {
+					matchId: "match-1",
+					physicsSeq: 11,
+					serverTime: 500,
+					entities: [],
+					pickups: [],
+					scoreEvents: [{ id: 6, side: 0, points: 120, zoneKind: "red" }],
+					nextEntityId: 1,
+					nextPickupId: 1,
+					nextScoreEventId: 7,
+					bellCooldownMs: [],
+				},
+			});
+			const emit = jest.fn();
+			rooms.getRoom.mockReturnValue(room);
+			gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
+
+			(
+				gateway as unknown as { emitPhysicsState: (id: string) => void }
+			).emitPhysicsState(room.matchId);
+
+			expect(emit).toHaveBeenCalledWith(
+				"game:physics-state",
+				expect.objectContaining({
+					physicsSeq: 11,
+					liveRoundScores: [120, 50],
+					scoreEvents: [{ id: 6, side: 0, points: 120, zoneKind: "red" }],
+				}),
+			);
+		});
+
 		it("includes compact authoritative impact events in the public projection", () => {
 			const impactEvent = { id: 4, kind: "solid-target" as const, entityId: 7, side: 1, objectId: 9, x: 70.5, y: 0 };
 			const room = makeRoom({

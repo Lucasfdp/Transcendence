@@ -1564,7 +1564,7 @@ export class BellClashScene
 		this.updateSidePanels();
 	}
 
-	private updateScoreHud(): void {
+	public updateScoreHud(): void {
 		this.scoreHud?.update(this.buildScoreHudState());
 	}
 
@@ -1605,7 +1605,7 @@ export class BellClashScene
 
 	private currentScoresForRules(): readonly number[] {
 		return this.online.snapshot?.gameId === "bell-clash"
-			? this.online.snapshot.score
+			? this.online.snapshotScore
 			: this.localPlayerCount > 1
 				? this.localScores
 				: [this.score];
