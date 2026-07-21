@@ -75,6 +75,18 @@ function settle(engine: ShellCurlEngine, room: MatchRoom): void {
 }
 
 describe("ShellCurlEngine", () => {
+	// createInitialState now picks a random starting seat (BaseEngine.
+	// randomStartingTurn) — pinned to 0 here so every OTHER test in this file
+	// keeps its existing "seat 0 goes first" assumption; the dedicated
+	// starting-seat tests below override this per-test to exercise the
+	// actual randomisation.
+	beforeEach(() => {
+		jest.spyOn(Math, "random").mockReturnValue(0);
+	});
+	afterEach(() => {
+		jest.restoreAllMocks();
+	});
+
 	it("resolves abandon winners from the connected non-abandoning players", () => {
 		const engine = new ShellCurlEngine();
 		const room = makeRoom(3);
@@ -230,6 +242,34 @@ describe("ShellCurlEngine", () => {
 		}
 		// End 0 leads with seat 0, end 1 with seat 1, end 2 with seat 2.
 		expect(leadByEnd).toEqual([0, 1, 2]);
+	});
+
+	it("starts a fresh match with a random seat instead of always seat 0 (least the same seat always plays first)", () => {
+		// Math.random() = 0.5 of 3 seats → randomStartingTurn = 1.
+		jest.spyOn(Math, "random").mockReturnValue(0.5);
+		const engine = new ShellCurlEngine();
+		const room = makeRoom(3);
+		const state = room.state as CurlingSnapshot;
+		expect(state.startingTurn).toBe(1);
+		expect(state.currentTurn).toBe(1);
+
+		engine.start(room);
+		const leadByEnd: number[] = [];
+		let observedEnd = -1;
+		for (let throwNumber = 0; throwNumber < state.maxTurns; throwNumber++) {
+			if (state.currentEnd !== observedEnd) {
+				observedEnd = state.currentEnd;
+				leadByEnd[observedEnd] = state.currentTurn;
+			}
+			const side = state.currentTurn;
+			expect(release(engine, room, side + 1, { vx: 0, vy: 0 })).toBe(room);
+			settle(engine, room);
+		}
+		// The whole rotation is offset by the random starting seat (1), not
+		// reset back to 0 — end 0 leads with seat 1, end 1 with seat 2 (2%3),
+		// end 2 with seat 0 (3%3) — `side` itself (colour/identity) is
+		// untouched throughout.
+		expect(leadByEnd).toEqual([1, 2, 0]);
 	});
 
 	it.each([2, 5])(

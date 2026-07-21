@@ -27,6 +27,21 @@ export abstract class BaseEngine {
 		return toSnapshotPlayer(player);
 	}
 
+	/**
+	 * A fresh match's starting seat for a turn-based engine (temple-curling,
+	 * kame-knock): picked once at `createInitialState` and stored on the
+	 * snapshot as `startingTurn`, which every later turn rotation offsets by
+	 * — so a match's play order is a random ROTATION of the seats (e.g.
+	 * 2,3,0,1) instead of always 0,1,2,3, without touching `side` itself
+	 * (side stays the player's stable colour/identity everywhere else: the
+	 * scoreboard, trails, replays). Not part of the deterministic Tournament
+	 * seed (SPEC-000/028) — this is the matchmaking/arena layer, which
+	 * already uses plain randomness elsewhere (e.g. BotPlayerService).
+	 */
+	protected randomStartingTurn(playerCount: number): number {
+		return Math.floor(Math.random() * Math.max(1, playerCount));
+	}
+
 	protected getWinnerSide(score: number[]): number | null {
 		const maxScore = Math.max(...score);
 		const winners = score

@@ -96,6 +96,9 @@ export interface CurlingSnapshot {
 	powerupsEnabled: boolean;
 	phase: "pending" | "active" | "finished" | "abandoned";
 	currentTurn: number;
+	/** The seat that led end 0 (see BaseEngine.randomStartingTurn) — every
+	 *  later end's lead rotates from this instead of always starting at 0. */
+	startingTurn: number;
 	turnNumber: number;
 	maxTurns: number;
 	currentEnd: number;
@@ -297,6 +300,9 @@ export interface KameKnockSnapshot {
 	powerupsEnabled: boolean;
 	phase: "pending" | "active" | "finished" | "abandoned";
 	currentTurn: number;
+	/** The seat that took turn 0 (see BaseEngine.randomStartingTurn) — every
+	 *  later turn's rotation offsets from this instead of always starting at 0. */
+	startingTurn: number;
 	turnNumber: number;
 	roundNumber: number;
 	totalRounds: number;

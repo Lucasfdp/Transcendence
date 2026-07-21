@@ -8,6 +8,7 @@ export interface RoundFlowState {
 	readonly score: number[];
 	readonly phase: TurnPhase;
 	readonly hasHammer?: boolean;
+	readonly firstPlayer?: number;
 }
 
 export function buildHudStateFromRoundFlow(
@@ -21,6 +22,7 @@ export function buildHudStateFromRoundFlow(
 		score: state.score,
 		phase: state.phase,
 		hasHammer: state.hasHammer ?? false,
+		firstPlayer: clamp(state.firstPlayer ?? 0, 0, playerCount - 1),
 	};
 }
 

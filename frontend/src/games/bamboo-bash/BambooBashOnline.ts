@@ -15,6 +15,7 @@ import { PowerType } from "../../shared/mechanics/power-system";
 import type { ArenaPowerRuntime } from "../../shared/mechanics/arena-power-runtime";
 import type { ArenaBallTrailRuntime } from "../common";
 import type { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
+import { SCORE_HUD_HEIGHT } from "../../shared/mechanics/score-hud";
 import { bambooPos, type Bamboo } from "./bamboo";
 import {
 	getGameSocket,
@@ -428,7 +429,7 @@ export class BambooBashOnlineController {
 
 	createStatusText(): void {
 		this.statusText = this.scene.add
-			.text(this.scene.scale.width / 2, 48, "", {
+			.text(this.scene.scale.width / 2, SCORE_HUD_HEIGHT + 4, "", {
 				fontSize: "13px",
 				color: THEME.textGold,
 				fontFamily: THEME.font,

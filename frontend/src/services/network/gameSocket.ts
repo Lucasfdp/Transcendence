@@ -16,6 +16,9 @@ export interface CurlingSnapshot {
 	powerupsEnabled: boolean;
 	phase: "pending" | "active" | "finished" | "abandoned";
 	currentTurn: number;
+	/** The seat that led end 0 (random per match) — every later end's lead
+	 *  rotates from this instead of always starting at 0. */
+	startingTurn: number;
 	turnNumber: number;
 	maxTurns: number;
 	currentEnd: number;
@@ -180,6 +183,9 @@ export interface KameKnockSnapshot {
 	powerupsEnabled: boolean;
 	phase: "pending" | "active" | "finished" | "abandoned";
 	currentTurn: number;
+	/** The seat that took turn 0 (random per match) — every later turn's
+	 *  rotation offsets from this instead of always starting at 0. */
+	startingTurn: number;
 	turnNumber: number;
 	roundNumber: number;
 	totalRounds: number;

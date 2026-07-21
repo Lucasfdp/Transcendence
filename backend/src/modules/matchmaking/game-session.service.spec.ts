@@ -48,6 +48,7 @@ function makeRoom(overrides: Partial<MatchRoom> = {}): MatchRoom {
 			powerupsEnabled: true,
 			phase: "finished",
 			currentTurn: 0,
+			startingTurn: 0,
 			turnNumber: 0,
 			maxTurns: 0,
 			currentEnd: 0,

@@ -15,6 +15,7 @@ import type { ArenaPowerRuntime } from "../../shared/mechanics/arena-power-runti
 import type { ArenaBallTrailRuntime } from "../common";
 import type { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
 import { PowerType } from "../../shared/mechanics/power-system";
+import { SCORE_HUD_HEIGHT } from "../../shared/mechanics/score-hud";
 import type {
 	GameSnapshot,
 	KameKnockSnapshot,
@@ -274,7 +275,7 @@ export class KameKnockOnlineController {
 
 	createStatusText(): void {
 		this.statusText = this.scene.add
-			.text(this.scene.scale.width / 2, 78, "", {
+			.text(this.scene.scale.width / 2, SCORE_HUD_HEIGHT + 4, "", {
 				fontSize: "13px",
 				color: THEME.textGold,
 				fontFamily: THEME.font,

@@ -18,6 +18,7 @@ import type { ArenaPowerRuntime } from "../../shared/mechanics/arena-power-runti
 import type { GameInfoSidePanel } from "../../shared/ui/panels/GameInfoSidePanel";
 import type { ArenaBallTrailRuntime, SlingshotLaunchRuntime } from "../common";
 import { WorldMapRuntime } from "../common";
+import { SCORE_HUD_HEIGHT } from "../../shared/mechanics/score-hud";
 import {
 	getGameSocket,
 	type BellClashSnapshot,
@@ -271,7 +272,7 @@ export class BellClashOnlineController {
 
 	createStatusText(): void {
 		this.statusText = this.scene.add
-			.text(this.scene.scale.width / 2, 48, "", {
+			.text(this.scene.scale.width / 2, SCORE_HUD_HEIGHT + 4, "", {
 				fontSize: "13px",
 				color: THEME.textGold,
 				fontFamily: THEME.font,

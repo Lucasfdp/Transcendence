@@ -796,6 +796,14 @@ describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SP
 	 * Each roll needs the turn-handoff pause (the boards walk the token), and
 	 * the round close crosses the MINIGAME TIME! gate — every seat here is
 	 * auto-ready (no live boards), so it only holds its minimum beat.
+	 *
+	 * If the minigame produces a winner, GAMBLING_PHASE now waits for their
+	 * board to reconnect (`awaitPlayerPresence`) before opening. This helper
+	 * stops right there — nobody in this harness has a live board, so callers
+	 * must resolve that wait themselves: either `advanceGamblingArrival`
+	 * below (rides the 20 s backstop, same as a winner who never comes back)
+	 * or `runtime.handlePlayerConnected(winnerId)` (the real fix's other
+	 * path — a dedicated test drives that one directly, with no backstop).
 	 */
 	async function playRound(
 		runtime: TournamentRuntime,
@@ -812,12 +820,19 @@ describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SP
 		await settle();
 	}
 
+	/** Rides the GAMBLING_PHASE arrival backstop (GAMBLING_ARRIVAL_TIMEOUT_MS). */
+	async function advanceGamblingArrival(clock: ManualClock): Promise<void> {
+		clock.advance(20_000);
+		await settle();
+	}
+
 	it("a completed round runs a REAL minigame and opens GAMBLING for its winner", async () => {
 		const { runtime, clock, events } = makeFullRuntime({
 			pickWinner: (ids) => ids[0],
 		});
 		runtime.start();
 		await playRound(runtime, clock);
+		await advanceGamblingArrival(clock);
 
 		expect(events.some((e) => e.name === "MinigameFinished")).toBe(true);
 		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
@@ -834,10 +849,63 @@ describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SP
 		).toBeGreaterThan(TOURNAMENT_SETTINGS_V1.initialPoints);
 	});
 
+	it("opens GAMBLING as soon as the winner reconnects, without waiting for the arrival backstop", async () => {
+		// Regression: GAMBLING_PHASE used to open the INSTANT the arena match
+		// reported "finished" server-side — long before a real winner had
+		// necessarily clicked CONTINUE (up to a 15s auto-return) and navigated
+		// back to the board. That could burn a chunk of (or all of) the 30s
+		// decision window on a screen the winner hadn't even reached yet,
+		// silently resolving their bet as a timed-out "abandon" with the
+		// prompt never shown — reported as "the gambling is done
+		// automatically" for a real player (never intended for anyone but a
+		// CPU winner, which still decides immediately via decideBotGambling).
+		const { runtime, clock, events } = makeFullRuntime({
+			pickWinner: (ids) => ids[0],
+		});
+		runtime.start();
+		await playRound(runtime, clock);
+
+		// Still MINIGAME: the winner's board has not reconnected yet, so
+		// GAMBLING_PHASE must not have opened — no auto-resolve, no matter how
+		// long the client takes, short of the 20s backstop.
+		expect(runtime.currentPhase).toBe("MINIGAME");
+		expect(events.some((e) => e.name === "GamblingOpened")).toBe(false);
+
+		clock.advance(5_000); // well under the 20s backstop
+		await settle();
+		expect(runtime.currentPhase).toBe("MINIGAME");
+
+		// The winner's board reconnects (TournamentBoardView remounting after
+		// the arena match) — GAMBLING_PHASE opens immediately, no further
+		// clock advance needed.
+		const winner = runtime.playOrder[0];
+		runtime.handlePlayerConnected(winner);
+		await settle();
+
+		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
+		const opened = events.find((e) => e.name === "GamblingOpened");
+		expect(opened?.playerId).toBe(winner);
+	});
+
+	it("opens GAMBLING immediately for a CPU winner (never waits — no board to reconnect)", async () => {
+		const { runtime, clock, events } = makeFullRuntime({
+			pickWinner: (ids) => ids[0],
+		});
+		runtime.start();
+		runtime.convertPlayerToBot(runtime.playOrder[0]);
+		await playRound(runtime, clock);
+
+		// No arrival wait at all for a bot winner — GAMBLING_PHASE (and the
+		// bot's own decision, decideBotGambling) proceeds right away.
+		expect(runtime.currentPhase).not.toBe("MINIGAME");
+		expect(events.some((e) => e.name === "GamblingOpened")).toBe(true);
+	});
+
 	it("a resolved bet holds the round for the reveal, with the outcome on the wire", async () => {
 		const { runtime, clock } = makeFullRuntime({ pickWinner: (ids) => ids[0] });
 		runtime.start();
 		await playRound(runtime, clock);
+		await advanceGamblingArrival(clock);
 		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
 		const winner = runtime.playOrder[0];
 
@@ -865,6 +933,7 @@ describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SP
 		const { runtime, clock } = makeFullRuntime({ pickWinner: (ids) => ids[0] });
 		runtime.start();
 		await playRound(runtime, clock);
+		await advanceGamblingArrival(clock);
 		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
 
 		runtime.handleLeaveGambling(runtime.playOrder[0]);
@@ -879,6 +948,7 @@ describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SP
 		const { runtime, clock } = makeFullRuntime({ pickWinner: (ids) => ids[0] });
 		runtime.start();
 		await playRound(runtime, clock);
+		await advanceGamblingArrival(clock);
 		expect(runtime.currentPhase).toBe("GAMBLING_PHASE");
 
 		clock.advance(TOURNAMENT_SETTINGS_V1.timeouts.gamblingDecisionSeconds * 1000);
@@ -911,6 +981,7 @@ describe("TournamentRuntime — full loop (P1: minigame→gambling→endgame, SP
 		for (let round = 0; round < 60 && !runtime.isTerminal; round++) {
 			if (runtime.currentPhase === "PLAYER_TURNS") {
 				await playRound(runtime, clock);
+				await advanceGamblingArrival(clock);
 			}
 			if (runtime.currentPhase === "GAMBLING_PHASE") {
 				runtime.handleStartGambling(winner);

@@ -251,6 +251,16 @@ const GAMBLE_RESULT_HOLD_MS = 4_000;
  */
 const TIE_BREAK_ARRIVAL_TIMEOUT_MS = 20_000;
 
+/**
+ * Gambling audience gate: open GAMBLING_PHASE anyway when this passes (same
+ * "arena's 15 s CONTINUE + navigation" cover as the tie-break gate above) —
+ * a winner who never reconnects can never hold the round hostage. Bounds
+ * `awaitPlayerPresence`, NOT the 30 s decision timeout itself (SPEC-024
+ * `gambling.decisionTimeoutMs`), which only starts once the winner is
+ * actually back (see `runMinigamePhase`).
+ */
+const GAMBLING_ARRIVAL_TIMEOUT_MS = 20_000;
+
 export class TournamentRuntime {
 	private readonly bus: TournamentEventBus;
 	private readonly machine: TournamentStateMachine;
@@ -296,6 +306,14 @@ export class TournamentRuntime {
 	private readonly lobbyBotPlayerIds: ReadonlySet<number>;
 	/** Players currently connected to the board (gateway join/leave signals). */
 	private readonly connectedPlayers = new Set<number>();
+	/**
+	 * Poked by `handlePlayerConnected` while `runMinigamePhase` is waiting for
+	 * the minigame winner's board to reconnect before opening GAMBLING_PHASE
+	 * (see `awaitPlayerPresence`) — the tie-break gate's `presenceWaiter`
+	 * pattern, mirrored here since this wait lives in the Runtime rather than
+	 * the minigame coordinator.
+	 */
+	private gamblingPresenceWaiter: (() => void) | null = null;
 	/** True while round 1's turns are held open for players to arrive. */
 	private firstTurnsPending = false;
 	private readonly firstTurnsGraceMs: number;
@@ -711,6 +729,9 @@ export class TournamentRuntime {
 		}
 		// A waiting tie-break roulette may now have its full audience.
 		this.engines.minigame.notifyPresenceChanged();
+		// A waiting GAMBLING_PHASE open (see awaitPlayerPresence) may now have
+		// its winner back.
+		this.gamblingPresenceWaiter?.();
 	}
 
 	// ── Intents (SPEC-022: clients only REQUEST; the server validates) ────
@@ -1141,10 +1162,60 @@ export class TournamentRuntime {
 			return; // cancelled while the match ran
 		}
 		if (winnerId !== null) {
+			// The match lifecycle reports "finished" the instant the arena match
+			// ends server-side — long before a human winner has necessarily
+			// clicked CONTINUE (up to a 15 s auto-return) and navigated/rejoined
+			// the tournament room. Opening the 30 s gambling decision window
+			// right here would burn a chunk of it (or all of it) on a screen the
+			// winner hasn't even reached yet, silently resolving their bet as a
+			// timed-out "abandon" — reported as "the gambling is done
+			// automatically" for a real player who was never actually shown the
+			// prompt. Wait for their board to genuinely reconnect first (bounded,
+			// so a winner who never comes back can't stall the round forever);
+			// bots are always "present" and open immediately, unaffected.
+			await this.awaitPlayerPresence(winnerId);
+			if (this.machine.isTerminal) {
+				return; // cancelled while we waited for the winner to reconnect
+			}
 			this.enterGambling(winnerId);
 			return;
 		}
 		this.enterCheckKeyItems();
+	}
+
+	/**
+	 * Bounded wait for a specific player's board to be connected — the SAME
+	 * presence pattern `TournamentMinigame.awaitTieBreakAudience` uses, kept
+	 * here instead since this wait gates GAMBLING_PHASE at the Runtime level,
+	 * not a minigame-coordinator concern. Resolves immediately for a CPU
+	 * winner (bots have no board to wait for) or an already-connected human.
+	 */
+	private awaitPlayerPresence(playerId: number): Promise<void> {
+		const isPresent = (): boolean =>
+			this.botPlayerIds.has(playerId) || this.connectedPlayers.has(playerId);
+		if (isPresent()) {
+			return Promise.resolve();
+		}
+		return new Promise<void>((resolve) => {
+			let finished = false;
+			const finish = (): void => {
+				if (finished) return;
+				finished = true;
+				this.gamblingPresenceWaiter = null;
+				resolve();
+			};
+			const timer = this.clock.schedule(GAMBLING_ARRIVAL_TIMEOUT_MS, finish);
+			this.gamblingPresenceWaiter = () => {
+				if (isPresent()) {
+					this.clock.cancel(timer);
+					finish();
+				}
+			};
+			// The player may have reconnected between the check above and this
+			// waiter being installed — re-check once so that race can't stall
+			// the gate for the full timeout.
+			this.gamblingPresenceWaiter();
+		});
 	}
 
 	/**

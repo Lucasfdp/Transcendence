@@ -11,6 +11,7 @@ import { StoneButton } from "../components/common/StoneButton";
 import { api, type User } from "../features/hub/api";
 import { RETURN_TO_HUB_EVENT } from "../features/hub/ReturnToHubScene";
 import { TOURNAMENT_WS_MESSAGES } from "../features/tournaments/contracts";
+import type { TournamentMinigameStartPayload } from "../features/tournaments/TournamentBoardView";
 import { TOURNAMENT_QUIT_EVENT } from "../shared/mechanics/hud";
 import type { ShellSmashStartData } from "../lib/createShellSmashGame";
 import { createShellSmashGame } from "../lib/createShellSmashGame";
@@ -268,6 +269,15 @@ function PowerupMatchmakingPanel({
 	const autoJoinMatch = Boolean(
 		(location.state as { autoJoinMatch?: boolean } | null)?.autoJoinMatch,
 	);
+	// The full `tournament:minigame-start` payload (TournamentBoardView),
+	// carried through navigation state so we can launch straight into
+	// gameplay from it instead of re-discovering the match through the
+	// auto-join round trip below (see the effect using it further down).
+	const tournamentMinigame = (
+		location.state as
+			| { tournamentMinigame?: TournamentMinigameStartPayload }
+			| null
+	)?.tournamentMinigame;
 	const hasAutoJoinedRef = useRef(false);
 	const [message, setMessage] = useState(
 		"Power-ups are off by default. Enable them for extra chaos.",
@@ -722,12 +732,49 @@ function PowerupMatchmakingPanel({
 		setMessageTone("muted");
 	};
 
+	// A tournament minigame carries its full match payload already (see
+	// TournamentBoardView's onMinigameStart) — launch straight from it,
+	// available synchronously on the very first render (`location.state`),
+	// instead of falling through to the round-trip auto-join below. That
+	// round trip (match:status → match:rejoin → game:physics-request) used
+	// to be the ONLY path here, discarding the payload the server already
+	// sent — its indirection raced the arena's "wait for every real seat"
+	// gate (BotPlayerService, `game:arena-ready`): a slow trip could let the
+	// CPUs' backstop timer fire before this client ever mounted, so the
+	// player would land mid-match with no proper start (or end) sequence.
+	useEffect(() => {
+		if (hasAutoJoinedRef.current) return;
+		if (!tournamentMinigame || tournamentMinigame.gameId !== gameId) return;
+		hasAutoJoinedRef.current = true;
+		onLaunch({
+			gameId,
+			targetScene: sceneData.targetScene,
+			user: currentUser ?? undefined,
+			shellSelection: buildEmptyShellSelection(
+				tournamentMinigame.snapshot.players.length,
+			),
+			...replayAvailability(tournamentMinigame.snapshot.powerupsEnabled),
+			onlineMatch: {
+				matchId: tournamentMinigame.matchId,
+				side: tournamentMinigame.side,
+				tournamentId: tournamentMinigame.tournamentId,
+				snapshot: tournamentMinigame.snapshot,
+				physicsState: tournamentMinigame.physicsState,
+				...replayAvailability(tournamentMinigame.snapshot.powerupsEnabled),
+			} satisfies OnlineMatchContext,
+		});
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- onLaunch/sceneData/currentUser close over render-local values re-created every render; the ref guard makes re-running this effect body harmless
+	}, [tournamentMinigame, gameId]);
+
 	// Auto-join a private-lobby match: HomePage navigates here with
 	// { autoJoinMatch: true } right after a lobby invite is accepted (see
 	// onLobbyMatched in HomePage.tsx), so both players land directly in
 	// gameplay instead of each having to find and click "Rejoin Match".
 	// Guarded by a ref so it only fires once per page visit, and scoped to
-	// this game's id so a stale flag can't hijack an unrelated match.
+	// this game's id so a stale flag can't hijack an unrelated match. Also
+	// the fallback path for a tournament minigame that lost its navigation
+	// state (e.g. a hard refresh) — the effect above already handles the
+	// normal case directly.
 	useEffect(() => {
 		if (!autoJoinMatch || hasAutoJoinedRef.current) return;
 		if (

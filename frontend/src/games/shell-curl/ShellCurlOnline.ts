@@ -6,7 +6,7 @@ import {
 } from "../../shared/mechanics/ball";
 import type { RectArenaPixels } from "../../shared/mechanics/rect-arena";
 import { PowerType } from "../../shared/mechanics/power-system";
-import type { ScoreHud } from "../../shared/mechanics/score-hud";
+import { SCORE_HUD_HEIGHT, type ScoreHud } from "../../shared/mechanics/score-hud";
 import type {
 	TurnManager,
 	TurnState,
@@ -190,7 +190,7 @@ export class ShellCurlOnlineController {
 
 	createStatusText(): void {
 		this.statusText = this.scene.add
-			.text(this.scene.scale.width / 2, 48, "", {
+			.text(this.scene.scale.width / 2, SCORE_HUD_HEIGHT + 4, "", {
 				fontSize: "13px",
 				color: THEME.textGold,
 				fontFamily: THEME.font,
@@ -319,6 +319,7 @@ export class ShellCurlOnlineController {
 						? "aiming"
 						: "settling",
 			hasHammer: false,
+			firstPlayer: snapshot.startingTurn,
 		};
 		this.scene.scoreHud.update(this.scene.buildScoreHudState());
 		this.scene.syncOnlineUsedPowers(snapshot.usedPowersBySide);
@@ -530,11 +531,14 @@ export class ShellCurlOnlineController {
 	}
 
 	private throwsUsedBySide(snapshot: CurlingSnapshot, side: number): number {
-		// Mirrors the server rotation (P2): the lead of end `e` is `e % n`, so a
+		// Mirrors the server rotation (P2): the lead of end `e` is
+		// `(startingTurn + e) % n` — offset from the match's random starting
+		// seat rather than always 0 (BaseEngine.randomStartingTurn) — so a
 		// seat's throw count depends on its offset from that lead, not on its
-		// absolute index. With lead 0 this reduces to the original formula.
+		// absolute index. With startingTurn 0 this reduces to the original
+		// formula.
 		const n = Math.max(1, snapshot.score.length);
-		const lead = snapshot.currentEnd % n;
+		const lead = (snapshot.startingTurn + snapshot.currentEnd) % n;
 		const offset = (((side - lead) % n) + n) % n;
 		return Math.floor((snapshot.throwsInEnd + n - 1 - offset) / n);
 	}

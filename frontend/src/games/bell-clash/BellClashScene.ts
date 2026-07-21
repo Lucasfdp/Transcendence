@@ -81,6 +81,8 @@ import {
 	computeGameRuleWinner,
 	notifyGameRuleProjectileSettled,
 	notifyGameRuleRelease,
+	perSeatShotsRemaining,
+	turnlessOnlineHighlight,
 	type GameRuleHooks,
 } from "../../shared/mechanics/game-rule-hooks";
 import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
@@ -655,7 +657,9 @@ export class BellClashScene
 
 	/** Index of the player whose turn it currently is. */
 	public currentPlayerIndex(): number {
-		if (this.online.isActive) return Math.max(0, this.online.side);
+		// Bell Clash has no turns either — see turnlessOnlineHighlight.
+		if (this.online.isActive)
+			return turnlessOnlineHighlight(this.online.side);
 		return this.localTurnNumber % this.localPlayerCount;
 	}
 
@@ -1612,10 +1616,13 @@ export class BellClashScene
 	}
 
 	private buildTurnDots(playerCount: number, shellIndex: number): number[] {
-		if (this.online.isActive)
-			return Array.from({ length: playerCount }, () =>
-				Math.max(0, this.online.shotsPerRoundCount - shellIndex),
+		if (this.online.isActive) {
+			return perSeatShotsRemaining(
+				this.online.snapshot?.shotCounts,
+				playerCount,
+				this.online.shotsPerRoundCount,
 			);
+		}
 		if (this.localPlayerCount <= 1)
 			return [Math.max(0, SHOTS_TOTAL - shellIndex)];
 		const dots = Array.from({ length: playerCount }, () => 0);

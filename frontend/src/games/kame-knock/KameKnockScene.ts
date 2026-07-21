@@ -1453,6 +1453,10 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			getRemainingTurns: () => this.buildTurnDots(playerCount),
 			getScore: () => score,
 			getPhase: () => this.currentTurnPhase(),
+			// Random per-match starting seat (BaseEngine.randomStartingTurn) —
+			// the scoreboard displays players starting from them, in actual
+			// play order, instead of always side 0 first.
+			getFirstPlayer: () => this.online.snapshot?.startingTurn ?? 0,
 			onRelease: () => {
 				this.updateScoreHud();
 				if (!this.online.isActive) {

@@ -11,7 +11,7 @@
  */
 
 import Phaser from "phaser";
-import type { TurnState } from "./turn-manager";
+import { seatAtDisplaySlot, type TurnState } from "./turn-manager";
 import { THEME } from "../theme";
 import { PLAYER_COLOUR_VALUES, PLAYER_HEX_COLOURS } from "../game-ui";
 
@@ -23,6 +23,18 @@ const BALL_DOT_R = 5; // radius of each ball-remaining dot
 const BALL_DOT_GAP = 14; // centre-to-centre gap between dots
 const PLAYER_COLOURS = PLAYER_COLOUR_VALUES;
 const PLAYER_HEX = PLAYER_HEX_COLOURS;
+
+/**
+ * Total on-screen height of the HUD strip (main bar + balls-remaining row),
+ * i.e. the lowest y a scene can safely place text without it overlapping the
+ * scoreboard. Each game's online "whose turn" status text should derive its
+ * y position from this rather than a hand-picked number — three of the four
+ * games once hardcoded `48` (well inside this band, so their status text sat
+ * on top of the score labels/balls-remaining dots) while Kame Knock alone
+ * had already been nudged to `78`; exporting the real height lets every game
+ * share the one correct answer instead of drifting independently again.
+ */
+export const SCORE_HUD_HEIGHT = BAR_HEIGHT + BALLS_ROW_H + 4;
 const TEAM_LABELS = ["P1", "P2"] as const;
 
 const PHASE_LABELS: Record<string, string> = {
@@ -148,11 +160,18 @@ export class ScoreHud {
 			this.options.minPlayerCount ?? 2,
 			state.score.length,
 		);
-		const status = Array.from({ length: playerCount }, (_value, player) =>
-			this.options.statusLabel?.(player, state) ?? "",
+		const firstPlayer = state.firstPlayer ?? 0;
+		const status = Array.from({ length: playerCount }, (_value, slot) =>
+			this.options.statusLabel?.(
+				seatAtDisplaySlot(slot, playerCount, firstPlayer),
+				state,
+			) ?? "",
 		);
-		const labels = Array.from({ length: playerCount }, (_value, player) =>
-			this.playerLabel(player, playerCount),
+		const labels = Array.from({ length: playerCount }, (_value, slot) =>
+			this.playerLabel(
+				seatAtDisplaySlot(slot, playerCount, firstPlayer),
+				playerCount,
+			),
 		);
 		return JSON.stringify({
 			w: this.scene.scale.width,
@@ -162,6 +181,7 @@ export class ScoreHud {
 			score: state.score,
 			ballsLeft: state.ballsLeft,
 			playerCount,
+			firstPlayer,
 			labels,
 			status,
 			showBackground: this.options.showBackground !== false,
@@ -189,10 +209,13 @@ export class ScoreHud {
 			this.options.minPlayerCount ?? 2,
 			state.score.length,
 		);
+		const firstPlayer = state.firstPlayer ?? 0;
+		const currentSlot =
+			(state.currentTeam - firstPlayer + playerCount) % playerCount;
 		const slotW = w / playerCount;
 		const underW = Math.min(w * 0.2, slotW * 0.7);
 		const underY = BAR_HEIGHT - 3;
-		const underX0 = slotW * state.currentTeam + (slotW - underW) / 2;
+		const underX0 = slotW * currentSlot + (slotW - underW) / 2;
 		this.gfx.fillStyle(this.playerColour(state.currentTeam), 0.85);
 		this.gfx.fillRect(underX0, underY, underW, 2);
 
@@ -202,23 +225,24 @@ export class ScoreHud {
 
 		// Update text values
 		this.repositionTexts(w, playerCount);
-		for (let player = 0; player < 5; player++) {
-			const visible = player < playerCount;
+		for (let slot = 0; slot < 5; slot++) {
+			const visible = slot < playerCount;
+			const side = seatAtDisplaySlot(slot, playerCount, firstPlayer);
 			this.texts
-				.get(`score${player}`)
+				.get(`score${slot}`)
 				?.setVisible(visible)
-				.setColor(this.playerHexColour(player))
-				.setText(String(state.score[player] ?? 0));
+				.setColor(this.playerHexColour(side))
+				.setText(String(state.score[side] ?? 0));
 			this.texts
-				.get(`label${player}`)
+				.get(`label${slot}`)
 				?.setVisible(visible)
-				.setColor(this.playerHexColour(player))
-				.setText(this.playerLabel(player, playerCount));
+				.setColor(this.playerHexColour(side))
+				.setText(this.playerLabel(side, playerCount));
 			this.texts
-				.get(`status${player}`)
+				.get(`status${slot}`)
 				?.setVisible(visible && Boolean(this.options.statusLabel))
-				.setColor(this.playerHexColour(player))
-				.setText(this.options.statusLabel?.(player, state) ?? "");
+				.setColor(this.playerHexColour(side))
+				.setText(this.options.statusLabel?.(side, state) ?? "");
 		}
 		const showRoundInfo = this.options.showRoundInfo !== false;
 		this.texts
@@ -247,14 +271,16 @@ export class ScoreHud {
 			this.options.minPlayerCount ?? 2,
 			state.score.length,
 		);
+		const firstPlayer = state.firstPlayer ?? 0;
 		const slotW = w / playerCount;
 
-		for (let team = 0; team < playerCount; team++) {
-			const count = state.ballsLeft[team] ?? 0;
-			const colour = this.playerColour(team);
+		for (let slot = 0; slot < playerCount; slot++) {
+			const side = seatAtDisplaySlot(slot, playerCount, firstPlayer);
+			const count = state.ballsLeft[side] ?? 0;
+			const colour = this.playerColour(side);
 			const totalW = count * BALL_DOT_GAP;
 			const startX =
-				slotW * team + (slotW - totalW) / 2 + BALL_DOT_GAP / 2;
+				slotW * slot + (slotW - totalW) / 2 + BALL_DOT_GAP / 2;
 
 			for (let i = 0; i < count; i++) {
 				const cx = startX + i * BALL_DOT_GAP;

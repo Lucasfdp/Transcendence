@@ -43,6 +43,7 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 		context: GameEngineCreateContext,
 		roomPlayers: RoomPlayer[],
 	): KameKnockSnapshot {
+		const startingTurn = this.randomStartingTurn(roomPlayers.length);
 		return {
 			matchId: context.matchId,
 			seq: 0,
@@ -50,7 +51,8 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 			mode: context.mode,
 			powerupsEnabled: context.powerupsEnabled ?? false,
 			phase: "pending",
-			currentTurn: 0,
+			currentTurn: startingTurn,
+			startingTurn,
 			turnNumber: 0,
 			roundNumber: 1,
 			totalRounds: ROUND_CONFIGS.length,
@@ -195,7 +197,11 @@ export class KameKnockEngine extends BaseArenaEngine implements GameEngine {
 			this.createRoundTargetSet(room.matchId, state.roundNumber);
 		}
 
-		state.currentTurn = state.turnNumber % room.players.length;
+		// Offset from the match's random starting seat (see
+		// BaseEngine.randomStartingTurn) rather than always 0, so which seat
+		// goes 1st/2nd/3rd… varies match to match without touching `side`.
+		state.currentTurn =
+			(state.startingTurn + state.turnNumber) % room.players.length;
 		this.resetTurnTargets(room.matchId, state);
 		resetArenaReplayBalls(state, {
 			clearEntities: isNewRound,

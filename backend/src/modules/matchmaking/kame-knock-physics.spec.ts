@@ -15,6 +15,7 @@ function snapshot(): KameKnockSnapshot {
 		powerupsEnabled: false,
 		phase: "active",
 		currentTurn: 0,
+		startingTurn: 0,
 		turnNumber: 0,
 		roundNumber: 1,
 		totalRounds: 1,

@@ -55,6 +55,7 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			MIN_PLAYERS,
 			Math.min(MAX_PLAYERS, roomPlayers.length),
 		);
+		const startingTurn = this.randomStartingTurn(playerCount);
 		return {
 			matchId: context.matchId,
 			seq: 0,
@@ -62,7 +63,8 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 			mode: context.mode,
 			powerupsEnabled: context.powerupsEnabled ?? false,
 			phase: "pending",
-			currentTurn: 0,
+			currentTurn: startingTurn,
+			startingTurn,
 			turnNumber: 0,
 			maxTurns: playerCount * BALLS_PER_PLAYER * TOTAL_ENDS,
 			currentEnd: 0,
@@ -215,12 +217,15 @@ export class ShellCurlEngine extends BaseEngine implements GameEngine {
 	private nextTurn(room: MatchRoom): number {
 		const state = room.state as CurlingSnapshot;
 		// At an end boundary, rotate the lead so the same seat does not throw
-		// first — and therefore the last seat does not hold the hammer — in every
-		// end (P2). The lead of end `e` is `e % playerCount`; within an end the
-		// turn advances round-robin. The client's `throwsUsedBySide` mirrors this
-		// exact rotation.
+		// first — and therefore the last seat does not hold the hammer — in
+		// every end (P2). The lead of end `e` is `(startingTurn + e) %
+		// playerCount` — offset from the match's random starting seat rather
+		// than always 0, so which seat plays first varies match to match
+		// without touching `side` (still each player's stable colour
+		// everywhere else). Within an end the turn advances round-robin. The
+		// client's `throwsUsedBySide` mirrors this exact rotation.
 		if (state.throwsInEnd === 0)
-			return state.currentEnd % room.players.length;
+			return (state.startingTurn + state.currentEnd) % room.players.length;
 		return (state.currentTurn + 1) % room.players.length;
 	}
 

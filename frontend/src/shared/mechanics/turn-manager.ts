@@ -25,6 +25,34 @@ export interface TurnState {
 	readonly phase: TurnPhase;
 	/** True when the current team has the last-ball advantage this end. */
 	readonly hasHammer: boolean;
+	/**
+	 * The player (by `side`/colour index) who takes the FIRST turn this
+	 * match — undefined/0 for a game with no turn order (or a local match,
+	 * always player 0). `ScoreHud` displays players starting from this seat
+	 * instead of always side 0, so the scoreboard reads left-to-right in
+	 * actual play order; each player's colour still comes from their own
+	 * `side`, untouched, so a match that starts elsewhere never reassigns
+	 * "who is blue".
+	 */
+	readonly firstPlayer?: number;
+}
+
+/**
+ * The seat shown at scoreboard display slot `slot` (0 = leftmost), given the
+ * match's first-turn player: display slots run in PLAY order rather than
+ * always raw side order, so `ScoreHud` reads left-to-right as the match is
+ * actually played. `firstPlayer` defaults to 0, making this the identity
+ * mapping — a complete no-op for a game with no turn order, or a local match.
+ * Each seat's colour/score/label always come from the returned SIDE, never
+ * from `slot` — only a seat's on-screen POSITION moves, never its identity.
+ */
+export function seatAtDisplaySlot(
+	slot: number,
+	playerCount: number,
+	firstPlayer = 0,
+): number {
+	const n = Math.max(1, playerCount);
+	return (firstPlayer + slot) % n;
 }
 
 // ── TurnManager ───────────────────────────────────────────────────────────────

@@ -59,6 +59,18 @@ function makeRoom(powerupsEnabled = true): MatchRoom {
 }
 
 describe("KameKnockEngine", () => {
+	// createInitialState now picks a random starting seat (BaseEngine.
+	// randomStartingTurn) — pinned to 0 here so every OTHER test in this file
+	// keeps its existing "seat 0 goes first" assumption; the dedicated
+	// starting-seat test below overrides this to exercise the actual
+	// randomisation.
+	beforeEach(() => {
+		jest.spyOn(Math, "random").mockReturnValue(0);
+	});
+	afterEach(() => {
+		jest.restoreAllMocks();
+	});
+
 	it("rejects disabled or unknown powers on release", () => {
 		const disabledEngine = new KameKnockEngine();
 		const disabledRoom = makeRoom(false);
@@ -224,5 +236,32 @@ describe("KameKnockEngine", () => {
 		expect(state.turnNumber).toBe(1);
 		expect(state.currentTurn).toBe(1);
 		expect(room.physicsState?.entities).toEqual([]);
+	});
+
+	it("starts a fresh match with a random seat instead of always seat 0, and every later turn rotates from it", () => {
+		// Math.random() = 0.5 of 2 seats → randomStartingTurn = 1.
+		jest.spyOn(Math, "random").mockReturnValue(0.5);
+		const engine = new KameKnockEngine();
+		const room = makeRoom(false);
+		const state = room.state as KameKnockSnapshot;
+		expect(state.startingTurn).toBe(1);
+		expect(state.currentTurn).toBe(1);
+
+		engine.start(room);
+		expect(
+			engine.handleInput(room, 2, {
+				matchId: room.matchId,
+				action: "release",
+				payload: { roundNumber: 1, turnNumber: 0, vx: 0, vy: 0 },
+			}),
+		).toBe(room);
+		engine.advanceSimulation(room, 1000 / 30);
+		engine.advanceSimulation(room, 1000 / 30);
+
+		// Offset by the random starting seat (1), not reset back to 0 — turn 1
+		// rotates to seat 0 (2 % 2) — `side` itself (colour/identity) is
+		// untouched throughout.
+		expect(state.turnNumber).toBe(1);
+		expect(state.currentTurn).toBe(0);
 	});
 });

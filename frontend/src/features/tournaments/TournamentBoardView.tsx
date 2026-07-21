@@ -18,7 +18,14 @@ import { useNavigate } from "react-router-dom";
 
 import { GameConfirmModal } from "../../components/common/GameConfirmModal";
 import { useSpacebarAction } from "../../hooks/useSpacebarAction";
-import { getGameSocket } from "../../services/network/gameSocket";
+import {
+	getGameSocket,
+	type BambooBashPhysicsState,
+	type BellClashPhysicsState,
+	type GameSnapshot,
+	type KameKnockPhysicsState,
+	type ShellCurlPhysicsState,
+} from "../../services/network/gameSocket";
 import { INGAME_PLAYER_ASSET } from "../../shared/assets";
 import { hubBackgroundClass } from "../../shared/backgrounds";
 import { api } from "../hub/api";
@@ -40,6 +47,33 @@ import {
 interface TournamentBoardViewProps {
 	tournamentId: string;
 	onExit: () => void;
+}
+
+/**
+ * Full payload of `tournament:minigame-start`, mirroring what
+ * `MatchmakingGateway.startServerInitiatedMatch` sends every seated player
+ * (matchId/side/gameId/tournamentId/snapshot/physicsState) — the SAME shape
+ * `lobby:matched` carries for a private-lobby match. Carried through
+ * `navigate(...)`'s state so GamePage can launch straight into gameplay with
+ * it (see `PowerupMatchmakingPanel`'s tournament-minigame effect) instead of
+ * re-discovering the match through the auto-join round trip (match:status →
+ * match:rejoin → game:physics-request). That indirection raced the arena's
+ * "wait for every real seat" gate (`BotPlayerService`, `game:arena-ready`):
+ * a slow round trip could leave the CPUs' backstop timer expiring before the
+ * player's client ever mounted, landing them mid-match with no proper start
+ * or end sequence.
+ */
+export interface TournamentMinigameStartPayload {
+	matchId: string;
+	side: number;
+	gameId: string;
+	tournamentId?: string;
+	snapshot: GameSnapshot;
+	physicsState?:
+		| BellClashPhysicsState
+		| BambooBashPhysicsState
+		| KameKnockPhysicsState
+		| ShellCurlPhysicsState;
 }
 
 /** Provisional seat colors (seat = fixed turn-order position, D13). */
@@ -346,9 +380,13 @@ export function TournamentBoardView({
 	// (the room carries tournamentId; GamePage's return handler redirects).
 	useEffect(() => {
 		const socket = getGameSocket();
-		const onMinigameStart = (data: { matchId: string; gameId: string }) => {
+		const onMinigameStart = (data: TournamentMinigameStartPayload) => {
+			// Carry the full payload we already have — GamePage launches directly
+			// from it (no extra round trip), with `autoJoinMatch` kept as a
+			// fallback for the rare case this state is lost (e.g. a hard refresh
+			// mid-navigation).
 			navigate(`/play/${data.gameId}`, {
-				state: { autoJoinMatch: true },
+				state: { autoJoinMatch: true, tournamentMinigame: data },
 			});
 		};
 		socket.on("tournament:minigame-start", onMinigameStart);

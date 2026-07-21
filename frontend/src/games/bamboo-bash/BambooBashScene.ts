@@ -82,6 +82,7 @@ import {
 	buildTurnStateFromGameRuleHooks,
 	computeGameRuleWinner,
 	notifyGameRuleRoundComplete,
+	turnlessOnlineHighlight,
 	type GameRuleHooks,
 } from "../../shared/mechanics/game-rule-hooks";
 import { showRoundTransitionOverlay } from "../../shared/mechanics/round-overlay";
@@ -1130,10 +1131,15 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		return {
 			getPlayerCount: () =>
 				Math.max(1, score.length, this.localParticipants.length),
+			// Bamboo Bash has no turns (every seat can shoot whenever) — online,
+			// the highlight always tracks the LOCAL viewer's own seat, never a
+			// hardcoded one (was `0`: every viewer not seated at side 0, e.g. a
+			// CPU-filled tournament match, saw the ACTIVE/READY chips glued to
+			// the wrong player regardless of who actually shot).
 			getCurrentPlayer: () =>
 				this.localParticipants.length
 					? this.activeLocalParticipantIndex
-					: 0,
+					: turnlessOnlineHighlight(this.online.side),
 			getCurrentRound: () =>
 				this.online.isActive ? this.online.currentRoundNumber - 1 : 0,
 			getRemainingTurns: () =>

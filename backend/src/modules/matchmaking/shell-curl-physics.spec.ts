@@ -10,7 +10,7 @@ import { CurlingSnapshot } from "./matchmaking.types";
 function snapshot(): CurlingSnapshot {
 	return {
 		matchId: "curl-physics", seq: 0, gameId: "temple-curling", mode: "casual", powerupsEnabled: true,
-		phase: "active", currentTurn: 0, turnNumber: 0, maxTurns: 18, currentEnd: 0, throwsInEnd: 0,
+		phase: "active", currentTurn: 0, startingTurn: 0, turnNumber: 0, maxTurns: 18, currentEnd: 0, throwsInEnd: 0,
 		ballsPerPlayer: 3, totalEnds: 3, score: [0, 0], endScores: [[null, null], [null, null], [null, null]],
 		usedPowersBySide: [[], []], map: { gameId: "temple-curling", bumpers: [] }, players: [], objects: [], entities: [], activeBallId: null, winnerSide: null,
 	};

@@ -1373,6 +1373,11 @@ export class ShellCurlScene
 			getScore: () => state.score,
 			getPhase: () => state.phase,
 			hasHammer: () => state.hasHammer,
+			// Random per-match starting seat (BaseEngine.randomStartingTurn,
+			// mirrored into turnManager.state by ShellCurlOnline) — the
+			// scoreboard displays players starting from them, in actual play
+			// order, instead of always side 0 first.
+			getFirstPlayer: () => state.firstPlayer ?? 0,
 			onRelease: () => {
 				this.scoreHud.update(this.buildScoreHudState());
 				if (!this.online.isActive) {
