@@ -170,7 +170,7 @@ describe("BotPlayerService — CPU players vs the real engines", () => {
 		}
 	});
 
-	it("bots also sit out the round-transition countdown at every round boundary", async () => {
+	it("bots hold until the real (non-bot) seat has sent arena-ready — not just a guessed navigation delay", async () => {
 		const registry = new GameEngineRegistry(
 			new ShellCurlEngine(),
 			new BambooBashEngine(),
@@ -181,7 +181,101 @@ describe("BotPlayerService — CPU players vs the real engines", () => {
 		let virtualNow = 1_000_000;
 		const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => virtualNow);
 		try {
-			const room = rooms.createRoom("match-round-hold", "kame-knock", "casual", [
+			const room = rooms.createRoom("match-arena-entry", "kame-knock", "casual", [
+				{ socketId: "bot:1", user: botUser(1), shellSelection: [] },
+				{ socketId: "sock-2", user: botUser(2), shellSelection: [] },
+			]);
+			for (const player of room.players) {
+				rooms.setReady(room.matchId, player.user.id);
+			}
+			rooms.start(room.matchId);
+
+			const handleUserInput = jest.fn();
+			const bots = new BotPlayerService(rooms, {
+				handleUserInput,
+			} as unknown as MatchmakingGateway);
+
+			// Well past the countdown floor alone, but the human seat's client
+			// never mounted the arena — the bot must keep waiting.
+			for (let elapsed = 0; elapsed < 15_000; elapsed += 700) {
+				await bots.tick();
+				virtualNow += 700;
+			}
+			expect(handleUserInput).not.toHaveBeenCalled();
+
+			// The human's client finally loads in.
+			rooms.markArenaEntered(room.matchId, 2);
+
+			// The countdown floor is measured from THIS moment, not match
+			// creation — it must still hold through the full 3.2 s countdown.
+			for (let elapsed = 0; elapsed < 4_900; elapsed += 700) {
+				await bots.tick();
+				virtualNow += 700;
+			}
+			expect(handleUserInput).not.toHaveBeenCalled();
+
+			for (let elapsed = 0; elapsed < 4_000; elapsed += 700) {
+				virtualNow += 700;
+				await bots.tick();
+			}
+			expect(handleUserInput).toHaveBeenCalled();
+		} finally {
+			nowSpy.mockRestore();
+		}
+	});
+
+	it("bots eventually act even if a real seat never sends arena-ready (backstop, never blocks the match forever)", async () => {
+		const registry = new GameEngineRegistry(
+			new ShellCurlEngine(),
+			new BambooBashEngine(),
+			new KameKnockEngine(),
+			new BellClashEngine(),
+		);
+		const rooms = new RoomService(registry);
+		let virtualNow = 1_000_000;
+		const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => virtualNow);
+		try {
+			const room = rooms.createRoom("match-arena-entry-timeout", "kame-knock", "casual", [
+				{ socketId: "bot:1", user: botUser(1), shellSelection: [] },
+				{ socketId: "sock-2", user: botUser(2), shellSelection: [] },
+			]);
+			for (const player of room.players) {
+				rooms.setReady(room.matchId, player.user.id);
+			}
+			rooms.start(room.matchId);
+
+			const handleUserInput = jest.fn();
+			const bots = new BotPlayerService(rooms, {
+				handleUserInput,
+			} as unknown as MatchmakingGateway);
+
+			// Nobody ever calls markArenaEntered for the human seat: the
+			// 20 s backstop, then the countdown floor, still let the bot play.
+			for (let elapsed = 0; elapsed < 30_000; elapsed += 700) {
+				await bots.tick();
+				virtualNow += 700;
+			}
+			expect(handleUserInput).toHaveBeenCalled();
+		} finally {
+			nowSpy.mockRestore();
+		}
+	});
+
+	it("bots also sit out the round-transition countdown at every round boundary (Bell Clash)", async () => {
+		const registry = new GameEngineRegistry(
+			new ShellCurlEngine(),
+			new BambooBashEngine(),
+			new KameKnockEngine(),
+			new BellClashEngine(),
+		);
+		const rooms = new RoomService(registry);
+		let virtualNow = 1_000_000;
+		const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => virtualNow);
+		try {
+			// Bell Clash has no turn gating (both seats can act every tick), so
+			// it isolates the round-hold behaviour cleanly — unlike kame-knock,
+			// which is exempt from this hold (see the dedicated test below).
+			const room = rooms.createRoom("match-round-hold", "bell-clash", "casual", [
 				{ socketId: "bot:1", user: botUser(1), shellSelection: [] },
 				{ socketId: "bot:2", user: botUser(2), shellSelection: [] },
 			]);
@@ -223,6 +317,54 @@ describe("BotPlayerService — CPU players vs the real engines", () => {
 
 			// Past the round hold: the bots resume for the new round.
 			for (let elapsed = 0; elapsed < 4_000; elapsed += 700) {
+				virtualNow += 700;
+				await bots.tick();
+			}
+			expect(handleUserInput).toHaveBeenCalled();
+		} finally {
+			nowSpy.mockRestore();
+		}
+	});
+
+	it("kame-knock bots are exempt from the round-transition hold (strictly turn-based, no simultaneous risk)", async () => {
+		const registry = new GameEngineRegistry(
+			new ShellCurlEngine(),
+			new BambooBashEngine(),
+			new KameKnockEngine(),
+			new BellClashEngine(),
+		);
+		const rooms = new RoomService(registry);
+		let virtualNow = 1_000_000;
+		const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => virtualNow);
+		try {
+			const room = rooms.createRoom("match-kame-no-round-hold", "kame-knock", "casual", [
+				{ socketId: "bot:1", user: botUser(1), shellSelection: [] },
+				{ socketId: "bot:2", user: botUser(2), shellSelection: [] },
+			]);
+			for (const player of room.players) {
+				rooms.setReady(room.matchId, player.user.id);
+			}
+			rooms.start(room.matchId);
+
+			const handleUserInput = jest.fn().mockResolvedValue({ accepted: true });
+			const bots = new BotPlayerService(rooms, {
+				handleUserInput,
+			} as unknown as MatchmakingGateway);
+
+			// Clear the match-start hold so the bot is actively playing.
+			for (let elapsed = 0; elapsed < 8_900; elapsed += 700) {
+				await bots.tick();
+				virtualNow += 700;
+			}
+			expect(handleUserInput).toHaveBeenCalled();
+			handleUserInput.mockClear();
+
+			// Simulate a round boundary — kame-knock must NOT re-arm a hold for
+			// this: the bot should act again as soon as its own per-seat pacing
+			// (BOT_SKILL.actDelayMs, max 2.6 s) allows, with no extra 3.2 s+
+			// countdown wait layered on top.
+			(room.state as { roundNumber: number }).roundNumber += 1;
+			for (let elapsed = 0; elapsed < 3_000; elapsed += 700) {
 				virtualNow += 700;
 				await bots.tick();
 			}

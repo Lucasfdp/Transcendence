@@ -392,6 +392,101 @@ describe("TournamentRuntime — interactive PLAYER_TURNS (Vertical Slice, SPEC-0
 		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[0]);
 	});
 
+	it("a player who stays disconnected past the bot timeout is converted to a CPU and plays their next turn at bot pace", async () => {
+		const settings = makeSettings();
+		const { runtime, clock, events } = makeInteractive(settings);
+		runtime.start();
+		const order = deriveTurnOrder("seed-a", [...PARTICIPANT_IDS]);
+		const turnMs = settings.timeouts.turnSeconds * 1000;
+		const settle = (): Promise<void> => new Promise((r) => setImmediate(r));
+
+		runtime.handlePlayerDisconnect(order[0]);
+		// Grace auto-resolves the CURRENT turn; the handoff opens order[1] next.
+		clock.advance(6_000);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[1]);
+		expect(runtime.botPlayers.has(order[0])).toBe(false);
+
+		// Past the longer bot-conversion timeout, still no reconnect.
+		clock.advance(45_000);
+		expect(runtime.botPlayers.has(order[0])).toBe(true);
+		expect(runtime.humanPlayerCount).toBe(PARTICIPANT_IDS.length - 1);
+
+		// The other 3 (still human, no intent sent) each burn the full turn
+		// timeout to close out round 1; the round boundary routes through the
+		// async MINIGAME skip before round 2 reopens order[0]'s turn — which,
+		// now a CPU, resolves at bot pace (well inside these same advances)
+		// and hands off to order[1] rather than sitting on the full timeout.
+		for (let i = 0; i < 3; i++) {
+			clock.advance(turnMs + 3_000);
+			await settle();
+		}
+		expect(runtime.currentRound).toBe(2);
+		expect(runtime.gameEngines.turnSystem.activePlayerId).toBe(order[1]);
+
+		// The proof it was actually PLAYED, not just auto-resolved: the CPU's
+		// round-2 turn came through a real roll intent (autoResolved: false),
+		// same as any lobby CPU — unlike the disconnect timeout/shop-cancel
+		// path, which always marks autoResolved: true.
+		const botTurn = events.find(
+			(e) =>
+				e.name === "PlayerTurnFinished" &&
+				e.playerId === order[0] &&
+				e.round === 2,
+		);
+		expect(botTurn?.payload).toMatchObject({ autoResolved: false });
+	});
+
+	it("reconnecting before the bot timeout keeps the player human; reconnecting AFTER hands control back", () => {
+		const { runtime, clock } = makeInteractive();
+		runtime.start();
+		const order = deriveTurnOrder("seed-a", [...PARTICIPANT_IDS]);
+
+		runtime.handlePlayerDisconnect(order[0]);
+		clock.advance(20_000); // well past the 3s grace, short of the 45s bot timeout
+		runtime.handlePlayerConnected(order[0]);
+		clock.advance(45_000);
+		expect(runtime.botPlayers.has(order[0])).toBe(false);
+
+		// A second disconnect that DOES cross the bot timeout converts them...
+		runtime.handlePlayerDisconnect(order[0]);
+		clock.advance(45_000);
+		expect(runtime.botPlayers.has(order[0])).toBe(true);
+
+		// ...and reconnecting afterwards hands control straight back (SPEC-023:
+		// unlike a quit, a plain disconnect always stays reconnectable).
+		runtime.handlePlayerConnected(order[0]);
+		expect(runtime.botPlayers.has(order[0])).toBe(false);
+	});
+
+	it("a disconnect caused by the round's minigame never arms the bot-conversion timer — a slow-returning winner must still be PROMPTED for gambling, never silently auto-decided", () => {
+		const { runtime, clock } = makeInteractive();
+		runtime.start();
+		const order = deriveTurnOrder("seed-a", [...PARTICIPANT_IDS]);
+
+		// Close round 1 through real roll intents.
+		for (const playerId of order) {
+			expect(runtime.handleRollDice(playerId)).toEqual({ status: "ok" });
+			clock.advance(3_000); // handoff pause
+		}
+		// The last handoff's `clock.advance` above already ran
+		// `finishInteractiveRound()` synchronously — the round's minigame is
+		// "live" (MINIGAME phase) even though nothing has been `await`ed yet,
+		// exactly like every board client navigating to the arena in production.
+		expect(runtime.currentPhase).toBe("MINIGAME");
+
+		// Every board disconnects at this instant (arena navigation) — NOT
+		// abandonment. Simulate it for one player right as the minigame starts.
+		runtime.handlePlayerDisconnect(order[0]);
+
+		// Real minigames can easily run well past DISCONNECT_BOT_TIMEOUT_MS
+		// (a played match, then the arena's own CONTINUE screen) before the
+		// player's board reconnects. Even so, they must never end up flagged
+		// as a CPU — that would auto-decide GAMBLING for them without ever
+		// showing the prompt.
+		clock.advance(90_000);
+		expect(runtime.botPlayers.has(order[0])).toBe(false);
+	});
+
 	it("round 1 holds in ROUND_START until every human connects, then turn 1 goes to the derived first player", () => {
 		const { runtime } = makeInteractive(makeSettings(), {
 			firstTurnsGraceMs: 10_000,

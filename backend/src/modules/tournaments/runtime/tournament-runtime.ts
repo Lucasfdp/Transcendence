@@ -213,6 +213,19 @@ const BOT_SHOP_DELAY_MS = 2_000;
 const DISCONNECT_RESOLVE_GRACE_MS = 3_000;
 
 /**
+ * A lone disconnected player may reconnect at any time (SPEC-023
+ * "Desconexión": "El jugador podrá reconectarse mientras la partida
+ * permanezca activa") — so they are never ejected. But left merely
+ * auto-resolving every future decision, they never buy in the shop or bet
+ * gambling, unlike a real CPU. Past this timeout without reconnecting, they
+ * are handed to the SAME "IA sustituta" the quit flow uses
+ * (`convertPlayerToBot`) so the tournament keeps being properly played in
+ * their place — reversibly: reconnecting hands control straight back
+ * (`handlePlayerConnected`), unlike a permanent quit.
+ */
+const DISCONNECT_BOT_TIMEOUT_MS = 45_000;
+
+/**
  * Pause between a resolved roll and the NEXT turn (or the round's minigame):
  * the boards are presenting that roll — suspense + value reveal + the token's
  * tile-by-tile walk (~2.3 s) — so the baton only passes once the piece has
@@ -274,6 +287,13 @@ export class TournamentRuntime {
 	 * (`convertPlayerToBot`) so the tournament plays on in their place.
 	 */
 	private readonly botPlayerIds: Set<number>;
+	/**
+	 * The bots the table started with (lobby CPUs, CPU v2) — never reverted on
+	 * `handlePlayerConnected` (they have no real socket to reconnect from
+	 * anyway). Distinguishes them from a disconnect-timeout conversion, which
+	 * IS reverted if the human comes back.
+	 */
+	private readonly lobbyBotPlayerIds: ReadonlySet<number>;
 	/** Players currently connected to the board (gateway join/leave signals). */
 	private readonly connectedPlayers = new Set<number>();
 	/** True while round 1's turns are held open for players to arrive. */
@@ -413,6 +433,7 @@ export class TournamentRuntime {
 		// or closes the round. Subscribed once; inert unless interactive.
 		this.interactive = options.interactiveTurns ?? false;
 		this.botPlayerIds = new Set(options.botPlayerIds ?? []);
+		this.lobbyBotPlayerIds = new Set(this.botPlayerIds);
 		this.firstTurnsGraceMs = options.firstTurnsGraceMs ?? 0;
 		if (this.interactive) {
 			this.bus.on("PlayerTurnFinished", () => {
@@ -675,10 +696,16 @@ export class TournamentRuntime {
 	 * A participant's board client joined the tournament room (gateway JOIN).
 	 * Cancels any pending disconnect auto-resolve for them (the grace check
 	 * reads `connectedPlayers` at fire time) and, while round 1 is held open,
-	 * starts the turns as soon as the last human arrives.
+	 * starts the turns as soon as the last human arrives. If they had been
+	 * handed to the CPU after `DISCONNECT_BOT_TIMEOUT_MS` of silence, coming
+	 * back hands control straight back — unlike a permanent quit, a plain
+	 * disconnect stays reconnectable (SPEC-023).
 	 */
 	handlePlayerConnected(playerId: number): void {
 		this.connectedPlayers.add(playerId);
+		if (!this.lobbyBotPlayerIds.has(playerId)) {
+			this.botPlayerIds.delete(playerId);
+		}
 		if (this.firstTurnsPending && this.allHumansConnected()) {
 			this.beginFirstTurnsIfPending();
 		}
@@ -791,6 +818,25 @@ export class TournamentRuntime {
 	 * mount cycle and quick navigations rejoin within milliseconds, and
 	 * resolving instantly was skipping players who were actually arriving.
 	 * Synchronization concerns (rooms, snapshots) stay in the gateway.
+	 *
+	 * A second, longer timer (`DISCONNECT_BOT_TIMEOUT_MS`) covers a player who
+	 * never comes back: past it they are converted to a CPU exactly like a
+	 * quitter (`convertPlayerToBot`), so every later turn/gambling/shop
+	 * decision is actually played instead of merely auto-resolved — but
+	 * reversibly, since `handlePlayerConnected` hands control straight back on
+	 * reconnect (SPEC-023 draws that line between "Desconexión" and the
+	 * permanent "Abandono").
+	 *
+	 * That second timer is NEVER armed while the round's minigame is live
+	 * (MINIGAME/FINAL_CHALLENGE): launching one navigates EVERY board client
+	 * away to the arena, so this fires for the whole table at once as an
+	 * expected side effect, not abandonment — the match itself can easily run
+	 * longer than the timeout, and the winner would be wrongly wearing a CPU
+	 * flag the instant GAMBLING_PHASE opens right after (silently auto-betting
+	 * instead of prompting them). A disconnect that started earlier, during
+	 * PLAYER_TURNS/GAMBLING_PHASE, is unaffected — its timer was already armed
+	 * and keeps counting through the minigame, which is correct: that one
+	 * really is a player who was gone before the round even reached the arena.
 	 */
 	handlePlayerDisconnect(playerId: number): void {
 		this.connectedPlayers.delete(playerId);
@@ -806,6 +852,23 @@ export class TournamentRuntime {
 			// acts on the caller's own session) so the held baton moves on.
 			this.engines.shop.cancel(playerId);
 		});
+		if (this.isArenaPhase()) {
+			return;
+		}
+		this.clock.schedule(DISCONNECT_BOT_TIMEOUT_MS, () => {
+			if (this.connectedPlayers.has(playerId) || this.machine.isTerminal) {
+				return; // reconnected in time (or nothing left to resolve)
+			}
+			this.convertPlayerToBot(playerId);
+		});
+	}
+
+	/** Whether the round's minigame/sudden-death is live (see `handlePlayerDisconnect`). */
+	private isArenaPhase(): boolean {
+		return (
+			this.machine.currentPhase === "MINIGAME" ||
+			this.machine.currentPhase === "FINAL_CHALLENGE"
+		);
 	}
 
 	/**

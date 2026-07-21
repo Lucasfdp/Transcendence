@@ -139,8 +139,7 @@ input {
 	line-height: 1.5;
 }
 
-.viewport-guard__risk,
-.viewport-guard__instruction {
+.viewport-guard__risk {
 	color: var(--accent) !important;
 	@apply font-bold;
 }

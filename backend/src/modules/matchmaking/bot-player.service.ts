@@ -131,13 +131,30 @@ const launchVelocity = (
 };
 
 /**
- * Server-side stand-in for the clients' "3, 2, 1, GO!" opener: bots hold for
- * this long after a room first ticks active, so a CPU can never move while
- * the human players are still watching the countdown. Sized for the shared
- * 3.2 s countdown plus the navigation lag of tournament clients (who reach
- * the arena 1–3 s after the server starts the match).
+ * Server-side stand-in for the clients' "3, 2, 1, GO!" opener: once every
+ * real seat has genuinely entered the arena (see `ARENA_ENTRY_TIMEOUT_MS`
+ * below), bots additionally hold for this long, so a CPU can never move
+ * while the slowest-to-load human is still watching the countdown. Matches
+ * the shared 3.2 s countdown with a small buffer.
  */
 const BOT_START_COUNTDOWN_HOLD_MS = 5_000;
+
+/**
+ * A server-initiated launch (tournament minigame, private lobby, rematch —
+ * `startServerInitiatedMatch`) marks every seat `ready` and the room "active"
+ * the instant the match is CREATED, long before any client has actually
+ * navigated to the arena and mounted its Phaser scene — there is no
+ * server-side signal of that at all otherwise. Bots hold until every real
+ * (non-bot) seat has sent `game:arena-ready`, so the match genuinely waits
+ * for every player to enter before anything can move — not merely a guessed
+ * navigation delay (which could easily be shorter than a real page load,
+ * letting a CPU move while a slow client's screen is still blank).
+ * Bounded by this backstop (matching the platform's other arrival gates,
+ * e.g. the tournament's MINIGAME TIME! confirmation deadline) so a client
+ * that never loads in — a crashed tab, a lost connection — can never block
+ * the match forever.
+ */
+const ARENA_ENTRY_TIMEOUT_MS = 20_000;
 
 /**
  * The client replays the same "3, 2, 1, GO!" beat at every round/end boundary,
@@ -200,6 +217,16 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 				// window after the room goes active, so nothing moves before GO.
 				let holdUntil = this.roomHoldUntil.get(room.matchId);
 				if (holdUntil === undefined) {
+					// Wait for every real seat to actually load into the arena (or
+					// the backstop, for a client that never shows up) before even
+					// starting the countdown-hold clock — arming it at match
+					// creation (room.createdAt) would let the floor expire while a
+					// slow client is still mid-navigation, with nothing to load yet.
+					const armedAt = room.createdAt ?? now;
+					const ready =
+						this.allRealSeatsEntered(room) ||
+						now - armedAt >= ARENA_ENTRY_TIMEOUT_MS;
+					if (!ready) continue;
 					holdUntil = now + BOT_START_COUNTDOWN_HOLD_MS;
 					this.roomHoldUntil.set(room.matchId, holdUntil);
 				} else {
@@ -278,17 +305,28 @@ export class BotPlayerService implements OnModuleInit, OnModuleDestroy {
 		}
 	}
 
+	/** Every non-bot seat has sent `game:arena-ready` for this match. */
+	private allRealSeatsEntered(room: MatchRoom): boolean {
+		return room.players.every(
+			(player) => isBotSeat(player) || room.enteredUserIds.has(player.user.id),
+		);
+	}
+
 	/**
 	 * The round/end number a room's state is currently on, or `null` for a
-	 * game with no round concept (or one not yet recognized here). Used to
-	 * detect the boundary where the client replays "3, 2, 1, GO!".
+	 * game with no round concept (or one that doesn't need the round-boundary
+	 * hold — see below). Used to detect the boundary where the client replays
+	 * "3, 2, 1, GO!".
+	 *
+	 * kame-knock is deliberately excluded: it's strictly turn-based (only the
+	 * seat whose turn it is can ever act), so there's no "every bot fires at
+	 * once" risk at a round boundary the way there is in Bell Clash/Bamboo
+	 * Bash — the match-start hold above is the only pacing it needs.
 	 */
 	private roundKeyFor(room: MatchRoom): number | null {
 		switch (room.gameId) {
 			case "temple-curling":
 				return (room.state as CurlingSnapshot).currentEnd;
-			case "kame-knock":
-				return (room.state as KameKnockSnapshot).roundNumber;
 			case "bell-clash":
 				return (room.state as BellClashSnapshot).roundNumber;
 			case "bamboo-bash":

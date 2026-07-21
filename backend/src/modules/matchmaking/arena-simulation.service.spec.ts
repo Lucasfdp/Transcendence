@@ -11,6 +11,7 @@ function room(): MatchRoom {
 		status: "active",
 		players: [],
 		spectators: new Map(),
+		enteredUserIds: new Set(),
 		seq: 0,
 		state: { seq: 0 } as MatchRoom["state"],
 		physicsState: {

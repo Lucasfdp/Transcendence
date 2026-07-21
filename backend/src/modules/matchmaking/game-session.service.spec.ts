@@ -38,6 +38,7 @@ function makeRoom(overrides: Partial<MatchRoom> = {}): MatchRoom {
 		status: "finished",
 		players,
 		spectators: new Map(),
+		enteredUserIds: new Set(),
 		seq: 1,
 		state: {
 			matchId: "match-1",

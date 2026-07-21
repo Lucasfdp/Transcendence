@@ -537,6 +537,16 @@ export interface MatchRoom {
 	rematchReadyUserIds?: Set<number>;
 	rematchLeftUserIds?: Set<number>;
 	rematchStartedMatchId?: string;
+	/**
+	 * User ids whose client has actually mounted the arena scene for this
+	 * match (`game:arena-ready`) — distinct from `ready`/`connected`, which a
+	 * server-initiated launch (tournament minigame, lobby match, rematch)
+	 * sets unconditionally before any client has navigated in. Bot seats are
+	 * never expected to appear here (`BotPlayerService` skips them via
+	 * `isBotSeat`); used to hold CPU activity until every real seat has
+	 * genuinely loaded in, not merely a guessed navigation delay.
+	 */
+	enteredUserIds: Set<number>;
 	replayFrames: Array<{
 		seq: number;
 		tMs: number;

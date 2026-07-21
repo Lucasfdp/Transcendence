@@ -168,6 +168,16 @@ export default function GamePage(): JSX.Element {
 		window.addEventListener(TOURNAMENT_QUIT_EVENT, handleQuitTournament);
 
 		const game = createShellSmashGame(host, launchData);
+		// Tell the server this client's arena scene has actually mounted — a
+		// server-initiated launch (tournament minigame, lobby match, rematch)
+		// marks every seat ready at match creation, well before any client has
+		// navigated in, so BotPlayerService holds CPU activity on THIS signal
+		// instead of a guessed navigation delay (see game:arena-ready).
+		if (launchData.onlineMatch) {
+			getGameSocket().emit("game:arena-ready", {
+				matchId: launchData.onlineMatch.matchId,
+			});
+		}
 		return () => {
 			window.removeEventListener(RETURN_TO_HUB_EVENT, handleReturnToHub);
 			window.removeEventListener(

@@ -586,6 +586,25 @@ export class MatchmakingGateway
 		if (started?.status === "active") this.emitState(started.matchId);
 	}
 
+	/**
+	 * The client's arena scene has actually mounted for this match (sent once,
+	 * right after the Phaser game is created — see GamePage). A server-forced
+	 * launch (`startServerInitiatedMatch`) marks every seat `ready` at match
+	 * creation, before any client has navigated in, so `BotPlayerService`
+	 * uses THIS as the real "the player is present" signal instead, holding
+	 * CPU activity until every real seat has one (bounded by a backstop so a
+	 * stuck client can never block the match forever).
+	 */
+	@SubscribeMessage("game:arena-ready")
+	onGameArenaReady(
+		@ConnectedSocket() socket: Socket,
+		@MessageBody() payload: { matchId: string },
+	): void {
+		const user = this.resolveSocketUser(socket);
+		if (!user || typeof payload?.matchId !== "string") return;
+		this.rooms.markArenaEntered(payload.matchId, user.id);
+	}
+
 	@SubscribeMessage("game:input")
 	async onGameInput(
 		@ConnectedSocket() socket: Socket,

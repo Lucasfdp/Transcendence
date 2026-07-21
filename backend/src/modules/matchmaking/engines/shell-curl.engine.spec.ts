@@ -38,6 +38,7 @@ function makeRoom(playerCount = 2, selections: string[][] = []): MatchRoom {
 		status: "pending",
 		players,
 		spectators: new Map(),
+		enteredUserIds: new Set(),
 		seq: 0,
 		state,
 		replayFrames: [],

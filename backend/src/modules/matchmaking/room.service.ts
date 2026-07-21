@@ -107,6 +107,7 @@ export class RoomService implements OnModuleInit, OnModuleDestroy {
 			status: "pending",
 			createdAt: Date.now(),
 			players: roomPlayers,
+			enteredUserIds: new Set(),
 			spectators: new Map(),
 			seq: 0,
 			state: engine.createInitialState(
@@ -169,6 +170,22 @@ export class RoomService implements OnModuleInit, OnModuleDestroy {
 		if (!room || !player) return null;
 		player.ready = true;
 		this.refreshSnapshotPlayers(room, true);
+		return room;
+	}
+
+	/**
+	 * A client's arena scene has actually mounted for this match
+	 * (`game:arena-ready`) — a server-initiated launch (tournament minigame,
+	 * lobby match, rematch) force-marks every seat `ready`/`connected` at
+	 * creation time, well before any client has navigated in, so this is the
+	 * only real signal of "the player is genuinely present." `BotPlayerService`
+	 * holds CPU activity until every real seat has one (see `isBotSeat`).
+	 */
+	markArenaEntered(matchId: string, userId: number): MatchRoom | null {
+		const room = this.getRoom(matchId);
+		const player = room?.players.find((p) => p.user.id === userId);
+		if (!room || !player) return null;
+		room.enteredUserIds.add(userId);
 		return room;
 	}
 

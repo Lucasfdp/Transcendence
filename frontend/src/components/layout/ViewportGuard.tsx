@@ -4,6 +4,25 @@ interface ViewportGuardProps {
 	children: ReactNode;
 }
 
+const ORIENTATION_WARNING_STORAGE_KEY = "viewport-guard:orientation-warning-dismissed";
+
+function hasDismissedOrientationWarning(): boolean {
+	try {
+		return window.localStorage.getItem(ORIENTATION_WARNING_STORAGE_KEY) === "1";
+	} catch {
+		return false;
+	}
+}
+
+function rememberOrientationWarningDismissed(): void {
+	try {
+		window.localStorage.setItem(ORIENTATION_WARNING_STORAGE_KEY, "1");
+	} catch {
+		// Storage unavailable (private browsing, disabled) — the warning simply
+		// reappears next load, which is an acceptable fallback.
+	}
+}
+
 function isMobileDevice(): boolean {
 	const mobileUserAgent = /Android|iPhone|iPod|IEMobile|Opera Mini/i.test(
 		navigator.userAgent,
@@ -40,7 +59,7 @@ function useViewportGuardState(): { mobile: boolean; portrait: boolean } {
 	return state;
 }
 
-function OrientationGate(): JSX.Element {
+function OrientationGate({ onContinue }: { onContinue: () => void }): JSX.Element {
 	return (
 		<main className="viewport-guard" aria-labelledby="orientation-gate-title">
 			<div className="viewport-guard__sun" aria-hidden="true" />
@@ -52,10 +71,12 @@ function OrientationGate(): JSX.Element {
 				<p className="viewport-guard__eyebrow">SCREEN ORIENTATION</p>
 				<h1 id="orientation-gate-title">Rotate to landscape</h1>
 				<p>
-					Shell Smash needs a horizontal screen to keep the arena, controls,
-					and multiplayer HUD playable.
+					Shell Smash is better experienced in a horizontal screen — the
+					arena, controls, and multiplayer HUD are built for landscape.
 				</p>
-				<p className="viewport-guard__instruction">Rotate your device to continue.</p>
+				<button className="viewport-guard__continue" type="button" onClick={onContinue}>
+					Continue at your own risk
+				</button>
 			</section>
 		</main>
 	);
@@ -82,14 +103,27 @@ function MobileNotice({ onContinue }: { onContinue: () => void }): JSX.Element {
 }
 
 /**
- * Prevents the game from starting in portrait view and asks phone visitors to
- * explicitly acknowledge the desktop-first layout for the current session.
+ * Warns phone visitors that Shell Smash favours landscape/desktop, letting
+ * them acknowledge and continue anyway. The orientation warning remembers its
+ * dismissal across page loads (localStorage), so it only appears once; the
+ * desktop-experience notice re-asks each session.
  */
 export function ViewportGuard({ children }: ViewportGuardProps): JSX.Element {
 	const { mobile, portrait } = useViewportGuardState();
 	const [mobileNoticeAccepted, setMobileNoticeAccepted] = useState(false);
+	const [orientationWarningDismissed, setOrientationWarningDismissed] = useState(
+		hasDismissedOrientationWarning,
+	);
 
-	if (portrait) return <OrientationGate />;
+	if (portrait && !orientationWarningDismissed)
+		return (
+			<OrientationGate
+				onContinue={() => {
+					rememberOrientationWarningDismissed();
+					setOrientationWarningDismissed(true);
+				}}
+			/>
+		);
 	if (mobile && !mobileNoticeAccepted)
 		return <MobileNotice onContinue={() => setMobileNoticeAccepted(true)} />;
 
