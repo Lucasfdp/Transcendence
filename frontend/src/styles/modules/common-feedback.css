@@ -90,6 +90,30 @@
 		0 0 22px rgba(120, 255, 130, 0.22);
 }
 
+.tournament-lobby__wide-stone-button {
+	width: min(20.5rem, 100%);
+	align-self: center;
+	aspect-ratio: 1600 / 430;
+	font-size: 1.3rem;
+}
+
+.tournament-lobby__join-button {
+	width: 5.2rem;
+	flex: 0 0 5.2rem;
+	aspect-ratio: 1312 / 816;
+	font-size: 0.95rem;
+}
+
+.tournament-lobby__join-button .stone-button__content {
+	padding: 0 0.45rem;
+}
+
+.tournament-lobby__back-button {
+	width: min(18rem, 100%);
+	aspect-ratio: 1600 / 430;
+	font-size: 1.12rem;
+}
+
 .wip-notice {
 	@apply grid;
 	gap: clamp(1.2rem, 3vw, 1.8rem);

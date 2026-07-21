@@ -16,6 +16,7 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 
+import { StoneButton } from "../../components/common/StoneButton";
 import { api } from "../hub/api";
 import { tournamentApi } from "./api";
 import type { TournamentLobbyState } from "./contracts";
@@ -238,9 +239,15 @@ export function TournamentLobbyModal({
 				{/* No lobby yet — create or join by PIN. */}
 				{!lobby && !hydrating && (
 					<div style={sectionStyle}>
-						<button type="button" style={primaryBtn} disabled={busy} onClick={handleCreate}>
+						<StoneButton
+							variant="back"
+							type="button"
+							className="tournament-lobby__wide-stone-button"
+							disabled={busy}
+							onClick={handleCreate}
+						>
 							{busy ? "Creating…" : "Create a lobby"}
-						</button>
+						</StoneButton>
 						<div style={dividerRow}>
 							<span style={dividerLine} />
 							<span style={dividerText}>or join by PIN</span>
@@ -256,9 +263,14 @@ export function TournamentLobbyModal({
 								style={pinInput}
 								aria-label="Tournament PIN"
 							/>
-							<button type="button" style={secondaryBtn} disabled={busy} onClick={handleJoin}>
+							<StoneButton
+								type="button"
+								className="tournament-lobby__join-button"
+								disabled={busy}
+								onClick={handleJoin}
+							>
 								Join
-							</button>
+							</StoneButton>
 						</div>
 					</div>
 				)}
@@ -379,9 +391,14 @@ export function TournamentLobbyModal({
 							Create or join another
 						</button>
 					)}
-					<button className="wip-modal__button" type="button" onClick={onClose}>
+					<StoneButton
+						variant="back"
+						type="button"
+						className="tournament-lobby__back-button"
+						onClick={onClose}
+					>
 						{isPending ? "Close" : "Back to Hub"}
-					</button>
+					</StoneButton>
 				</div>
 			</div>
 		</div>,

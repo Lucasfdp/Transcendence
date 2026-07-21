@@ -163,8 +163,8 @@ Requirement breakdown:
 Evidence:
 - Reusable components in `frontend/src/components/`
 - `StoneButton` provides shared `back` and `base` artwork variants across the
-  Hub mode return control and the pre-game navigation, settings, player-count,
-  matchmaking, and private-room actions.
+  Hub mode and tournament-lobby return controls and the pre-game navigation,
+  settings, player-count, matchmaking, and private-room actions.
 - Theme primitives in `frontend/src/shared/theme.ts`, Tailwind CSS configuration
   in `frontend/tailwind.config.cjs`, and feature-scoped style modules in
   `frontend/src/styles/modules/`.

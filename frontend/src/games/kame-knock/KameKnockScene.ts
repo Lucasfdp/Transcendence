@@ -1558,6 +1558,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		this.ball.vy = 0;
 		this.ball.r = BALL_SRC_R * this.arena.scale;
 		this.ballTrails.reset("local", this.ball.x, this.ball.y);
+		this.ballsNeedRedraw = true;
 	}
 
 	private activeBall(): BallState {
@@ -1748,11 +1749,11 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 		}
 	}
 
-	private showNextRoundOverlay(onNext: () => void): void {
+	private showNextRoundOverlay(prepareNextRound: () => void): void {
 		this.running = false;
 		this.overlayState = {
 			kind: "round-transition",
-			rebuild: () => this.showNextRoundOverlay(onNext),
+			rebuild: () => this.showNextRoundOverlay(prepareNextRound),
 		};
 		this.overlay = showRoundTransitionOverlay(this, this.overlay, {
 			message: `ROUND ${this.currentBallIndex + 1}\nGet ready for the next shell!`,
@@ -1760,6 +1761,10 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 			onButton: () => {
 				this.overlayState = null;
 				this.overlay = undefined;
+				prepareNextRound();
+				this.drawTargets();
+				this.drawBallTrails();
+				this.drawBall();
 				// "3, 2, 1, GO!" between rounds too, not just at match start —
 				// `running` stays false (set at the top of this method) until GO.
 				runStartCountdown(this, {
@@ -1767,7 +1772,7 @@ export class KameKnockScene extends ResponsiveScene implements KameKnockOnlineSc
 					onComplete: () => {
 						if (this.overlay) return; // ended while counting down
 						this.running = true;
-						onNext();
+						this.prepareSlingshotForTurn();
 					},
 				});
 			},
