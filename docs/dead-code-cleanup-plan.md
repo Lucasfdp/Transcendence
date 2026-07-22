@@ -1,9 +1,11 @@
 # Dead Code Cleanup Plan — 2026-07-21
 
-**Status:** Analysis and planning only. No code has been changed. This plan
-validates the findings in `docs/dead-code-audit-2026-07-21.md` against the
-current source tree, corrects and extends them, and sequences the cleanup into
-low-risk-first phases that another engineer can execute directly.
+**Status:** Phases 0–4 **implemented** on 2026-07-22 (see §11, Implementation
+log). Phase 5 (`hidpi.ts`) remains **deferred** — it is gated on a runtime
+HiDPI sharpness check that cannot be run headless. Phase 6 is out of scope by
+design. This plan originally validated the findings in
+`docs/dead-code-audit-2026-07-21.md` against the current source tree, corrected
+and extended them, and sequenced the cleanup into low-risk-first phases.
 
 **Method of validation.** Every candidate below was re-checked by hand against
 the working tree (not the audit's snapshot): reference greps across
@@ -415,3 +417,109 @@ concern per commit.
 - **Out of scope by design:** the file-size/structural work (§6, Phase 6), any
   `SPEC/` relocation, and route-level code-splitting — each is its own effort and
   none is dead-code removal.
+
+---
+
+## 11. Implementation log — 2026-07-22
+
+Executed by an automated pass with the product decisions confirmed up front:
+F4 **deleted** (not adopted); character portraits and concept art **kept**;
+Phase 5 (`hidpi.ts`) **deferred**. All deletions are staged in git; nothing has
+been committed (the working tree carried unrelated pre-existing modifications,
+so staging was left for the owner to review and commit per phase).
+
+### Phase 0 — analyser output
+
+- `git rm -r` removed all five `graphify-out/` directories (250 tracked files,
+  ~8 MB). `git ls-files | grep graphify-out` now returns nothing.
+- Added `graphify-out/` to `.gitignore` (next to the existing `shellsmash/`
+  ignore); verified a fresh `graphify-out/` inside `src/` is now ignored.
+
+### Phase 1 — orphaned files (F1–F4)
+
+Deleted, each re-verified at 0 references post-Phase-0:
+`backend/src/modules/matchmaking/power-pickup.helper.ts`,
+`frontend/src/services/network/reconnectStatus.ts`,
+`frontend/src/shared/drawBackground.ts`,
+`backend/src/modules/tournaments/actions/index.ts` (F4 — deleted per decision;
+every consumer already imports the concrete files).
+
+### Phase 2 — test-only helpers (T1–T3)
+
+Deleted each source + test pair (0 non-test importers):
+`bell-clash-interpolation.ts`(+`.test.ts`),
+`common/runtime/launchableRemap.ts` (+ `common/tests/launchableRemap.test.ts`),
+`common/runtime/worldEntityStore.ts` (+ `common/tests/worldEntityStore.test.ts`).
+
+### Phase 3 — dead exports (E1–E3), with cascade cleanup
+
+The named exports were removed **and** the private helpers/constants they
+orphaned, so the files stay lint-clean (backend ESLint `no-unused-vars`):
+
+- **E1 `replay-state.helpers.ts`:** removed `initializeArenaReplayBall`,
+  `initializeCurlingReplayBall`, `syncCurlingReplayStateFromPayload`. Cascade:
+  removed now-orphaned privates `syncCurlingEntityMirror`, `sanitizeTrailPoint`,
+  the constants `CURL_SHEET_W_SRC`, `CURL_DELIVERY_X`, `CURL_DELIVERY_Y`,
+  `DEFAULT_CURLING_BALL_SCALE`, and the now-unused `CurlingSnapshot` import.
+  `POWER_SCALE`/`TRANSLUCENT_POWERS` kept (still used by the live projectile
+  path); `getArenaBallSpawn`/`upsertArenaBall` kept (used by the live
+  settle/reset functions).
+- **E2 `arena.ts`:** removed `arenaToScreen`, `arenaPlayableToScreenInRect`,
+  `isInsideArena`, `arenaEdgeFraction`. **Deviation from the plan, flagged:** the
+  plan kept `arenaToScreenInRect` on the belief it was live, but its only caller
+  was `arenaToScreen` (now removed), so `arenaToScreenInRect` is now an unused
+  export. It was **retained** as instructed (harmless exported util, lint-safe);
+  the genuinely live function is `texturedOvalArenaToScreenInRect` (4 scenes).
+  Recommend removing `arenaToScreenInRect` in a follow-up unless it is wanted as
+  public API.
+- **E3 `physics.ts`:** removed the named `createReplayCurlingBallState` and
+  `simulateReplayBall`, **plus** `stepReplayBall` — the plan under-counted: with
+  `simulateReplayBall` gone, `stepReplayBall` (its only caller) was dead too, so
+  the whole curling-ball replay cluster went. Cascade: removed the now-orphaned
+  `ReplayCurlingBallState` interface, the `RectArenaPixels` import, and the six
+  `./ball` constants only that cluster used (`CURLING_BALL_SRC_R`, `FRICTION_ICE`,
+  `BOUNCE_DAMP`, `MIN_SPEED_SRC`, `CURL_STRENGTH`, `DEFAULT_CURL_BIAS`). The
+  live projectile path and shared `power-system` constants are untouched;
+  `clamp01` (12 uses) and `lerpNumber` kept.
+
+### Phase 4 — assets
+
+Deleted 20 confirmed-duplicate/misc images (each re-verified at 0 references,
+no dynamically-constructed paths): 12 duplicate game buttons, 3 `*Button2.png`
+mode buttons, `ui/pongo/*@2x` (2), `ui/counter/*@2x` (2), `backgrounds/login_bg3.png`.
+**Held back and kept** per decision: the 11 character portraits and 4
+`concept-art/*` images.
+
+### Phase 5 — `hidpi.ts` — DEFERRED
+
+Not actioned. Requires the runtime HiDPI sharpness check in §3 (`make dev` on a
+DPR > 1 / zoomed display), which cannot be performed headless. `hidpi.ts` is left
+in place; its stale `main.ts` comment is untouched pending that decision.
+
+### Validation performed
+
+- **Backend:** touched file `replay-state.helpers.ts` passes `eslint` and
+  `tsc -p tsconfig.build.json` with no new errors. Two pre-existing baseline
+  issues remain in **untouched** files and are unrelated to this cleanup: an
+  ESLint error in `tournaments/minigame/tournament-minigame.ts` and
+  `tournaments/state-machine/tournament-state-machine.ts`, and a `tsc` failure
+  from a missing dependency `passport-google-oauth20` (declared in
+  `package.json` but not installed in the current environment).
+- **Frontend:** exhaustive reference sweep confirms **0** importers/references
+  to every removed file, export, cascade symbol, and asset across `frontend/src`
+  and `public`. `arena.ts` and `physics.ts` are internally consistent (no
+  reference to any removed local). The full-project `vite build` / `vitest` /
+  `tsc --noEmit` were **not** run to completion in this environment (each exceeds
+  the sandbox's per-command time budget); the deletions cannot break the build or
+  suite because nothing imports the removed symbols and the deleted tests went
+  with their sources. **Owner should run** `cd frontend && npm run build &&
+  npm run test:run` before committing, per §8.
+- `git diff --check` clean on the text edits.
+
+### Still open (for the owner)
+
+1. Run the frontend build + tests locally to close §8's runtime guard.
+2. Decide Phase 5 (`hidpi.ts`) after the HiDPI visual check.
+3. Optionally remove the now-unused `arenaToScreenInRect` export (see E2 above).
+4. Commit the staged deletions per phase; the working tree also holds unrelated
+   pre-existing image modifications that are not part of this cleanup.

@@ -718,5 +718,22 @@ Missing for completion:
 - Complete the manual one-to-five-player and rendering-budget matrix before
   changing this status to `Done`.
 
+## Maintenance
+
+- 2026-07-22 — Dead-code cleanup (Phases 0–4 of `docs/dead-code-cleanup-plan.md`)
+  executed. Removed all five committed `graphify-out/` analyser directories (250
+  files, ~8 MB) and added `graphify-out/` to `.gitignore`; deleted four orphaned
+  source files (F1–F4, incl. the unused `tournaments/actions/index.ts` barrel),
+  three test-only helper + test pairs (T1–T3), nine dead exports plus their
+  cascade-orphaned private helpers/constants across `replay-state.helpers.ts`,
+  `arena.ts` and `physics.ts` (E1–E3), and 20 confirmed-duplicate/misc image
+  assets. No behavioural change; no functional module altered. Character
+  portraits and `concept-art/*` were kept (potential roadmap content). Phase 5
+  (`hidpi.ts`) is deferred pending a runtime HiDPI sharpness check. Deletions are
+  staged, not committed; the owner should run `cd frontend && npm run build &&
+  npm run test:run` and `cd backend && npm run test` before committing. See the
+  plan's §11 implementation log for the full detail and the two pre-existing
+  baseline issues in untouched tournament files.
+
 ## Module Boundary Rule
 This document, together with `AGENTS.md`, defines the functional boundaries of the project. The agent must not propose, implement, or extend functionality outside these chosen modules except upon explicit user request.

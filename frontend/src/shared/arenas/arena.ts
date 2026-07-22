@@ -36,18 +36,6 @@ export interface ArenaPixels {
 
 // ── Coordinate transform ──────────────────────────────────────────────────────
 
-/**
- * Letterbox-fit the arena into the canvas with a uniform scale so the
- * ellipse's aspect ratio is preserved at any canvas size.
- */
-export function arenaToScreen(
-	def: ArenaDef,
-	canvasW: number,
-	canvasH: number,
-): ArenaPixels {
-	return arenaToScreenInRect(def, 0, 0, canvasW, canvasH);
-}
-
 /** Letterbox-fit the arena into an arbitrary canvas-space rectangle. */
 export function arenaToScreenInRect(
 	def: ArenaDef,
@@ -62,28 +50,6 @@ export function arenaToScreenInRect(
 	return {
 		cx: offX + def.cx * scale,
 		cy: offY + def.cy * scale,
-		rx: def.rx * scale,
-		ry: def.ry * scale,
-		scale,
-	};
-}
-
-/** Fit the playable ellipse bounds into a rectangle, ignoring authored margins. */
-export function arenaPlayableToScreenInRect(
-	def: ArenaDef,
-	rectX: number,
-	rectY: number,
-	rectW: number,
-	rectH: number,
-): ArenaPixels {
-	const boundsW = def.rx * 2;
-	const boundsH = def.ry * 2;
-	const scale = Math.min(rectW / boundsW, rectH / boundsH);
-	const offX = rectX + (rectW - boundsW * scale) / 2;
-	const offY = rectY + (rectH - boundsH * scale) / 2;
-	return {
-		cx: offX + def.rx * scale,
-		cy: offY + def.ry * scale,
 		rx: def.rx * scale,
 		ry: def.ry * scale,
 		scale,
@@ -110,29 +76,6 @@ export function texturedOvalArenaToScreenInRect(
 		ry: def.ry * scale,
 		scale,
 	};
-}
-
-// ── Boundary maths ────────────────────────────────────────────────────────────
-
-/** True if the point (px, py) is inside the elliptical ring. */
-export function isInsideArena(px: number, py: number, a: ArenaPixels): boolean {
-	const dx = (px - a.cx) / a.rx;
-	const dy = (py - a.cy) / a.ry;
-	return dx * dx + dy * dy <= 1;
-}
-
-/**
- * 0 = centre of ring, 1 = exactly on the edge, >1 = outside.
- * Useful for danger-zone feedback as a player nears the boundary.
- */
-export function arenaEdgeFraction(
-	px: number,
-	py: number,
-	a: ArenaPixels,
-): number {
-	const dx = (px - a.cx) / a.rx;
-	const dy = (py - a.cy) / a.ry;
-	return Math.sqrt(dx * dx + dy * dy);
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────

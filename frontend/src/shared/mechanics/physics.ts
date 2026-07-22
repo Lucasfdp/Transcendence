@@ -1,14 +1,7 @@
 import type { ArenaPixels } from "../arenas/arena";
-import type { RectArenaPixels } from "./rect-arena";
 import {
 	BALL_SRC_R,
 	BALL_FRICTION_BASE,
-	CURLING_BALL_SRC_R,
-	FRICTION_ICE,
-	BOUNCE_DAMP as CURLING_BALL_BOUNCE_DAMP,
-	MIN_SPEED_SRC as CURLING_BALL_MIN_SPEED_SRC,
-	CURL_STRENGTH,
-	DEFAULT_CURL_BIAS,
 } from "./ball";
 import {
 	type PowerType,
@@ -34,21 +27,6 @@ export interface ReplayProjectileState {
 	power?: PowerType;
 	frictionOverride?: number;
 	stopped?: boolean;
-}
-
-export interface ReplayCurlingBallState {
-	id?: number;
-	teamId?: number;
-	x: number;
-	y: number;
-	vx: number;
-	vy: number;
-	r: number;
-	power?: PowerType;
-	stopped: boolean;
-	curlBias: number;
-	frozen?: boolean;
-	frictionOverride?: number;
 }
 
 export interface ReplayTrailPoint {
@@ -188,133 +166,6 @@ export function stepReplayProjectile(
 	return true;
 }
 
-export function createReplayCurlingBallState(
-	arena: RectArenaPixels,
-	x: number,
-	y: number,
-	vx: number,
-	vy: number,
-	teamId: number,
-	power: PowerType | undefined,
-): ReplayCurlingBallState {
-	const state: ReplayCurlingBallState = {
-		id: undefined,
-		teamId,
-		x,
-		y,
-		vx,
-		vy,
-		r: CURLING_BALL_SRC_R * arena.scale,
-		power,
-		stopped: false,
-		curlBias: DEFAULT_CURL_BIAS * (teamId === 0 ? 1 : -1),
-	};
-
-	switch (power) {
-		case "heavy":
-			state.vx *= HEAVY_SPEED_FACTOR;
-			state.vy *= HEAVY_SPEED_FACTOR;
-			state.curlBias *= 0.4;
-			break;
-		case "rocket":
-			state.vx *= ROCKET_SPEED_FACTOR;
-			state.vy *= ROCKET_SPEED_FACTOR;
-			state.curlBias = 0;
-			break;
-		case "giant":
-			state.r *= GIANT_RADIUS_FACTOR;
-			break;
-		case "tiny":
-			state.r *= TINY_RADIUS_FACTOR;
-			state.vx *= 1.2;
-			state.vy *= 1.2;
-			break;
-		case "spinning":
-			state.curlBias = (teamId === 0 ? 1 : -1) * 4;
-			break;
-		case "slick":
-			state.frictionOverride = FRICTION_SLICK;
-			break;
-		default:
-			break;
-	}
-
-	return state;
-}
-
-export function stepReplayBall(
-	state: ReplayCurlingBallState,
-	deltaMs: number,
-	arena: RectArenaPixels,
-): boolean {
-	if (state.frozen) {
-		state.stopped = true;
-		state.vx = 0;
-		state.vy = 0;
-		return false;
-	}
-	if (state.stopped) return false;
-
-	const dt = deltaMs / 1000;
-	const speed = Math.hypot(state.vx, state.vy);
-
-	if (speed > 0.001) {
-		const perpX = -state.vy / speed;
-		const perpY = state.vx / speed;
-		state.vx += perpX * state.curlBias * CURL_STRENGTH * speed * dt;
-		state.vy += perpY * state.curlBias * CURL_STRENGTH * speed * dt;
-	}
-
-	state.x += state.vx * dt;
-	state.y += state.vy * dt;
-
-	const bounceDamp = state.power === "bouncer" ? 1.0 : CURLING_BALL_BOUNCE_DAMP;
-	if (arena.orientation === "horizontal") {
-		const topWall = arena.sheetY + state.r;
-		const bottomWall = arena.sheetY + arena.sheetH - state.r;
-		const leftWall = arena.sheetX + state.r;
-		const rightWall = arena.sheetX + arena.sheetW - state.r;
-		if (state.y < topWall) {
-			state.y = topWall;
-			state.vy = -state.vy * bounceDamp;
-		} else if (state.y > bottomWall) {
-			state.y = bottomWall;
-			state.vy = -state.vy * bounceDamp;
-		}
-		if (state.x < leftWall) {
-			state.x = leftWall;
-			state.vx = -state.vx * bounceDamp;
-		} else if (state.x > rightWall) {
-			state.x = rightWall;
-			state.vx = -state.vx * bounceDamp;
-		}
-	} else {
-		const leftWall = arena.sheetX + state.r;
-		const rightWall = arena.sheetX + arena.sheetW - state.r;
-		if (state.x < leftWall) {
-			state.x = leftWall;
-			state.vx = -state.vx * bounceDamp;
-		} else if (state.x > rightWall) {
-			state.x = rightWall;
-			state.vx = -state.vx * bounceDamp;
-		}
-	}
-
-	const friction = state.frictionOverride ?? FRICTION_ICE;
-	const factor = Math.pow(friction, deltaMs / 16.67);
-	state.vx *= factor;
-	state.vy *= factor;
-
-	if (Math.hypot(state.vx, state.vy) < CURLING_BALL_MIN_SPEED_SRC * arena.scale) {
-		state.vx = 0;
-		state.vy = 0;
-		state.stopped = true;
-		return false;
-	}
-
-	return true;
-}
-
 export function simulateReplayProjectile(
 	initial: ReplayProjectileState,
 	totalMs: number,
@@ -326,24 +177,6 @@ export function simulateReplayProjectile(
 
 	runFixedStepSimulation(totalMs, (stepMs) => {
 		if (!stepReplayProjectile(state, stepMs, arena)) return false;
-		pushReplayTrailPoint(trail, state.x, state.y, maxTrailPoints);
-		return true;
-	});
-
-	return { state, trail };
-}
-
-export function simulateReplayBall(
-	initial: ReplayCurlingBallState,
-	totalMs: number,
-	arena: RectArenaPixels,
-	maxTrailPoints = 64,
-): SimulatedReplayObject<ReplayCurlingBallState> {
-	const state: ReplayCurlingBallState = { ...initial };
-	const trail: ReplayTrailPoint[] = [{ x: state.x, y: state.y }];
-
-	runFixedStepSimulation(totalMs, (stepMs) => {
-		if (!stepReplayBall(state, stepMs, arena)) return false;
 		pushReplayTrailPoint(trail, state.x, state.y, maxTrailPoints);
 		return true;
 	});

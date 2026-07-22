@@ -2,7 +2,6 @@ import {
 	BallSnapshotData,
 	BambooBashSnapshot,
 	BellClashSnapshot,
-	CurlingSnapshot,
 	KameKnockSnapshot,
 } from "./matchmaking.types";
 
@@ -11,17 +10,12 @@ const ARENA_RY_SRC = 491;
 const BELL_SPAWN_RADIUS_NX = (150 + 52 + 118) / ARENA_RX_SRC;
 const BELL_SPAWN_RADIUS_NY = (150 + 52 + 118) / ARENA_RY_SRC;
 
-const CURL_SHEET_W_SRC = 1570;
-const CURL_DELIVERY_X = 90 / CURL_SHEET_W_SRC;
-const CURL_DELIVERY_Y = 0.5;
-
 type ArenaBallSnapshot =
 	| KameKnockSnapshot
 	| BambooBashSnapshot
 	| BellClashSnapshot;
 
 const DEFAULT_PROJECTILE_SCALE = 1;
-const DEFAULT_CURLING_BALL_SCALE = 1;
 
 const POWER_SCALE: Record<string, number> = {
 	giant: 2,
@@ -152,31 +146,6 @@ function applyReplayPowerVisuals<T extends BallSnapshotData>(entity: T): T {
 	return entity;
 }
 
-function syncCurlingEntityMirror(snapshot: CurlingSnapshot): void {
-	snapshot.entities = snapshot.objects.map((object) => ({
-		id: object.id,
-		type: "ball",
-		side: object.side,
-		ownerSide: object.ownerSide,
-		x: object.x,
-		y: object.y,
-		vx: object.vx ?? 0,
-		vy: object.vy ?? 0,
-		rotation: object.rotation,
-		angularVelocity: object.angularVelocity,
-		scale: object.scale,
-		visible: object.visible,
-		alpha: object.alpha,
-		spriteKey: object.spriteKey,
-		stateFlags: [...object.stateFlags],
-		createdAt: object.createdAt,
-		updatedAt: object.updatedAt,
-		stopped: object.stopped,
-		power: object.power,
-		...(object.trail?.length ? { trail: object.trail.map((point) => ({ ...point })) } : {}),
-	}));
-}
-
 function getActiveArenaProjectile(
 	snapshot: ArenaBallSnapshot,
 	side: number,
@@ -288,28 +257,6 @@ function applyArenaBallPayload(
 	return true;
 }
 
-export function initializeArenaReplayBall(
-	snapshot: ArenaBallSnapshot,
-	side: number,
-	vx: number,
-	vy: number,
-	position?: { x?: number; y?: number },
-	power = "none",
-): void {
-	const spawn = getArenaBallSpawn(snapshot, side);
-	upsertArenaBall(snapshot, side, {
-		x: position?.x ?? spawn.x,
-		y: position?.y ?? spawn.y,
-		vx: Number.isFinite(vx) ? vx : 0,
-		vy: Number.isFinite(vy) ? vy : 0,
-		rotation: 0,
-		angularVelocity: 0,
-		power,
-		stateFlags: power === "none" ? ["launched"] : ["launched", `power:${power}`],
-		stopped: false,
-	});
-}
-
 export function syncArenaReplayBallFromPayload(
 	snapshot: ArenaBallSnapshot,
 	side: number,
@@ -365,120 +312,4 @@ export function resetArenaReplayBalls(
 	);
 	snapshot.nextBallId = snapshot.players.length + 1;
 	if (options?.clearEntities ?? true) snapshot.entities = [];
-}
-
-export function initializeCurlingReplayBall(
-	snapshot: CurlingSnapshot,
-	id: number,
-	side: number,
-	vx: number,
-	vy: number,
-	power: string,
-): void {
-	const existingIndex = snapshot.objects.findIndex((object) => object.id === id);
-	const now = Date.now();
-	const base = {
-		id,
-		side,
-		type: "ball" as const,
-		ownerSide: side,
-		x: CURL_DELIVERY_X,
-		y: CURL_DELIVERY_Y,
-		vx: Number.isFinite(vx) ? vx : 0,
-		vy: Number.isFinite(vy) ? vy : 0,
-		rotation: 0,
-		angularVelocity: 0,
-		moving: true,
-		scale: POWER_SCALE[power] ?? DEFAULT_CURLING_BALL_SCALE,
-		visible: true,
-		alpha: TRANSLUCENT_POWERS.has(power) ? 0.52 : 1,
-		spriteKey: "temple-curling-ball",
-		stateFlags: power === "none" ? ["launched"] : ["launched", `power:${power}`],
-		createdAt: now,
-		updatedAt: now,
-		stopped: false,
-		power,
-		trail: [{ x: CURL_DELIVERY_X, y: CURL_DELIVERY_Y }],
-	};
-	if (existingIndex >= 0) snapshot.objects[existingIndex] = base;
-	else snapshot.objects.push(base);
-	syncCurlingEntityMirror(snapshot);
-	snapshot.activeBallId = id;
-}
-
-function sanitizeTrailPoint(
-	point: unknown,
-): { x: number; y: number } | null {
-	if (!point || typeof point !== "object") return null;
-	const raw = point as Record<string, unknown>;
-	const x = Number(raw.x);
-	const y = Number(raw.y);
-	if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-	return { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
-}
-
-export function syncCurlingReplayStateFromPayload(
-	snapshot: CurlingSnapshot,
-	payload: Record<string, unknown>,
-): boolean {
-	const objects = Array.isArray(payload.objects) ? payload.objects : null;
-	if (!objects) return false;
-
-	snapshot.objects = objects
-		.map((object) => {
-			if (!object || typeof object !== "object") return null;
-			const raw = object as Record<string, unknown>;
-			const id = Number(raw.id);
-			const side = Number(raw.side);
-			const x = Number(raw.x);
-			const y = Number(raw.y);
-			if (
-				!Number.isFinite(id) ||
-				!Number.isFinite(side) ||
-				!Number.isFinite(x) ||
-				!Number.isFinite(y)
-			)
-				return null;
-			const vx = readNumber(raw, "vx");
-			const vy = readNumber(raw, "vy");
-			const moving =
-				Boolean(raw.moving) ||
-				Math.abs(vx ?? 0) > 0.001 ||
-				Math.abs(vy ?? 0) > 0.001;
-			const now = Date.now();
-			return {
-				id,
-				side,
-				type: "ball" as const,
-				ownerSide: side,
-				x: clamp(x, 0, 1),
-				y: clamp(y, 0, 1),
-				vx: vx ?? 0,
-				vy: vy ?? 0,
-				rotation: readNumber(raw, "rotation") ?? 0,
-				angularVelocity: readNumber(raw, "angularVelocity") ?? 0,
-				moving,
-				scale: readNumber(raw, "scale") ?? DEFAULT_CURLING_BALL_SCALE,
-				visible: raw.visible !== false,
-				alpha: readNumber(raw, "alpha") ?? 1,
-				spriteKey: String(raw.spriteKey ?? "temple-curling-ball"),
-				stateFlags: Array.isArray(raw.stateFlags)
-					? raw.stateFlags.filter((flag): flag is string => typeof flag === "string")
-					: [moving ? "sliding" : "settled"],
-				createdAt: readNumber(raw, "createdAt") ?? now,
-				updatedAt: now,
-				stopped: Boolean(raw.stopped) || !moving,
-				power: String(raw.power ?? "none"),
-				trail: Array.isArray(raw.trail)
-					? raw.trail
-							.map((point) => sanitizeTrailPoint(point))
-							.filter((point): point is { x: number; y: number } => point !== null)
-					: undefined,
-			};
-		})
-		.filter((object) => object !== null) as CurlingSnapshot["objects"];
-	syncCurlingEntityMirror(snapshot);
-	snapshot.activeBallId =
-		snapshot.objects.find((object) => object.moving)?.id ?? null;
-	return true;
 }
