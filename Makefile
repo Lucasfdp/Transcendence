@@ -18,6 +18,9 @@ PROJECT_NAME	:= transcendence
 CERT_DIR		:= secrets/nginx_ssl
 VAULT_INIT_FILE	:= secrets/vault/init.txt
 VAULT_SEED_FILE	:= secrets/vault/dev-seed.env
+GIT_LFS_VERSION	?= 3.7.1
+GIT_LFS_LOCAL_BIN	?= $(HOME)/.local/bin/git-lfs
+GIT_LFS_RELEASE_URL	:= https://github.com/git-lfs/git-lfs/releases/download/v$(GIT_LFS_VERSION)
 
 # --- COLOUR DEFINITON ---
 ifeq ($(shell tput colors 2>/dev/null),)
@@ -50,22 +53,97 @@ endif
 # CORE TARGETS
 # ==============================================================================
 
+## lfs: Ensure Git LFS is available locally and download all tracked assets
+lfs:
+	@set -eu; \
+		local_bin="$(GIT_LFS_LOCAL_BIN)"; \
+		if command -v git-lfs >/dev/null 2>&1; then \
+			lfs_bin="$$(command -v git-lfs)"; \
+			printf '%s\n' "$(GREEN)Git LFS found at $$lfs_bin.$(RESET)"; \
+		elif [ -x "$$local_bin" ]; then \
+			lfs_bin="$$local_bin"; \
+			printf '%s\n' "$(GREEN)Using the existing local Git LFS binary at $$lfs_bin.$(RESET)"; \
+		else \
+			printf '%s\n' "$(YELLOW)Git LFS was not found; installing it for the current user...$(RESET)"; \
+			case "$$(uname -s)" in \
+				Linux) os="linux"; extension="tar.gz" ;; \
+				Darwin) os="darwin"; extension="zip" ;; \
+				*) printf '%s\n' "$(RED)Unsupported operating system: $$(uname -s). Install Git LFS manually.$(RESET)"; exit 1 ;; \
+			esac; \
+			case "$$(uname -m)" in \
+				x86_64|amd64) arch="amd64" ;; \
+				aarch64|arm64) arch="arm64" ;; \
+				*) printf '%s\n' "$(RED)Unsupported architecture: $$(uname -m). Install Git LFS manually.$(RESET)"; exit 1 ;; \
+			esac; \
+			archive="git-lfs-$$os-$$arch-v$(GIT_LFS_VERSION).$$extension"; \
+			url="$(GIT_LFS_RELEASE_URL)/$$archive"; \
+			tmp_dir="$$(mktemp -d)"; \
+			trap 'rm -rf "$$tmp_dir"' EXIT HUP INT TERM; \
+			if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then \
+				printf '%s\n' "$(RED)Neither curl nor wget is available; Git LFS cannot be downloaded.$(RESET)"; \
+				exit 1; \
+			fi; \
+			download_file() { \
+				if command -v curl >/dev/null 2>&1; then \
+					curl --fail --location --silent --show-error --retry 3 "$$1" --output "$$2"; \
+				else \
+					wget --quiet "$$1" --output-document="$$2"; \
+				fi; \
+			}; \
+			printf '%s\n' "$(CYAN)Downloading $$archive...$(RESET)"; \
+			download_file "$$url" "$$tmp_dir/$$archive"; \
+			download_file "$(GIT_LFS_RELEASE_URL)/sha256sums.asc" "$$tmp_dir/sha256sums.asc"; \
+			expected_checksum="$$(awk -v file="*$$archive" '$$2 == file { print $$1; exit }' "$$tmp_dir/sha256sums.asc")"; \
+			if command -v sha256sum >/dev/null 2>&1; then \
+				actual_checksum="$$(sha256sum "$$tmp_dir/$$archive" | awk '{ print $$1 }')"; \
+			elif command -v shasum >/dev/null 2>&1; then \
+				actual_checksum="$$(shasum -a 256 "$$tmp_dir/$$archive" | awk '{ print $$1 }')"; \
+			else \
+				printf '%s\n' "$(RED)No SHA-256 utility is available to verify the Git LFS download.$(RESET)"; \
+				exit 1; \
+			fi; \
+			if [ -z "$$expected_checksum" ] || [ "$$actual_checksum" != "$$expected_checksum" ]; then \
+				printf '%s\n' "$(RED)Git LFS download checksum verification failed.$(RESET)"; \
+				exit 1; \
+			fi; \
+			unpack_dir="$$tmp_dir/unpacked"; \
+			mkdir -p "$$unpack_dir"; \
+			case "$$extension" in \
+				tar.gz) tar -xzf "$$tmp_dir/$$archive" -C "$$unpack_dir" ;; \
+				zip) unzip -q "$$tmp_dir/$$archive" -d "$$unpack_dir" ;; \
+			esac; \
+			downloaded_bin="$$(find "$$unpack_dir" -type f -name git-lfs | head -n 1)"; \
+			if [ -z "$$downloaded_bin" ]; then \
+				printf '%s\n' "$(RED)The downloaded archive does not contain the Git LFS binary.$(RESET)"; \
+				exit 1; \
+			fi; \
+			mkdir -p "$$(dirname "$$local_bin")"; \
+			cp "$$downloaded_bin" "$$local_bin"; \
+			chmod 755 "$$local_bin"; \
+			lfs_bin="$$local_bin"; \
+			printf '%s\n' "$(GREEN)Git LFS $(GIT_LFS_VERSION) installed at $$lfs_bin.$(RESET)"; \
+		fi; \
+		PATH="$$(dirname "$$lfs_bin"):$$PATH" "$$lfs_bin" install --local; \
+		printf '%s\n' "$(CYAN)Downloading Git LFS assets...$(RESET)"; \
+		PATH="$$(dirname "$$lfs_bin"):$$PATH" "$$lfs_bin" pull; \
+		printf '%s\n' "$(GREEN)Git LFS assets are ready.$(RESET)"
+
 ## up: Build images (if needed) and start all services in detached mode
-up: check-env prepare-local-secrets certs vault-bootstrap
+up: lfs check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting all services...$(RESET)"
 	$(DEV_ENV) $(HOT_COMPOSE) config >/dev/null
 	$(DEV_ENV) $(HOT_COMPOSE) up -d --build --remove-orphans
 	@echo "$(GREEN)All services are up. Run 'make ps' to verify.$(RESET)"
 
 ## dev: Start with hot-reload override (Vite HMR + NestJS watch). Access frontend at https://localhost:42424
-dev: check-env prepare-local-secrets certs vault-bootstrap
+dev: lfs check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting in DEV mode (hot-reload)...$(RESET)"
 	$(DEV_ENV) $(HOT_COMPOSE) config >/dev/null
 	$(DEV_ENV) $(HOT_COMPOSE) up -d --build --remove-orphans
 	@echo "$(GREEN)Dev server running. Frontend: https://localhost:42424$(RESET)"
 
 ## prod: Start WITHOUT the dev override — production-like mode (compiled frontend + runtime images)
-prod: check-env prepare-local-secrets certs vault-bootstrap
+prod: lfs check-env prepare-local-secrets certs vault-bootstrap
 	@echo "$(GREEN)Starting in PROD mode (no override)...$(RESET)"
 	$(PROD_ENV) $(BASE_COMPOSE) config >/dev/null
 	$(PROD_ENV) $(BASE_COMPOSE) up -d --build --remove-orphans
@@ -112,7 +190,7 @@ down:
 restart: down up
 
 ## restart-front: Restart only the frontend container
-restart-front:
+restart-front: lfs
 	@echo "$(YELLOW)Restarting frontend only...$(RESET)"
 	docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) restart frontend
 	@echo "$(GREEN)Frontend restarted.$(RESET)"
@@ -124,7 +202,7 @@ restart-back:
 	@echo "$(GREEN)Backend restarted.$(RESET)"
 
 ## rebuild-front: Rebuild and recreate only the frontend service
-rebuild-front: check-env certs
+rebuild-front: lfs check-env certs
 	@echo "$(CYAN)Rebuilding frontend only...$(RESET)"
 	$(DEV_ENV) docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE) up -d --build --force-recreate --no-deps frontend
 	@echo "$(GREEN)Frontend rebuilt and restarted.$(RESET)"
@@ -140,7 +218,7 @@ refresh-app: rebuild-front rebuild-back
 	@echo "$(GREEN)Frontend and backend rebuilt and restarted.$(RESET)"
 
 ## build: Build or rebuild all images without starting containers
-build: check-env
+build: lfs check-env
 	@echo "$(CYAN)Building all images...$(RESET)"
 	$(DEV_ENV) $(BASE_COMPOSE) build --no-cache
 
@@ -354,4 +432,4 @@ help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /'
 	@echo ""
 
-.PHONY: up dev prod down restart restart-front restart-back rebuild-front rebuild-back refresh-app build logs ps diagnosis clean fclean re shell status inspect volumes networks db test health open certs check-env push help
+.PHONY: lfs up dev prod down restart restart-front restart-back rebuild-front rebuild-back refresh-app build logs ps diagnosis clean fclean re shell status inspect volumes networks db test health open certs check-env push help
