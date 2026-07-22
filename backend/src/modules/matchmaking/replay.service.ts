@@ -26,13 +26,13 @@ const REPLAY_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const REPLAY_SAMPLE_MS = 50;
 const REPLAY_KEYFRAME_MS = 1_000;
 const MAX_SAVED_REPLAYS_PER_USER = 20;
-const MAX_IMPORTED_REPLAY_FRAMES = 3_600;
+const MAX_IMPORTED_REPLAY_FRAMES = 3_000;
 // Upper bound on frames retained in memory for a single live match, so a
 // pathological or unusually long match can never grow the room's replay buffer
 // without limit (R3). When exceeded, the oldest complete rounds are trimmed —
 // never the round in progress — which keeps the delta chain valid because the
 // first frame of every round is always a keyframe.
-const MAX_LIVE_REPLAY_FRAMES = 3_600;
+const MAX_LIVE_REPLAY_FRAMES = 3_000;
 const IMPORTABLE_REPLAY_GAME_IDS = new Set([
 	"temple-curling",
 	"bamboo-bash",
@@ -345,6 +345,9 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 		if (!room.replayEnabled || room.state.powerupsEnabled) return;
 		this.captureFrame(room, true, 0);
 		if (room.replayFrames.length === 0) return;
+		const replayTooLong =
+			room.replayFrames.length > MAX_LIVE_REPLAY_FRAMES ||
+			(room.replayFrames[0]?.tMs ?? 0) > 0;
 		const preRollMs = Number(process.env.REPLAY_ROUND_PREROLL_MS ?? 3000);
 		const timeline = trimRoundPreRoll(
 			room.replayFrames,
@@ -371,7 +374,10 @@ export class ReplayService implements OnModuleInit, OnModuleDestroy {
 			sampleHz: 20,
 			keyframeIntervalMs: REPLAY_KEYFRAME_MS,
 			preRollMs,
-			statistics: { winnerSide: room.state.winnerSide },
+			statistics: {
+				winnerSide: room.state.winnerSide,
+				replayTooLong,
+			},
 			powerupsEnabled: false,
 		};
 		await this.replayRepo.save(

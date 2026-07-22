@@ -196,7 +196,7 @@ describe("ReplayService replay v2", () => {
 			service.captureFrame(room, true, 50);
 		}
 		// The oldest complete round is dropped; only the in-progress round remains.
-		expect(room.replayFrames.length).toBeLessThanOrEqual(3_600);
+		expect(room.replayFrames.length).toBeLessThanOrEqual(3_000);
 		expect(room.replayFrames.every((frame) => frame.round === 1)).toBe(true);
 		expect(room.replayFrames[0].type).toBe("keyframe");
 		// Sequence numbers stay contiguous from zero after trimming.

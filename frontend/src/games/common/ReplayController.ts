@@ -26,6 +26,22 @@ function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
 }
 
+export function replayPlaybackDuration(replay: ReplayDetail | null): number {
+	if (!replay || replay.frames.length === 0) return 0;
+	const lastFrameMs = replay.frames[replay.frames.length - 1]?.tMs ?? 0;
+	const terminalFrame = replay.frames.find(
+		(frame) => frame.state === "finished" || frame.state === "abandoned",
+	);
+	const capturedDuration = terminalFrame?.tMs ?? lastFrameMs;
+	return Math.max(
+		0,
+		Math.min(
+			replay.durationMs > 0 ? replay.durationMs : capturedDuration,
+			capturedDuration,
+		),
+	);
+}
+
 export class ReplayController {
 	private replay: ReplayDetail | null;
 	private timeMs = 0;
@@ -58,12 +74,17 @@ export class ReplayController {
 	setPlayback(frameIndex: number, progress: number, playing: boolean): void {
 		const frame = this.replay?.frames[frameIndex];
 		const next = this.replay?.frames[frameIndex + 1];
-		this.timeMs = frame
-			? frame.tMs +
+		this.timeMs = clamp(
+			frame
+				? frame.tMs +
 				Math.max(0, (next?.tMs ?? frame.tMs) - frame.tMs) *
 					clamp(progress, 0, 1)
-			: 0;
-		this.playing = playing;
+				: 0,
+			0,
+			replayPlaybackDuration(this.replay),
+		);
+		this.playing =
+			playing && this.timeMs < replayPlaybackDuration(this.replay);
 		this.emit(true);
 	}
 
@@ -72,22 +93,24 @@ export class ReplayController {
 	}
 
 	seekTime(timeMs: number): void {
-		this.timeMs = clamp(timeMs, 0, this.replay?.durationMs ?? 0);
+		this.timeMs = clamp(timeMs, 0, replayPlaybackDuration(this.replay));
 		this.emit(true);
 	}
 
 	setPlaying(playing: boolean): void {
-		this.playing = playing && this.timeMs < (this.replay?.durationMs ?? 0);
+		this.playing =
+			playing && this.timeMs < replayPlaybackDuration(this.replay);
 		this.emit(true);
 	}
 
 	update(deltaMs: number): void {
 		if (!this.playing || !this.replay) return;
+		const durationMs = replayPlaybackDuration(this.replay);
 		this.timeMs = Math.min(
-			this.replay.durationMs,
+			durationMs,
 			this.timeMs + Math.max(0, deltaMs),
 		);
-		if (this.timeMs >= this.replay.durationMs) this.playing = false;
+		if (this.timeMs >= durationMs) this.playing = false;
 		this.emit(!this.playing || this.timeMs - this.lastEmittedAt >= 100);
 	}
 
@@ -98,7 +121,12 @@ export class ReplayController {
 	getState(): ReplayControllerState {
 		const frameIndex = this.findFrameIndex(this.timeMs);
 		const frame = this.resolveFrame(frameIndex);
-		const nextFrame = this.resolveFrame(frameIndex + 1);
+		const candidateNextFrame = this.resolveFrame(frameIndex + 1);
+		const nextFrame =
+			candidateNextFrame &&
+			candidateNextFrame.tMs <= replayPlaybackDuration(this.replay)
+				? candidateNextFrame
+				: null;
 		const windowMs =
 			frame && nextFrame ? Math.max(0, nextFrame.tMs - frame.tMs) : 0;
 		return {

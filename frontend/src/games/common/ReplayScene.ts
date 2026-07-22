@@ -18,7 +18,6 @@ import { ARENA_01 } from "../../shared/arenas/arena01";
 import { drawPlayerRing, PLAYER_COLOUR_VALUES } from "../../shared/game-ui";
 import {
 	type ArenaPixels,
-	layoutOvalArenaSkin,
 	OVAL_ARENA_SKIN,
 	preloadOvalArenaSkin,
 	texturedOvalArenaToScreenInRect,
@@ -28,22 +27,20 @@ import {
 	type BallState,
 	BALL_SRC_R,
 	drawShellBallTexture,
+	CURLING_BALL_SRC_R,
 } from "../../shared/mechanics/ball";
 import {
 	type RectArenaPixels,
 	drawIceSheet,
 	rectArenaPlayableToScreenInRect,
 } from "../../shared/mechanics/rect-arena";
-import { drawClassicPlayerTrail } from "../../shared/mechanics/player-trails";
+import { drawPlayerTrails } from "../../shared/mechanics/player-trails";
 import {
 	drawIngamePlayerTexture,
 	hideIngamePlayerTexture,
 	preloadIngamePlayerTexture,
 } from "../../shared/mechanics/player-renderer";
-import {
-	type CurlingBallState,
-	drawCurlingBall,
-} from "../../shared/mechanics/ball";
+import { type CurlingBallState } from "../../shared/mechanics/ball";
 import { type PowerType } from "../../shared/mechanics/power-system";
 import { THEME } from "../../shared/theme";
 import { ResponsiveScene } from "../../shared/responsive-scene";
@@ -59,6 +56,19 @@ import {
 	resolveActiveReplayBackground,
 	resolveActiveReplaySide,
 } from "./replayVisuals";
+import { drawBambooBashBackground } from "../bamboo-bash/BambooBashView";
+import {
+	createBellClashBell,
+	drawBellClashBackground,
+	drawBellClashZones,
+	layoutBellClashBell,
+	preloadBellClashBell,
+} from "../bell-clash/BellClashView";
+import {
+	drawShellCurlBackground,
+	drawShellCurlBall,
+} from "../shell-curl/ShellCurlView";
+import { drawKameKnockBackground } from "../kame-knock/KameKnockView";
 
 const DEPTH_BG = 0;
 const DEPTH_ARENA = 1;
@@ -142,9 +152,11 @@ export class ReplayScene extends ResponsiveScene {
 
 	private bgObjects: Phaser.GameObjects.GameObject[] = [];
 	private backgroundGfx!: Phaser.GameObjects.Graphics;
+	private gameBackgroundGfx!: Phaser.GameObjects.Graphics;
 	private arenaGfx!: Phaser.GameObjects.Graphics;
 	private arenaSkin!: Phaser.GameObjects.Image;
-	private decorGfx!: Phaser.GameObjects.Graphics;
+	private bellImage: Phaser.GameObjects.Image | null = null;
+	private bellZoneGfx!: Phaser.GameObjects.Graphics;
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private overlayGfx!: Phaser.GameObjects.Graphics;
 	private actorGfx!: Phaser.GameObjects.Graphics;
@@ -177,6 +189,7 @@ export class ReplayScene extends ResponsiveScene {
 	preload(): void {
 		preloadOvalArenaSkin(this);
 		preloadIngamePlayerTexture(this);
+		preloadBellClashBell(this);
 		for (const stage of [1, 2, 3]) {
 			if (!this.textures.exists(BAMBOO_TEXTURES[stage]))
 				this.load.image(BAMBOO_TEXTURES[stage], BAMBOO_ASSETS[stage]);
@@ -195,15 +208,22 @@ export class ReplayScene extends ResponsiveScene {
 
 	create(): void {
 		this.backgroundGfx = this.add.graphics().setDepth(DEPTH_BG);
+		this.gameBackgroundGfx = this.add.graphics().setDepth(DEPTH_BG + 0.05);
 		this.arenaGfx = this.add.graphics().setDepth(DEPTH_ARENA);
-		this.decorGfx = this.add.graphics().setDepth(DEPTH_DECOR);
+		this.bellZoneGfx = this.add.graphics().setDepth(DEPTH_ARENA);
 		this.arenaSkin = this.add
 			.image(0, 0, OVAL_ARENA_SKIN.key)
-			.setDepth(DEPTH_DECOR + 0.05)
+			.setDepth(DEPTH_BG + 0.1)
 			.setVisible(false);
 		this.trailGfx = this.add.graphics().setDepth(DEPTH_TRAILS);
 		this.actorGfx = this.add.graphics().setDepth(DEPTH_ACTORS);
 		this.overlayGfx = this.add.graphics().setDepth(DEPTH_OVERLAY);
+		this.resolveLayout();
+		if (this.replay?.gameId === "bell-clash" && this.arena) {
+			this.bellImage = createBellClashBell(this, this.arena).setVisible(
+				false,
+			).setDepth(DEPTH_DECOR);
+		}
 
 		if (this.controller) {
 			this.unsubscribeController = this.controller.subscribe(() => {
@@ -211,7 +231,6 @@ export class ReplayScene extends ResponsiveScene {
 			});
 		}
 
-		this.resolveLayout();
 		this.renderStatic();
 		this.renderCurrentState();
 		this.enableResponsive();
@@ -238,6 +257,8 @@ export class ReplayScene extends ResponsiveScene {
 		this.objectImages.clear();
 		for (const gfx of this.ballGraphics.values()) gfx.destroy();
 		this.ballGraphics.clear();
+		this.bellImage?.destroy();
+		this.bellImage = null;
 	}
 
 	private resolveLayout(): void {
@@ -268,30 +289,70 @@ export class ReplayScene extends ResponsiveScene {
 		this.clearBackgroundObjects();
 		this.currentBackgroundId = null;
 		this.backgroundGfx.clear();
+		this.gameBackgroundGfx.clear();
 		this.arenaGfx.clear();
-		this.decorGfx.clear();
+		this.bellZoneGfx.clear();
 		this.trailGfx.clear();
 		this.actorGfx.clear();
 		this.overlayGfx.clear();
 		this.arenaSkin.setVisible(false);
+		this.bellImage?.setVisible(false);
 
 		if (!this.replay) return;
 		this.drawFlatBackground(0x10150f);
 
 		if (this.replay.gameId === "temple-curling" && this.curlArena) {
 			this.arenaSkin.setVisible(false);
+			drawShellCurlBackground(
+				this.gameBackgroundGfx,
+				this.curlArena,
+				this.scale.width,
+				this.scale.height,
+			);
 			drawIceSheet(this.arenaGfx, this.curlArena);
 			return;
 		}
 
 		if (!this.arena) return;
-		this.drawKameBackdrop();
+		if (this.replay.gameId === "bamboo-bash") {
+			drawBambooBashBackground(
+				this.gameBackgroundGfx,
+				this.arenaSkin,
+				this.arena,
+				this.scale.width,
+				this.scale.height,
+			);
+			this.arenaSkin.setVisible(true);
+			return;
+		}
+		if (this.replay.gameId === "bell-clash") {
+			drawBellClashBackground(
+				this.gameBackgroundGfx,
+				this.arenaSkin,
+				this.arena,
+				this.scale.width,
+				this.scale.height,
+			);
+			this.arenaSkin.setVisible(true);
+			if (this.bellImage)
+				layoutBellClashBell(this.bellImage, this.arena, 0);
+			return;
+		}
+		drawKameKnockBackground(
+			this.gameBackgroundGfx,
+			this.arenaSkin,
+			this.arena,
+			this.scale.width,
+			this.scale.height,
+		);
+		this.arenaSkin.setVisible(true);
 	}
 
 	private renderCurrentState(): void {
 		this.needsRender = false;
 		this.actorGfx.clear();
 		this.trailGfx.clear();
+		this.bellZoneGfx.clear();
 		this.overlayGfx.clear();
 		this.visibleActorNames.clear();
 		this.visibleObjectKeys.clear();
@@ -389,7 +450,7 @@ export class ReplayScene extends ResponsiveScene {
 						? lerpNumber(object.y, nextObject.y, progress)
 						: object.y,
 				),
-				r: this.curlArena.scale * 28,
+				r: this.curlArena.scale * CURLING_BALL_SRC_R,
 				power: object.power,
 				alpha: Number(object.alpha ?? nextObject?.alpha ?? 1),
 				trail: interpolateNormalizedTrail(
@@ -411,16 +472,11 @@ export class ReplayScene extends ResponsiveScene {
 		}
 
 		const balls = [...rendered.values()].sort((a, b) => a.id - b.id);
-		for (const ball of balls) {
-			drawClassicPlayerTrail(
-				this.trailGfx,
-				ball.trail,
-				PLAYER_COLOUR_VALUES[ball.side % PLAYER_COLOUR_VALUES.length] ??
-					THEME.gold,
-				{ scale: this.curlArena.scale },
-			);
-			this.drawCurlingBallActor(ball);
-		}
+		this.drawReplayTrails(
+			balls.filter((ball) => ball.active),
+			this.curlArena.scale,
+		);
+		for (const ball of balls) this.drawCurlingBallActor(ball);
 	}
 
 	private renderBambooReplay(
@@ -445,29 +501,24 @@ export class ReplayScene extends ResponsiveScene {
 				BAMBOO_TEXTURES[Math.max(1, Math.min(3, bamboo.stage))],
 				position.x,
 				position.y,
-				72 * this.arena.scale,
 				96 * this.arena.scale,
+				96 * this.arena.scale,
+				0.5,
+				0.65,
 			);
 		}
 
-		for (const projectile of this.buildProjectileStatesFromSnapshots(
+		const projectiles = this.buildProjectileStatesFromSnapshots(
 			"bamboo",
 			snapshot.balls,
 			snapshot.entities,
 			nextSnapshot?.balls,
 			nextSnapshot?.entities,
 			progress,
-		)) {
-			drawClassicPlayerTrail(
-				this.trailGfx,
-				projectile.trail,
-				PLAYER_COLOUR_VALUES[
-					projectile.side % PLAYER_COLOUR_VALUES.length
-				] ?? THEME.gold,
-				{ scale: this.arena.scale },
-			);
+		);
+		this.drawReplayTrails(projectiles, this.arena.scale, true);
+		for (const projectile of projectiles)
 			this.drawProjectileActor("bamboo", projectile);
-		}
 	}
 
 	private renderKameReplay(
@@ -517,17 +568,9 @@ export class ReplayScene extends ResponsiveScene {
 			});
 		}
 
-		for (const projectile of visibleProjectiles) {
-			drawClassicPlayerTrail(
-				this.trailGfx,
-				projectile.trail,
-				PLAYER_COLOUR_VALUES[
-					projectile.side % PLAYER_COLOUR_VALUES.length
-				] ?? THEME.gold,
-				{ scale: this.arena.scale },
-			);
+		this.drawReplayTrails(visibleProjectiles, this.arena.scale);
+		for (const projectile of visibleProjectiles)
 			this.drawProjectileActor("kame", projectile);
-		}
 	}
 
 	private renderBellReplay(
@@ -545,24 +588,44 @@ export class ReplayScene extends ResponsiveScene {
 		this.drawBellZones(snapshot);
 		this.drawReplayBell();
 
-		for (const projectile of this.buildProjectileStatesFromSnapshots(
+		const projectiles = this.buildProjectileStatesFromSnapshots(
 			"bell",
 			snapshot.balls,
 			snapshot.entities,
 			nextSnapshot?.balls,
 			nextSnapshot?.entities,
 			progress,
-		)) {
-			drawClassicPlayerTrail(
-				this.trailGfx,
-				projectile.trail,
-				PLAYER_COLOUR_VALUES[
-					projectile.side % PLAYER_COLOUR_VALUES.length
-				] ?? THEME.gold,
-				{ scale: this.arena.scale },
-			);
+		);
+		this.drawReplayTrails(projectiles, this.arena.scale, true);
+		for (const projectile of projectiles)
 			this.drawProjectileActor("bell", projectile);
+	}
+
+	private drawReplayTrails(
+		actors: Array<ProjectileRenderState | BallRenderState>,
+		scale: number,
+		strong = false,
+	): void {
+		const trails = new Map<number | string, ReplayTrailPoint[]>();
+		const players = new Map<number | string, number>();
+		const effects = new Map<number | string, string>();
+		for (const actor of actors) {
+			trails.set(actor.key, actor.trail);
+			players.set(actor.key, actor.side);
+			effects.set(
+				actor.key,
+				this.replay?.metadata.participants.find(
+					(participant) => participant.side === actor.side,
+				)?.trailEffect ?? "trail_classic",
+			);
 		}
+		drawPlayerTrails(this.trailGfx, trails, players, {
+			scale,
+			trailEffectsById: effects,
+			...(strong
+				? { lineWidth: 7, baseAlpha: 0.22, alphaRange: 0.58 }
+				: {}),
+		});
 	}
 
 	private buildProjectileStatesFromSnapshots(
@@ -627,8 +690,9 @@ export class ReplayScene extends ResponsiveScene {
 		projectile: ProjectileRenderState,
 	): void {
 		const colour =
-			PLAYER_COLOUR_VALUES[projectile.side % PLAYER_COLOUR_VALUES.length] ??
-			THEME.gold;
+			PLAYER_COLOUR_VALUES[
+				projectile.side % PLAYER_COLOUR_VALUES.length
+			] ?? THEME.gold;
 		const ball: BallState = {
 			x: projectile.x,
 			y: projectile.y,
@@ -640,7 +704,17 @@ export class ReplayScene extends ResponsiveScene {
 		const actorName = `${prefix}-player-${projectile.key}`;
 		this.actorNames.add(actorName);
 		this.visibleActorNames.add(actorName);
-		if (drawIngamePlayerTexture(this, actorName, ball, DEPTH_ACTORS)) {
+		if (
+			drawIngamePlayerTexture(
+				this,
+				actorName,
+				ball,
+				DEPTH_ACTORS,
+				this.replay?.metadata.participants.find(
+					(participant) => participant.side === projectile.side,
+				)?.shellSkin,
+			)
+		) {
 			this.setPlayerActorAlpha(actorName, projectile.alpha);
 		} else {
 			drawShellBallTexture(this, actorName, ball, DEPTH_ACTORS);
@@ -664,6 +738,9 @@ export class ReplayScene extends ResponsiveScene {
 	private drawCurlingBallActor(ball: BallRenderState): void {
 		this.visibleBallKeys.add(ball.key);
 		const gfx = this.getBallGraphic(ball.key);
+		const actorName = `shell-curl-player-${ball.id}`;
+		this.actorNames.add(actorName);
+		this.visibleActorNames.add(actorName);
 		const state: CurlingBallState = {
 			id: ball.id,
 			teamId: ball.side,
@@ -676,7 +753,20 @@ export class ReplayScene extends ResponsiveScene {
 			stopped: !ball.active,
 			curlBias: 0,
 		};
-		drawCurlingBall(gfx, state, ball.active);
+		drawShellCurlBall(
+			gfx,
+			state,
+			ball.active,
+			this.replay?.metadata.participants.reduce<string[]>(
+				(skins, participant) => {
+					skins[participant.side] = participant.shellSkin ?? "";
+					return skins;
+				},
+				[],
+			) ?? [],
+			this,
+			DEPTH_ACTORS,
+		);
 	}
 
 	private drawSpriteObject(
@@ -686,6 +776,8 @@ export class ReplayScene extends ResponsiveScene {
 		y: number,
 		width: number,
 		height: number,
+		originX = 0.5,
+		originY = 0.5,
 	): void {
 		this.visibleObjectKeys.add(key);
 		let image = this.objectImages.get(key);
@@ -697,6 +789,7 @@ export class ReplayScene extends ResponsiveScene {
 		}
 		image
 			.setTexture(textureKey)
+			.setOrigin(originX, originY)
 			.setVisible(true)
 			.setPosition(x, y)
 			.setDisplaySize(width, height);
@@ -791,45 +884,6 @@ export class ReplayScene extends ResponsiveScene {
 		image.setDisplaySize(sourceWidth * scale, sourceHeight * scale);
 	}
 
-	private drawArenaBackdrop(top: number, ring: number): void {
-		if (!this.arena) return;
-		const { width, height } = this.scale;
-		this.decorGfx.fillStyle(top, 0.42);
-		this.decorGfx.fillRect(0, 0, width, height);
-		this.decorGfx.lineStyle(
-			Math.max(1, this.arena.scale * 2),
-			THEME.jade,
-			0.12,
-		);
-		const gridStep = Math.max(24, 48 * this.arena.scale);
-		for (let x = 0; x < width; x += gridStep)
-			this.decorGfx.lineBetween(x, 0, x, height);
-		for (let y = 0; y < height; y += gridStep)
-			this.decorGfx.lineBetween(0, y, width, y);
-		this.decorGfx.fillStyle(ring, 0.18);
-		this.decorGfx.fillEllipse(
-			this.arena.cx,
-			this.arena.cy,
-			this.arena.rx * 2.25,
-			this.arena.ry * 2.25,
-		);
-	}
-
-	private drawKameBackdrop(): void {
-		if (!this.arena) return;
-		const { width, height } = this.scale;
-		const gridStep = Math.max(28, Math.round(70 * this.arena.scale));
-		this.decorGfx.fillStyle(0x10150f, 0.62);
-		this.decorGfx.fillRect(0, 0, width, height);
-		this.decorGfx.lineStyle(1, THEME.greenMuted, 0.45);
-		for (let x = 0; x < width; x += gridStep)
-			this.decorGfx.lineBetween(x, 0, x, height);
-		for (let y = 0; y < height; y += gridStep)
-			this.decorGfx.lineBetween(0, y, width, y);
-		layoutOvalArenaSkin(this.arenaSkin, this.arena);
-		this.arenaSkin.setVisible(true);
-	}
-
 	private drawFlatBackground(colour: number): void {
 		this.backgroundGfx.fillStyle(colour, 1);
 		this.backgroundGfx.fillRect(0, 0, this.scale.width, this.scale.height);
@@ -839,12 +893,11 @@ export class ReplayScene extends ResponsiveScene {
 		if (!this.arena) return;
 		const x = this.arena.cx + target.nx * this.arena.rx;
 		const y = this.arena.cy + target.ny * this.arena.ry;
-		const radius = Math.max(18, target.radiusSrc * this.arena.scale);
+		const radius = target.radiusSrc * this.arena.scale;
 		if (!target.breakable) {
 			drawBumper(this.overlayGfx, x, y, radius, this.arena.scale);
 			return;
 		}
-		const pulse = 0.88 + Math.sin(target.ageMs * 0.006) * 0.12;
 		const texture = TARGET_TEXTURES[target.kind];
 
 		this.actorGfx.fillStyle(0x000000, 0.2);
@@ -856,7 +909,7 @@ export class ReplayScene extends ResponsiveScene {
 		);
 
 		if (this.textures.exists(texture)) {
-			const size = radius * 2.25 * pulse;
+			const size = radius * 2;
 			this.drawSpriteObject(
 				`kame-target-${target.id}`,
 				texture,
@@ -866,9 +919,8 @@ export class ReplayScene extends ResponsiveScene {
 				size,
 			);
 		} else {
-			this.drawFallbackTarget(target.kind, x, y, radius * pulse);
+			this.drawFallbackTarget(target.kind, x, y, radius);
 		}
-
 	}
 
 	private drawFallbackTarget(
@@ -959,48 +1011,6 @@ export class ReplayScene extends ResponsiveScene {
 		});
 	}
 
-	private drawCurlingBackdrop(arena: RectArenaPixels): void {
-		const scale = arena.scale;
-		const bw = Math.max(18, 42 * scale);
-		this.decorGfx.fillStyle(0x1c1208, 1);
-		this.decorGfx.fillRect(
-			arena.sheetX,
-			arena.sheetY - bw,
-			arena.sheetW,
-			bw,
-		);
-		this.decorGfx.fillRect(
-			arena.sheetX,
-			arena.sheetY + arena.sheetH,
-			arena.sheetW,
-			bw,
-		);
-		this.decorGfx.fillRect(
-			arena.sheetX - bw,
-			arena.sheetY,
-			bw,
-			arena.sheetH,
-		);
-		this.decorGfx.fillRect(
-			arena.sheetX + arena.sheetW,
-			arena.sheetY,
-			bw,
-			arena.sheetH,
-		);
-
-		for (let i = 0; i < 5; i++) {
-			const band = Math.max(12, 24 * scale) * (i + 1);
-			this.decorGfx.fillStyle(0x000000, 0.05 * (5 - i));
-			this.decorGfx.fillRect(0, 0, this.scale.width, band);
-			this.decorGfx.fillRect(
-				0,
-				this.scale.height - band,
-				this.scale.width,
-				band,
-			);
-		}
-	}
-
 	private drawCurlingBumpers(snapshot: CurlingSnapshot): void {
 		if (
 			!this.curlArena ||
@@ -1018,72 +1028,19 @@ export class ReplayScene extends ResponsiveScene {
 
 	private drawBellZones(snapshot: BellClashSnapshot): void {
 		if (!this.arena) return;
-		const zoneRadius = this.bellRadius() * 1.55;
-		for (const zone of snapshot.zones ?? []) {
-			const colour = resolveZoneColour(zone.kind);
-			this.overlayGfx.lineStyle(
-				Math.max(6, this.arena.scale * 12),
-				colour,
-				0.32,
-			);
-			this.overlayGfx.beginPath();
-			this.overlayGfx.arc(
-				this.arena.cx,
-				this.arena.cy,
-				zoneRadius,
-				zone.start,
-				zone.end,
-				false,
-			);
-			this.overlayGfx.strokePath();
-		}
+		drawBellClashZones(this.bellZoneGfx, snapshot.zones ?? [], this.arena, {
+			x: this.arena.cx,
+			y: this.arena.cy,
+			vx: 0,
+			vy: 0,
+			r: BALL_SRC_R * this.arena.scale,
+		});
 	}
 
 	private drawReplayBell(): void {
-		if (!this.arena) return;
-		const r = this.bellRadius();
-		const x = this.arena.cx;
-		const y = this.arena.cy;
-
-		this.overlayGfx.fillStyle(0x000000, 0.28);
-		this.overlayGfx.fillEllipse(
-			x + r * 0.18,
-			y + r * 0.48,
-			r * 2.28,
-			r * 0.7,
-		);
-		this.overlayGfx.fillStyle(0x5a3410, 1);
-		this.overlayGfx.fillCircle(x, y, r * 1.03);
-		this.overlayGfx.fillStyle(0x8a5516, 1);
-		this.overlayGfx.fillEllipse(x, y + r * 0.1, r * 1.5, r * 1.55);
-		this.overlayGfx.fillStyle(0xd4a843, 1);
-		this.overlayGfx.fillEllipse(x, y, r * 1.18, r * 1.18);
-		this.overlayGfx.fillStyle(0xf2d47a, 0.58);
-		this.overlayGfx.fillEllipse(
-			x - r * 0.28,
-			y - r * 0.25,
-			r * 0.42,
-			r * 0.34,
-		);
-		this.overlayGfx.lineStyle(Math.max(3, r * 0.045), 0x5a3410, 0.86);
-		this.overlayGfx.lineBetween(
-			x - r * 0.78,
-			y + r * 0.44,
-			x + r * 0.78,
-			y + r * 0.44,
-		);
-		this.overlayGfx.lineBetween(
-			x - r * 0.63,
-			y + r * 0.14,
-			x + r * 0.63,
-			y + r * 0.14,
-		);
-		this.overlayGfx.fillStyle(0x3c230c, 1);
-		this.overlayGfx.fillCircle(x, y + r * 0.18, r * 0.11);
-	}
-
-	private bellRadius(): number {
-		return this.arena ? 150 * this.arena.scale : 0;
+		if (!this.arena || !this.bellImage) return;
+		layoutBellClashBell(this.bellImage, this.arena, 0);
+		this.bellImage.setVisible(true);
 	}
 }
 
@@ -1238,22 +1195,21 @@ function interpolatePoints(
 	mapPoint: (point: { x: number; y: number }) => ReplayTrailPoint,
 ): ReplayTrailPoint[] {
 	if (!Array.isArray(points) || points.length === 0) return [];
-	const limit = Math.max(points.length, nextPoints?.length ?? 0);
-	const output: ReplayTrailPoint[] = [];
-	for (let index = 0; index < limit; index++) {
-		const point = points[index] ?? points[points.length - 1];
-		if (!point) continue;
-		const nextPoint =
-			nextPoints && nextPoints.length > 0
-				? (nextPoints[index] ?? nextPoints[nextPoints.length - 1])
-				: point;
+	const output = points.map(mapPoint);
+	const last = points[points.length - 1];
+	const nextLast = nextPoints?.[nextPoints.length - 1];
+	if (
+		last &&
+		nextLast &&
+		progress > 0 &&
+		(last.x !== nextLast.x || last.y !== nextLast.y)
+	)
 		output.push(
 			mapPoint({
-				x: lerpNumber(point.x, nextPoint?.x ?? point.x, progress),
-				y: lerpNumber(point.y, nextPoint?.y ?? point.y, progress),
+				x: lerpNumber(last.x, nextLast.x, progress),
+				y: lerpNumber(last.y, nextLast.y, progress),
 			}),
 		);
-	}
 	return output;
 }
 
@@ -1281,16 +1237,5 @@ function resolveTargetColour(kind: "daruma" | "crate" | "drum"): number {
 			return 0xb89057;
 		case "drum":
 			return 0xe5d46a;
-	}
-}
-
-function resolveZoneColour(kind: "red" | "yellow" | "green"): number {
-	switch (kind) {
-		case "red":
-			return THEME.red;
-		case "yellow":
-			return THEME.gold;
-		case "green":
-			return 0x4aa564;
 	}
 }

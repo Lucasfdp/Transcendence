@@ -50,7 +50,7 @@ export class ReplayImportDto implements ReplayImportInput {
 
 	@IsArray()
 	@ArrayMinSize(1)
-	@ArrayMaxSize(3600)
+	@ArrayMaxSize(3000)
 	frames: MatchReplayFrame[];
 
 	@IsOptional()

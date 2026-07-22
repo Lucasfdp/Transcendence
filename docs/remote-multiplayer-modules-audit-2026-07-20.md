@@ -118,7 +118,7 @@ Consequences: CPU burn (deep clone + `JSON.stringify` diffing per frame per
 room), `replayFrames` ballooning in memory (compounded by R2 — the frames stay
 alive after the match), and very large `match_replays` rows persisted to
 Postgres. Live capture has no frame cap; only imports are bounded
-(`MAX_IMPORTED_REPLAY_FRAMES = 3600`, `replay.service.ts:29`).
+(`MAX_IMPORTED_REPLAY_FRAMES = 3000`, `replay.service.ts:29`).
 
 Options:
 
@@ -130,7 +130,7 @@ Options:
    reconstruction).
 2. Keep a periodic forced keyframe but at the existing 1 s cadence, driven by
    the sampler, not the broadcaster — equivalent outcome, slightly more code.
-3. Additionally impose a **live frame budget** (e.g. the same 3,600-frame cap
+3. Additionally impose a **live frame budget** (e.g. the same 3,000-frame cap
    as imports, oldest-round trimming) so a pathological match can never grow
    without bound. Worth doing regardless of 1/2.
 

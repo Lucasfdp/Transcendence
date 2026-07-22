@@ -98,62 +98,155 @@ export class ReplayEncoder {
 	}
 }
 
+interface ReplayTrailObservation {
+	x: number;
+	y: number;
+	stopped: boolean;
+}
+
+interface ReplayReconstructionState {
+	snapshot: Record<string, unknown>;
+	trails: Map<string, Array<{ x: number; y: number }>>;
+	observations: Map<string, ReplayTrailObservation>;
+}
+
+const reconstructionCheckpoints = new WeakMap<
+	ReplayFrameV2[],
+	Map<number, ReplayReconstructionState>
+>();
+
+function cloneReconstructionState(
+	state: ReplayReconstructionState,
+): ReplayReconstructionState {
+	const trails = new Map<string, Array<{ x: number; y: number }>>();
+	for (const [key, points] of state.trails) trails.set(key, clone(points));
+	const observations = new Map<string, ReplayTrailObservation>();
+	for (const [key, observation] of state.observations)
+		observations.set(key, { ...observation });
+	return {
+		snapshot: clone(state.snapshot),
+		trails,
+		observations,
+	};
+}
+
+function applyReplayFrame(
+	state: ReplayReconstructionState,
+	frame: ReplayFrameV2,
+): void {
+	const { snapshot, trails, observations } = state;
+	if (frame.type === "keyframe") {
+		for (const key of Object.keys(snapshot)) delete snapshot[key];
+	}
+	for (const key of frame.removals) delete snapshot[key];
+	Object.assign(snapshot, clone(frame.changes));
+	const presentTrailKeys = new Set<string>();
+	for (const collection of ["entities", "balls", "objects"] as const) {
+		const values = snapshot[collection];
+		if (!Array.isArray(values)) continue;
+		for (const value of values) {
+			if (!value || typeof value !== "object") continue;
+			const entity = value as Record<string, unknown>;
+			if (
+				(typeof entity.id !== "string" &&
+					typeof entity.id !== "number") ||
+				typeof entity.x !== "number" ||
+				typeof entity.y !== "number"
+			)
+				continue;
+			const key = `${collection}:${String(entity.id)}`;
+			presentTrailKeys.add(key);
+			const observation = observations.get(key);
+			let points = trails.get(key) ?? [];
+			if (
+				observation?.stopped &&
+				entity.stopped === true &&
+				(observation.x !== entity.x || observation.y !== entity.y)
+			) {
+				points = [{ x: entity.x, y: entity.y }];
+				trails.set(key, points);
+			}
+			const previous = points[points.length - 1];
+			if (
+				!previous ||
+				(entity.stopped !== true &&
+					(previous.x !== entity.x || previous.y !== entity.y))
+			) {
+				points.push({ x: entity.x, y: entity.y });
+				if (points.length > 80) points.splice(0, points.length - 80);
+				trails.set(key, points);
+			}
+			observations.set(key, {
+				x: entity.x,
+				y: entity.y,
+				stopped: entity.stopped === true,
+			});
+		}
+	}
+	for (const key of trails.keys()) {
+		if (!presentTrailKeys.has(key)) {
+			trails.delete(key);
+			observations.delete(key);
+		}
+	}
+}
+
+function findKeyframeIndex(frames: ReplayFrameV2[], index: number): number {
+	let cursor = index;
+	while (cursor > 0 && frames[cursor]?.type !== "keyframe") cursor -= 1;
+	return cursor;
+}
+
+function reconstructionCheckpoint(
+	frames: ReplayFrameV2[],
+	keyframeIndex: number,
+): ReplayReconstructionState {
+	let checkpoints = reconstructionCheckpoints.get(frames);
+	if (!checkpoints) {
+		checkpoints = new Map();
+		reconstructionCheckpoints.set(frames, checkpoints);
+	}
+	const cached = checkpoints.get(keyframeIndex);
+	if (cached) return cloneReconstructionState(cached);
+
+	let state: ReplayReconstructionState;
+	let startIndex = 0;
+	if (keyframeIndex > 0) {
+		const previousKeyframe = findKeyframeIndex(frames, keyframeIndex - 1);
+		state = reconstructionCheckpoint(frames, previousKeyframe);
+		startIndex = previousKeyframe + 1;
+	} else {
+		state = { snapshot: {}, trails: new Map(), observations: new Map() };
+	}
+	for (let cursor = startIndex; cursor <= keyframeIndex; cursor += 1) {
+		const frame = frames[cursor];
+		if (frame) applyReplayFrame(state, frame);
+	}
+	checkpoints.set(keyframeIndex, cloneReconstructionState(state));
+	return state;
+}
+
 export function reconstructReplayFrame(
 	frames: ReplayFrameV2[],
 	index: number,
 ): Record<string, unknown> {
 	if (frames.length === 0) return {};
 	const safeIndex = Math.min(Math.max(0, index), frames.length - 1);
-	let keyframeIndex = safeIndex;
-	while (keyframeIndex > 0 && frames[keyframeIndex]?.type !== "keyframe")
-		keyframeIndex -= 1;
-	const snapshot: Record<string, unknown> = {};
-	const trails = new Map<string, Array<{ x: number; y: number }>>();
-	for (let cursor = keyframeIndex; cursor <= safeIndex; cursor += 1) {
+	const keyframeIndex = findKeyframeIndex(frames, safeIndex);
+	const state = reconstructionCheckpoint(frames, keyframeIndex);
+	for (let cursor = keyframeIndex + 1; cursor <= safeIndex; cursor += 1) {
 		const frame = frames[cursor];
-		if (!frame) continue;
-		if (frame.type === "keyframe") {
-			for (const key of Object.keys(snapshot)) delete snapshot[key];
-		}
-		for (const key of frame.removals) delete snapshot[key];
-		Object.assign(snapshot, clone(frame.changes));
-		for (const collection of ["entities", "balls", "objects"] as const) {
-			const values = snapshot[collection];
-			if (!Array.isArray(values)) continue;
-			for (const value of values) {
-				if (!value || typeof value !== "object") continue;
-				const entity = value as Record<string, unknown>;
-				if (
-					(typeof entity.id !== "string" &&
-						typeof entity.id !== "number") ||
-					typeof entity.x !== "number" ||
-					typeof entity.y !== "number"
-				)
-					continue;
-				const key = `${collection}:${String(entity.id)}`;
-				const points = trails.get(key) ?? [];
-				const previous = points[points.length - 1];
-				if (
-					!previous ||
-					previous.x !== entity.x ||
-					previous.y !== entity.y
-				) {
-					points.push({ x: entity.x, y: entity.y });
-					if (points.length > 24) points.shift();
-					trails.set(key, points);
-				}
-			}
-		}
+		if (frame) applyReplayFrame(state, frame);
 	}
 	for (const collection of ["entities", "balls", "objects"] as const) {
-		const values = snapshot[collection];
+		const values = state.snapshot[collection];
 		if (!Array.isArray(values)) continue;
-		snapshot[collection] = values.map((value) => {
+		state.snapshot[collection] = values.map((value) => {
 			if (!value || typeof value !== "object") return value;
 			const entity = value as Record<string, unknown>;
 			const key = `${collection}:${String(entity.id)}`;
-			return { ...entity, trail: clone(trails.get(key) ?? []) };
+			return { ...entity, trail: clone(state.trails.get(key) ?? []) };
 		});
 	}
-	return snapshot;
+	return state.snapshot;
 }

@@ -64,13 +64,14 @@ export function drawShellCurlBall(
 	isActive: boolean,
 	playerShellSkins: string[],
 	scene: Phaser.Scene,
+	depth = DEPTH_BALLS,
 ): void {
 	if (
 		!drawIngameShellTexture(
 			scene,
 			`shell-curl-player-${ball.id}`,
 			ball,
-			DEPTH_BALLS,
+			depth,
 			playerShellSkins[ball.teamId],
 		)
 	) {

@@ -5488,11 +5488,17 @@ function ReplayListSection({
 										{replay.playerNames.map(displayUsername).join(" vs ")}
 									</small>
 									<small>{formatReplayDate(replay.finishedAt)}</small>
+									{replay.metadata.statistics.replayTooLong === true ? (
+										<small>Replay too long to play</small>
+									) : null}
 								</div>
 								<div className="hub-modal__replay-actions">
 									<button
 										type="button"
-										disabled={replayActionLoading === replay.matchId}
+										disabled={
+											replayActionLoading === replay.matchId ||
+											replay.metadata.statistics.replayTooLong === true
+										}
 										onClick={() => onLoadReplay(replay.matchId)}
 									>
 										{selectedReplay?.matchId === replay.matchId ? "Viewing" : "View"}

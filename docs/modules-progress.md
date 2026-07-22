@@ -243,6 +243,28 @@ Evidence:
 - `backend/src/modules/leaderboard/`
 - `backend/src/modules/achievements/`
 - Replays and match history in `backend/src/modules/matchmaking/replay.service.ts`
+- 2026-07-22 replay fidelity pass: Bamboo Bash, Temple Curling, and Bell Clash
+  replays now reuse their games' production renderers and equipped shell/trail
+  cosmetics instead of simplified replay-only artwork. Bamboo obstacle sizing
+  and anchoring now match live play; Curling renders textured shells rather than
+  coloured placeholder circles; and Bell Clash uses the real score-zone
+  gradients and bell asset. Replay trails retain their route across storage
+  keyframes, reset only when a stopped projectile is genuinely repositioned,
+  and interpolate a growing head instead of moving the whole polyline between
+  samples. The replay canvas also renders at capped device-pixel density to
+  prevent texture degradation in the modal and expanded viewer. Regression
+  coverage now checks trail continuity across keyframes and correct reset after
+  a stopped projectile is repositioned.
+- 2026-07-22 replay fidelity follow-up: the shared replay scene now preserves
+  the production layer order. The oval arena skin is explicitly visible in
+  Bamboo Bash, Bell Clash, and Kame Knock; Temple Curling's background tint now
+  sits beneath the ice instead of washing it grey; and Bell Clash's zones and
+  bell retain their live-game depths. Kame Knock replay targets no longer use a
+  minimum pixel radius or a visual pulse beyond their collision circle, so the
+  displayed edge remains proportional to the recorded hit area. Playback no
+  longer seeks backwards to React's last 100 ms progress update while running,
+  and stops at the first terminal frame rather than waiting through trailing
+  static capture time.
 - 2026-07-20 achievement showcase picker fix (superseding a same-day full-catalog-on-profile change that was reverted as the wrong interpretation): the hub's profile editor (`HomePage.tsx`'s "Achievement showcase" picker) only ever offered *unlocked* achievements as choices for the 3 showcase slots, even though the backend never enforced that — `UpdateProfileDto.showcasedAchievements` (`backend/src/modules/users/dto/update-profile.dto.ts`) validates each entry against the full achievement-ID catalog with no unlock check. The picker now lists every achievement (`pickableAchievements = achievements ?? []`, dropping the `.filter(a => a.unlocked)`), marking locked ones with a 🔒 prefix; `PlayerProfilePreview` mirrors the same lock marker when rendering a showcased-but-locked achievement on the profile card, and the stale "Choose an unlocked achievement" empty-slot copy was corrected. Verified live (Firefox headless): the picker lists all 41 catalog achievements, saving a locked one round-trips through the backend and renders correctly on the public profile.
 - 2026-07-15 rankings hardening pass (see `docs/old_docs/rankings-bug-audit-2026-07-15.md`): added the missing `user_ratings` migration and its unique constraint, closed the client-forgeable overall-leaderboard endpoint, fixed ranked draws never updating ratings, made match-finish reward persistence idempotent at the DB level, added stable tie-break ordering and dev-account exclusion to both leaderboard queries, and reworked the Rankings modal to show fetch errors, refetch on open, and the caller's own rank.
 - 2026-07-20 rankings/tournament integration pass (see `docs/rankings-bug-audit-2026-07-20.md`): reclassified the reported "DB crash on Rankings" as a backend-process death/lockout (a rankings SELECT cannot take Postgres down) and hardened the actual cause — `main.ts` now logs `unhandledRejection`/`uncaughtException` instead of dying silently, and `BotPlayerService.tick()`'s whole body is wrapped so a bad tick is retried instead of killing the process. New `users.isBot` column (migration + entity + set on CPU-account minting in `tournament-lobby.service.ts`) and a `mergedIntoUserId IS NULL` filter close two ranking-integrity holes: tournament CPU bots and merged-away account duplicates could otherwise occupy public leaderboard rows; both are now excluded from all three leaderboard queries, alongside `isDevAccount` (which the demo account seed now also sets, closing a third — a level-99 KameMaster winning every overall tie-break). New `GET /leaderboard/tournaments` endpoint + `LeaderboardService.getTournamentLeaderboard` + a "Tournaments" tab in the Rankings modal surface a dedicated tournament-wins board off `tournaments.winnerUserId`; tournament minigame wins already flowed into the Total board by construction (same casual-match rail as any other game), confirmed by a new regression test in `game-session.service.spec.ts`. Fixed a leaderboard-fetch race (N5): the modal's cancellation flag used to be created only after the first `await`, so a stale request could resolve after a newer one and overwrite its rows — the flag is now a ref created synchronously before the fetch starts. The prior audit's claimed migration gap for the `tournaments` tables (N2) was verified stale — `20260713000000-create-tournaments.ts` already exists, ordered correctly. Open product decision (not actioned, flagged for the user): whether tournament-minigame XP/coin grants should also exclude CPU bot stand-ins in `GameSessionService.persistFinishedRoom` — currently unchanged, bots still accrue XP/coins/levels even though they're now excluded from every ranking display.
@@ -709,6 +731,13 @@ Validation completed on 14 July 2026:
   visual tests across 11 files, followed by a successful frontend production
   build. The shared renderer now covers Shell Curl, Bamboo Bash, Kame Knock,
   and Bell Clash with runtime-matched width, colour, and alpha progression.
+- Long local replays now use the API's full 3,000-frame import allowance and,
+  when compaction is still required, sample snapshots uniformly across the
+  complete match. This removes the early-keyframe bias that left the latter
+  half of deliberately long Temple Curling replays without recorded motion.
+  Captures exceeding that allowance are marked in their persisted metadata;
+  the replay list and viewer display `Replay too long to play`, and the viewer
+  does not initialise playback for an incomplete recording.
 - The manual gameplay and frame-budget matrix remains outstanding, so Replay
   Mode and Multiplayer 3+ remain `In progress`.
 

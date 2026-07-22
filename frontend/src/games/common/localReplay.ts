@@ -12,7 +12,9 @@ import {
 	type ReplayEventV2,
 } from "./replay/contracts";
 
-const DEFAULT_MAX_IMPORTED_REPLAY_FRAMES = 240;
+// Keep the client-side import budget aligned with the API contract. Long local
+// matches are sampled across their complete timeline when they exceed it.
+export const REPLAY_IMPORT_FRAME_LIMIT = 3_000;
 const POWER_SCALE: Record<string, number> = {
 	giant: 2,
 	tiny: 0.5,
@@ -47,6 +49,7 @@ export interface LocalReplayImportOptions {
 	playerNames: string[];
 	frames: ReplayImportRequest["frames"];
 	events?: ReplayImportRequest["events"];
+	replayTooLong?: boolean;
 }
 
 export function createLocalReplayId(gameId: string): string {
@@ -174,7 +177,7 @@ export class SceneReplayRecorder<TSnapshot extends object> {
 	}
 
 	buildImportFrames(
-		maxFrames = DEFAULT_MAX_IMPORTED_REPLAY_FRAMES,
+		maxFrames = REPLAY_IMPORT_FRAME_LIMIT,
 	): ReplayImportRequest["frames"] {
 		return normalizeReplayImportFrames(this.frames, maxFrames);
 	}
@@ -257,7 +260,10 @@ export function buildLocalReplayImportRequest(
 			sampleHz: 20,
 			keyframeIntervalMs: REPLAY_KEYFRAME_INTERVAL_MS,
 			preRollMs: 3000,
-			statistics: { winnerSide: options.winnerSide },
+			statistics: {
+				winnerSide: options.winnerSide,
+				replayTooLong: options.replayTooLong === true,
+			},
 			powerupsEnabled: false,
 		},
 		durationMs: options.frames[options.frames.length - 1]?.tMs ?? 0,
@@ -363,7 +369,7 @@ export function withPowerStateFlags(flags: string[], power: string): string[] {
 
 export function normalizeReplayImportFrames(
 	frames: LocalReplayFrameDraft[],
-	maxFrames = DEFAULT_MAX_IMPORTED_REPLAY_FRAMES,
+	maxFrames = REPLAY_IMPORT_FRAME_LIMIT,
 ): ReplayImportRequest["frames"] {
 	const normalizedFrames: ReplayImportRequest["frames"] = frames.map(
 		(frame, index) => ({ ...frame, seq: index }),
@@ -371,23 +377,16 @@ export function normalizeReplayImportFrames(
 
 	if (normalizedFrames.length <= maxFrames) return normalizedFrames;
 
-	const keptIndices = new Set<number>([0, normalizedFrames.length - 1]);
-	for (let index = 0; index < normalizedFrames.length; index += 1) {
-		if (normalizedFrames[index]?.type === "keyframe")
-			keptIndices.add(index);
-	}
-	const interiorTarget = maxFrames - 2;
-	for (let slot = 0; slot < interiorTarget; slot += 1) {
-		const ratio = (slot + 1) / (interiorTarget + 1);
-		const index = Math.round(ratio * (normalizedFrames.length - 1));
-		keptIndices.add(index);
-	}
-
-	const sourceIndices = [...keptIndices]
-		.sort((left, right) => left - right)
-		.slice(0, maxFrames - 1);
-	if (!sourceIndices.includes(normalizedFrames.length - 1))
-		sourceIndices.push(normalizedFrames.length - 1);
+	const frameBudget = Math.max(2, Math.floor(maxFrames));
+	const lastSourceIndex = normalizedFrames.length - 1;
+	// Re-encoding makes every selected snapshot independently reconstructable,
+	// so retaining every source keyframe is unnecessary. Selecting uniformly is
+	// essential: prioritising keyframes and then slicing the sorted list kept the
+	// start of long matches plus only their final frame, which made the latter
+	// half of Temple Curling replays appear frozen.
+	const sourceIndices = Array.from({ length: frameBudget }, (_value, slot) =>
+		Math.round((slot * lastSourceIndex) / (frameBudget - 1)),
+	);
 	const encoder = new ReplayEncoder();
 	const compactedFrames: ReplayImportRequest["frames"] = [];
 	for (const sourceIndex of sourceIndices) {
@@ -396,8 +395,7 @@ export function normalizeReplayImportFrames(
 			compactedFrames.length,
 			source.tMs,
 			reconstructReplayFrame(normalizedFrames, sourceIndex),
-			source.type === "keyframe" ||
-				sourceIndex === normalizedFrames.length - 1,
+			source.type === "keyframe" || sourceIndex === lastSourceIndex,
 		);
 		if (encoded) compactedFrames.push(encoded);
 	}

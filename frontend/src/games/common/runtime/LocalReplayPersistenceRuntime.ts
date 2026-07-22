@@ -2,6 +2,7 @@ import type { ReplayImportRequest } from "../../../features/hub/api";
 import {
 	buildLocalReplayImportRequest,
 	buildLocalReplayPlayerUserIds,
+	REPLAY_IMPORT_FRAME_LIMIT,
 	trimReplayRoundPreRoll,
 	type LocalReplayUser,
 	type SceneReplayRecorder,
@@ -70,6 +71,8 @@ export async function persistLocalReplayImport<TSnapshot extends object>(
 		playerNames: options.playerNames,
 		frames: timeline.frames,
 		events: timeline.events,
+		replayTooLong:
+			options.recorder.getFrames().length > REPLAY_IMPORT_FRAME_LIMIT,
 	});
 
 	try {
