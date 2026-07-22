@@ -7,6 +7,7 @@ import { ShellCurlScene } from "../games/shell-curl/ShellCurlScene";
 import { KameKnockScene } from "../games/kame-knock/KameKnockScene";
 import { BellClashScene } from "../games/bell-clash/BellClashScene";
 import type { GameId } from "../shared/mechanics/game-powers";
+import { trackFrontendPerformanceResource } from "../shared/frontend-performance-profiler";
 import type { OnlineMatchContext } from "../services/network/gameSocket";
 import { resolveSnapshotPlayerCosmetics } from "../shared/mechanics/player-config";
 
@@ -72,6 +73,12 @@ export function createShellSmashGame(
 	};
 
 	const game = new Phaser.Game(config);
+	const releaseGame = trackFrontendPerformanceResource("phaserGames");
+	const releaseCanvas = trackFrontendPerformanceResource("canvases");
+	game.events.once(Phaser.Core.Events.DESTROY, () => {
+		releaseCanvas();
+		releaseGame();
+	});
 	return game;
 }
 

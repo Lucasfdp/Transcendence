@@ -40,6 +40,7 @@ services:
             args:
                 - FRONTEND_ENV=${FRONTEND_ENV:-development}
                 - VITE_API_URL=${VITE_API_URL:-/api}
+                - VITE_APP_COMMIT=${VITE_APP_COMMIT:-unknown}
         container_name: ${COMPOSE_PROJECT_NAME}_frontend
         image: ${COMPOSE_PROJECT_NAME}/frontend:local
         restart: unless-stopped
@@ -52,6 +53,7 @@ services:
         environment:
             - NODE_ENV=${FRONTEND_ENV:-development}
             - VITE_API_URL=${VITE_API_URL:-/api}
+            - VITE_APP_COMMIT=${VITE_APP_COMMIT:-unknown}
             - REACT_APP_API_URL=${REACT_APP_API_URL:-/api}
         healthcheck:
             test:

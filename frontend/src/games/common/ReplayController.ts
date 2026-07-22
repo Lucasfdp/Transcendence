@@ -4,6 +4,7 @@ import type {
 	ReplayFrame,
 	ReplayFrameSnapshot,
 } from "../../features/hub/api";
+import { trackFrontendPerformanceResource } from "../../shared/frontend-performance-profiler";
 import { reconstructReplayFrame } from "./replay/ReplayEncoder";
 
 export type ResolvedReplayFrame = ReplayFrame & {
@@ -52,9 +53,19 @@ export class ReplayController {
 		ReplayFrameSnapshot
 	>();
 	private lastEmittedAt = -Infinity;
+	private readonly releasePerformanceCounter: () => void;
 
 	constructor(replay: ReplayDetail | null = null) {
 		this.replay = replay;
+		this.releasePerformanceCounter = trackFrontendPerformanceResource(
+			"replayControllers",
+		);
+	}
+
+	destroy(): void {
+		this.listeners.clear();
+		this.reconstructionCache.clear();
+		this.releasePerformanceCounter();
 	}
 
 	subscribe(listener: ReplayListener): () => void {

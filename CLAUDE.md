@@ -23,6 +23,20 @@
 - The functional scope is defined by `docs/modules-progress.md`. Do not add
   modules or functionality outside that scope unless the user explicitly asks.
 
+## Pending Plans
+
+- Pending: `docs/frontend-performance-profiler-report-and-plan-2026-07-23.md`.
+  Resume it from `docs/frontend-performance-remediation-checkpoint.md`.
+- When the user asks to continue or follow "the plan" without naming one, review
+  this section and the listed live plan and checkpoint documents before acting.
+  If exactly one plan is pending, continue that plan. If several are pending and
+  the request is ambiguous, identify them and ask the user which one to resume.
+- When a pending plan is fully implemented and verified, archive its completed
+  working documents as required by the Core Rules and update this section in
+  both `AGENTS.md` and `CLAUDE.md` in the same task. When this performance plan
+  is complete and no other plans are listed here, replace its entry with
+  `- None.` so the guides explicitly state that no plans are pending.
+
 ## Operational Index
 
 - Product context: `docs/project-overview.md`

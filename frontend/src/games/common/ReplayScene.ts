@@ -43,6 +43,7 @@ import {
 import { type CurlingBallState } from "../../shared/mechanics/ball";
 import { type PowerType } from "../../shared/mechanics/power-system";
 import { THEME } from "../../shared/theme";
+import { trackFrontendPerformanceResource } from "../../shared/frontend-performance-profiler";
 import { ResponsiveScene } from "../../shared/responsive-scene";
 import {
 	createReplayProjectileState,
@@ -149,6 +150,8 @@ export class ReplayScene extends ResponsiveScene {
 	private autoAdvance = true;
 	private unsubscribeController: (() => void) | null = null;
 	private needsRender = true;
+	private ownsController = false;
+	private releasePerformanceCounter: (() => void) | null = null;
 
 	private bgObjects: Phaser.GameObjects.GameObject[] = [];
 	private backgroundGfx!: Phaser.GameObjects.Graphics;
@@ -179,6 +182,7 @@ export class ReplayScene extends ResponsiveScene {
 
 	init(data: ReplaySceneData): void {
 		this.replay = data.replay;
+		this.ownsController = !data.controller && Boolean(data.replay);
 		this.controller =
 			data.controller ??
 			(data.replay ? new ReplayController(data.replay) : null);
@@ -207,6 +211,8 @@ export class ReplayScene extends ResponsiveScene {
 	}
 
 	create(): void {
+		this.releasePerformanceCounter =
+			trackFrontendPerformanceResource("replayScenes");
 		this.backgroundGfx = this.add.graphics().setDepth(DEPTH_BG);
 		this.gameBackgroundGfx = this.add.graphics().setDepth(DEPTH_BG + 0.05);
 		this.arenaGfx = this.add.graphics().setDepth(DEPTH_ARENA);
@@ -252,6 +258,11 @@ export class ReplayScene extends ResponsiveScene {
 	protected onShutdown(): void {
 		this.unsubscribeController?.();
 		this.unsubscribeController = null;
+		if (this.ownsController) this.controller?.destroy();
+		this.controller = null;
+		this.ownsController = false;
+		this.releasePerformanceCounter?.();
+		this.releasePerformanceCounter = null;
 		this.clearBackgroundObjects();
 		for (const image of this.objectImages.values()) image.destroy();
 		this.objectImages.clear();

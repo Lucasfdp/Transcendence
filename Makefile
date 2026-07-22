@@ -14,6 +14,9 @@ BASE_COMPOSE	:= docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE)
 HOT_COMPOSE	:= docker compose $(DEV_COMPOSE) --env-file $(ENV_FILE)
 DEV_ENV			:= FRONTEND_ENV=development BACKEND_ENV=development
 PROD_ENV		:= FRONTEND_ENV=production BACKEND_ENV=production
+APP_COMMIT		:= $(shell git rev-parse HEAD 2>/dev/null || printf unknown)
+DEV_ENV			+= VITE_APP_COMMIT=$(APP_COMMIT)
+PROD_ENV		+= VITE_APP_COMMIT=$(APP_COMMIT)
 PROJECT_NAME	:= transcendence
 CERT_DIR		:= secrets/nginx_ssl
 VAULT_INIT_FILE	:= secrets/vault/init.txt

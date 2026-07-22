@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { useEffect, useRef } from "react";
 import type { ReplayDetail } from "../../../features/hub/api";
+import { trackFrontendPerformanceResource } from "../../../shared/frontend-performance-profiler";
 import { displayUsername } from "../../../shared/player-labels";
 import {
 	ReplayController,
@@ -87,6 +88,16 @@ export function ReplayViewer({
 				autoCenter: Phaser.Scale.NO_CENTER,
 			},
 		});
+		const releaseGame = trackFrontendPerformanceResource("phaserGames");
+		const releaseCanvas = trackFrontendPerformanceResource("canvases");
+		const releasePhaserResources = () => {
+			releaseCanvas();
+			releaseGame();
+		};
+		game.events.once(
+			Phaser.Core.Events.DESTROY,
+			releasePhaserResources,
+		);
 		game.scene.add("ReplayScene", new ReplayScene(), true, {
 			replay,
 			controller,
@@ -106,12 +117,18 @@ export function ReplayViewer({
 			if (bounds && bounds.width > 0 && bounds.height > 0)
 				resizeGame(bounds.width, bounds.height);
 		});
+		const releaseResizeObserver = trackFrontendPerformanceResource(
+			"resizeObservers",
+		);
 		observer.observe(host);
 		return () => {
 			unsubscribe();
 			observer.disconnect();
+			releaseResizeObserver();
 			controllerRef.current = null;
 			game.destroy(true);
+			releasePhaserResources();
+			controller.destroy();
 			host.replaceChildren();
 		};
 	}, [
@@ -145,6 +162,9 @@ export function ReplayViewer({
 
 	useEffect(() => {
 		if (!isReplayPlaying || replayTooLong) return;
+		const releaseAnimationFrameLoop = trackFrontendPerformanceResource(
+			"animationFrameLoops",
+		);
 		let animationFrame = 0;
 		let lastTime = 0;
 		const tick = (now: number) => {
@@ -154,7 +174,10 @@ export function ReplayViewer({
 			animationFrame = window.requestAnimationFrame(tick);
 		};
 		animationFrame = window.requestAnimationFrame(tick);
-		return () => window.cancelAnimationFrame(animationFrame);
+		return () => {
+			window.cancelAnimationFrame(animationFrame);
+			releaseAnimationFrameLoop();
+		};
 	}, [isReplayPlaying, replay.matchId, replayTooLong]);
 
 	const resolvedSnapshot = controllerRef.current?.getState().frame?.snapshot;
