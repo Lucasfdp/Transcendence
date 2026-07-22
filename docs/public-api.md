@@ -1,62 +1,52 @@
 # Public API
 
-La API publica expone acceso controlado a datos de perfil mediante la cabecera `X-API-Key`.
+The public API exposes controlled profile data under `/api/public`. `GET`,
+`HEAD`, and `OPTIONS` requests are public. State-changing requests require the
+`X-API-Key` header and are compared against `PUBLIC_API_KEY` in constant time.
+Every endpoint is rate-limited by client IP through Redis.
 
-## Requisitos
+## Examples
 
-- Configurar `PUBLIC_API_KEY` en el entorno del backend.
-- Enviar siempre la cabecera `X-API-Key`.
-- Respetar el rate limit por IP. Si se supera, la API responde `429`.
-
-## Endpoints
-
-Base URL: `/api/public`
-
-### GET `/users`
-
-Lista perfiles publicos.
+List public profiles without an API key:
 
 ```bash
-curl -X GET "https://localhost:42424/api/public/users?limit=10" \
-  -H "X-API-Key: change-me-public-api-key"
+curl --insecure "https://localhost:42424/api/public/users?limit=10"
 ```
 
-### GET `/users/:username`
-
-Obtiene un perfil publico concreto.
+Fetch one public profile without an API key:
 
 ```bash
-curl -X GET "https://localhost:42424/api/public/users/KameMaster" \
-  -H "X-API-Key: change-me-public-api-key"
+curl --insecure "https://localhost:42424/api/public/users/KameMaster"
 ```
 
-### POST `/users/query`
-
-Consulta varios usuarios en lote.
+Query several users. This is a mutation-style bulk request and requires the
+public API key:
 
 ```bash
-curl -X POST "https://localhost:42424/api/public/users/query" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: change-me-public-api-key" \
-  -d '{"usernames":["KameMaster","dojo_guest"]}'
+curl --insecure --request POST \
+  "https://localhost:42424/api/public/users/query" \
+  --header "Content-Type: application/json" \
+  --header "X-API-Key: your-public-api-key" \
+  --data '{"usernames":["KameMaster","dojo_guest"]}'
 ```
 
-### PUT `/users/:username`
-
-Actualiza campos publicos del perfil.
+Update public profile fields:
 
 ```bash
-curl -X PUT "https://localhost:42424/api/public/users/KameMaster" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: change-me-public-api-key" \
-  -d '{"turtleName":"Kame Master","tag":"strategist","showcasedAchievements":["first-blood"]}'
+curl --insecure --request PUT \
+  "https://localhost:42424/api/public/users/KameMaster" \
+  --header "Content-Type: application/json" \
+  --header "X-API-Key: your-public-api-key" \
+  --data '{"turtleName":"Kame Master","tag":"strategist"}'
 ```
 
-### DELETE `/users/:username/avatar`
-
-Limpia el avatar almacenado del perfil.
+Clear a public profile avatar:
 
 ```bash
-curl -X DELETE "https://localhost:42424/api/public/users/KameMaster/avatar" \
-  -H "X-API-Key: change-me-public-api-key"
+curl --insecure --request DELETE \
+  "https://localhost:42424/api/public/users/KameMaster/avatar" \
+  --header "X-API-Key: your-public-api-key"
 ```
+
+Missing or incorrect keys on mutations receive `401`. If the key is not
+configured, mutations receive `503`. Rate-limit exhaustion receives `429`.

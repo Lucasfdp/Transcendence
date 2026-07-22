@@ -340,6 +340,12 @@ test:
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) exec backend \
 		sh -c "cd /app && npm test"
 
+## validate-openapi: Validate the live OpenAPI contract for completeness and route regressions
+validate-openapi:
+	@echo "$(CYAN)Validating the OpenAPI contract...$(RESET)"
+	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) exec backend \
+		npm run openapi:validate -- http://localhost:8000/api/docs-json
+
 ## health: Show health status and last health-check output for every container
 health:
 	@echo "$(CYAN)Container health:$(RESET)"
@@ -432,4 +438,4 @@ help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /'
 	@echo ""
 
-.PHONY: lfs up dev prod down restart restart-front restart-back rebuild-front rebuild-back refresh-app build logs ps diagnosis clean fclean re shell status inspect volumes networks db test health open certs check-env push help
+.PHONY: lfs up dev prod down restart restart-front restart-back rebuild-front rebuild-back refresh-app build logs ps diagnosis clean fclean re shell status inspect volumes networks db test validate-openapi health open certs check-env push help

@@ -6,6 +6,7 @@
 - `make` (standard on Linux/macOS)
 - `openssl` (for local certificate generation)
 - Git
+- Node.js 24 LTS when running frontend or backend commands on the host
 
 ---
 
@@ -55,6 +56,11 @@ make ps
 12. Starts `monitoring` and `portainer`.
 
 The application is accessible at `https://localhost:42424` (or your configured `DOMAIN_NAME` and `HTTPS_PORT`) once `reverse_proxy` is healthy.
+
+The Scalar REST reference is available at `/api/docs` in both modes. Nginx
+authorises the complete `/api/docs*` family through the backend, so an anonymous
+request receives `401`, a guest session receives `403`, and a registered session
+receives the reference and its JSON, YAML, and local JavaScript assets.
 
 For LAN testing from another device on the same network, set `DOMAIN_NAME` in
 `.env` to the host machine's LAN IP and add that origin to `ALLOWED_ORIGINS`.

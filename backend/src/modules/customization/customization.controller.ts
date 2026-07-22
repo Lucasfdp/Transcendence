@@ -7,7 +7,7 @@ import {
 	UnauthorizedException,
 	UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiTags } from "@nestjs/swagger";
 import { CsrfGuard } from "../auth/guards/csrf.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UsersService } from "../users/users.service";
@@ -17,7 +17,7 @@ import { BuyCosmeticDto } from "./dto/buy-cosmetic.dto";
 import { EquipCosmeticDto } from "./dto/equip-cosmetic.dto";
 
 @ApiTags("customization")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard)
 @Controller("customization")
 export class CustomizationController {

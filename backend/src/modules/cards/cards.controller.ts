@@ -8,7 +8,7 @@ import {
 	UnauthorizedException,
 	UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiTags } from "@nestjs/swagger";
 import { CsrfGuard } from "../auth/guards/csrf.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UsersService } from "../users/users.service";
@@ -20,7 +20,7 @@ import { OpenPackDto } from "./dto/open-pack.dto";
 const DEFAULT_PACK_TIER_ID = "basic" as const;
 
 @ApiTags("cards")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard)
 @Controller("cards")
 export class CardsController {

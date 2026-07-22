@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import { ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Match } from "./entities/match.entity";
 import { ReplayImportDto } from "./dto/replay-import.dto";
@@ -21,6 +22,7 @@ import {
 } from "./replay.service";
 
 @UseGuards(JwtAuthGuard)
+@ApiTags("matches")
 @Controller("matches")
 export class MatchesController {
 	constructor(

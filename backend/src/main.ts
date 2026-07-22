@@ -1,7 +1,6 @@
 import { NestFactory } from "@nestjs/core";
 import { Logger, ValidationPipe } from "@nestjs/common";
 import { NestExpressApplication } from "@nestjs/platform-express";
-import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { json, urlencoded } from "express";
 import { mkdirSync } from "fs";
 import { join } from "path";
@@ -9,6 +8,7 @@ import { AppModule } from "./app.module";
 import { MetricsInterceptor } from "./modules/metrics/metrics.interceptor";
 import { MetricsService } from "./modules/metrics/metrics.service";
 import { isAllowedOrigin } from "./cors.util";
+import { configureApiDocumentation } from "./openapi";
 
 /**
  * Rankings Bug Audit §3.3 (2026-07-20): Node kills the process on any
@@ -76,21 +76,7 @@ async function bootstrap() {
 	// API prefix
 	app.setGlobalPrefix("api");
 
-	// Swagger docs (disable in production if needed)
-	if (process.env.NODE_ENV !== "production") {
-		const config = new DocumentBuilder()
-			.setTitle("Transcendence API")
-			.setDescription("Gaming hub API")
-			.setVersion("1.0")
-			.addBearerAuth()
-			.addApiKey(
-				{ type: "apiKey", name: "X-API-Key", in: "header" },
-				"x-api-key",
-			)
-			.build();
-		const document = SwaggerModule.createDocument(app, config);
-		SwaggerModule.setup("api/docs", app, document);
-	}
+	configureApiDocumentation(app);
 
 	const logger = new Logger("Bootstrap");
 	const port = process.env.BACKEND_PORT ?? 8000;

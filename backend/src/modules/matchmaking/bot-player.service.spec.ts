@@ -145,6 +145,7 @@ describe("BotPlayerService — CPU players vs the real engines", () => {
 				rooms.setReady(room.matchId, player.user.id);
 			}
 			rooms.start(room.matchId);
+			(room.state as { currentTurn: number }).currentTurn = room.players[0].side;
 
 			const handleUserInput = jest.fn();
 			const bots = new BotPlayerService(rooms, {
@@ -189,6 +190,7 @@ describe("BotPlayerService — CPU players vs the real engines", () => {
 				rooms.setReady(room.matchId, player.user.id);
 			}
 			rooms.start(room.matchId);
+			(room.state as { currentTurn: number }).currentTurn = room.players[0].side;
 
 			const handleUserInput = jest.fn();
 			const bots = new BotPlayerService(rooms, {
@@ -243,6 +245,7 @@ describe("BotPlayerService — CPU players vs the real engines", () => {
 				rooms.setReady(room.matchId, player.user.id);
 			}
 			rooms.start(room.matchId);
+			(room.state as { currentTurn: number }).currentTurn = room.players[0].side;
 
 			const handleUserInput = jest.fn();
 			const bots = new BotPlayerService(rooms, {

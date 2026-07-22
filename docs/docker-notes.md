@@ -22,7 +22,7 @@ Multi-stage builds use multiple `FROM` instructions in a single Dockerfile. Only
 
 ```dockerfile
 # Stage 1: compile
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 RUN npm ci && npm run build
 
 # Stage 2: run — only the /app/dist folder is copied

@@ -110,6 +110,7 @@ services:
             - REDIS_HOST=redis
             - REDIS_PORT=6379
             - JWT_EXPIRY=${JWT_EXPIRY:-3600}
+            - PUBLIC_API_KEY=${PUBLIC_API_KEY:-}
             # Demo account is only ever seeded outside production, or in
             # production when ENABLE_DEMO_ACCOUNT=true AND both DEMO_USERNAME
             # and DEMO_PASSWORD are overridden from their defaults below

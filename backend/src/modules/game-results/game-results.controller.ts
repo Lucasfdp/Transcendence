@@ -8,7 +8,7 @@ import {
 	UnauthorizedException,
 	UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiTags } from "@nestjs/swagger";
 import { CsrfGuard } from "../auth/guards/csrf.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RateLimiterService } from "../auth/rate-limiter.service";
@@ -29,7 +29,7 @@ const GAME_RESULT_RATE_LIMIT_MAX = 20;
 const GAME_RESULT_RATE_LIMIT_WINDOW_MS = 60_000;
 
 @ApiTags("game-results")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard)
 @Controller("game-results")
 export class GameResultsController {

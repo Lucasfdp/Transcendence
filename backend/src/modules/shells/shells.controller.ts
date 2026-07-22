@@ -9,8 +9,10 @@ import {
 import { ShellsService } from "./shells.service";
 import { ValidateSelectionDto } from "./dto/validate-selection.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { ApiTags } from "@nestjs/swagger";
 
 @UseGuards(JwtAuthGuard)
+@ApiTags("shells")
 @Controller("shells")
 export class ShellsController {
 	constructor(private readonly shellsService: ShellsService) {}

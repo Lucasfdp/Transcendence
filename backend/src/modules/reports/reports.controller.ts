@@ -7,7 +7,7 @@ import {
 	Request,
 	UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiTags } from "@nestjs/swagger";
 import { GuestGuard } from "../auth/guards/guest.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RateLimiterService } from "../auth/rate-limiter.service";
@@ -26,7 +26,7 @@ const REPORT_RATE_LIMIT_MAX = 10;
 const REPORT_RATE_LIMIT_WINDOW_MS = 60_000;
 
 @ApiTags("reports")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard)
 @Controller("reports")
 export class ReportsController {

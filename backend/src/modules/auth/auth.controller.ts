@@ -20,11 +20,12 @@ import { UsersService } from "../users/users.service";
 /** Portable 429 — TooManyRequestsException was added in later NestJS patches. */
 const TooManyRequests = (msg: string): HttpException =>
 	new HttpException(msg, 429);
-import { ApiTags } from "@nestjs/swagger";
+import { ApiExcludeEndpoint, ApiTags } from "@nestjs/swagger";
 import { Request, Response } from "express";
 import { randomBytes } from "crypto";
 import { AuthService } from "./auth.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { GuestGuard } from "./guards/guest.guard";
 import { RateLimiterService } from "./rate-limiter.service";
 import { TokenDenyListService } from "./token-deny-list.service";
 import { FortyTwoAuthGuard } from "./guards/ft-auth.guard";
@@ -113,6 +114,14 @@ export class AuthController {
 		private readonly accountLinksService: AccountLinksService,
 		private readonly oauthStateService: OAuthStateService,
 	) {}
+
+	/** Internal Nginx auth_request target for the protected API reference. */
+	@Get("docs-access")
+	@ApiExcludeEndpoint()
+	@UseGuards(JwtAuthGuard, GuestGuard)
+	docsAccess(): { allowed: true } {
+		return { allowed: true };
+	}
 
 	// ── GET /api/auth/me ─────────────────────────────────────────────────────────
 

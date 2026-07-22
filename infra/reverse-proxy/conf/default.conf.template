@@ -81,6 +81,39 @@ server {
         proxy_http_version 1.1;
     }
 
+	# Scalar, its local bundle, and both raw OpenAPI representations are one
+	# protected documentation family. The subrequest reuses the caller's session
+	# cookie and rejects guest accounts through the backend's normal guards.
+	location ^~ /api/docs {
+		auth_request /_api_docs_auth;
+		modsecurity on;
+		modsecurity_rules_file /etc/nginx/modsec/main.conf;
+		proxy_pass         http://backend:8000;
+		proxy_set_header   Host                $http_host;
+		proxy_set_header   X-Real-IP           $remote_addr;
+		proxy_set_header   X-Forwarded-For     $proxy_add_x_forwarded_for;
+		proxy_set_header   X-Forwarded-Proto   $scheme;
+		proxy_http_version 1.1;
+		proxy_read_timeout 120s;
+		limit_req zone=api_limit burst=60 nodelay;
+		limit_req_status 429;
+	}
+
+	location = /_api_docs_auth {
+		internal;
+		proxy_pass              http://backend:8000/api/auth/docs-access;
+		proxy_pass_request_body off;
+		proxy_set_header        Content-Length "";
+		proxy_set_header        Cookie $http_cookie;
+		proxy_set_header        X-Original-URI $request_uri;
+		proxy_set_header        X-Forwarded-Proto $scheme;
+	}
+
+	# The authorisation probe is an implementation detail, not a public API.
+	location = /api/auth/docs-access {
+		return 404;
+	}
+
     location /api/ {
         modsecurity on;
         modsecurity_rules_file /etc/nginx/modsec/main.conf;

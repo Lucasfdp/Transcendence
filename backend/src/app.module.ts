@@ -23,6 +23,8 @@ import { PublicApiModule } from "./modules/public-api/public-api.module";
 import { ChatModule } from "./modules/chat/chat.module";
 import { TournamentsModule } from "./modules/tournaments/tournaments.module";
 import { AppController } from "./app.controller";
+import { APP_GUARD } from "@nestjs/core";
+import { AuthenticatedCsrfGuard } from "./modules/auth/guards/csrf.guard";
 
 @Module({
 	imports: [
@@ -80,5 +82,6 @@ import { AppController } from "./app.controller";
 		HealthModule,
 	],
 	controllers: [AppController],
+	providers: [{ provide: APP_GUARD, useClass: AuthenticatedCsrfGuard }],
 })
 export class AppModule {}

@@ -10,7 +10,7 @@ import {
 	UnauthorizedException,
 	UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiTags } from "@nestjs/swagger";
 import type { Request as ExpressRequest } from "express";
 import { CsrfGuard } from "../auth/guards/csrf.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -77,7 +77,7 @@ const tooManyRequests = (): HttpException =>
 	new HttpException("Too many spins — slow down.", 429);
 
 @ApiTags("casino")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard)
 @Controller("casino")
 export class CasinoController {

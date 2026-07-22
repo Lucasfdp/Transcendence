@@ -2,6 +2,9 @@
 	"name": "transcendence-frontend",
 	"version": "1.0.0",
 	"description": "ft_transcendence Phaser.js gaming hub",
+	"engines": {
+		"node": ">=24 <25"
+	},
 	"scripts": {
 		"dev": "vite",
 		"build": "vite build",

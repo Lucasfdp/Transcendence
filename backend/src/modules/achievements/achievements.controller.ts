@@ -5,14 +5,14 @@ import {
 	UnauthorizedException,
 	UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UsersService } from "../users/users.service";
 import { AchievementView } from "./achievements.constants";
 import { AchievementsService } from "./achievements.service";
 
 @ApiTags("achievements")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard)
 @Controller("achievements")
 export class AchievementsController {

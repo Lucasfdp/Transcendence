@@ -6,6 +6,7 @@ import {
 	TypeOrmHealthIndicator,
 } from "@nestjs/terminus";
 import { RedisHealthIndicator } from "./redis.health";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 
 /**
  * GET /api/health
@@ -19,6 +20,7 @@ import { RedisHealthIndicator } from "./redis.health";
  * Response shape (503):
  *   { status: 'error', error: { redis: { status: 'down', message: '...' } }, ... }
  */
+@ApiTags("health")
 @Controller("health")
 export class HealthController {
 	constructor(
@@ -28,6 +30,7 @@ export class HealthController {
 	) {}
 
 	@Get()
+	@ApiOperation({ summary: "Read service health" })
 	@HealthCheck()
 	check(): Promise<HealthCheckResult> {
 		return this.health.check([

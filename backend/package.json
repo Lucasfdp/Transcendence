@@ -2,13 +2,17 @@
 	"name": "transcendence-backend",
 	"version": "1.0.0",
 	"description": "ft_transcendence NestJS backend",
+	"engines": {
+		"node": ">=24 <25"
+	},
 	"scripts": {
-		"build": "tsc -p tsconfig.build.json",
+		"build": "nest build",
 		"start": "node dist/main.js",
 		"start:dev": "nest start --watch",
 		"lint": "eslint src --ext .ts",
 		"test": "jest",
 		"test:cov": "jest --coverage",
+		"openapi:validate": "node dist/tools/validate-openapi.js",
 		"migration:run": "typeorm migration:run -d dist/data-source.js",
 		"migration:generate": "typeorm migration:generate -d dist/data-source.js",
 		"prepare": "husky"
@@ -25,6 +29,8 @@
 		"@nestjs/terminus": "^10.0.0",
 		"@nestjs/typeorm": "^10.0.0",
 		"@nestjs/websockets": "^10.4.22",
+		"@scalar/api-reference": "1.63.0",
+		"@scalar/nestjs-api-reference": "1.2.11",
 		"class-transformer": "^0.5.1",
 		"class-validator": "^0.14.0",
 		"passport": "^0.7.0",
@@ -42,7 +48,7 @@
 		"@nestjs/cli": "^10.0.0",
 		"@nestjs/testing": "^10.0.0",
 		"@types/jest": "^29.5.0",
-		"@types/node": "^20.0.0",
+		"@types/node": "24.1.0",
 		"@types/passport-google-oauth20": "^2.0.17",
 		"@types/passport-jwt": "^4.0.0",
 		"@typescript-eslint/eslint-plugin": "^7.0.0",

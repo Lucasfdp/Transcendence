@@ -6,7 +6,7 @@ import {
 	Request,
 	UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiQuery, ApiTags } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { KNOWN_GAME_IDS } from "../game-results/game-ids.constants";
 import {
@@ -18,7 +18,7 @@ import {
 } from "./leaderboard.service";
 
 @ApiTags("leaderboard")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard)
 @Controller("leaderboard")
 export class LeaderboardController {

@@ -13,6 +13,9 @@ import {
 } from "@nestjs/common";
 import {
 	ApiHeader,
+	ApiBody,
+	ApiCreatedResponse,
+	ApiOkResponse,
 	ApiOperation,
 	ApiQuery,
 	ApiSecurity,
@@ -24,17 +27,15 @@ import { UpdateProfileDto } from "../users/dto/update-profile.dto";
 import { PublicApiQueryUsersDto } from "./dto/public-api-query-users.dto";
 import { PublicApiGuard } from "./public-api.guard";
 import { PublicApiService } from "./public-api.service";
+import {
+	PublicMutationResponseDto,
+	PublicUserResponseDto,
+} from "./dto/public-user-response.dto";
 
 const TooManyRequests = (msg: string): HttpException =>
 	new HttpException(msg, 429);
 
 @ApiTags("public-api")
-@ApiSecurity("x-api-key")
-@ApiHeader({
-	name: "X-API-Key",
-	required: true,
-	description: "Static API key for public database access",
-})
 @UseGuards(PublicApiGuard)
 @Controller("public")
 export class PublicApiController {
@@ -46,6 +47,7 @@ export class PublicApiController {
 	@Get("users")
 	@ApiOperation({ summary: "List public user profiles" })
 	@ApiQuery({ name: "limit", required: false, example: 20 })
+	@ApiOkResponse({ type: PublicUserResponseDto, isArray: true })
 	async listUsers(
 		@Req() req: Request,
 		@Query("limit") limit?: string,
@@ -57,6 +59,7 @@ export class PublicApiController {
 
 	@Get("users/:username")
 	@ApiOperation({ summary: "Fetch one public user profile" })
+	@ApiOkResponse({ type: PublicUserResponseDto })
 	async getUser(@Req() req: Request, @Param("username") username: string) {
 		await this.assertRateLimit(req, "public:get", 120, 60_000);
 		return this.publicApiService.getUserByUsername(username);
@@ -64,6 +67,15 @@ export class PublicApiController {
 
 	@Post("users/query")
 	@ApiOperation({ summary: "Bulk lookup public user profiles" })
+	@ApiSecurity("x-api-key")
+	@ApiHeader({ name: "X-API-Key", required: true, description: "Public API key" })
+	@ApiBody({
+		type: PublicApiQueryUsersDto,
+		examples: {
+			lookup: { value: { usernames: ["KameMaster", "dojo_guest"] } },
+		},
+	})
+	@ApiCreatedResponse({ type: PublicUserResponseDto, isArray: true })
 	async queryUsers(@Req() req: Request, @Body() body: PublicApiQueryUsersDto) {
 		await this.assertRateLimit(req, "public:query", 30, 60_000);
 		return this.publicApiService.bulkLookup(body.usernames);
@@ -71,6 +83,15 @@ export class PublicApiController {
 
 	@Put("users/:username")
 	@ApiOperation({ summary: "Update public profile fields for a user" })
+	@ApiSecurity("x-api-key")
+	@ApiHeader({ name: "X-API-Key", required: true, description: "Public API key" })
+	@ApiBody({
+		type: UpdateProfileDto,
+		examples: {
+			profile: { value: { turtleName: "Kame Master", tag: "strategist" } },
+		},
+	})
+	@ApiOkResponse({ type: PublicUserResponseDto })
 	async updateUser(
 		@Req() req: Request,
 		@Param("username") username: string,
@@ -82,6 +103,9 @@ export class PublicApiController {
 
 	@Delete("users/:username/avatar")
 	@ApiOperation({ summary: "Clear the avatar of a public user profile" })
+	@ApiSecurity("x-api-key")
+	@ApiHeader({ name: "X-API-Key", required: true, description: "Public API key" })
+	@ApiOkResponse({ type: PublicMutationResponseDto })
 	async deleteAvatar(@Req() req: Request, @Param("username") username: string) {
 		await this.assertRateLimit(req, "public:delete", 20, 60_000);
 		return this.publicApiService.clearAvatar(username);

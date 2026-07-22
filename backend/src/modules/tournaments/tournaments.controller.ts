@@ -9,7 +9,7 @@ import {
 	Request,
 	UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiTags } from "@nestjs/swagger";
 import { CsrfGuard } from "../auth/guards/csrf.guard";
 import { GuestGuard } from "../auth/guards/guest.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -43,7 +43,7 @@ type AuthedRequest = { user: { id: number } };
  * ranked (SPEC-038).
  */
 @ApiTags("tournaments")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard, GuestGuard)
 @Controller("tournaments")
 export class TournamentsController {

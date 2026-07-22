@@ -8,6 +8,13 @@ import { Request } from "express";
 
 /** Cookie holding the double-submit CSRF token (readable by JS, not httpOnly). */
 const CSRF_COOKIE = "csrf_token";
+const AUTH_COOKIE = "auth_token";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const EXEMPT_PATHS = new Set([
+	"/api/auth/guest",
+	"/api/auth/login",
+	"/api/auth/register",
+]);
 
 /** Read a single cookie value from a raw `Cookie` header string. */
 function parseCookie(cookieHeader: string, name: string): string | null {
@@ -36,5 +43,22 @@ export class CsrfGuard implements CanActivate {
 			throw new UnauthorizedException("Invalid or missing CSRF token");
 		}
 		return true;
+	}
+}
+
+/** Apply CSRF globally only when a state-changing request uses the auth cookie. */
+@Injectable()
+export class AuthenticatedCsrfGuard implements CanActivate {
+	private readonly csrfGuard = new CsrfGuard();
+
+	canActivate(context: ExecutionContext): boolean {
+		const req = context.switchToHttp().getRequest<Request>();
+		const method = (req.method ?? "GET").toUpperCase();
+		const path = req.path ?? "";
+		if (SAFE_METHODS.has(method)) return true;
+		if (path.startsWith("/api/public")) return true;
+		if (EXEMPT_PATHS.has(path)) return true;
+		if (!parseCookie(req.headers.cookie ?? "", AUTH_COOKIE)) return true;
+		return this.csrfGuard.canActivate(context);
 	}
 }

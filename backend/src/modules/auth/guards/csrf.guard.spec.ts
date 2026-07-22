@@ -1,5 +1,5 @@
 import { ExecutionContext, UnauthorizedException } from "@nestjs/common";
-import { CsrfGuard } from "./csrf.guard";
+import { AuthenticatedCsrfGuard, CsrfGuard } from "./csrf.guard";
 
 function contextWith(headers: Record<string, string>): ExecutionContext {
 	return {
@@ -36,5 +36,41 @@ describe("CsrfGuard", () => {
 			cookie: "csrf_token=different",
 		});
 		expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
+	});
+});
+
+describe("AuthenticatedCsrfGuard", () => {
+	const guard = new AuthenticatedCsrfGuard();
+	const requestContext = (
+		method: string,
+		path: string,
+		headers: Record<string, string> = {},
+	): ExecutionContext =>
+		({
+			switchToHttp: () => ({ getRequest: () => ({ method, path, headers }) }),
+		}) as unknown as ExecutionContext;
+
+	it("allows safe requests and unauthenticated mutations", () => {
+		expect(guard.canActivate(requestContext("GET", "/api/users/me"))).toBe(true);
+		expect(guard.canActivate(requestContext("POST", "/api/users/me"))).toBe(true);
+	});
+
+	it("leaves public API and login mutations to their explicit policies", () => {
+		const headers = { cookie: "auth_token=session" };
+		expect(guard.canActivate(requestContext("PUT", "/api/public/users/a", headers))).toBe(true);
+		expect(guard.canActivate(requestContext("POST", "/api/auth/login", headers))).toBe(true);
+	});
+
+	it("requires CSRF for authenticated cookie mutations", () => {
+		const missing = requestContext("PATCH", "/api/users/me", {
+			cookie: "auth_token=session",
+		});
+		expect(() => guard.canActivate(missing)).toThrow(UnauthorizedException);
+
+		const valid = requestContext("PATCH", "/api/users/me", {
+			cookie: "auth_token=session; csrf_token=fresh",
+			"x-csrf-token": "fresh",
+		});
+		expect(guard.canActivate(valid)).toBe(true);
 	});
 });

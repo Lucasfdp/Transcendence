@@ -143,7 +143,7 @@ Always use the `Makefile` as the main entry point for the local environment.
 - Individual services: `make restart-front`, `make restart-back`,
   `make rebuild-front`, `make rebuild-back`, `make refresh-app`
 - Build and status: `make build`, `make logs SERVICE=backend`, `make ps`,
-  `make status`, `make health`
+  `make status`, `make health`, `make validate-openapi`
 - Diagnostics and cleaning: `make diagnosis`, `make clean`, `make fclean`
 - Inspection: `make shell SERVICE=backend`, `make inspect SERVICE=backend`,
   `make volumes`, `make networks`, `make db`, `make open`

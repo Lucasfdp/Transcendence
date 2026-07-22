@@ -18,7 +18,12 @@ import {
 	UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import {
+	ApiBody,
+	ApiConsumes,
+	ApiCookieAuth,
+	ApiTags,
+} from "@nestjs/swagger";
 import { randomUUID } from "crypto";
 import type { Request as ExpressRequest } from "express";
 import { diskStorage } from "multer";
@@ -88,7 +93,7 @@ interface MulterFile {
 }
 
 @ApiTags("chat")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard)
 @Controller("chat")
 export class ChatController {
@@ -312,6 +317,14 @@ export class ChatController {
 	 */
 	@Post("conversations/:id/avatar")
 	@HttpCode(200)
+	@ApiConsumes("multipart/form-data")
+	@ApiBody({
+		schema: {
+			type: "object",
+			required: ["avatar"],
+			properties: { avatar: { type: "string", format: "binary" } },
+		},
+	})
 	@UseInterceptors(
 		FileInterceptor("avatar", {
 			storage: diskStorage({

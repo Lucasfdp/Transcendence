@@ -11,7 +11,7 @@ import {
 	Request,
 	UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiTags } from "@nestjs/swagger";
 import { GuestGuard } from "../auth/guards/guest.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RateLimiterService } from "../auth/rate-limiter.service";
@@ -31,7 +31,7 @@ const FRIEND_REQUEST_RATE_LIMIT_MAX = 20;
 const FRIEND_REQUEST_RATE_LIMIT_WINDOW_MS = 60_000;
 
 @ApiTags("friends")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard)
 @Controller("friends")
 export class FriendsController {

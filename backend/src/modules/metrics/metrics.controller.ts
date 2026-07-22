@@ -9,6 +9,7 @@ import {
 import type { Response } from "express";
 import { timingSafeEqual } from "crypto";
 import { MetricsService } from "./metrics.service";
+import { ApiOperation, ApiSecurity, ApiTags } from "@nestjs/swagger";
 
 /**
  * GET /api/metrics — Prometheus text-format metrics endpoint.
@@ -17,12 +18,15 @@ import { MetricsService } from "./metrics.service";
  * is set in the environment.  If METRICS_TOKEN is absent, the endpoint is
  * unprotected (acceptable in a dev-only environment, never in production).
  */
+@ApiTags("metrics")
 @Controller("metrics")
 export class MetricsController {
 	constructor(private readonly metricsService: MetricsService) {}
 
 	@Get()
 	@HttpCode(200)
+	@ApiOperation({ summary: "Read Prometheus metrics" })
+	@ApiSecurity("metrics-bearer")
 	async getMetrics(
 		@Headers("authorization") authHeader: string | undefined,
 		@Res() res: Response,

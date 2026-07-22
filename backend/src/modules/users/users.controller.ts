@@ -18,7 +18,13 @@ import {
 	UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { ApiBearerAuth, ApiQuery, ApiTags } from "@nestjs/swagger";
+import {
+	ApiBody,
+	ApiConsumes,
+	ApiCookieAuth,
+	ApiQuery,
+	ApiTags,
+} from "@nestjs/swagger";
 import { diskStorage } from "multer";
 import { extname, join } from "path";
 import { randomUUID } from "crypto";
@@ -114,7 +120,7 @@ interface MulterFile {
 }
 
 @ApiTags("users")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard)
 @Controller("users")
 export class UsersController {
@@ -181,6 +187,14 @@ export class UsersController {
 	// /api/uploads/, which is already routed by the reverse proxy.
 
 	@Post("me/avatar")
+	@ApiConsumes("multipart/form-data")
+	@ApiBody({
+		schema: {
+			type: "object",
+			required: ["avatar"],
+			properties: { avatar: { type: "string", format: "binary" } },
+		},
+	})
 	@UseInterceptors(
 		FileInterceptor("avatar", {
 			storage: diskStorage({

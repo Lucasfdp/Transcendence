@@ -175,6 +175,28 @@ account are removed.
 
 ---
 
+## REST Documentation And Request Authentication
+
+Nginx protects the complete `/api/docs*` family with `auth_request`. Its
+internal probe runs the normal session and guest guards: anonymous clients are
+rejected with `401`, guest accounts with `403`, and only registered accounts may
+load Scalar, the local Scalar bundle, or the JSON and YAML contracts. The probe
+itself is hidden from external routing and excluded from OpenAPI.
+
+The OpenAPI security schemes mirror runtime behaviour. Internal API operations
+use the HTTP-only `auth_token` cookie, public API mutations use `X-API-Key`, and
+metrics use their dedicated bearer token. Safe public API methods (`GET`,
+`HEAD`, and `OPTIONS`) require no API key. Public keys are compared in constant
+time and Scalar never preconfigures or persists them.
+
+A global guard validates the double-submit CSRF cookie and header for every
+state-changing request carrying an authentication cookie. Login, registration,
+guest-session creation, and the public API retain their explicit policies.
+Scalar sends cookies with every request and obtains a fresh token immediately
+before each internal `POST`, `PUT`, `PATCH`, or `DELETE` request.
+
+---
+
 ## Monitoring (Prometheus + Grafana)
 
 ### Grafana auth model

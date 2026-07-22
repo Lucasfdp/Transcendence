@@ -8,7 +8,7 @@ import {
 	Request,
 	UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NotificationsService, NotificationView } from "./notifications.service";
 
@@ -27,7 +27,7 @@ import { NotificationsService, NotificationView } from "./notifications.service"
  * keeps the WS events as the live top-up while the tab stays open.
  */
 @ApiTags("notifications")
-@ApiBearerAuth()
+@ApiCookieAuth("auth-cookie")
 @UseGuards(JwtAuthGuard)
 @Controller("notifications")
 export class NotificationsController {
