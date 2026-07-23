@@ -33,6 +33,16 @@ export class NetworkError extends Error {
 	}
 }
 
+interface SessionUnavailableResponse {
+	status: "unavailable";
+}
+
+function isSessionUnavailableResponse(
+	value: User | SessionUnavailableResponse,
+): value is SessionUnavailableResponse {
+	return "status" in value && value.status === "unavailable";
+}
+
 const TRANSIENT_HTTP_STATUSES = new Set([502, 503, 504]);
 const TRANSIENT_RETRY_DELAY_MS = 350;
 
@@ -653,11 +663,17 @@ export const api = {
 	/** Fetch and cache the CSRF token. Call once before any POST/DELETE. */
 	getCsrfToken: (): Promise<string> => fetchCsrfToken(),
 
-	/** Returns the current user or throws AuthError(401) if no session. */
-	getMe: (): Promise<User> => apiFetch<User>("/auth/me"),
-
-	/** URL to redirect to in order to start the 42 OAuth flow. */
-	loginUrl: (): string => `${API_BASE}/auth/42`,
+	/**
+	 * Returns the current user, throws AuthError(401) when there is no session,
+	 * or reports a transient restart without treating it as a logout.
+	 */
+	getMe: async (): Promise<User> => {
+		const result = await apiFetch<User | SessionUnavailableResponse>("/auth/me");
+		if (isSessionUnavailableResponse(result)) {
+			throw new NetworkError("Session service is restarting");
+		}
+		return result;
+	},
 
 	/** Create a guest session (httpOnly cookie, 2-hour TTL). */
 	guestLogin: (): Promise<{ ok: boolean }> =>

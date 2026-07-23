@@ -1,5 +1,3 @@
-import { OAuthButtons } from "./OAuthButtons";
-
 export type AuthMode = "login" | "register";
 
 interface AuthCardProps {
@@ -16,7 +14,6 @@ interface AuthCardProps {
 	onEmailChange: (value: string) => void;
 	onPasswordChange: (value: string) => void;
 	onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
-	onOAuthLogin: (url: string) => void;
 	onGuestLogin: () => void;
 }
 
@@ -34,7 +31,6 @@ export function AuthCard({
 	onEmailChange,
 	onPasswordChange,
 	onSubmit,
-	onOAuthLogin,
 	onGuestLogin,
 }: AuthCardProps): JSX.Element {
 	const isRegistering = mode === "register";
@@ -48,7 +44,7 @@ export function AuthCard({
 			<p className="auth-card__copy">
 				{isRegistering
 					? "Register with an email address you can access."
-					: "Use your email, username or an OAuth provider."}
+					: "Use your email or username and password."}
 			</p>
 
 			<form className="auth-card__form" onSubmit={onSubmit}>
@@ -168,13 +164,6 @@ export function AuthCard({
 					)}
 				</div>
 			</form>
-
-			{!isRegistering ? (
-				<OAuthButtons
-					isSubmitting={isSubmitting}
-					onOAuthLogin={onOAuthLogin}
-				/>
-			) : null}
 		</section>
 	);
 }

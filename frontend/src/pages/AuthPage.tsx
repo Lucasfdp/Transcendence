@@ -149,10 +149,6 @@ export function AuthPage(): JSX.Element {
 		void (mode === "register" ? handleRegister() : handleLocalLogin());
 	};
 
-	const handleOAuthLogin = (url: string): void => {
-		window.location.assign(url);
-	};
-
 	const handleGuestLogin = async (): Promise<void> => {
 		if (isSubmitting) return;
 		setIsSubmitting(true);
@@ -237,7 +233,6 @@ export function AuthPage(): JSX.Element {
 					onEmailChange={setEmail}
 					onPasswordChange={setPassword}
 					onSubmit={handleSubmit}
-					onOAuthLogin={handleOAuthLogin}
 					onGuestLogin={() => void handleGuestLogin()}
 				/>
 			</section>

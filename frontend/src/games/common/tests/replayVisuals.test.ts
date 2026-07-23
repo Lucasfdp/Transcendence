@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ReplayFrameSnapshot } from "../../../features/hub/api";
 import {
+	collectReplayBackgroundIds,
+	REPLAY_BACKGROUND_TEXTURES,
 	resolveActiveReplayBackground,
 	resolveActiveReplaySide,
 } from "../replayVisuals";
@@ -77,5 +79,25 @@ describe("replayVisuals", () => {
 				0,
 			),
 		).toBe("night_bg");
+	});
+
+	it("collects only the backgrounds used by replay participants", () => {
+		expect(
+			collectReplayBackgroundIds({
+				metadata: { participants: players },
+			} as never),
+		).toEqual(["night_bg", "night_cycle_bg"]);
+	});
+
+	it("shares textures when a cycle variant uses the same source image", () => {
+		expect(REPLAY_BACKGROUND_TEXTURES.sunset_cycle_bg).toBe(
+			REPLAY_BACKGROUND_TEXTURES.sunset_bg,
+		);
+		expect(REPLAY_BACKGROUND_TEXTURES.sunrise_cycle_bg).toBe(
+			REPLAY_BACKGROUND_TEXTURES.sunrise_bg,
+		);
+		expect(REPLAY_BACKGROUND_TEXTURES.login_cycle_bg).toBe(
+			REPLAY_BACKGROUND_TEXTURES.login_bg,
+		);
 	});
 });

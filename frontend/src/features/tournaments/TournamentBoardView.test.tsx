@@ -64,7 +64,10 @@ describe("TournamentBoardView — minigame launch handoff", () => {
 
 	it("carries the full tournament:minigame-start payload through navigation instead of discarding it", async () => {
 		render(
-			<MemoryRouter initialEntries={["/tournament/t-1"]}>
+			<MemoryRouter
+				initialEntries={["/tournament/t-1"]}
+				future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+			>
 				<Routes>
 					<Route
 						path="/tournament/:tournamentId"

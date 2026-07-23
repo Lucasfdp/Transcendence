@@ -2,9 +2,10 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 /**
- * `mode` lets us harden only the production bundle. Dev keeps console output and
- * readable code; the shipped bundle is mangled with console/debugger stripped so
- * the client-side shuffle maths is meaningfully harder to reverse-engineer.
+ * `mode` lets us harden only the production bundle. Development keeps console
+ * output and readable code; the shipped bundle is mangled with
+ * console/debugger stripped so the client-side shuffle maths is meaningfully
+ * harder to reverse-engineer.
  *
  * NOTE: this is deliberately "raise the bar", not a security boundary — a
  * determined attacker can always read a shipped bundle. The real protections for
@@ -59,7 +60,7 @@ export default defineConfig(({ mode }) => ({
 						id.includes("react-router-dom")
 					)
 						return "vendor-react";
-					return "vendor";
+					return undefined;
 				},
 			},
 		},

@@ -61,78 +61,96 @@ export function ReplayViewer({
 	useEffect(() => {
 		const host = hostRef.current;
 		if (!host || replayTooLong) return;
-		const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-		const initialWidth = host.clientWidth || 720;
-		const initialHeight = host.clientHeight || 720;
-		const session = new ReplaySession(replay);
-		sessionRef.current = session;
-		onCommandsReadyRef.current?.(session);
-		const unsubscribe = session.subscribe((state) => {
-			setPlayback({
-				frameIndex: state.frameIndex,
-				progress: state.progress,
-				playing: state.playing,
-				timeMs: state.timeMs,
-				frame: state.frame,
+		let disposed = false;
+		let session: ReplaySession | null = null;
+		let game: Phaser.Game | null = null;
+		let observer: ResizeObserver | null = null;
+		let unsubscribe: (() => void) | null = null;
+		let releaseResizeObserver: (() => void) | null = null;
+		let releasePhaserResources: (() => void) | null = null;
+
+		const mountFrame = window.requestAnimationFrame(() => {
+			if (disposed) return;
+			const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+			const initialWidth = host.clientWidth || 720;
+			const initialHeight = host.clientHeight || 720;
+			session = new ReplaySession(replay);
+			sessionRef.current = session;
+			onCommandsReadyRef.current?.(session);
+			unsubscribe = session.subscribe((state) => {
+				setPlayback({
+					frameIndex: state.frameIndex,
+					progress: state.progress,
+					playing: state.playing,
+					timeMs: state.timeMs,
+					frame: state.frame,
+				});
 			});
-		});
-		setPlayback(session.getState());
-		const game = new Phaser.Game({
-			type: Phaser.AUTO,
-			banner: false,
-			width: Math.round(initialWidth * pixelRatio),
-			height: Math.round(initialHeight * pixelRatio),
-			backgroundColor: "rgba(0,0,0,0)",
-			transparent: true,
-			antialias: true,
-			antialiasGL: true,
-			pixelArt: false,
-			roundPixels: false,
-			parent: host,
-			scene: [],
-			scale: {
-				mode: Phaser.Scale.NONE,
-				autoCenter: Phaser.Scale.NO_CENTER,
-			},
-		});
-		const releaseGame = trackFrontendPerformanceResource("phaserGames");
-		const releaseCanvas = trackFrontendPerformanceResource("canvases");
-		const releasePhaserResources = () => {
-			releaseCanvas();
-			releaseGame();
-		};
-		game.events.once(Phaser.Core.Events.DESTROY, releasePhaserResources);
-		game.scene.add("ReplayScene", new ReplayScene(), true, {
-			replay,
-			controller: session.controller,
-			autoAdvance: false,
-		});
-		const resizeGame = (width: number, height: number) => {
-			game.scale.resize(
-				Math.max(1, Math.round(width * pixelRatio)),
-				Math.max(1, Math.round(height * pixelRatio)),
+			setPlayback(session.getState());
+			game = new Phaser.Game({
+				type: Phaser.AUTO,
+				banner: false,
+				width: Math.round(initialWidth * pixelRatio),
+				height: Math.round(initialHeight * pixelRatio),
+				backgroundColor: "rgba(0,0,0,0)",
+				transparent: true,
+				antialias: true,
+				antialiasGL: true,
+				pixelArt: false,
+				roundPixels: false,
+				parent: host,
+				scene: [],
+				scale: {
+					mode: Phaser.Scale.NONE,
+					autoCenter: Phaser.Scale.NO_CENTER,
+				},
+			});
+			const releaseGame = trackFrontendPerformanceResource("phaserGames");
+			const releaseCanvas = trackFrontendPerformanceResource("canvases");
+			releasePhaserResources = () => {
+				releaseCanvas();
+				releaseGame();
+			};
+			game.events.once(
+				Phaser.Core.Events.DESTROY,
+				releasePhaserResources,
 			);
-			game.canvas.style.width = `${width}px`;
-			game.canvas.style.height = `${height}px`;
-		};
-		resizeGame(initialWidth, initialHeight);
-		const observer = new ResizeObserver((entries) => {
-			const bounds = entries[0]?.contentRect;
-			if (bounds && bounds.width > 0 && bounds.height > 0)
-				resizeGame(bounds.width, bounds.height);
+			game.scene.add("ReplayScene", new ReplayScene(), true, {
+				replay,
+				controller: session.controller,
+				autoAdvance: false,
+			});
+			const resizeGame = (width: number, height: number) => {
+				if (!game) return;
+				game.scale.resize(
+					Math.max(1, Math.round(width * pixelRatio)),
+					Math.max(1, Math.round(height * pixelRatio)),
+				);
+				game.canvas.style.width = `${width}px`;
+				game.canvas.style.height = `${height}px`;
+			};
+			resizeGame(initialWidth, initialHeight);
+			observer = new ResizeObserver((entries) => {
+				const bounds = entries[0]?.contentRect;
+				if (bounds && bounds.width > 0 && bounds.height > 0)
+					resizeGame(bounds.width, bounds.height);
+			});
+			releaseResizeObserver =
+				trackFrontendPerformanceResource("resizeObservers");
+			observer.observe(host);
 		});
-		const releaseResizeObserver =
-			trackFrontendPerformanceResource("resizeObservers");
-		observer.observe(host);
+
 		return () => {
-			unsubscribe();
-			observer.disconnect();
-			releaseResizeObserver();
+			disposed = true;
+			window.cancelAnimationFrame(mountFrame);
+			unsubscribe?.();
+			observer?.disconnect();
+			releaseResizeObserver?.();
 			onCommandsReadyRef.current?.(null);
 			sessionRef.current = null;
-			game.destroy(true);
-			releasePhaserResources();
-			session.destroy();
+			game?.destroy(true);
+			releasePhaserResources?.();
+			session?.destroy();
 			host.replaceChildren();
 		};
 	}, [replay, replayTooLong]);

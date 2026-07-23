@@ -245,7 +245,7 @@ Sky colours come from `interpolatePalette(normalized, stops)` (lines 427–441) 
 
 ## 6. Assets
 
-`frontend/vite.config.js` sets `publicDir: "../public"` → the served asset root is the **repo-root `public/` directory**. Current contents of `public/assets/backgrounds/`:
+`frontend/vite.config.mjs` sets `publicDir: "../public"` → the served asset root is the **repo-root `public/` directory**. Current contents of `public/assets/backgrounds/`:
 
 ```
 login_bg.png  night_bg.png  sunrise_bg.png  sunset_bg.png

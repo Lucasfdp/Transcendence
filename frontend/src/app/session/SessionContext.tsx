@@ -83,8 +83,7 @@ export function SessionProvider({ children }: { children: ReactNode }): JSX.Elem
 				setSession(nextSession);
 				if (nextSession.status === "unauthenticated") disconnectGameSocket();
 			})
-			.catch((error: unknown) => {
-				console.warn("[SessionProvider] Session check failed:", error);
+			.catch(() => {
 				if (!active) return;
 				setSession((current) =>
 					current.status === "authenticated"

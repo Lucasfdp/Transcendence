@@ -1,4 +1,5 @@
 import type {
+	ReplayDetail,
 	ReplayFrameSnapshot,
 	ReplaySnapshotEntity,
 	ReplayVisualPlayer,
@@ -10,12 +11,25 @@ export const REPLAY_BACKGROUND_TEXTURES: Record<string, string> = {
 	night_bg: "replay-background-night_bg",
 	night_cycle_bg: "replay-background-night_cycle_bg",
 	sunset_bg: "replay-background-sunset_bg",
-	sunset_cycle_bg: "replay-background-sunset_cycle_bg",
+	sunset_cycle_bg: "replay-background-sunset_bg",
 	sunrise_bg: "replay-background-sunrise_bg",
-	sunrise_cycle_bg: "replay-background-sunrise_cycle_bg",
+	sunrise_cycle_bg: "replay-background-sunrise_bg",
 	login_bg: "replay-background-login_bg",
-	login_cycle_bg: "replay-background-login_cycle_bg",
+	login_cycle_bg: "replay-background-login_bg",
 };
+
+export function collectReplayBackgroundIds(
+	replay: Pick<ReplayDetail, "metadata">,
+): string[] {
+	const backgrounds = new Set<string>([DEFAULT_REPLAY_BACKGROUND]);
+	const snapshot: ReplayFrameSnapshot = {
+		players: replay.metadata.participants,
+	};
+	for (const player of replay.metadata.participants) {
+		backgrounds.add(resolveActiveReplayBackground(snapshot, player.side));
+	}
+	return [...backgrounds];
+}
 
 export function resolveActiveReplaySide(
 	snapshot: ReplayFrameSnapshot,

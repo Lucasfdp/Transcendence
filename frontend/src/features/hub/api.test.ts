@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api } from "./api";
+import { api, NetworkError } from "./api";
 
 function jsonResponse(body: unknown, status = 200): Response {
 	return {
@@ -32,6 +32,13 @@ describe("hub API contracts", () => {
 			"/api/auth/me",
 			expect.objectContaining({ credentials: "include" }),
 		);
+	});
+
+	it("reports the reverse proxy restart sentinel as a transient failure", async () => {
+		fetchMock.mockResolvedValueOnce(jsonResponse({ status: "unavailable" }));
+
+		await expect(api.getMe()).rejects.toBeInstanceOf(NetworkError);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
 	it("encodes usernames when requesting a public profile", async () => {

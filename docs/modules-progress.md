@@ -209,9 +209,18 @@ Requirement breakdown:
 - Profile page.
 
 Evidence:
-- Local auth, guest, and OAuth in `backend/src/modules/auth/`
+- Local and guest authentication in `backend/src/modules/auth/`; 42 OAuth is
+  retained only for authenticated connected-account linking and is not exposed
+  as a public sign-in method.
 - Local registration validates and stores a unique email address, while local
   login accepts either email or username.
+- The passive `/api/auth/me` session probe survives development backend
+  restarts without logging a browser-level gateway error or treating the
+  current user as logged out: the reverse proxy emits a non-cacheable
+  unavailable sentinel for that endpoint alone, and the session provider
+  retains its state while retrying with bounded backoff. Socket.IO also delays
+  its first reconnect until the normal watcher restart window has passed,
+  preventing a failed WebSocket attempt during the same interruption.
 - Profile exposes ShellSmash and 42 connected-account controls.
   Authentication identities are separate from progress, legacy credentials
   are migrated, and a persistent two-preview conflict flow retains exactly one
@@ -275,6 +284,13 @@ Evidence:
   longer seeks backwards to React's last 100 ms progress update while running,
   and stops at the first terminal frame rather than waiting through trailing
   static capture time.
+- 2026-07-23 replay loader lifecycle fix: `ReplayViewer` defers Phaser creation
+  by one animation frame so React Strict Mode's development-only probe can
+  cancel before any XHR starts. `ReplayScene` now queues only the background
+  textures used by the replay participants and shares one texture when normal
+  and cycle aliases use the same PNG. Live Chrome validation opened an existing
+  replay with one successful background request and no cancelled duplicate
+  loads.
 - 2026-07-20 achievement showcase picker fix (superseding a same-day full-catalog-on-profile change that was reverted as the wrong interpretation): the hub's profile editor (`HomePage.tsx`'s "Achievement showcase" picker) only ever offered *unlocked* achievements as choices for the 3 showcase slots, even though the backend never enforced that — `UpdateProfileDto.showcasedAchievements` (`backend/src/modules/users/dto/update-profile.dto.ts`) validates each entry against the full achievement-ID catalog with no unlock check. The picker now lists every achievement (`pickableAchievements = achievements ?? []`, dropping the `.filter(a => a.unlocked)`), marking locked ones with a 🔒 prefix; `PlayerProfilePreview` mirrors the same lock marker when rendering a showcased-but-locked achievement on the profile card, and the stale "Choose an unlocked achievement" empty-slot copy was corrected. Verified live (Firefox headless): the picker lists all 41 catalog achievements, saving a locked one round-trips through the backend and renders correctly on the public profile.
 - 2026-07-15 rankings hardening pass (see `docs/old_docs/rankings-bug-audit-2026-07-15.md`): added the missing `user_ratings` migration and its unique constraint, closed the client-forgeable overall-leaderboard endpoint, fixed ranked draws never updating ratings, made match-finish reward persistence idempotent at the DB level, added stable tie-break ordering and dev-account exclusion to both leaderboard queries, and reworked the Rankings modal to show fetch errors, refetch on open, and the caller's own rank.
 - 2026-07-20 rankings/tournament integration pass (see `docs/rankings-bug-audit-2026-07-20.md`): reclassified the reported "DB crash on Rankings" as a backend-process death/lockout (a rankings SELECT cannot take Postgres down) and hardened the actual cause — `main.ts` now logs `unhandledRejection`/`uncaughtException` instead of dying silently, and `BotPlayerService.tick()`'s whole body is wrapped so a bad tick is retried instead of killing the process. New `users.isBot` column (migration + entity + set on CPU-account minting in `tournament-lobby.service.ts`) and a `mergedIntoUserId IS NULL` filter close two ranking-integrity holes: tournament CPU bots and merged-away account duplicates could otherwise occupy public leaderboard rows; both are now excluded from all three leaderboard queries, alongside `isDevAccount` (which the demo account seed now also sets, closing a third — a level-99 KameMaster winning every overall tie-break). New `GET /leaderboard/tournaments` endpoint + `LeaderboardService.getTournamentLeaderboard` + a "Tournaments" tab in the Rankings modal surface a dedicated tournament-wins board off `tournaments.winnerUserId`; tournament minigame wins already flowed into the Total board by construction (same casual-match rail as any other game), confirmed by a new regression test in `game-session.service.spec.ts`. Fixed a leaderboard-fetch race (N5): the modal's cancellation flag used to be created only after the first `await`, so a stale request could resolve after a newer one and overwrite its rows — the flag is now a ref created synchronously before the fetch starts. The prior audit's claimed migration gap for the `tournaments` tables (N2) was verified stale — `20260713000000-create-tournaments.ts` already exists, ordered correctly. Open product decision (not actioned, flagged for the user): whether tournament-minigame XP/coin grants should also exclude CPU bot stand-ins in `GameSessionService.persistFinishedRoom` — currently unchanged, bots still accrue XP/coins/levels even though they're now excluded from every ranking display.
@@ -284,22 +300,26 @@ Missing for completion:
 - Should review history coverage for all exposed games.
 
 ### Minor: Remote authentication with OAuth 2.0
-Status: `Done`
+Status: `In progress`
 
 Requirement breakdown:
 - Remote OAuth with a provider such as 42.
 
 Evidence:
 - The 42 flow is implemented in `backend/src/modules/auth/`; Google OAuth was
-  removed on 23 July 2026 so 42 is the only exposed remote provider.
+  removed on 23 July 2026.
 - 42 uses expiring, single-use OAuth state in Redis and can be linked or
   unlinked from Profile without relying on email-address matches.
 - Provider callbacks are sourced from the configured callback URLs rather than
   request forwarding headers, preventing proxy or `Host` variations from
   causing redirect URI mismatches.
-- OAuth UI in `frontend/src/components/auth/OAuthButtons.tsx`
+- Public 42 sign-in is deliberately unavailable: the login UI does not render
+  an OAuth control and `GET /api/auth/42` returns `404`. The protected Profile
+  linking flow remains available to persistent, authenticated accounts.
 
 Missing for completion:
+- A public remote-authentication entry point would need to be restored before
+  this module can be claimed as complete.
 - End-to-end validation still requires real 42 credentials.
 
 ## Cybersecurity
@@ -557,6 +577,10 @@ Evidence:
 - Full architecture specified and frozen in `SPEC/` (SPEC-000 → SPEC-040); board mode ("The Parrot's Shell") adopted as the tournament interpretation with participant registration and visible play order (D6, SPEC-040/SPEC-038).
 - Implementation roadmap in `docs/tournament-implementation-roadmap.md`; platform seams audit in `docs/tournament-platform-seams-audit.md`; player-facing game rules and dormant-mechanics inventory in `docs/tournament-mechanics.md`.
 - Phase 0 (Grounding) COMPLETE: backend module `backend/src/modules/tournaments/` with entities (`tournaments`, `tournament_participants`, `tournament_matches`), manual migration, boot reconciliation; frozen WS/REST contracts (`tournaments.contracts.ts` + frontend mirror + `scripts/check-tournament-contracts.sh`); full SPEC-038 entry/lobby REST flow (create/invite/join/join-pin/leave/start) with DB-backed lobby, PIN join, friend invitations (`tournament_invite` notification type), deterministic seed-derived turn order (`turn-order.util.ts`) — registration, participant management and visible matchup order are implemented at lobby level.
+- 2026-07-23 PIN-entry hardening: the lobby client now mirrors the six-character
+  `T`-prefixed alphabet contract, normalises pasted input, rejects invalid
+  values before the network boundary, and uses a synchronous in-flight guard
+  so repeated Enter/click events cannot duplicate a join request.
 - Phase 1 (Core) COMPLETE: determinism + orchestration foundation — per-tournament typed Event Bus (SPEC-004), 15-phase declarative State Machine (SPEC-003), generic `Registry<T>` (SPEC-025), validated settings catalog (SPEC-024), injectable clock (SPEC-028, no `Date.now`/`setTimeout` outside `SystemClock`), and the empty-gameplay `TournamentRuntime` (SPEC-001) driven by `TournamentRuntimeService` into the Match Lifecycle (SPEC-023): snapshot-per-transition persistence into `tournaments.state.runtime`, phase→status mapping, lobby `start()` handoff, and pessimistic-lock concurrency hardening on lobby join/start. Runtime touches no TypeORM.
 - Phase 2 (Engines) COMPLETE: the six per-tournament engines, each built as a standalone deterministic unit (injected bus + clock, `serialize()`-able, no TypeORM/`Date.now`/`Math.random`) and reviewed against its SPEC — Economy (SPEC-011), Rule Engine (SPEC-009, 5 fixed query points), Leaderboard (SPEC-018, ranking off `WalletUpdated`), Action Engine (SPEC-008, single engine + `ActionRegistry`/`ActionFactory` + base actions), Inventory + Item Framework (SPEC-014/007, consume via `ItemEffectRunner`), Reward Resolver (SPEC-013, `Reward` → `ActionConfig[]` via `RewardActionRunner`). Composition root `runtime/tournament-engines.ts` wires the deferred seams (Rule→Economy `RewardRuleApplier`; `ActionServices` bundle; one Action-Engine-backed runner satisfying both effect/reward runner ports; `GrantItemAction` narrowing `InventoryPort`); the `TournamentRuntime` holds the bundle and serializes it. Checkpoint: a composite Reward (points+item) credits the wallet AND fills the inventory end-to-end through the one Action Engine.
 - Phase 3 (Gameplay Base) COMPLETE: the board-turn loop, each unit deterministic and standalone-testable (injected ports with inert defaults, seeded RNG from `infra/seeded-rng.ts`, no TypeORM/`Date.now`/`Math.random`) — Board System (SPEC-002, `board/`: pure-data Tile model, v1 single-successor ring board, `movePlayer`/`teleportPlayer` commands, forced-relocation anti-loop limit, shared tiles, tile resolution delegated to the Action Engine via a `TileActionRunner` port), Dice System (SPEC-010, `dice/`: a die is a list of numbers, seeded reproducible rolls with a monotonic `rollCount`, `DiceValueModifier`/`ActiveDieResolver` seams, v1 catalog normal/chiquito/grande/op), Tile Actions (SPEC-006, `nothing`/`teleport`/`movePlayer` narrowing `BoardPort`), and Turn System (SPEC-005, `turn/`: one active turn, PlayerTurnStarted→DiceRollRequested→roll→move→resolve→PlayerTurnFinished, roll timeout auto-roll via the injectable clock, disconnection auto-resolution). All wired into `tournament-engines.ts` (Board+Dice+TurnSystem constructed per-tournament, `services.board` live, Dice value-modifier bound to `queryDiceModifier`, seed threaded from the Runtime) and serialized in the Runtime snapshot. Checkpoint green: a full round of board turns (4 players roll, move and resolve their tile) simulated end-to-end (`runtime/tournament-engines.spec.ts`). Full backend suite 1136 green; `tsc` clean; contracts drift check green.

@@ -112,7 +112,7 @@ before the next. Don't skip red. Present a review checkpoint after each batch.
 
 ### Batch 0 — Frontend test harness
 - Added Vitest + RTL + jsdom + v8 coverage. Files:
-  - `frontend/vitest.config.ts` (jsdom, setup file, lcov → `frontend/coverage/`)
+  - `frontend/vitest.config.mts` (jsdom, setup file, lcov → `frontend/coverage/`)
   - `frontend/src/test/setup.ts` (jest-dom matchers + auto-cleanup). The original
     harness-only smoke test was retired once targeted frontend suites covered the setup.
   - `frontend/package.json` — scripts `test`, `test:run`, `coverage`; pinned dev deps
@@ -305,7 +305,7 @@ backend/src/modules/users/users.service.ts (+ users.service.spec.ts)
 backend/src/migrations/20260701000000-add-user-last-seen.ts
 backend/src/modules/friends/friends.service.ts (+ friends.service.spec.ts)
 backend/src/modules/matchmaking/matchmaking.gateway.ts
-frontend/package.json  frontend/package-lock.json  frontend/vitest.config.ts
+frontend/package.json  frontend/package-lock.json  frontend/vitest.config.mts
 frontend/src/test/**  frontend/src/features/social/**
 frontend/src/features/hub/api.ts
 frontend/src/app/App.tsx

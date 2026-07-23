@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 /**
- * Vitest configuration — kept separate from vite.config.js so the dev-server
+ * Vitest configuration — kept separate from vite.config.mjs so the development server
  * proxy/HMR settings don't leak into the test environment.
  *
  * Coverage is emitted as lcov into ./coverage/lcov.info so SonarCloud can

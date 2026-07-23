@@ -19,7 +19,6 @@ function renderCard(mode: AuthMode, onModeChange = vi.fn()) {
 			onEmailChange={vi.fn()}
 			onPasswordChange={vi.fn()}
 			onSubmit={vi.fn()}
-			onOAuthLogin={vi.fn()}
 			onGuestLogin={vi.fn()}
 		/>,
 	);
@@ -32,6 +31,9 @@ describe("AuthCard", () => {
 		expect(screen.getByLabelText("Email or username")).toBeInTheDocument();
 		expect(
 			screen.queryByRole("button", { name: "Create account" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Continue with 42" }),
 		).not.toBeInTheDocument();
 	});
 

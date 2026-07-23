@@ -64,6 +64,7 @@ import {
 	type ResolvedReplayFrame,
 } from "./ReplayController";
 import {
+	collectReplayBackgroundIds,
 	REPLAY_BACKGROUND_TEXTURES,
 	resolveActiveReplayBackground,
 	resolveActiveReplaySide,
@@ -259,9 +260,21 @@ export class ReplayScene extends ResponsiveScene {
 			if (!this.textures.exists(TARGET_TEXTURES[kind]))
 				this.load.image(TARGET_TEXTURES[kind], TARGET_ASSETS[kind]);
 		}
-		for (const [id, asset] of Object.entries(REPLAY_BACKGROUND_ASSETS)) {
+		const queuedBackgroundTextures = new Set<string>();
+		for (const id of this.replay
+			? collectReplayBackgroundIds(this.replay)
+			: []) {
+			const asset = REPLAY_BACKGROUND_ASSETS[id];
 			const texture = REPLAY_BACKGROUND_TEXTURES[id];
-			if (!this.textures.exists(texture)) this.load.image(texture, asset);
+			if (
+				asset &&
+				texture &&
+				!queuedBackgroundTextures.has(texture) &&
+				!this.textures.exists(texture)
+			) {
+				queuedBackgroundTextures.add(texture);
+				this.load.image(texture, asset);
+			}
 		}
 	}
 

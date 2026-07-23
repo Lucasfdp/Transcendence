@@ -38,7 +38,7 @@ Server-authoritative round, resolved by **slot position**, never by a leaked id:
   shuffle entirely, leaving the ball where the preview showed it (a free win by
   memory). The ball is now hidden through the shuffle for everyone, and the
   server gate applies uniformly — reduced-motion play is an honest 1/3 guess.
-- **Production bundle hardening** (`vite.config.js`): console/debugger stripped
+- **Production bundle hardening** (`vite.config.mjs`): console/debugger stripped
   and identifiers mangled in the prod build only. Explicitly *not* a security
   boundary — see the residual risk below.
 

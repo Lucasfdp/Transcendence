@@ -30,7 +30,6 @@ export function WorkInProgressNotice({
 						height={1344}
 						decoding="async"
 						loading="eager"
-						fetchPriority="high"
 					/>
 				</picture>
 			</div>

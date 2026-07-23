@@ -19,7 +19,12 @@ import { useNavigate } from "react-router-dom";
 import { StoneButton } from "../../components/common/StoneButton";
 import { api } from "../hub/api";
 import { tournamentApi } from "./api";
-import type { TournamentLobbyState } from "./contracts";
+import {
+	TOURNAMENT_PIN_ALPHABET,
+	TOURNAMENT_PIN_LENGTH,
+	TOURNAMENT_PIN_PREFIX,
+	type TournamentLobbyState,
+} from "./contracts";
 
 /** Players required to fill a lobby (backend: TOURNAMENT_PLAYERS). */
 const LOBBY_CAPACITY = 5;
@@ -46,6 +51,7 @@ export function TournamentLobbyModal({
 	const [copied, setCopied] = useState(false);
 	const [hydrating, setHydrating] = useState(false);
 	const [meId, setMeId] = useState<number | null>(null);
+	const actionInFlightRef = useRef(false);
 	const lobbyIdRef = useRef<string | null>(null);
 	lobbyIdRef.current = lobby?.id ?? null;
 	const navigate = useNavigate();
@@ -135,6 +141,8 @@ export function TournamentLobbyModal({
 
 	const run = useCallback(
 		async (fn: () => Promise<TournamentLobbyState>) => {
+			if (actionInFlightRef.current) return;
+			actionInFlightRef.current = true;
 			setBusy(true);
 			setError(null);
 			try {
@@ -142,6 +150,7 @@ export function TournamentLobbyModal({
 			} catch (err) {
 				setError(errorMessage(err));
 			} finally {
+				actionInFlightRef.current = false;
 				setBusy(false);
 			}
 		},
@@ -151,8 +160,17 @@ export function TournamentLobbyModal({
 	const handleCreate = () => void run(() => tournamentApi.create());
 	const handleJoin = () => {
 		const trimmed = pin.trim().toUpperCase();
-		if (trimmed.length === 0) {
-			setError("Enter a PIN to join.");
+		const body = trimmed.slice(TOURNAMENT_PIN_PREFIX.length);
+		const isValid =
+			trimmed.length === TOURNAMENT_PIN_LENGTH &&
+			trimmed.startsWith(TOURNAMENT_PIN_PREFIX) &&
+			[...body].every((character) =>
+				TOURNAMENT_PIN_ALPHABET.includes(character),
+			);
+		if (!isValid) {
+			setError(
+				`Enter a ${TOURNAMENT_PIN_LENGTH}-character PIN beginning with ${TOURNAMENT_PIN_PREFIX}.`,
+			);
 			return;
 		}
 		void run(() => tournamentApi.joinByPin(trimmed));
@@ -256,10 +274,21 @@ export function TournamentLobbyModal({
 						<div style={{ display: "flex", gap: 8 }}>
 							<input
 								value={pin}
-								onChange={(e) => setPin(e.target.value)}
-								onKeyDown={(e) => e.key === "Enter" && handleJoin()}
+								onChange={(e) =>
+									setPin(
+										e.target.value
+											.toUpperCase()
+											.replace(/[^A-Z0-9]/g, "")
+											.slice(0, TOURNAMENT_PIN_LENGTH),
+									)
+								}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" && !busy) handleJoin();
+								}}
 								placeholder="e.g. TAB2C9"
-								maxLength={8}
+								maxLength={TOURNAMENT_PIN_LENGTH}
+								autoComplete="off"
+								spellCheck={false}
 								style={pinInput}
 								aria-label="Tournament PIN"
 							/>

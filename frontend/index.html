@@ -9,6 +9,27 @@
 	</head>
 	<body>
 		<div id="root"></div>
+		<script>
+			(() => {
+				const originalInfo = console.info;
+				console.info = (...args) => {
+					if (
+						typeof args[0] === "string" &&
+						args[0].includes("Download the React DevTools")
+					) {
+						return;
+					}
+					originalInfo.apply(console, args);
+				};
+				window.addEventListener(
+					"DOMContentLoaded",
+					() => {
+						console.info = originalInfo;
+					},
+					{ once: true },
+				);
+			})();
+		</script>
 		<script type="module" src="/src/main.tsx"></script>
 	</body>
 </html>

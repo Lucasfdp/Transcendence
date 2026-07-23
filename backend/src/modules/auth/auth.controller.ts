@@ -7,6 +7,7 @@ import {
 	Get,
 	HttpCode,
 	HttpException,
+	NotFoundException,
 	Param,
 	Post,
 	Query,
@@ -281,16 +282,12 @@ export class AuthController {
 	}
 
 	// ── GET /api/auth/42 ─────────────────────────────────────────────────────────
-	// Starts the 42 OAuth flow via Passport.
+	// Public OAuth sign-in is deliberately unavailable. Authenticated users can
+	// still link a 42 identity from Profile through the protected route below.
 
 	@Get("42")
-	async fortyTwoLogin(@Res() res: Response): Promise<void> {
-		const state = await this.oauthStateService.create({
-			provider: "forty_two",
-			initiatorUserId: null,
-			returnTo: "/",
-		});
-		res.redirect(`/api/auth/42/authorise?state=${encodeURIComponent(state)}`);
+	fortyTwoLogin(): never {
+		throw new NotFoundException();
 	}
 
 	@Get("42/authorise")

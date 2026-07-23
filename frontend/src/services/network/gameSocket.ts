@@ -456,6 +456,12 @@ export function getGameSocket(): Socket {
 		path: "/ws/",
 		withCredentials: true,
 		transports: ["websocket"],
+		// Nest's development watcher briefly removes the upstream. Delay the
+		// first reconnect until that normal restart window has passed so the
+		// browser does not emit a failed WebSocket attempt.
+		reconnectionDelay: 6_000,
+		reconnectionDelayMax: 6_000,
+		randomizationFactor: 0,
 	});
 	return socket;
 }

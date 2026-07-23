@@ -140,6 +140,7 @@ describe("AppRoutes session ownership", () => {
 			await vi.advanceTimersByTimeAsync(1_000);
 		});
 		expect(await screen.findByRole("button", { name: "Open profile" })).toBeInTheDocument();
+		expect(warn).not.toHaveBeenCalled();
 		warn.mockRestore();
 		vi.useRealTimers();
 	});
