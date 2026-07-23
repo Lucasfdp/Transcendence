@@ -90,6 +90,12 @@ if [ -z "${MONITORING_DB_PASSWORD:-}" ]; then
     echo "[vault-seed] Added missing MONITORING_DB_PASSWORD to ${SEED_FILE}."
 fi
 
+if [ -z "${KLIPY_APP_KEY+x}" ]; then
+    KLIPY_APP_KEY=
+    printf 'KLIPY_APP_KEY=\n' >> "${SEED_FILE}"
+    echo "[vault-seed] Added missing KLIPY_APP_KEY to ${SEED_FILE}."
+fi
+
 ${COMPOSE} exec -T \
     -e VAULT_TOKEN="${ROOT_TOKEN}" \
     -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \

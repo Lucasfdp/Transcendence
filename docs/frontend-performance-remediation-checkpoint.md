@@ -1,7 +1,7 @@
 # Frontend Performance Remediation Checkpoint
 
-Last updated: 23 July 2026 — Phase 1 Bamboo Bash development capture
-Overall status: In progress  
+Last updated: 23 July 2026 — local Phase 1 capture complete; target capture pending
+Overall status: Phase 1 partially complete
 Source plan: [`frontend-performance-profiler-report-and-plan-2026-07-23.md`](frontend-performance-profiler-report-and-plan-2026-07-23.md)
 
 ## 1. Purpose
@@ -11,15 +11,16 @@ It must be updated in the same task as every implementation phase or partial
 phase. It records what changed, what was validated, what remains, and the exact
 next action for a future session.
 
-The diagnostic report is complete and Phase 1 implementation is in progress.
-This file and the source plan remain in `docs/` until all implementation and
-validation phases are complete.
+The diagnostic report and local Phase 1 capture are complete. The authoritative
+performance baseline on the machine where the problem was observed remains
+pending. This file and the source plan remain in `docs/` until all
+implementation and validation phases are complete.
 
 ## 2. Phase Summary
 
 | Phase | Scope | Status | Last validation | Remaining work |
 | --- | --- | --- | --- | --- |
-| 1 | Reproducible production baseline | Partially complete | Full development stack plus non-headless hub, modal, casino, Kame Knock, and Bamboo Bash counter captures | Capture the remaining development scenarios, every production scenario, and comparable profiles on the target graphics environment |
+| 1 | Reproducible production baseline | Partially complete | Local exact-viewport development and production matrices, Firefox profiles, React replay capture, lifecycle counters, graphics record, build, tests, health, and OpenAPI validation | Repeat the comparable Firefox and React baseline on the original problem machine and record its exact environment |
 | 2 | Singular replay runtime | Not started | Existing React profile exposes two viewers | Full phase |
 | 3 | Replay render optimisation | Not started | Static code and existing profiles reviewed | Full phase |
 | 4 | Typed replay capture and delta encoding | Not started | Existing GC and encoder reviewed | Full phase |
@@ -98,7 +99,8 @@ not the final production baseline required by Phase 1.
 
 ## 4. Active Phase Record
 
-Phase 1 is active.
+Phase 1 remains active. Its local implementation and capture are complete, but
+the target-machine performance capture is still required.
 
 ### Phase attempted
 
@@ -145,83 +147,95 @@ Partially complete.
 
 ### Automated validation
 
-- Pinned runtime check — Node.js 24.18.0 and npm 11.16.0.
-- `cd frontend && npm run test:run` in the pinned Node.js 24 container — pass,
-  74 files and 416 tests.
-- `cd frontend && npm run build` in the pinned Node.js 24 container — pass,
-  241 modules transformed and the production assets emitted successfully.
-- Production bundle inspection — pass; the document contains commit
-  `7d0475a8f3ccad20322f105b08465eeb35bbed11` and no profiler global.
-- Development Compose configuration validation — pass with the injected commit
-  present in the resolved configuration.
-- Repository-wide TypeScript check — the configured command stops at the
-  pre-existing TypeScript 5.9 rejection of `ignoreDeprecations: "6.0"`. With a
-  compatible command-line override it reports the existing unrelated baseline
-  errors and no error in a Phase 1 file.
-- `git diff --check` — pass at the implementation checkpoint.
+- Exact repository and served commit:
+  `bb0cf0fc7616858ae63f88acd31c55fe9dbdee4c`.
+- Host runtime: Node.js 24.13.0 and npm 11.18.0. Pinned frontend container
+  runtime: Node.js 24.18.0 and npm 11.16.0.
+- `cd frontend && npm run build` — pass, with 241 modules transformed and all
+  production assets emitted.
+- `cd frontend && npm run test:run` — pass, 74 files and 416 tests.
+- `make health` — pass, all 13 services healthy in development mode.
+- `make validate-openapi` — pass, 97 paths and 108 operations.
+- The production document exposed the exact commit and did not expose
+  `window.__SHELL_SMASH_PERFORMANCE__`.
+- `git diff --check` — pass.
 
 ### Manual and profiler validation
 
-- A Node.js 24 Vite development server was loaded in Firefox 152.0.6 headless.
-  The document and profiler both reported the expected base commit, and all six
-  resource counters started at zero on the unauthenticated route.
-- Firefox `about:support` was captured through WebDriver. The graphics fields
-  are recorded in the environment preflight above.
-- The complete development stack was built and started through `make dev`; all
-  13 services became healthy and the HTTPS document exposed the expected
-  served-commit marker.
-- An authenticated, non-headless Firefox idle-hub capture remained visible for
-  66.8 seconds. Every live, created, and peak lifecycle counter remained zero,
-  and the DOM contained no canvas.
-- The same session held the opaque Shell Cards modal open for 71.6 seconds.
-  Every lifecycle counter again remained zero, and the DOM contained no canvas.
-- A complete Fortune Wheel wager animated for 4.319 seconds and was followed by
-  ten seconds idle. The result and balance settled correctly, every lifecycle
-  counter remained zero, and the DOM contained no canvas.
-- A complete Shell Drop wager animated for 5.035 seconds and was followed by
-  ten seconds idle. The result and balance settled correctly, every lifecycle
-  counter remained zero, and the expected canvas 2D board remained mounted.
-- Kame Knock ran for 30 seconds idle and approximately 60 seconds under pointer
-  input with exactly one Phaser game and one canvas. Returning to the hub
-  released both live resources and removed the canvas from the DOM.
-- Bamboo Bash ran for 30.000 seconds idle and 60.324 seconds under automated
-  pointer input at 1440 x 900. It retained exactly one Phaser game and one
-  canvas, created no replay resources, and released both live resources on the
-  SPA return to the hub while retaining `created=1` and `peak=1` evidence.
-- The clean page load accumulated six `auth/me` resource entries before the
-  idle capture ended. This is baseline evidence for Phase 8, not an isolated
-  request count for the 60-second window.
+- Firefox ESR 140.11.0 ran non-headless under X11 at exactly 1440 x 900 CSS
+  pixels and device pixel ratio 1. `about:support` reported WebRender and an
+  AMD Radeon 610M through `radeonsi` for WebGL 1 and WebGL 2.
+- The complete fixed matrix passed in both development and production: idle
+  hub, opaque Shell Cards modal, Fortune Wheel, Shell Drop, Kame Knock, Bamboo
+  Bash, Temple Curling, Bell Clash, five route round trips, inline replay,
+  expanded replay, and replay teardown. Each matrix contains 16 records.
+- Both matrices reported zero browser errors, zero unhandled rejections, and
+  zero failed resources.
+- Every Phaser game retained one game and one canvas while active, and no game
+  canvas remained after returning to the hub. All five route round trips
+  returned to zero live resources.
+- Inline replay retained one of each tracked replay resource. Expanded replay
+  retained two games, controllers, scenes, canvases, RAF loops, and resize
+  observers. Closing replay returned every live count to zero. This is the
+  reproducible defect baseline for Phase 2.
+- The local comparison Firefox captures used a 1 ms interval with JS, CPU,
+  memory, stack walking, responsiveness, and screenshots enabled. Production
+  recorded 134.29 seconds; development recorded 136.57 seconds.
+- Production CPU totals were 7.31 seconds on Renderer, 4.44 seconds on
+  CanvasRenderer, 2.07 seconds on Compositor, and 21.53 seconds across content
+  Gecko main threads. Development recorded 5.99, 4.10, 1.71, and 21.55 seconds
+  respectively.
+- Production recorded 1,095 minor collections and 42 major collections.
+  Development recorded 1,340 minor collections and 54 major collections.
+- The React replay window covered inline and expanded playback for 22.83
+  seconds: 354 `HomeMenu` commits, 1,506 ms total render duration, 4.25 ms
+  mean, 8 ms p95, 24 ms maximum, one commit over 16 ms, and 151 adjacent commit
+  intervals of 16 ms or less.
+- Raw development and production matrices, screenshots, Firefox profiles,
+  React commit data, and `about:support` data are retained under
+  `/tmp/phase1-results/`. The matrix SHA-256 values are
+  `8603764fc753b824da0789e46497fe2b67b52c5b367db4c9ad9e5113ffe591a1`
+  and
+  `376519f3b0d46727bea9581fc50ce62f2ef9c9e2caed73395f37ee4220e1c20a`;
+  the Firefox profile values are
+  `8d94f5d2e9c92eb20c637af343fa5438b5513e1501d1d77b68bec8f76243c742`
+  and
+  `db9110c83203d5608b1983db42897a10ebe0ea589a19032fec5b56bfffa4f250`.
 
 ### Known limitations
 
 - The configured public deployment remains unreachable, so its historical
   commit is unknown. Future builds expose the commit in the
   `shell-smash-commit` meta element.
-- The earlier headless and non-headless captures are software-rendered. The
-  Bamboo Bash capture used an AMD Radeon 610M, but comparable profiles on the
-  target Radeon 780M machine remain open.
-- The earlier hub, modal, casino, and Kame Knock captures used a 1440 x 893
-  viewport. Bamboo Bash used the required 1440 x 900 viewport, but the earlier
-  scenarios still require a comparable repeat on the target machine.
-- Development captures after Bamboo Bash and every production capture
-  remain open.
-- Authenticated counter values for inline and expanded replay have not yet been
-  observed; the expected values below are assertions for the capture, not
-  results.
+- The current Radeon 610M machine is not the machine where the performance
+  problem was observed. Its captures validate the scenario automation,
+  lifecycle ownership, and local behaviour only; they are not the
+  authoritative graphics or CPU baseline.
+- The original diagnostic capture reported a Radeon 780M and software-renderer
+  activity. A clean baseline must be repeated on that original problem machine
+  with its exact Firefox `about:support` configuration. The post-remediation
+  comparison must then use that same machine, browser configuration, viewport,
+  and scripted sequence.
+- Startup and browser-shutdown activity remains in both comparable Firefox
+  captures. Later phase comparisons must use the same scripted sequence and
+  capture procedure.
 
 ### Work remaining in this phase
 
-Record the remaining development and production scenario matrix with the exact
-viewport and target non-headless Firefox graphics configuration. Record the
-development counter snapshots and the production, React, and Firefox profile
-metrics in this checkpoint. Repeat the two hub scenarios on the target machine
-because their local evidence uses software rendering and a 1440 x 893 viewport.
+Run the fixed development and production comparison capture on the original
+problem machine. Record its exact commit, Node.js and npm versions, Firefox
+version, operating system, CPU, `about:support` Compositing, WebRender, WebGL 1
+and WebGL 2 fields, viewport, device pixel ratio, Firefox profile metrics, and
+React replay metrics. Preserve the raw profiles and checksums, then designate
+that capture as the authoritative Phase 1 performance baseline.
 
 ### Exact next action
 
-Using the current `make dev` stack and `perfbaseline` account, capture Temple
-Curling for 30 seconds idle plus 60 seconds active, then return to the hub and
-record its lifecycle counters before and after navigation.
+On the original problem machine, check out exact commit
+`bb0cf0fc7616858ae63f88acd31c55fe9dbdee4c`, start the stack through the
+Makefile, capture Firefox `about:support`, and run the same development and
+production profiling sequence at 1440 x 900 and device pixel ratio 1. Do not
+start Phase 2 until that target-machine baseline has been recorded.
 
 ## 5. Checkpoint 2026-07-23 — Post-Pull Plan Compatibility Review
 

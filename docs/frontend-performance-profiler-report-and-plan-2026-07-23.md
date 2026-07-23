@@ -427,20 +427,28 @@ This phase must not be skipped. The current evidence is strong enough to order
 work, but browser-wide renderer numbers require an isolated baseline for fair
 before/after comparisons.
 
-Implementation checkpoint, 23 July 2026: the Node.js 24 execution path,
-served-commit marker, development-only lifecycle counters, and fixed scenario
-protocol are implemented. The Docker data root has since been relocated to a
-volume with sufficient space, the complete development stack builds and becomes
-healthy, and the non-headless idle-hub and opaque-modal lifecycle captures pass.
-Complete Fortune Wheel and Shell Drop animations plus idle captures also pass
-their lifecycle assertions. Kame Knock also retains one game and canvas during
-idle and active input, then releases both on return to the hub. Bamboo Bash now
-passes the same ownership assertions over 30 seconds idle and 60 seconds active
-at the exact 1440 x 900 viewport, with no replay resources and complete release
-on return to the hub. Temple Curling, Bell Clash, replay scenarios, route-round
-trips, every production capture, and comparable profiles on the target graphics
-environment remain pending. See the live checkpoint for the recorded evidence
-and exact continuation action.
+Local capture checkpoint, 23 July 2026: the Phase 1 instrumentation, scenario
+automation, and local capture are complete against exact commit
+`bb0cf0fc7616858ae63f88acd31c55fe9dbdee4c`. The fixed 16-record matrix passed
+in development and production at 1440 x 900 CSS pixels and device pixel ratio
+1, covering the hub, opaque modal, casino interactions, every local game, five
+route round trips, inline replay, expanded replay, and teardown. Both matrices
+reported zero browser errors, unhandled rejections, and failed resources.
+Firefox captures were recorded at a 1 ms interval with CPU, memory, JS,
+responsiveness, stack walking, and screenshots enabled. The authenticated React
+replay capture and development counters reproduce the Phase 2 defect: expansion
+retains two complete replay runtimes and drives 354 `HomeMenu` commits over
+22.83 seconds.
+
+This local capture used X11, WebRender, and an AMD Radeon 610M. It validates the
+procedure, lifecycle ownership, and local behaviour, but it is not the
+authoritative performance baseline because this is not the machine where the
+problem was observed. Phase 1 remains partially complete until the same clean
+development and production capture is repeated on the original problem machine
+that reported the Radeon 780M and software-renderer activity. Before and after
+performance totals must use that same target machine and browser configuration.
+See the live checkpoint for the local evidence, checksums, and exact
+continuation action.
 
 ### Phase 2 — Make Replay Runtime Singular
 
