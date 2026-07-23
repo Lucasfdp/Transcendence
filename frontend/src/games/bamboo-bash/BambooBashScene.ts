@@ -478,8 +478,19 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 			this.online.init();
 			this.online.createStatusText();
 			if (this.online.snapshot?.phase === "active") {
-				if (this.online.hasMovingProjection) this.online.resumeOnlinePlay();
-				else this.online.startOnlineCountdown();
+				// A rejoin (F5 / reconnect) lands mid-round: resume straight
+				// away on the server's real remaining time. Replaying the
+				// "3, 2, 1, GO!" intro here would freeze a fake full-length
+				// ROUND_MS on the HUD and then snap it to 0 the instant "GO!"
+				// synced the true deadline. Only a genuine fresh start counts
+				// down.
+				if (this.online.hasMovingProjection || this.online.isRejoining) {
+					this.syncOnlineTimeLeft();
+					this.updateHudText();
+					this.online.resumeOnlinePlay();
+				} else {
+					this.online.startOnlineCountdown();
+				}
 			}
 		} else {
 			this.localReplay.startCapture();
@@ -595,7 +606,17 @@ export class BambooBashScene extends ResponsiveScene implements BambooBashOnline
 		if (!this.running) {
 			// A rejoining client may still be in its UI countdown while the server
 			// has an active trajectory. Keep rendering the authoritative projection.
-			if (this.online.isActive) this.online.update(delta);
+			if (this.online.isActive) {
+				// Keep the HUD clock honest while play is HELD (a between-round
+				// "3, 2, 1, GO!"): the server deadline keeps ticking, so mirror
+				// it here instead of leaving a stale number frozen on screen.
+				if (this.syncOnlineTimeLeft()) {
+					const heldLabel = this.formatTime();
+					if (this.timerText.text !== heldLabel)
+						this.timerText.setText(heldLabel);
+				}
+				this.online.update(delta);
+			}
 			return;
 		}
 

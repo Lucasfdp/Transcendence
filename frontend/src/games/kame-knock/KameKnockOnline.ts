@@ -124,6 +124,8 @@ export class KameKnockOnlineController {
 	private readonly projectionTimeline = new AuthoritativeProjectionTimeline();
 	private latestPhysicsState: KameKnockPhysicsState | null = null;
 	private rejoinPhysicsTimer: ReturnType<typeof setInterval> | null = null;
+	/** Guards the end screen so a re-delivered terminal frame shows it once. */
+	private endShown = false;
 	private targetsSignature = "";
 	private pickupsSignature = "";
 	private scoreSignature = "";
@@ -226,6 +228,7 @@ export class KameKnockOnlineController {
 		this.physicsTurn = -1;
 		this.physicsMoving = false;
 		this.appliedRound = -1;
+		this.endShown = false;
 	}
 
 	/** Register socket listeners for the live match. */
@@ -234,9 +237,11 @@ export class KameKnockOnlineController {
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
 		socket.off("game:physics-state", this.handlePhysicsState);
+		socket.off("connect", this.handleReconnect);
 		socket.on("game:state", this.handleState);
 		socket.on("game:end", this.handleState);
 		socket.on("game:physics-state", this.handlePhysicsState);
+		socket.on("connect", this.handleReconnect);
 		this.updateStatus("Connected to Kame Knock match.");
 		if (this.match?.physicsState)
 			this.applyPhysicsState(this.match.physicsState as KameKnockPhysicsState);
@@ -251,6 +256,7 @@ export class KameKnockOnlineController {
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
 		socket.off("game:physics-state", this.handlePhysicsState);
+		socket.off("connect", this.handleReconnect);
 		this.statusText?.destroy();
 		this.statusText = null;
 		if (this.rejoinPhysicsTimer) clearInterval(this.rejoinPhysicsTimer);
@@ -264,6 +270,21 @@ export class KameKnockOnlineController {
 	}
 
 	// ── Socket handlers ──────────────────────────────────────────────────────────
+
+	/**
+	 * After a socket reconnect our new socket id is NOT in the match room, so
+	 * the server's room-scoped game:state / game:end broadcasts — including the
+	 * frame that ends the round — never reach us, stranding the player on the
+	 * finished minigame. `match:rejoin` rebinds the seat and re-emits the
+	 * current authoritative state, which drives the end screen if the round
+	 * ended while we were briefly away.
+	 */
+	private readonly handleReconnect = (): void => {
+		if (!this.match || this.endShown) return;
+		const phase = this.snapshot?.phase;
+		if (phase === "finished" || phase === "abandoned") return;
+		getGameSocket().emit("match:rejoin");
+	};
 
 	private readonly handleState = (snapshot: GameSnapshot): void => {
 		if (isKameKnockSnapshot(snapshot)) this.applyOnlineSnapshot(snapshot);
@@ -306,12 +327,22 @@ export class KameKnockOnlineController {
 		snapshot: KameKnockSnapshot,
 		initial = false,
 	): void {
-		if (
-			!this.match ||
-			snapshot.matchId !== this.match.matchId ||
-			snapshot.seq <= this.lastSeq
-		)
+		if (!this.match || snapshot.matchId !== this.match.matchId) return;
+		if (snapshot.seq <= this.lastSeq) {
+			// A stale/duplicate frame is normally ignored — EXCEPT a terminal one.
+			// The end screen is the only path off a finished minigame, so if a
+			// re-delivered "finished"/"abandoned" frame (e.g. a reconnect replay)
+			// carries a seq we have already seen, still show it once rather than
+			// leave the player stranded on a match that is already over.
+			if (
+				!this.endShown &&
+				(snapshot.phase === "finished" || snapshot.phase === "abandoned")
+			) {
+				this.endShown = true;
+				this.scene.showOnlineEndScreen(snapshot);
+			}
 			return;
+		}
 		this.lastSeq = snapshot.seq;
 		this.match.snapshot = snapshot;
 		// Lifecycle snapshots clear transient client flags after an authoritative
@@ -338,6 +369,7 @@ export class KameKnockOnlineController {
 		this.scene.updateSidePanels();
 
 		if (snapshot.phase === "finished" || snapshot.phase === "abandoned") {
+			this.endShown = true;
 			this.scene.showOnlineEndScreen(snapshot);
 			return;
 		}

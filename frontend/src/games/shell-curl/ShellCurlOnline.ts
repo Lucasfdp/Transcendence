@@ -115,6 +115,8 @@ export class ShellCurlOnlineController {
 	private releasePending = false;
 	private lastImpactEventId = 0;
 	private appliedEnd = -1;
+	/** Guards the end screen so a re-delivered terminal frame shows it once. */
+	private endShown = false;
 
 	constructor(scene: Phaser.Scene & ShellCurlOnlineScene) {
 		this.scene = scene;
@@ -146,6 +148,7 @@ export class ShellCurlOnlineController {
 		this.releasePending = false;
 		this.lastImpactEventId = 0;
 		this.appliedEnd = -1;
+		this.endShown = false;
 		this.projected.clear();
 		return this.isActive;
 	}
@@ -156,9 +159,11 @@ export class ShellCurlOnlineController {
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
 		socket.off("game:physics-state", this.handlePhysics);
+		socket.off("connect", this.handleReconnect);
 		socket.on("game:state", this.handleState);
 		socket.on("game:end", this.handleState);
 		socket.on("game:physics-state", this.handlePhysics);
+		socket.on("connect", this.handleReconnect);
 		if (this.match.physicsState)
 			this.applyPhysicsState(
 				this.match.physicsState as ShellCurlPhysicsState,
@@ -182,6 +187,7 @@ export class ShellCurlOnlineController {
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
 		socket.off("game:physics-state", this.handlePhysics);
+		socket.off("connect", this.handleReconnect);
 		if (this.rejoinTimer) clearInterval(this.rejoinTimer);
 		this.rejoinTimer = null;
 		this.statusText?.destroy();
@@ -280,6 +286,21 @@ export class ShellCurlOnlineController {
 		this.scene.redrawAllBalls();
 	}
 
+	/**
+	 * After a socket reconnect our new socket id is NOT in the match room, so
+	 * the server's room-scoped game:state / game:end broadcasts — including the
+	 * frame that ends the match — never reach us, stranding the player on the
+	 * finished minigame. `match:rejoin` rebinds the seat and re-emits the
+	 * current authoritative state, which drives the end screen if the match
+	 * ended while we were briefly away.
+	 */
+	private readonly handleReconnect = (): void => {
+		if (!this.match || this.endShown) return;
+		const phase = this.snapshot?.phase;
+		if (phase === "finished" || phase === "abandoned") return;
+		getGameSocket().emit("match:rejoin");
+	};
+
 	private readonly handleState = (snapshot: GameSnapshot): void => {
 		if (isShellCurlSnapshot(snapshot)) this.applySnapshot(snapshot);
 	};
@@ -287,12 +308,22 @@ export class ShellCurlOnlineController {
 		this.applyPhysicsState(state);
 
 	private applySnapshot(snapshot: CurlingSnapshot): void {
-		if (
-			!this.match ||
-			snapshot.matchId !== this.match.matchId ||
-			snapshot.seq < this.lastSeq
-		)
+		if (!this.match || snapshot.matchId !== this.match.matchId) return;
+		if (snapshot.seq < this.lastSeq) {
+			// A stale frame is normally ignored — EXCEPT a terminal one. The end
+			// screen is the only path off a finished minigame, so if a
+			// re-delivered "finished"/"abandoned" frame (e.g. a reconnect replay)
+			// carries an older seq, still show it once rather than leave the
+			// player stranded on a match that is already over.
+			if (
+				!this.endShown &&
+				(snapshot.phase === "finished" || snapshot.phase === "abandoned")
+			) {
+				this.endShown = true;
+				this.showEndScreen(snapshot);
+			}
 			return;
+		}
 		this.lastSeq = snapshot.seq;
 		this.match.snapshot = snapshot;
 		this.scene.buildBumpers();
@@ -325,6 +356,7 @@ export class ShellCurlOnlineController {
 		this.scene.syncOnlineUsedPowers(snapshot.usedPowersBySide);
 		if (!this.projected.size) this.renderSnapshotObjects(snapshot);
 		if (snapshot.phase === "finished" || snapshot.phase === "abandoned") {
+			this.endShown = true;
 			this.scene.discardOnlineAimBall();
 			this.showEndScreen(snapshot);
 			return;
