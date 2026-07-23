@@ -1,13 +1,11 @@
 import Phaser from "phaser";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReplayDetail } from "../../../features/hub/api";
 import { trackFrontendPerformanceResource } from "../../../shared/frontend-performance-profiler";
 import { displayUsername } from "../../../shared/player-labels";
-import {
-	ReplayController,
-	replayPlaybackDuration,
-} from "../ReplayController";
+import { replayPlaybackDuration } from "../ReplayController";
 import { ReplayScene } from "../ReplayScene";
+import { ReplaySession, type ReplaySessionCommands } from "./ReplaySession";
 
 const GAME_LABELS: Record<string, string> = {
 	"temple-curling": "Temple Curling",
@@ -18,44 +16,47 @@ const GAME_LABELS: Record<string, string> = {
 
 export interface ReplayViewerProps {
 	replay: ReplayDetail;
-	selectedReplayFrame: number;
-	replayFrameProgress: number;
-	isReplayPlaying: boolean;
-	onSelectedReplayFrameChange: (value: number) => void;
-	onReplayFrameProgressChange: (value: number) => void;
-	onIsReplayPlayingChange: (
+	/** @deprecated Playback state is now owned by the replay session. */
+	selectedReplayFrame?: number;
+	/** @deprecated Playback state is now owned by the replay session. */
+	replayFrameProgress?: number;
+	/** @deprecated Playback state is now owned by the replay session. */
+	isReplayPlaying?: boolean;
+	/** @deprecated Playback state is no longer published to page ownership. */
+	onSelectedReplayFrameChange?: (value: number) => void;
+	/** @deprecated Playback state is no longer published to page ownership. */
+	onReplayFrameProgressChange?: (value: number) => void;
+	/** @deprecated Playback state is no longer published to page ownership. */
+	onIsReplayPlayingChange?: (
 		value: boolean | ((current: boolean) => boolean),
 	) => void;
 	onExpand?: () => void;
 	expanded?: boolean;
+	onCommandsReady?: (commands: ReplaySessionCommands | null) => void;
 }
 
 export function ReplayViewer({
 	replay,
-	selectedReplayFrame,
-	replayFrameProgress,
-	isReplayPlaying,
-	onSelectedReplayFrameChange,
-	onReplayFrameProgressChange,
-	onIsReplayPlayingChange,
 	onExpand,
 	expanded = false,
+	onCommandsReady,
 }: ReplayViewerProps): JSX.Element {
 	const hostRef = useRef<HTMLDivElement | null>(null);
-	const controllerRef = useRef<ReplayController | null>(null);
+	const sessionRef = useRef<ReplaySession | null>(null);
+	const onCommandsReadyRef = useRef(onCommandsReady);
+	onCommandsReadyRef.current = onCommandsReady;
 	const replayTooLong = replay.metadata.statistics.replayTooLong === true;
 	const durationMs = replayPlaybackDuration(replay);
+	const [playback, setPlayback] = useState(() => ({
+		frameIndex: 0,
+		progress: 0,
+		playing: false,
+		timeMs: 0,
+		frame: null as ReturnType<ReplaySession["getState"]>["frame"],
+	}));
 	const frame =
-		replay.frames[selectedReplayFrame] ?? replay.frames[0] ?? null;
-	const timeMs = Math.min(
-		durationMs,
-		frame
-			? frame.tMs +
-				((replay.frames[selectedReplayFrame + 1]?.tMs ?? frame.tMs) -
-					frame.tMs) *
-					replayFrameProgress
-			: 0,
-	);
+		replay.frames[playback.frameIndex] ?? replay.frames[0] ?? null;
+	const timeMs = Math.min(durationMs, playback.timeMs);
 
 	useEffect(() => {
 		const host = hostRef.current;
@@ -63,13 +64,19 @@ export function ReplayViewer({
 		const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
 		const initialWidth = host.clientWidth || 720;
 		const initialHeight = host.clientHeight || 720;
-		const controller = new ReplayController(replay);
-		controllerRef.current = controller;
-		const unsubscribe = controller.subscribe((state) => {
-			onSelectedReplayFrameChange(state.frameIndex);
-			onReplayFrameProgressChange(state.progress);
-			onIsReplayPlayingChange(state.playing);
+		const session = new ReplaySession(replay);
+		sessionRef.current = session;
+		onCommandsReadyRef.current?.(session);
+		const unsubscribe = session.subscribe((state) => {
+			setPlayback({
+				frameIndex: state.frameIndex,
+				progress: state.progress,
+				playing: state.playing,
+				timeMs: state.timeMs,
+				frame: state.frame,
+			});
 		});
+		setPlayback(session.getState());
 		const game = new Phaser.Game({
 			type: Phaser.AUTO,
 			banner: false,
@@ -94,13 +101,10 @@ export function ReplayViewer({
 			releaseCanvas();
 			releaseGame();
 		};
-		game.events.once(
-			Phaser.Core.Events.DESTROY,
-			releasePhaserResources,
-		);
+		game.events.once(Phaser.Core.Events.DESTROY, releasePhaserResources);
 		game.scene.add("ReplayScene", new ReplayScene(), true, {
 			replay,
-			controller,
+			controller: session.controller,
 			autoAdvance: false,
 		});
 		const resizeGame = (width: number, height: number) => {
@@ -117,70 +121,23 @@ export function ReplayViewer({
 			if (bounds && bounds.width > 0 && bounds.height > 0)
 				resizeGame(bounds.width, bounds.height);
 		});
-		const releaseResizeObserver = trackFrontendPerformanceResource(
-			"resizeObservers",
-		);
+		const releaseResizeObserver =
+			trackFrontendPerformanceResource("resizeObservers");
 		observer.observe(host);
 		return () => {
 			unsubscribe();
 			observer.disconnect();
 			releaseResizeObserver();
-			controllerRef.current = null;
+			onCommandsReadyRef.current?.(null);
+			sessionRef.current = null;
 			game.destroy(true);
 			releasePhaserResources();
-			controller.destroy();
+			session.destroy();
 			host.replaceChildren();
 		};
-	}, [
-		replay,
-		onIsReplayPlayingChange,
-		onReplayFrameProgressChange,
-		onSelectedReplayFrameChange,
-		replayTooLong,
-	]);
+	}, [replay, replayTooLong]);
 
-	useEffect(() => {
-		const controller = controllerRef.current;
-		if (!controller) return;
-		const current = controller.getState();
-		if (current.playing && isReplayPlaying) return;
-		if (current.playing && !isReplayPlaying) {
-			controller.setPlaying(false);
-			return;
-		}
-		controller.setPlayback(
-			selectedReplayFrame,
-			replayFrameProgress,
-			isReplayPlaying,
-		);
-	}, [isReplayPlaying, replayFrameProgress, selectedReplayFrame]);
-
-	useEffect(() => {
-		if (replayTooLong && isReplayPlaying)
-			onIsReplayPlayingChange(false);
-	}, [isReplayPlaying, onIsReplayPlayingChange, replayTooLong]);
-
-	useEffect(() => {
-		if (!isReplayPlaying || replayTooLong) return;
-		const releaseAnimationFrameLoop = trackFrontendPerformanceResource(
-			"animationFrameLoops",
-		);
-		let animationFrame = 0;
-		let lastTime = 0;
-		const tick = (now: number) => {
-			if (lastTime)
-				controllerRef.current?.update(Math.max(0, now - lastTime));
-			lastTime = now;
-			animationFrame = window.requestAnimationFrame(tick);
-		};
-		animationFrame = window.requestAnimationFrame(tick);
-		return () => {
-			window.cancelAnimationFrame(animationFrame);
-			releaseAnimationFrameLoop();
-		};
-	}, [isReplayPlaying, replay.matchId, replayTooLong]);
-
-	const resolvedSnapshot = controllerRef.current?.getState().frame?.snapshot;
+	const resolvedSnapshot = playback.frame?.snapshot;
 	return (
 		<>
 			<p className="hub-modal__replay-meta">
@@ -199,24 +156,22 @@ export function ReplayViewer({
 					<div className="hub-modal__replay-toolbar">
 						<button
 							type="button"
-							onClick={() =>
-								onIsReplayPlayingChange((value) => !value)
-							}
+							onClick={() => sessionRef.current?.toggle()}
 						>
-							{isReplayPlaying ? "Pause" : "Play"}
+							{playback.playing ? "Pause" : "Play"}
 						</button>
 						<button
 							type="button"
-							onClick={() => controllerRef.current?.seekTime(0)}
+							onClick={() => sessionRef.current?.reset()}
 						>
 							Reset
 						</button>
 						<button
 							type="button"
-							disabled={selectedReplayFrame <= 0}
+							disabled={playback.frameIndex <= 0}
 							onClick={() =>
-								controllerRef.current?.seek(
-									selectedReplayFrame - 1,
+								sessionRef.current?.seek(
+									playback.frameIndex - 1,
 								)
 							}
 						>
@@ -225,11 +180,11 @@ export function ReplayViewer({
 						<button
 							type="button"
 							disabled={
-								selectedReplayFrame >= replay.frames.length - 1
+								playback.frameIndex >= replay.frames.length - 1
 							}
 							onClick={() =>
-								controllerRef.current?.seek(
-									selectedReplayFrame + 1,
+								sessionRef.current?.seek(
+									playback.frameIndex + 1,
 								)
 							}
 						>
@@ -255,7 +210,7 @@ export function ReplayViewer({
 						step="50"
 						value={timeMs}
 						onChange={(event) =>
-							controllerRef.current?.seekTime(
+							sessionRef.current?.seekTime(
 								Number(event.target.value),
 							)
 						}
@@ -277,9 +232,9 @@ export function ReplayViewer({
 													key={`replay-score-${index}`}
 												>
 													{displayUsername(
-														replay.metadata.participants[
-															index
-														]?.username,
+														replay.metadata
+															.participants[index]
+															?.username,
 													) || `P${index + 1}`}
 													: {score}
 												</span>

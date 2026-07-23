@@ -51,7 +51,11 @@ import {
 	lerpNumber,
 	simulateReplayProjectile,
 } from "../../shared/mechanics/physics";
-import { ReplayController, type ResolvedReplayFrame } from "./ReplayController";
+import {
+	ReplayController,
+	type ReplayControllerState,
+	type ResolvedReplayFrame,
+} from "./ReplayController";
 import {
 	REPLAY_BACKGROUND_TEXTURES,
 	resolveActiveReplayBackground,
@@ -160,6 +164,7 @@ export class ReplayScene extends ResponsiveScene {
 	private arenaSkin!: Phaser.GameObjects.Image;
 	private bellImage: Phaser.GameObjects.Image | null = null;
 	private bellZoneGfx!: Phaser.GameObjects.Graphics;
+	private staticContentGfx!: Phaser.GameObjects.Graphics;
 	private trailGfx!: Phaser.GameObjects.Graphics;
 	private overlayGfx!: Phaser.GameObjects.Graphics;
 	private actorGfx!: Phaser.GameObjects.Graphics;
@@ -175,6 +180,29 @@ export class ReplayScene extends ResponsiveScene {
 	private visibleBallKeys = new Set<string>();
 	private currentBackgroundId: string | null = null;
 	private lastActiveReplaySide: number | null = null;
+	private staticContentKey: string | null = null;
+	private readonly participantTrailBySide = new Map<number, string>();
+	private readonly participantShellBySide = new Map<number, string>();
+	private participantShells: string[] = [];
+	private readonly trailPointsByActor = new Map<
+		number | string,
+		ReplayTrailPoint[]
+	>();
+	private readonly trailSideByActor = new Map<number | string, number>();
+	private readonly trailEffectByActor = new Map<number | string, string>();
+	private readonly currentReplayBalls: ReplayBallWithKey[] = [];
+	private readonly nextReplayBalls: ReplayBallWithKey[] = [];
+	private readonly nextReplayBallByKey = new Map<string, ReplayBallWithKey>();
+	private readonly projectileStates: ProjectileRenderState[] = [];
+	private readonly latestEventBySide = new Map<number, ReplayEvent>();
+	private readonly currentCurlingBalls: ReplayCurlingBallWithKey[] = [];
+	private readonly nextCurlingBalls: ReplayCurlingBallWithKey[] = [];
+	private readonly nextCurlingBallById = new Map<
+		number,
+		ReplayCurlingBallWithKey
+	>();
+	private readonly curlingBallStates: BallRenderState[] = [];
+	private readonly activeCurlingBallStates: BallRenderState[] = [];
 
 	constructor() {
 		super({ key: "ReplayScene" });
@@ -188,6 +216,21 @@ export class ReplayScene extends ResponsiveScene {
 			(data.replay ? new ReplayController(data.replay) : null);
 		this.autoAdvance = data.autoAdvance ?? true;
 		this.needsRender = true;
+		this.participantTrailBySide.clear();
+		this.participantShellBySide.clear();
+		this.participantShells = [];
+		for (const participant of data.replay.metadata.participants) {
+			this.participantTrailBySide.set(
+				participant.side,
+				participant.trailEffect ?? "trail_classic",
+			);
+			this.participantShellBySide.set(
+				participant.side,
+				participant.shellSkin ?? "",
+			);
+			this.participantShells[participant.side] =
+				participant.shellSkin ?? "";
+		}
 	}
 
 	preload(): void {
@@ -217,6 +260,7 @@ export class ReplayScene extends ResponsiveScene {
 		this.gameBackgroundGfx = this.add.graphics().setDepth(DEPTH_BG + 0.05);
 		this.arenaGfx = this.add.graphics().setDepth(DEPTH_ARENA);
 		this.bellZoneGfx = this.add.graphics().setDepth(DEPTH_ARENA);
+		this.staticContentGfx = this.add.graphics().setDepth(DEPTH_DECOR);
 		this.arenaSkin = this.add
 			.image(0, 0, OVAL_ARENA_SKIN.key)
 			.setDepth(DEPTH_BG + 0.1)
@@ -226,9 +270,9 @@ export class ReplayScene extends ResponsiveScene {
 		this.overlayGfx = this.add.graphics().setDepth(DEPTH_OVERLAY);
 		this.resolveLayout();
 		if (this.replay?.gameId === "bell-clash" && this.arena) {
-			this.bellImage = createBellClashBell(this, this.arena).setVisible(
-				false,
-			).setDepth(DEPTH_DECOR);
+			this.bellImage = createBellClashBell(this, this.arena)
+				.setVisible(false)
+				.setDepth(DEPTH_DECOR);
 		}
 
 		if (this.controller) {
@@ -244,9 +288,10 @@ export class ReplayScene extends ResponsiveScene {
 
 	update(_time: number, delta: number): void {
 		if (this.autoAdvance) this.controller?.update(delta);
-		if (this.controller?.getState().playing) this.needsRender = true;
+		const playback = this.controller?.getState() ?? null;
+		if (playback?.playing) this.needsRender = true;
 		if (!this.needsRender) return;
-		this.renderCurrentState();
+		this.renderCurrentState(playback);
 	}
 
 	protected relayout(): void {
@@ -268,6 +313,9 @@ export class ReplayScene extends ResponsiveScene {
 		this.objectImages.clear();
 		for (const gfx of this.ballGraphics.values()) gfx.destroy();
 		this.ballGraphics.clear();
+		this.participantTrailBySide.clear();
+		this.participantShellBySide.clear();
+		this.participantShells = [];
 		this.bellImage?.destroy();
 		this.bellImage = null;
 	}
@@ -299,10 +347,12 @@ export class ReplayScene extends ResponsiveScene {
 	private renderStatic(): void {
 		this.clearBackgroundObjects();
 		this.currentBackgroundId = null;
+		this.staticContentKey = null;
 		this.backgroundGfx.clear();
 		this.gameBackgroundGfx.clear();
 		this.arenaGfx.clear();
 		this.bellZoneGfx.clear();
+		this.staticContentGfx.clear();
 		this.trailGfx.clear();
 		this.actorGfx.clear();
 		this.overlayGfx.clear();
@@ -359,7 +409,10 @@ export class ReplayScene extends ResponsiveScene {
 		this.arenaSkin.setVisible(true);
 	}
 
-	private renderCurrentState(): void {
+	private renderCurrentState(
+		playback: ReplayControllerState | null = this.controller?.getState() ??
+			null,
+	): void {
 		this.needsRender = false;
 		this.actorGfx.clear();
 		this.trailGfx.clear();
@@ -376,8 +429,7 @@ export class ReplayScene extends ResponsiveScene {
 			return;
 		}
 
-		const playback = this.controller.getState();
-		if (!playback.frame) return;
+		if (!playback?.frame) return;
 		this.renderReplayBackground(playback.frame);
 
 		switch (this.replay.gameId) {
@@ -400,6 +452,7 @@ export class ReplayScene extends ResponsiveScene {
 					playback.frame,
 					playback.nextFrame,
 					playback.progress,
+					playback.timeMs,
 				);
 				break;
 			case "bell-clash":
@@ -428,24 +481,28 @@ export class ReplayScene extends ResponsiveScene {
 
 		const snapshot = frame.snapshot as unknown as CurlingSnapshot;
 		const nextSnapshot = nextFrame?.snapshot as unknown as
-			| CurlingSnapshot
-			| undefined;
+			CurlingSnapshot | undefined;
 
 		this.drawCurlingBumpers(snapshot);
 
-		const rendered = new Map<number, BallRenderState>();
-		const nextBalls = normalizeReplayCurlingBalls(
-			nextSnapshot?.objects,
-			nextSnapshot?.entities,
-		);
-		for (const object of normalizeReplayCurlingBalls(
+		normalizeReplayCurlingBallsInto(
 			snapshot.objects,
 			snapshot.entities,
-		)) {
-			const nextObject =
-				nextBalls.find((candidate) => candidate.id === object.id) ??
-				null;
-			rendered.set(object.id, {
+			this.currentCurlingBalls,
+		);
+		normalizeReplayCurlingBallsInto(
+			nextSnapshot?.objects,
+			nextSnapshot?.entities,
+			this.nextCurlingBalls,
+		);
+		this.nextCurlingBallById.clear();
+		for (const ball of this.nextCurlingBalls)
+			this.nextCurlingBallById.set(ball.id, ball);
+		this.curlingBallStates.length = 0;
+		this.activeCurlingBallStates.length = 0;
+		for (const object of this.currentCurlingBalls) {
+			const nextObject = this.nextCurlingBallById.get(object.id) ?? null;
+			const renderState: BallRenderState = {
 				key: `curling-${object.id}`,
 				id: object.id,
 				side: object.side,
@@ -479,15 +536,19 @@ export class ReplayScene extends ResponsiveScene {
 						nextObject?.vx ?? object.vx ?? 0,
 						nextObject?.vy ?? object.vy ?? 0,
 					) > 0.001,
-			});
+			};
+			this.curlingBallStates.push(renderState);
+			if (renderState.active)
+				this.activeCurlingBallStates.push(renderState);
 		}
 
-		const balls = [...rendered.values()].sort((a, b) => a.id - b.id);
+		this.curlingBallStates.sort((a, b) => a.id - b.id);
 		this.drawReplayTrails(
-			balls.filter((ball) => ball.active),
+			this.activeCurlingBallStates,
 			this.curlArena.scale,
 		);
-		for (const ball of balls) this.drawCurlingBallActor(ball);
+		for (const ball of this.curlingBallStates)
+			this.drawCurlingBallActor(ball);
 	}
 
 	private renderBambooReplay(
@@ -499,8 +560,7 @@ export class ReplayScene extends ResponsiveScene {
 		progress = canInterpolateFrames(frame, nextFrame) ? progress : 0;
 		const snapshot = frame.snapshot as unknown as BambooBashSnapshot;
 		const nextSnapshot = nextFrame?.snapshot as unknown as
-			| BambooBashSnapshot
-			| undefined;
+			BambooBashSnapshot | undefined;
 
 		for (const bamboo of snapshot.bamboos ?? []) {
 			const position = {
@@ -536,17 +596,15 @@ export class ReplayScene extends ResponsiveScene {
 		frame: ResolvedReplayFrame,
 		nextFrame: ResolvedReplayFrame | null,
 		progress: number,
+		replayTimeMs: number,
 	): void {
 		if (!this.arena) return;
 		progress = canInterpolateFrames(frame, nextFrame) ? progress : 0;
 		const snapshot = frame.snapshot as unknown as KameKnockSnapshot;
 		const nextSnapshot = nextFrame?.snapshot as unknown as
-			| KameKnockSnapshot
-			| undefined;
+			KameKnockSnapshot | undefined;
 
-		for (const target of snapshot.targets ?? []) {
-			this.drawKameTarget(target);
-		}
+		this.refreshKameTargets(snapshot.targets ?? []);
 
 		const projectiles = this.buildProjectileStatesFromSnapshots(
 			"kame",
@@ -556,7 +614,6 @@ export class ReplayScene extends ResponsiveScene {
 			nextSnapshot?.entities,
 			progress,
 		);
-		const replayTimeMs = this.controller?.getState().timeMs ?? 0;
 		const fallbackProjectiles =
 			projectiles.length > 0 || !isLegacyReplayFrame(frame)
 				? []
@@ -593,8 +650,7 @@ export class ReplayScene extends ResponsiveScene {
 		progress = canInterpolateFrames(frame, nextFrame) ? progress : 0;
 		const snapshot = frame.snapshot as unknown as BellClashSnapshot;
 		const nextSnapshot = nextFrame?.snapshot as unknown as
-			| BellClashSnapshot
-			| undefined;
+			BellClashSnapshot | undefined;
 
 		this.drawBellZones(snapshot);
 		this.drawReplayBell();
@@ -617,26 +673,29 @@ export class ReplayScene extends ResponsiveScene {
 		scale: number,
 		strong = false,
 	): void {
-		const trails = new Map<number | string, ReplayTrailPoint[]>();
-		const players = new Map<number | string, number>();
-		const effects = new Map<number | string, string>();
+		this.trailPointsByActor.clear();
+		this.trailSideByActor.clear();
+		this.trailEffectByActor.clear();
 		for (const actor of actors) {
-			trails.set(actor.key, actor.trail);
-			players.set(actor.key, actor.side);
-			effects.set(
+			this.trailPointsByActor.set(actor.key, actor.trail);
+			this.trailSideByActor.set(actor.key, actor.side);
+			this.trailEffectByActor.set(
 				actor.key,
-				this.replay?.metadata.participants.find(
-					(participant) => participant.side === actor.side,
-				)?.trailEffect ?? "trail_classic",
+				this.participantTrailBySide.get(actor.side) ?? "trail_classic",
 			);
 		}
-		drawPlayerTrails(this.trailGfx, trails, players, {
-			scale,
-			trailEffectsById: effects,
-			...(strong
-				? { lineWidth: 7, baseAlpha: 0.22, alphaRange: 0.58 }
-				: {}),
-		});
+		drawPlayerTrails(
+			this.trailGfx,
+			this.trailPointsByActor,
+			this.trailSideByActor,
+			{
+				scale,
+				trailEffectsById: this.trailEffectByActor,
+				...(strong
+					? { lineWidth: 7, baseAlpha: 0.22, alphaRange: 0.58 }
+					: {}),
+			},
+		);
 	}
 
 	private buildProjectileStatesFromSnapshots(
@@ -647,53 +706,53 @@ export class ReplayScene extends ResponsiveScene {
 		nextEntities: ReplayFrameSnapshotEntity[] | undefined,
 		progress: number,
 	): ProjectileRenderState[] {
-		if (!this.arena) return [];
+		if (!this.arena) return this.projectileStates;
 
-		const nextByKey = new Map(
-			normalizeReplayBalls(nextBalls, nextEntities).map((ball) => [
-				ball.key,
-				ball,
-			]),
-		);
-		return normalizeReplayBalls(balls, entities)
-			.filter((ball) => ball.visible !== false)
-			.map((ball) => {
-				const nextBall = nextByKey.get(ball.key);
-				const radiusScale = Math.max(
-					0.7,
-					Number(ball.scale ?? nextBall?.scale ?? 1),
-				);
-				return {
-					key: `${prefix}-${ball.key}`,
-					side: ball.side,
-					x: toArenaX(
-						this.arena!,
-						lerpNumber(ball.x, nextBall?.x ?? ball.x, progress),
-					),
-					y: toArenaY(
-						this.arena!,
-						lerpNumber(ball.y, nextBall?.y ?? ball.y, progress),
-					),
-					r: BALL_SRC_R * this.arena!.scale * radiusScale,
-					vx:
-						lerpNumber(ball.vx, nextBall?.vx ?? ball.vx, progress) *
-						this.arena!.scale,
-					vy:
-						lerpNumber(ball.vy, nextBall?.vy ?? ball.vy, progress) *
-						this.arena!.scale,
-					alpha: lerpNumber(
-						Number(ball.alpha ?? 1),
-						Number(nextBall?.alpha ?? ball.alpha ?? 1),
-						progress,
-					),
-					trail: interpolateArenaTrail(
-						this.arena!,
-						ball.trail,
-						nextBall?.trail,
-						progress,
-					),
-				};
+		normalizeReplayBallsInto(balls, entities, this.currentReplayBalls);
+		normalizeReplayBallsInto(nextBalls, nextEntities, this.nextReplayBalls);
+		this.nextReplayBallByKey.clear();
+		for (const ball of this.nextReplayBalls)
+			this.nextReplayBallByKey.set(ball.key, ball);
+		this.projectileStates.length = 0;
+		for (const ball of this.currentReplayBalls) {
+			if (ball.visible === false) continue;
+			const nextBall = this.nextReplayBallByKey.get(ball.key);
+			const radiusScale = Math.max(
+				0.7,
+				Number(ball.scale ?? nextBall?.scale ?? 1),
+			);
+			this.projectileStates.push({
+				key: `${prefix}-${ball.key}`,
+				side: ball.side,
+				x: toArenaX(
+					this.arena,
+					lerpNumber(ball.x, nextBall?.x ?? ball.x, progress),
+				),
+				y: toArenaY(
+					this.arena,
+					lerpNumber(ball.y, nextBall?.y ?? ball.y, progress),
+				),
+				r: BALL_SRC_R * this.arena.scale * radiusScale,
+				vx:
+					lerpNumber(ball.vx, nextBall?.vx ?? ball.vx, progress) *
+					this.arena.scale,
+				vy:
+					lerpNumber(ball.vy, nextBall?.vy ?? ball.vy, progress) *
+					this.arena.scale,
+				alpha: lerpNumber(
+					Number(ball.alpha ?? 1),
+					Number(nextBall?.alpha ?? ball.alpha ?? 1),
+					progress,
+				),
+				trail: interpolateArenaTrail(
+					this.arena,
+					ball.trail,
+					nextBall?.trail,
+					progress,
+				),
 			});
+		}
+		return this.projectileStates;
 	}
 
 	private drawProjectileActor(
@@ -721,9 +780,7 @@ export class ReplayScene extends ResponsiveScene {
 				actorName,
 				ball,
 				DEPTH_ACTORS,
-				this.replay?.metadata.participants.find(
-					(participant) => participant.side === projectile.side,
-				)?.shellSkin,
+				this.participantShellBySide.get(projectile.side),
 			)
 		) {
 			this.setPlayerActorAlpha(actorName, projectile.alpha);
@@ -768,13 +825,7 @@ export class ReplayScene extends ResponsiveScene {
 			gfx,
 			state,
 			ball.active,
-			this.replay?.metadata.participants.reduce<string[]>(
-				(skins, participant) => {
-					skins[participant.side] = participant.shellSkin ?? "";
-					return skins;
-				},
-				[],
-			) ?? [],
+			this.participantShells,
 			this,
 			DEPTH_ACTORS,
 		);
@@ -884,8 +935,7 @@ export class ReplayScene extends ResponsiveScene {
 
 	private coverBackgroundImage(image: Phaser.GameObjects.Image): void {
 		const source = image.texture.getSourceImage() as
-			| HTMLImageElement
-			| HTMLCanvasElement;
+			HTMLImageElement | HTMLCanvasElement;
 		const sourceWidth = source.width || this.scale.width;
 		const sourceHeight = source.height || this.scale.height;
 		const scale = Math.max(
@@ -906,13 +956,13 @@ export class ReplayScene extends ResponsiveScene {
 		const y = this.arena.cy + target.ny * this.arena.ry;
 		const radius = target.radiusSrc * this.arena.scale;
 		if (!target.breakable) {
-			drawBumper(this.overlayGfx, x, y, radius, this.arena.scale);
+			drawBumper(this.staticContentGfx, x, y, radius, this.arena.scale);
 			return;
 		}
 		const texture = TARGET_TEXTURES[target.kind];
 
-		this.actorGfx.fillStyle(0x000000, 0.2);
-		this.actorGfx.fillEllipse(
+		this.staticContentGfx.fillStyle(0x000000, 0.2);
+		this.staticContentGfx.fillEllipse(
 			x + radius * 0.25,
 			y + radius * 0.45,
 			radius * 2.1,
@@ -941,9 +991,9 @@ export class ReplayScene extends ResponsiveScene {
 		radius: number,
 	): void {
 		const colour = resolveTargetColour(kind);
-		this.actorGfx.fillStyle(colour, 0.98);
+		this.staticContentGfx.fillStyle(colour, 0.98);
 		if (kind === "crate") {
-			this.actorGfx.fillRoundedRect(
+			this.staticContentGfx.fillRoundedRect(
 				x - radius,
 				y - radius,
 				radius * 2,
@@ -951,13 +1001,22 @@ export class ReplayScene extends ResponsiveScene {
 				radius * 0.18,
 			);
 		} else if (kind === "drum") {
-			this.actorGfx.fillEllipse(x, y, radius * 2.05, radius * 1.75);
+			this.staticContentGfx.fillEllipse(
+				x,
+				y,
+				radius * 2.05,
+				radius * 1.75,
+			);
 		} else {
-			this.actorGfx.fillCircle(x, y, radius);
+			this.staticContentGfx.fillCircle(x, y, radius);
 		}
-		this.actorGfx.lineStyle(Math.max(2, radius * 0.12), 0xf4d35e, 0.9);
+		this.staticContentGfx.lineStyle(
+			Math.max(2, radius * 0.12),
+			0xf4d35e,
+			0.9,
+		);
 		if (kind === "crate") {
-			this.actorGfx.strokeRoundedRect(
+			this.staticContentGfx.strokeRoundedRect(
 				x - radius,
 				y - radius,
 				radius * 2,
@@ -965,9 +1024,29 @@ export class ReplayScene extends ResponsiveScene {
 				radius * 0.18,
 			);
 		} else if (kind === "drum") {
-			this.actorGfx.strokeEllipse(x, y, radius * 2.05, radius * 1.75);
+			this.staticContentGfx.strokeEllipse(
+				x,
+				y,
+				radius * 2.05,
+				radius * 1.75,
+			);
 		} else {
-			this.actorGfx.strokeCircle(x, y, radius);
+			this.staticContentGfx.strokeCircle(x, y, radius);
+		}
+	}
+
+	private refreshKameTargets(targets: KameKnockSnapshot["targets"]): void {
+		let key = "kame:";
+		for (const target of targets)
+			key += `${target.id}:${target.kind}:${target.breakable ? 1 : 0}:${target.nx}:${target.ny}:${target.radiusSrc}|`;
+		if (key !== this.staticContentKey) {
+			this.staticContentKey = key;
+			this.staticContentGfx.clear();
+			for (const target of targets) this.drawKameTarget(target);
+		}
+		for (const target of targets) {
+			if (target.breakable)
+				this.visibleObjectKeys.add(`kame-target-${target.id}`);
 		}
 	}
 
@@ -976,14 +1055,15 @@ export class ReplayScene extends ResponsiveScene {
 		playbackTimeMs: number,
 	): ProjectileRenderState[] {
 		if (!this.arena || !this.controller) return [];
-		const latestBySide = new Map<number, ReplayEvent>();
+		this.latestEventBySide.clear();
 		for (const event of this.controller.getEventsUpTo(playbackTimeMs)) {
 			if (event.type !== eventType) continue;
 			const side = Number((event.payload as { side?: number }).side ?? 0);
-			latestBySide.set(side, event);
+			this.latestEventBySide.set(side, event);
 		}
 
-		return [...latestBySide.entries()].map(([side, event]) => {
+		const projectiles: ProjectileRenderState[] = [];
+		for (const [side, event] of this.latestEventBySide) {
 			const payload = event.payload as {
 				x?: number;
 				y?: number;
@@ -1008,7 +1088,7 @@ export class ReplayScene extends ResponsiveScene {
 				Math.max(0, playbackTimeMs - event.tMs),
 				this.arena!,
 			);
-			return {
+			projectiles.push({
 				key: `fallback-${eventType}-${side}`,
 				side,
 				x: simulated.state.x,
@@ -1018,8 +1098,9 @@ export class ReplayScene extends ResponsiveScene {
 				vy: simulated.state.vy,
 				alpha: 1,
 				trail: simulated.trail,
-			};
-		});
+			});
+		}
+		return projectiles;
 	}
 
 	private drawCurlingBumpers(snapshot: CurlingSnapshot): void {
@@ -1029,16 +1110,29 @@ export class ReplayScene extends ResponsiveScene {
 			!("bumpers" in snapshot.map)
 		)
 			return;
-		for (const bumper of snapshot.map.bumpers ?? []) {
+		const bumpers = snapshot.map.bumpers ?? [];
+		let key = "curl:";
+		for (const bumper of bumpers) key += `${bumper.fx}:${bumper.fy}|`;
+		if (key === this.staticContentKey) return;
+		this.staticContentKey = key;
+		this.staticContentGfx.clear();
+		for (const bumper of bumpers) {
 			const x = this.curlArena.sheetX + bumper.fx * this.curlArena.sheetW;
 			const y = this.curlArena.sheetY + bumper.fy * this.curlArena.sheetH;
 			const r = this.curlArena.scale * 28;
-			drawBumper(this.overlayGfx, x, y, r, this.curlArena.scale);
+			drawBumper(this.staticContentGfx, x, y, r, this.curlArena.scale);
 		}
 	}
 
 	private drawBellZones(snapshot: BellClashSnapshot): void {
 		if (!this.arena) return;
+		const zones = snapshot.zones ?? [];
+		let key = "bell:";
+		for (const zone of zones)
+			key += `${zone.kind}:${zone.start}:${zone.end}|`;
+		if (key === this.staticContentKey) return;
+		this.staticContentKey = key;
+		this.bellZoneGfx.clear();
 		drawBellClashZones(this.bellZoneGfx, snapshot.zones ?? [], this.arena, {
 			x: this.arena.cx,
 			y: this.arena.cy,
@@ -1093,14 +1187,18 @@ interface ReplayCurlingBallWithKey {
 	trail?: Array<{ x: number; y: number }>;
 }
 
-function normalizeReplayCurlingBalls(
+function normalizeReplayCurlingBallsInto(
 	objects: CurlingSnapshot["objects"] | undefined,
-	entities?: ReplayFrameSnapshotEntity[] | undefined,
-): ReplayCurlingBallWithKey[] {
+	entities: ReplayFrameSnapshotEntity[] | undefined,
+	output: ReplayCurlingBallWithKey[],
+): void {
+	output.length = 0;
 	if (Array.isArray(entities) && entities.length > 0) {
-		return entities
-			.filter((entity) => entity.type === "ball")
-			.map((entity) => ({
+		for (const entity of entities) {
+			if (entity.type !== "ball") continue;
+			const id = Number(entity.id);
+			if (!Number.isFinite(id)) continue;
+			output.push({
 				id: Number(entity.id),
 				side: entity.side ?? entity.ownerSide ?? 0,
 				x: entity.x,
@@ -1111,65 +1209,69 @@ function normalizeReplayCurlingBalls(
 				power: entity.power,
 				alpha: entity.alpha,
 				trail: entity.trail,
-			}))
-			.filter((ball) => Number.isFinite(ball.id));
+			});
+		}
+		return;
 	}
-	return (objects ?? []).map((object) => ({
-		id: object.id,
-		side: object.side,
-		x: object.x,
-		y: object.y,
-		vx: object.vx,
-		vy: object.vy,
-		moving: object.moving,
-		power: object.power,
-		alpha: object.alpha,
-		trail: object.trail,
-	}));
+	for (const object of objects ?? []) {
+		output.push({
+			id: object.id,
+			side: object.side,
+			x: object.x,
+			y: object.y,
+			vx: object.vx,
+			vy: object.vy,
+			moving: object.moving,
+			power: object.power,
+			alpha: object.alpha,
+			trail: object.trail,
+		});
+	}
 }
 
-function normalizeReplayBalls(
+function normalizeReplayBallsInto(
 	balls: BallSnapshotData[] | undefined,
-	entities?: ReplayFrameSnapshotEntity[] | undefined,
-): ReplayBallWithKey[] {
-	const sourceBalls =
-		Array.isArray(entities) && entities.length > 0
-			? entities
-					.filter((entity) => entity.type === "projectile")
-					.map((entity) => ({
-						id: entity.id,
-						side: entity.side ?? entity.ownerSide ?? 0,
-						ownerSide: entity.ownerSide ?? entity.side ?? 0,
-						x: entity.x,
-						y: entity.y,
-						vx: entity.vx,
-						vy: entity.vy,
-						moving: !entity.stopped,
-						stopped: entity.stopped,
-						visible: entity.visible,
-						alpha: entity.alpha,
-						power: entity.power,
-						trail: entity.trail,
-						scale: entity.scale,
-						spriteKey: entity.spriteKey,
-						stateFlags: entity.stateFlags,
-					}))
-			: Array.isArray(balls) && balls.length > 0
-				? balls
-				: [];
-	if (sourceBalls.length === 0) return [];
-	const sideCounts = new Map<number, number>();
-	return sourceBalls.map((ball) => {
-		const count = sideCounts.get(ball.side) ?? 0;
-		sideCounts.set(ball.side, count + 1);
-		return {
+	entities: ReplayFrameSnapshotEntity[] | undefined,
+	output: ReplayBallWithKey[],
+): void {
+	output.length = 0;
+	const sideCounts: number[] = [];
+	const append = (ball: BallSnapshotData): void => {
+		const count = sideCounts[ball.side] ?? 0;
+		sideCounts[ball.side] = count + 1;
+		output.push({
 			...ball,
 			key:
 				ball.id !== undefined && ball.id !== null
 					? String(ball.id)
 					: `${ball.side}-${count}`,
-		};
-	});
+		});
+	};
+	if (Array.isArray(entities) && entities.length > 0) {
+		for (const entity of entities) {
+			if (entity.type !== "projectile") continue;
+			append({
+				id: entity.id,
+				side: entity.side ?? entity.ownerSide ?? 0,
+				ownerSide: entity.ownerSide ?? entity.side ?? 0,
+				x: entity.x,
+				y: entity.y,
+				vx: entity.vx,
+				vy: entity.vy,
+				moving: !entity.stopped,
+				stopped: entity.stopped,
+				visible: entity.visible,
+				alpha: entity.alpha,
+				power: entity.power,
+				trail: entity.trail,
+				scale: entity.scale,
+				spriteKey: entity.spriteKey,
+				stateFlags: entity.stateFlags,
+			});
+		}
+		return;
+	}
+	for (const ball of balls ?? []) append(ball);
 }
 
 function interpolateArenaTrail(
@@ -1206,7 +1308,8 @@ function interpolatePoints(
 	mapPoint: (point: { x: number; y: number }) => ReplayTrailPoint,
 ): ReplayTrailPoint[] {
 	if (!Array.isArray(points) || points.length === 0) return [];
-	const output = points.map(mapPoint);
+	const output: ReplayTrailPoint[] = [];
+	for (const point of points) output.push(mapPoint(point));
 	const last = points[points.length - 1];
 	const nextLast = nextPoints?.[nextPoints.length - 1];
 	if (

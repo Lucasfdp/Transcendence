@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	buildLocalReplayImportRequest,
 	buildLocalReplayPlayers,
@@ -212,6 +212,64 @@ describe("localReplay", () => {
 			{ x: -0.4, y: 0.5 },
 			{ x: -0.2, y: 0.5 },
 		]);
+	});
+
+	it("encodes typed deltas without JSON serialisation or parsing", () => {
+		const stringify = vi.spyOn(JSON, "stringify");
+		const parse = vi.spyOn(JSON, "parse");
+		const encoder = new ReplayEncoder();
+		const first = encoder.encode(0, 0, {
+			phase: "active",
+			score: [0, 0],
+			entities: [
+				{
+					id: "shell-1",
+					type: "projectile",
+					x: 0,
+					y: 0,
+					trail: [{ x: 0, y: 0 }],
+				},
+			],
+		});
+		const unchanged = encoder.encode(1, 50, {
+			phase: "active",
+			score: [0, 0],
+			entities: [
+				{
+					id: "shell-1",
+					type: "projectile",
+					x: 0,
+					y: 0,
+					trail: [{ x: 1, y: 1 }],
+				},
+			],
+		});
+		const changed = encoder.encode(2, 100, {
+			phase: "active",
+			score: [1, 0],
+			entities: [
+				{
+					id: "shell-1",
+					type: "projectile",
+					x: 0.2,
+					y: 0,
+				},
+			],
+		});
+
+		expect(first?.type).toBe("keyframe");
+		expect(unchanged).toBeNull();
+		expect(changed).toMatchObject({
+			type: "delta",
+			changes: {
+				score: [1, 0],
+				entities: [expect.objectContaining({ id: "shell-1", x: 0.2 })],
+			},
+		});
+		expect(stringify).not.toHaveBeenCalled();
+		expect(parse).not.toHaveBeenCalled();
+		stringify.mockRestore();
+		parse.mockRestore();
 	});
 
 	it("resolves winners only when there is a single highest score", () => {
