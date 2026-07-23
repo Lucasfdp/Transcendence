@@ -1,6 +1,6 @@
 # Frontend Performance Remediation Checkpoint
 
-Last updated: 23 July 2026 — Phase 1 development hub captures
+Last updated: 23 July 2026 — Phase 1 Bamboo Bash development capture
 Overall status: In progress  
 Source plan: [`frontend-performance-profiler-report-and-plan-2026-07-23.md`](frontend-performance-profiler-report-and-plan-2026-07-23.md)
 
@@ -19,7 +19,7 @@ validation phases are complete.
 
 | Phase | Scope | Status | Last validation | Remaining work |
 | --- | --- | --- | --- | --- |
-| 1 | Reproducible production baseline | Partially complete | Full development stack plus non-headless hub, modal, casino, and Kame Knock counter captures | Capture the remaining development scenarios, every production scenario, and comparable profiles on the target graphics environment |
+| 1 | Reproducible production baseline | Partially complete | Full development stack plus non-headless hub, modal, casino, Kame Knock, and Bamboo Bash counter captures | Capture the remaining development scenarios, every production scenario, and comparable profiles on the target graphics environment |
 | 2 | Singular replay runtime | Not started | Existing React profile exposes two viewers | Full phase |
 | 3 | Replay render optimisation | Not started | Static code and existing profiles reviewed | Full phase |
 | 4 | Typed replay capture and delta encoding | Not started | Existing GC and encoder reviewed | Full phase |
@@ -89,6 +89,12 @@ not the final production baseline required by Phase 1.
   (Software), and Mesa llvmpipe for both WebGL renderers. The host therefore
   still cannot provide a hardware-accelerated comparison with the profiled
   Radeon environment.
+- The later Bamboo Bash continuation rebuilt the stack through `make dev`; all
+  13 services were healthy and the served commit was
+  `80dda77052a616edfe4f4aab7052b4de95287919`. The current display permitted the
+  exact 1440 x 900 CSS-pixel viewport at device pixel ratio 1. Firefox ESR
+  140.11.0 reported X11, WebRender, and AMD Radeon 610M hardware rendering for
+  both WebGL versions.
 
 ## 4. Active Phase Record
 
@@ -178,6 +184,10 @@ Partially complete.
 - Kame Knock ran for 30 seconds idle and approximately 60 seconds under pointer
   input with exactly one Phaser game and one canvas. Returning to the hub
   released both live resources and removed the canvas from the DOM.
+- Bamboo Bash ran for 30.000 seconds idle and 60.324 seconds under automated
+  pointer input at 1440 x 900. It retained exactly one Phaser game and one
+  canvas, created no replay resources, and released both live resources on the
+  SPA return to the hub while retaining `created=1` and `peak=1` evidence.
 - The clean page load accumulated six `auth/me` resource entries before the
   idle capture ended. This is baseline evidence for Phase 8, not an isolated
   request count for the 60-second window.
@@ -187,12 +197,13 @@ Partially complete.
 - The configured public deployment remains unreachable, so its historical
   commit is unknown. Future builds expose the commit in the
   `shell-smash-commit` meta element.
-- Both headless and non-headless graphics data are software-rendered.
-  Comparable profiles on the target machine remain open.
-- The desktop work area limited the browser content viewport to 1440 x 893
-  rather than the specified 1440 x 900. The development captures must be
-  repeated at the exact height for the final comparison.
-- Development captures after Kame Knock and every production capture
+- The earlier headless and non-headless captures are software-rendered. The
+  Bamboo Bash capture used an AMD Radeon 610M, but comparable profiles on the
+  target Radeon 780M machine remain open.
+- The earlier hub, modal, casino, and Kame Knock captures used a 1440 x 893
+  viewport. Bamboo Bash used the required 1440 x 900 viewport, but the earlier
+  scenarios still require a comparable repeat on the target machine.
+- Development captures after Bamboo Bash and every production capture
   remain open.
 - Authenticated counter values for inline and expanded replay have not yet been
   observed; the expected values below are assertions for the capture, not
@@ -204,12 +215,12 @@ Record the remaining development and production scenario matrix with the exact
 viewport and target non-headless Firefox graphics configuration. Record the
 development counter snapshots and the production, React, and Firefox profile
 metrics in this checkpoint. Repeat the two hub scenarios on the target machine
-because this environment uses software rendering and a 1440 x 893 viewport.
+because their local evidence uses software rendering and a 1440 x 893 viewport.
 
 ### Exact next action
 
-Using the current `make dev` stack and `perfbaseline` account, capture Bamboo
-Bash for 30 seconds idle plus 60 seconds active, then return to the hub and
+Using the current `make dev` stack and `perfbaseline` account, capture Temple
+Curling for 30 seconds idle plus 60 seconds active, then return to the hub and
 record its lifecycle counters before and after navigation.
 
 ## 5. Checkpoint 2026-07-23 — Post-Pull Plan Compatibility Review
@@ -293,6 +304,9 @@ open.
   Compose stack, and created the dedicated local `perfbaseline` account.
 - Set the local `perfbaseline` balance to 100,000 coins through a targeted SQL
   update so casino scenarios can use the same reproducible account.
+- Recreated the dedicated `perfbaseline` account after the active preserved
+  database volume no longer contained it, then restored its balance to 100,000
+  coins after the Bamboo Bash capture.
 - Updated this checkpoint with the environment, served commit, graphics
   configuration, viewport limitation, and the first two scenario results.
 - Reviewed `docs/modules-progress.md`; baseline execution does not advance or
@@ -307,6 +321,13 @@ open.
 - Did not stretch or scale the 1440 x 893 browser viewport to claim a 1440 x
   900 result. The seven-pixel limitation is recorded and the final comparable
   capture remains open.
+- Rejected an initial Bamboo Bash diagnostic pass because the pre-existing
+  development stack served the literal `%VITE_APP_COMMIT%` placeholder. The
+  stack was stopped and rebuilt through `make dev`, which injected the current
+  commit before the accepted capture.
+- Used the now-available 1920 x 1080 display to establish an exact 1440 x 900
+  CSS-pixel viewport rather than carrying the earlier work-area limitation into
+  the Bamboo Bash evidence.
 
 ### Automated validation
 
@@ -318,6 +339,13 @@ open.
   `/var/tmp/marcnava-docker` with 298 GB free after the build.
 - Targeted database setup — pass; exactly one `perfbaseline` row was updated and
   the resulting balance was 100,000 coins.
+- Continuation `make dev` — pass; all images built and the Makefile injected
+  commit `80dda77052a616edfe4f4aab7052b4de95287919`.
+- Continuation `make health` — pass; all 13 services reported healthy.
+- Continuation HTTPS document inspection — pass; the meta marker matched the
+  current repository commit exactly.
+- Continuation frontend suite in the Node.js 24 development container — pass;
+  74 files and 416 tests.
 
 ### Manual and profiler validation
 
@@ -342,14 +370,28 @@ open.
   resources. Returning through browser history released both live resources
   and removed the canvas from the DOM; the measurement window retained
   `created=1` and `peak=1` for both resource types.
+- Bamboo Bash — the accepted development capture ran in non-headless Firefox
+  ESR 140.11.0 at 1440 x 900 CSS pixels and device pixel ratio 1. `about:support`
+  reported X11, WebRender, and AMD Radeon 610M through `radeonsi` for WebGL 1
+  and WebGL 2. After start-up, 30.000 seconds idle and 60.324 seconds active
+  retained exactly one Phaser game and one 1440 x 900 canvas. The active window
+  issued 85 pointer movements and seven drag attempts. Every replay controller,
+  replay scene, replay RAF loop, and resize-observer counter remained zero. The
+  SPA return to the hub removed the canvas and reduced both Phaser-game and
+  canvas live counts to zero while retaining `created=1` and `peak=1`. The page
+  error listeners recorded no application errors, and visual inspection showed
+  the complete arena, both side panels, score HUD, and return control without
+  clipping or corruption.
 - Firefox Profiler CPU and memory recordings were not captured, so these runs
   validate lifecycle ownership only.
 
 ### Known limitations or regressions
 
-- Hardware acceleration on the profiled Radeon machine is unavailable here.
-- The exact 1440 x 900 content viewport could not fit inside the current X11
-  work area.
+- The accepted Bamboo Bash capture used hardware acceleration, but its Radeon
+  610M is not the Radeon 780M target from the original profile.
+- The earlier hub, modal, casino, and Kame Knock captures remain at 1440 x 893;
+  the Bamboo Bash continuation established that the current display can run the
+  required 1440 x 900 viewport.
 - The fixed account has no replay history yet, so replay scenarios remain
   unmeasured.
 - Six `auth/me` entries accumulated during the clean page load and idle run;
@@ -357,15 +399,15 @@ open.
 
 ### Work remaining in this phase
 
-- Capture Bamboo Bash, Temple Curling, Bell Clash, inline replay, expanded
-  replay, and five route round trips in development.
+- Capture Temple Curling, Bell Clash, inline replay, expanded replay, and five
+  route round trips in development.
 - Repeat the complete matrix in production mode.
 - Repeat comparable profiles at the exact viewport on the target graphics
   environment and record Firefox and React metrics.
 
 ### Exact next action
 
-Capture Bamboo Bash for 30 seconds idle plus 60 seconds active with the
+Capture Temple Curling for 30 seconds idle plus 60 seconds active with the
 `perfbaseline` account in development mode, then return to the hub and record
 the lifecycle snapshots before and after navigation.
 

@@ -434,10 +434,13 @@ volume with sufficient space, the complete development stack builds and becomes
 healthy, and the non-headless idle-hub and opaque-modal lifecycle captures pass.
 Complete Fortune Wheel and Shell Drop animations plus idle captures also pass
 their lifecycle assertions. Kame Knock also retains one game and canvas during
-idle and active input, then releases both on return to the hub. The remaining
-development matrix, every production capture, and comparable profiles on the
-target graphics environment remain pending. See the live checkpoint for the
-recorded evidence and exact continuation action.
+idle and active input, then releases both on return to the hub. Bamboo Bash now
+passes the same ownership assertions over 30 seconds idle and 60 seconds active
+at the exact 1440 x 900 viewport, with no replay resources and complete release
+on return to the hub. Temple Curling, Bell Clash, replay scenarios, route-round
+trips, every production capture, and comparable profiles on the target graphics
+environment remain pending. See the live checkpoint for the recorded evidence
+and exact continuation action.
 
 ### Phase 2 — Make Replay Runtime Singular
 
