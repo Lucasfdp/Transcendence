@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { ShellPickerScene } from "../features/hub/ShellPickerScene";
 import { ReturnToHubScene } from "../features/hub/ReturnToHubScene";
 import { PhaserBootScene } from "../features/hub/PhaserBootScene";
+import { detectSoftwareRenderer } from "../features/backdrop/starField";
 import { BambooBashScene } from "../games/bamboo-bash/BambooBashScene";
 import { ShellCurlScene } from "../games/shell-curl/ShellCurlScene";
 import { KameKnockScene } from "../games/kame-knock/KameKnockScene";
@@ -51,7 +52,12 @@ export function buildShellSmashGameConfig(
 	initialScene?: ShellSmashStartData,
 ): Phaser.Types.Core.GameConfig {
 	return {
-		type: Phaser.AUTO,
+		// Phaser's WebGL Graphics renderer rebuilds path and triangulation
+		// objects on every rendered frame. On llvmpipe, SWGL, and SwiftShader
+		// that caused the one-megabyte nursery to fill almost every frame.
+		// Canvas keeps the same scene contract while avoiding that WebGL
+		// allocation path on machines where rendering is already CPU-bound.
+		type: detectSoftwareRenderer() ? Phaser.CANVAS : Phaser.AUTO,
 		banner: false,
 		width: window.innerWidth,
 		height: window.innerHeight,

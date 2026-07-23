@@ -48,6 +48,7 @@ export class CommonGameSceneHost {
 	update(time: number, delta: number): void {
 		if (this.hasShutdown) return;
 		this.options.update?.(time, delta);
+		if (this.runtimes.size === 0) return;
 		for (const runtime of this.runtimes.values())
 			runtime.update?.(time, delta);
 	}

@@ -1,6 +1,6 @@
 # Frontend Performance Remediation Checkpoint
 
-Last updated: 23 July 2026 — destination acceptance paused after partial profiling
+Last updated: 23 July 2026 — software-renderer game remediation validated
 Overall status: Phase 1 complete; Phases 2–8 partially complete; Phase 9 in progress
 Source plan: [`frontend-performance-profiler-report-and-plan-2026-07-23.md`](frontend-performance-profiler-report-and-plan-2026-07-23.md)
 
@@ -22,12 +22,12 @@ open.
 | 1 | Reproducible production baseline | Complete | Target-machine development and production matrices at 1440 x 900, Firefox profiles, React replay capture, lifecycle counters, build, tests, and health | None |
 | 2 | Singular replay runtime | Partially complete | Destination development counters show one live replay runtime through inline, expanded, collapsed, and teardown states | Explain the remaining background `HomeMenu` commit and obtain a strictly comparable React capture if required |
 | 3 | Replay render optimisation | Partially complete | Destination replay ownership and static Kame Knock parity pass | Strictly comparable allocation profile and Bamboo Bash, Temple Curling, and Bell Clash replay parity |
-| 4 | Typed replay capture and delta encoding | Partially complete | Three active-game profiles provide diagnostic GC data | Repeat all four active-game profiles with a full retained 60-second window and validate replay reconstruction |
+| 4 | Typed replay capture and delta encoding | Partially complete | Four complete 60-second active-game profiles show 78.4–89.7% fewer minor collections after the software-renderer fallback | Kame Knock, Temple Curling, and Bell Clash remain above the aspirational 5 collections/second target; validate replay reconstruction |
 | 5 | Hub backdrop redesign and suspension | Partially complete | Isolated destination hub profile passes idle renderer and event-delay gates; responsive static check passes | Reduced-motion check and strict modal-versus-idle interpretation |
 | 6 | Phaser lifecycle and start-up stalls | Partially complete | Production matrix shows one canvas per game and zero after each of five returns | Repeat comparable route profiling and explain any post-initialisation long tasks |
-| 7 | Game and casino hot paths | Partially complete | Development and production functional/visual matrices pass for both casinos and all four games | Repeat complete active profiles for all four games |
+| 7 | Game and casino hot paths | Partially complete | Complete active profiles, production lifecycle matrix, and visual review pass for all four games after the Canvas fallback | Complete the remaining Chrome and replay acceptance matrix |
 | 8 | React and data ownership | Partially complete | Focused replay resource check reports no duplicate session or inbox requests | Run one persistent-provider SPA round-trip network check and complete React acceptance evidence |
-| 9 | Integrated validation and closure | In progress | Destination development and production functional matrices, focused replay validation, isolated hub profiles, and static visual review recorded | Resume the explicitly listed repeated and missing checks, rerun automated gates, and resolve or rebaseline TypeScript |
+| 9 | Integrated validation and closure | In progress | Destination game profiles, production lifecycle matrix, full frontend suite, build, stack health, OpenAPI, stylesheet manifest, and diff checks pass | Complete Chrome, replay, SPA-network, reduced-motion, and TypeScript acceptance work |
 
 ## 3. Current Baseline Evidence
 
@@ -757,7 +757,126 @@ with an enlarged buffer and the exact Phase 1 profiler feature and thread
 configuration. Do not reuse the three short retained-window profiles as final
 evidence.
 
-## 10. Per-Phase Update Template
+## 10. Checkpoint 2026-07-23 — Software-Renderer Game Remediation
+
+### Phase and subtask attempted
+
+Investigated the active-game minor-collection rate, implemented a shared
+software-renderer fallback for all four Phaser games, removed three smaller
+per-frame allocation sources, and repeated the complete 60-second production
+profiles at 1440 x 900 and device pixel ratio 1.
+
+### Status
+
+Partially complete. The change substantially reduces minor collections and
+total tracked rendering occupancy without changing the four games' visible
+output, lifecycle, input, or event-delay acceptance. Three games remain above
+the Phase 4 aspirational target of five minor collections per second, so this
+does not close the performance programme.
+
+### Changes made
+
+- `frontend/src/lib/createShellSmashGame.ts` now selects Phaser Canvas when the
+  existing renderer probe reports llvmpipe, SWGL, SwiftShader, softpipe, or
+  another software renderer. Hardware-capable browsers retain Phaser `AUTO`
+  and therefore retain WebGL.
+- The allocation profile showed that Phaser's WebGL `Graphics` renderer
+  accounted for approximately 99% of sampled JavaScript allocation bytes in
+  active Temple Curling. It rebuilt path and triangulation objects every
+  rendered frame while the browser's profiled nursery was fixed at 1 MiB.
+- `LocalReplayCaptureRuntime` now retains one recorder callback instead of
+  allocating an adapter closure every render tick.
+- `CommonGameSceneHost` avoids creating an empty `Map.values()` iterator on
+  every frame when no common runtime is registered.
+- Classic trails now draw the bounded tail by index instead of allocating a
+  sliced array on every draw.
+- `docs/modules-progress.md` was reviewed and updated with this rendering-budget
+  evidence. Replay Mode remains `In progress`, and the additional-browser
+  module remains `Not done`.
+
+### Firefox profiler comparison
+
+All comparison profiles retain a complete approximately 60.3-second active
+window. They use Firefox 152.0.6, the Phase 1 profiler feature/thread set,
+1440 x 900, device pixel ratio 1, and the destination's software-rendered X11
+environment through the documented nested display.
+
+| Game | Minor GC/s before | Minor GC/s after | Reduction | Tracked occupancy before | Tracked occupancy after | Event-delay p99 after | Long tasks after |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Kame Knock | 37.73 | 8.14 | 78.4% | 66.29% | 59.57% | 7.64 ms | 0 |
+| Bamboo Bash | 19.45 | 2.67 | 86.3% | 83.87% | 67.30% | 8.46 ms | 0 |
+| Temple Curling | 60.84 | 6.29 | 89.7% | 92.70% | 54.88% | 7.08 ms | 0 |
+| Bell Clash | 39.50 | 6.60 | 83.3% | 72.07% | 66.15% | 8.07 ms | 0 |
+
+“Tracked occupancy” is the sum of the application Gecko main thread, parent
+Renderer, and parent CanvasRenderer occupancy. Canvas moves rendering work onto
+the application thread, so application-thread occupancy alone increases in
+three games; the combined measured occupancy falls by 8.2–40.8% in every game.
+This summed percentage is a diagnostic aggregate across separate threads, not
+a single-core utilisation percentage.
+
+The source profiles and summaries are stored under
+`/tmp/shell-smash-phase9/production-<game>-active-*`. Their pre-change
+counterparts use `production-<game>-before-canvas-*`.
+
+### Functional and visual validation
+
+- The production matrix ran at 1440 x 900 and device pixel ratio 1 against the
+  rebuilt image. Each game had exactly one canvas while idle and active, accepted
+  pointer input, and returned to zero canvases on leaving.
+- Five additional game-to-hub returns each repeated the one-to-zero canvas
+  transition without a retained canvas.
+- The responsive hub reported no horizontal overflow.
+- No failed resource was recorded by the matrix.
+- Manual inspection of the four post-change screenshots found no blank canvas,
+  missing texture, alpha error, geometric distortion, layout regression, or
+  visible difference attributable to Canvas.
+- The matrix's error listener did not survive its deliberate full-document
+  navigations, so its final `errors: null` is not accepted as persistent-console
+  evidence. The dedicated SPA and Chrome console checks remain required.
+
+### Automated validation
+
+- Targeted Vitest suites — pass, 4 files and 32 tests.
+- `cd frontend && npm run test:run` under Node 24 — pass, 87 files and
+  484 tests.
+- `cd frontend && npm run build` under Node 24 — pass, 250 modules transformed
+  and production assets emitted.
+- Stylesheet manifest — pass, all 19 feature stylesheets are imported by
+  `frontend/src/styles/modules/index.css`.
+- `make health` — pass, all 13 services healthy.
+- `make validate-openapi` — pass, 97 paths and 108 operations.
+- `git diff --check` — pass.
+- `cd frontend && npx tsc --noEmit` — still blocked before checking sources:
+  TypeScript 5.9.3 rejects the tracked `ignoreDeprecations: "6.0"` value.
+
+### Known limitations and remaining work
+
+- Only Bamboo Bash reaches the aspirational target below five minor collections
+  per second. The user explicitly accepted the current improvement and deferred
+  further GC optimisation.
+- The Firefox profiles use a nested X11 display to recover the exact 1440 x 900
+  viewport that the current desktop window manager no longer exposes. This must
+  remain explicit when comparing them with the original destination baseline.
+- Chrome 150 was downloaded as an isolated latest-stable binary because the
+  system installation is Chrome 149 and global upgrades require unavailable
+  `sudo` privileges. Its matrix was paused before producing acceptance evidence
+  and deliberately deferred at the user's request until a later session. Any
+  partial Chrome matrix artefact is diagnostic only; the valid Chrome evidence
+  is limited to the recorded preflight.
+- Replay performance, four-game replay parity, persistent-provider SPA network
+  ownership, reduced motion, and TypeScript resolution remain open.
+- The replay-list metadata authorisation finding remains unfixed and must not be
+  conflated with this renderer remediation.
+
+### Exact next action
+
+When the user resumes browser acceptance, run the isolated Chrome 150
+production matrix with an exact emulated 1440 x 900 viewport, then run the
+development replay/React capture. Keep its CDP metrics separate from the
+Firefox Profiler baseline.
+
+## 11. Per-Phase Update Template
 
 Copy this section under a new dated heading whenever work advances:
 
@@ -801,7 +920,7 @@ Copy this section under a new dated heading whenever work advances:
 <One concrete technical action that starts the next continuation.>
 ```
 
-## 11. Closure Rule
+## 12. Closure Rule
 
 The programme is complete only when all nine phases are marked complete, the
 integrated production-mode validation matrix passes, and no required manual or

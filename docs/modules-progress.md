@@ -756,6 +756,18 @@ Validation completed on 14 July 2026:
   programme's baseline phase but does not change Replay Mode's module status;
   the replay v2 acceptance and manual rendering-budget matrices remain
   outstanding.
+- The 23 July destination rendering-budget follow-up added a software-renderer
+  Canvas fallback shared by all four live games while hardware-capable browsers
+  retain Phaser's automatic WebGL selection. Complete 60-second Firefox profiles
+  at 1440 x 900 reduced minor collections by 78.4–89.7% and reduced the combined
+  measured application/Renderer/CanvasRenderer occupancy for every game.
+  Bamboo Bash reached the aspirational five-collections-per-second target;
+  Kame Knock, Temple Curling, and Bell Clash remain above it. A production
+  lifecycle matrix preserved one active canvas, zero after every return, input,
+  responsive layout, and static visual parity. This advances the outstanding
+  rendering-budget matrix but does not complete Replay Mode or browser
+  compatibility: replay, persistent-SPA, reduced-motion, Chrome, and TypeScript
+  acceptance checks remain open.
 
 Missing for completion:
 - Complete and execute the replay v2 acceptance matrix in

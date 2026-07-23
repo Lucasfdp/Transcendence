@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("phaser", () => ({
 	default: {
 		AUTO: "AUTO",
+		CANVAS: "CANVAS",
 		Scale: { RESIZE: "RESIZE", NO_CENTER: "NO_CENTER" },
 		Core: { Events: { DESTROY: "destroy" } },
 	},
@@ -37,12 +38,16 @@ vi.mock("../shared/frontend-performance-profiler", () => ({
 vi.mock("../shared/mechanics/player-config", () => ({
 	resolveSnapshotPlayerCosmetics: vi.fn(() => undefined),
 }));
+vi.mock("../features/backdrop/starField", () => ({
+	detectSoftwareRenderer: vi.fn(() => false),
+}));
 
 import {
 	buildShellSmashGameConfig,
 	scheduleInitialScene,
 	type ShellSmashStartData,
 } from "./createShellSmashGame";
+import { detectSoftwareRenderer } from "../features/backdrop/starField";
 
 function fakeGame() {
 	const destroyHandlers: Array<() => void> = [];
@@ -82,6 +87,14 @@ describe("buildShellSmashGameConfig", () => {
 
 		expect(config.render?.failIfMajorPerformanceCaveat).toBe(false);
 		expect(config.render?.powerPreference).toBe("high-performance");
+	});
+
+	it("uses Canvas on a software renderer to avoid WebGL path allocations", () => {
+		vi.mocked(detectSoftwareRenderer).mockReturnValueOnce(true);
+
+		const config = buildShellSmashGameConfig("host");
+
+		expect(config.type).toBe("CANVAS");
 	});
 });
 

@@ -141,11 +141,10 @@ export function drawPlayerTrails(
 			// "soft" stamp was a flat filled circle, so visuals are identical.
 			drawClassicPlayerTrail(
 				gfx,
-				trail.length > RECENT_POINT_LIMIT
-					? trail.slice(-RECENT_POINT_LIMIT)
-					: trail,
+				trail,
 				colour,
 				options,
+				Math.max(1, trail.length - RECENT_POINT_LIMIT + 1),
 			);
 			continue;
 		}
@@ -187,6 +186,7 @@ export function drawClassicPlayerTrail(
 	positions: readonly PlayerTrailPoint[],
 	colour: number,
 	options: ClassicPlayerTrailOptions = {},
+	startIndex = 1,
 ): void {
 	if (positions.length < 2) return;
 	const scale = options.scale ?? 1;
@@ -197,7 +197,7 @@ export function drawClassicPlayerTrail(
 	const baseAlpha = options.baseAlpha ?? DEFAULT_BASE_ALPHA;
 	const alphaRange = options.alphaRange ?? DEFAULT_ALPHA_RANGE;
 
-	for (let index = 1; index < positions.length; index++) {
+	for (let index = Math.max(1, startIndex); index < positions.length; index++) {
 		const alpha = baseAlpha + (index / positions.length) * alphaRange;
 		gfx.lineStyle(lineWidth, colour, alpha);
 		gfx.lineBetween(
