@@ -50,19 +50,21 @@ export class ReplayController {
 	private readonly listeners = new Set<ReplayListener>();
 	private readonly reconstructionCache = new Map<
 		number,
-		ReplayFrameSnapshot
+		ResolvedReplayFrame
 	>();
 	private lastEmittedAt = -Infinity;
 	private readonly releasePerformanceCounter: () => void;
+	private destroyed = false;
 
 	constructor(replay: ReplayDetail | null = null) {
 		this.replay = replay;
-		this.releasePerformanceCounter = trackFrontendPerformanceResource(
-			"replayControllers",
-		);
+		this.releasePerformanceCounter =
+			trackFrontendPerformanceResource("replayControllers");
 	}
 
 	destroy(): void {
+		if (this.destroyed) return;
+		this.destroyed = true;
 		this.listeners.clear();
 		this.reconstructionCache.clear();
 		this.releasePerformanceCounter();
@@ -88,8 +90,8 @@ export class ReplayController {
 		this.timeMs = clamp(
 			frame
 				? frame.tMs +
-				Math.max(0, (next?.tMs ?? frame.tMs) - frame.tMs) *
-					clamp(progress, 0, 1)
+						Math.max(0, (next?.tMs ?? frame.tMs) - frame.tMs) *
+							clamp(progress, 0, 1)
 				: 0,
 			0,
 			replayPlaybackDuration(this.replay),
@@ -117,16 +119,18 @@ export class ReplayController {
 	update(deltaMs: number): void {
 		if (!this.playing || !this.replay) return;
 		const durationMs = replayPlaybackDuration(this.replay);
-		this.timeMs = Math.min(
-			durationMs,
-			this.timeMs + Math.max(0, deltaMs),
-		);
+		this.timeMs = Math.min(durationMs, this.timeMs + Math.max(0, deltaMs));
 		if (this.timeMs >= durationMs) this.playing = false;
 		this.emit(!this.playing || this.timeMs - this.lastEmittedAt >= 100);
 	}
 
 	getEventsUpTo(timeMs: number): ReplayEvent[] {
-		return this.replay?.events.filter((event) => event.tMs <= timeMs) ?? [];
+		const events: ReplayEvent[] = [];
+		for (const event of this.replay?.events ?? []) {
+			if (event.tMs > timeMs) break;
+			events.push(event);
+		}
+		return events;
 	}
 
 	getState(): ReplayControllerState {
@@ -171,22 +175,22 @@ export class ReplayController {
 		const frames = this.replay?.frames;
 		const frame = frames?.[index];
 		if (!frames || !frame) return null;
-		let snapshot = this.reconstructionCache.get(index);
-		if (!snapshot) {
-			snapshot = reconstructReplayFrame(
+		let resolved = this.reconstructionCache.get(index);
+		if (!resolved) {
+			const snapshot = reconstructReplayFrame(
 				frames,
 				index,
 			) as ReplayFrameSnapshot;
-			this.reconstructionCache.set(index, snapshot);
+			resolved = { ...frame, snapshot };
+			this.reconstructionCache.set(index, resolved);
 			while (this.reconstructionCache.size > 24) {
 				const oldest = this.reconstructionCache.keys().next().value as
-					| number
-					| undefined;
+					number | undefined;
 				if (oldest === undefined) break;
 				this.reconstructionCache.delete(oldest);
 			}
 		}
-		return { ...frame, snapshot };
+		return resolved;
 	}
 
 	private emit(force: boolean): void {

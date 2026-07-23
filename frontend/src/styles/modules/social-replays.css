@@ -831,12 +831,17 @@
 	.hub-modal__replays {
 		grid-template-columns: 1fr;
 		height: auto;
-		@apply overflow-visible;
+		@apply flex-none overflow-visible;
 	}
 
 	.hub-modal__replay-list {
 		padding-right: 0;
 		@apply overflow-visible;
+	}
+
+	.hub-modal__replay-section,
+	.hub-modal__replay-items-scroll {
+		@apply flex-none;
 	}
 
 	.hub-modal__replay-viewer {
@@ -1567,4 +1572,3 @@
 .hub-invite-popup__decline:hover {
 	opacity: 0.8;
 }
-
