@@ -24,10 +24,10 @@ import { ShellFlipModal } from "../components/gambling/ShellFlipModal";
 import { ThreeShellMonteModal } from "../components/gambling/ThreeShellMonteModal";
 import { ShrineSlotsModal } from "../components/gambling/ShrineSlotsModal";
 import { ReplayViewer } from "../games/common/replay/ReplayViewer";
+import { CycleBackdrop } from "../features/backdrop";
 import { useInbox } from "../app/inbox/InboxContext";
 import { useSession } from "../app/session/SessionContext";
 import {
-	type CycleTheme,
 	hubBackgroundClass,
 	hubCycleTheme,
 	resolveHubBackgroundId,
@@ -70,7 +70,10 @@ import {
 	removeById,
 	upsertById,
 } from "../features/social/friendsOps";
-import { buildFriendCode, parseFriendCode } from "../features/social/friendCode";
+import {
+	buildFriendCode,
+	parseFriendCode,
+} from "../features/social/friendCode";
 import {
 	conversationTitle,
 	isNearBottom,
@@ -109,7 +112,10 @@ type AchievementPanel =
 	| "bell-clash"
 	| "temple-curling";
 
-const ACHIEVEMENT_FILTER_OPTIONS: { value: AchievementFilter; label: string }[] = [
+const ACHIEVEMENT_FILTER_OPTIONS: {
+	value: AchievementFilter;
+	label: string;
+}[] = [
 	{ value: "all", label: "All" },
 	{ value: "unlocked", label: "Unlocked" },
 	{ value: "locked", label: "Locked" },
@@ -124,8 +130,9 @@ const GAME_ACHIEVEMENT_PANELS: Exclude<AchievementPanel, "base">[] = [
 
 function getAchievementPanel(achievementId: string): AchievementPanel {
 	return (
-		GAME_ACHIEVEMENT_PANELS.find((gameId) => achievementId.startsWith(`${gameId}-`)) ??
-		"base"
+		GAME_ACHIEVEMENT_PANELS.find((gameId) =>
+			achievementId.startsWith(`${gameId}-`),
+		) ?? "base"
 	);
 }
 
@@ -170,7 +177,11 @@ type CosmeticCategoryType = Extract<
 
 type CosmeticTabType = "all" | CosmeticCategoryType | "soon-1" | "soon-2";
 
-const COSMETIC_TABS: { id: CosmeticTabType; title: string; disabled?: boolean }[] = [
+const COSMETIC_TABS: {
+	id: CosmeticTabType;
+	title: string;
+	disabled?: boolean;
+}[] = [
 	{ id: "all", title: "All" },
 	{ id: "shell_skin", title: "Shells" },
 	{ id: "hub_background", title: "Backgrounds" },
@@ -200,10 +211,7 @@ const COSMETIC_PREVIEWS: Partial<Record<Cosmetic["id"], string>> = {
 	login_cycle_bg: "/assets/backgrounds/login_bg.png",
 };
 
-const SHELL_PLACEHOLDERS = [
-	"mystery-shell-1",
-	"mystery-shell-2",
-];
+const SHELL_PLACEHOLDERS = ["mystery-shell-1", "mystery-shell-2"];
 
 function cosmeticColor(color: number): string {
 	return `#${color.toString(16).padStart(6, "0")}`;
@@ -212,12 +220,16 @@ function cosmeticColor(color: number): string {
 function getCosmeticPreviewStyle(cosmetic: Cosmetic): CSSProperties {
 	const previewSource = COSMETIC_PREVIEWS[cosmetic.id];
 	const accentColor = cosmeticColor(cosmetic.accentColor);
-	const previewColor = cosmeticColor(cosmetic.previewColor ?? cosmetic.accentColor);
+	const previewColor = cosmeticColor(
+		cosmetic.previewColor ?? cosmetic.accentColor,
+	);
 
 	return {
 		"--cosmetic-accent": accentColor,
 		"--cosmetic-preview": previewColor,
-		...(previewSource ? { "--cosmetic-image": `url("${previewSource}")` } : {}),
+		...(previewSource
+			? { "--cosmetic-image": `url("${previewSource}")` }
+			: {}),
 	} as CSSProperties;
 }
 
@@ -260,10 +272,7 @@ function getAchievementProgress(achievement: Achievement): {
 		};
 	}
 
-	const current = Math.max(
-		0,
-		Math.min(achievement.progressCurrent, target),
-	);
+	const current = Math.max(0, Math.min(achievement.progressCurrent, target));
 
 	return {
 		ratio: current / target,
@@ -321,98 +330,6 @@ const GAME_ROUTES: Record<
 	},
 };
 
-type RgbColor = { r: number; g: number; b: number };
-type CycleStar = {
-	left: string;
-	top: string;
-	size: string;
-	color: string;
-	opacity: number;
-	blur: string;
-	twinkleDuration: string;
-	twinkleDelay: string;
-};
-
-const CYCLE_STAR_COLORS = [
-	"rgba(255, 255, 255, 0.98)",
-	"rgba(241, 247, 255, 0.96)",
-	"rgba(226, 239, 255, 0.94)",
-	"rgba(210, 232, 255, 0.92)",
-	"rgba(194, 223, 255, 0.9)",
-];
-const CYCLE_STAR_COUNT = 420;
-
-function createCycleStars(count: number): CycleStar[] {
-	return Array.from({ length: count }, (_, index) => {
-		const left = `${(Math.random() * 100).toFixed(2)}%`;
-		const top = `${(Math.random() * 64 + 2).toFixed(2)}%`;
-		const tier = Math.random();
-		const size =
-			tier < 0.76
-				? `${(Math.random() * 1.4 + 0.9).toFixed(2)}px`
-				: tier < 0.96
-					? `${(Math.random() * 1.1 + 1.15).toFixed(2)}px`
-					: `${(Math.random() * 1.6 + 2.2).toFixed(2)}px`;
-		const opacity = Number(
-			(
-				tier < 0.76
-					? Math.random() * 0.28 + 0.28
-					: tier < 0.96
-						? Math.random() * 0.26 + 0.52
-						: Math.random() * 0.18 + 0.74
-			).toFixed(2),
-		);
-		const blur =
-			tier < 0.76
-				? `${(Math.random() * 5 + 2).toFixed(2)}px`
-				: tier < 0.96
-					? `${(Math.random() * 8 + 6).toFixed(2)}px`
-					: `${(Math.random() * 12 + 11).toFixed(2)}px`;
-		const twinkleDuration = `${(Math.random() * 4.5 + 3.5).toFixed(2)}s`;
-		const twinkleDelay = `${(-Math.random() * 6).toFixed(2)}s`;
-
-		return {
-			left,
-			top,
-			size,
-			color: CYCLE_STAR_COLORS[index % CYCLE_STAR_COLORS.length],
-			opacity,
-			blur,
-			twinkleDuration,
-			twinkleDelay,
-		};
-	});
-}
-
-function clamp(value: number, min: number, max: number): number {
-	return Math.min(max, Math.max(min, value));
-}
-
-function lerp(start: number, end: number, amount: number): number {
-	return start + (end - start) * amount;
-}
-
-function blendColor(a: RgbColor, b: RgbColor, amount: number): RgbColor {
-	return {
-		r: Math.round(lerp(a.r, b.r, amount)),
-		g: Math.round(lerp(a.g, b.g, amount)),
-		b: Math.round(lerp(a.b, b.b, amount)),
-	};
-}
-
-function rgbToCss({ r, g, b }: RgbColor): string {
-	return `rgb(${r}, ${g}, ${b})`;
-}
-
-function getDayProgress(now: Date): number {
-	const seconds =
-		now.getHours() * 3600 +
-		now.getMinutes() * 60 +
-		now.getSeconds() +
-		now.getMilliseconds() / 1000;
-	return seconds / 86400;
-}
-
 function formatClockTime(now: Date): string {
 	const { time, period } = formatClockParts(now);
 	return period ? `${time} ${period}` : time;
@@ -444,177 +361,6 @@ function getTotalMinutes(now: Date): number {
 	return now.getHours() * 60 + now.getMinutes();
 }
 
-function getNightPhase(progress: number): number {
-	return progress >= 0.75 ? (progress - 0.75) / 0.5 : (progress + 0.25) / 0.5;
-}
-
-function interpolatePalette(
-	progress: number,
-	stops: Array<{ at: number; color: RgbColor }>,
-): string {
-	for (let index = 0; index < stops.length - 1; index += 1) {
-		const current = stops[index];
-		const next = stops[index + 1];
-		if (progress <= next.at) {
-			const range = next.at - current.at || 1;
-			const amount = clamp((progress - current.at) / range, 0, 1);
-			return rgbToCss(blendColor(current.color, next.color, amount));
-		}
-	}
-	return rgbToCss(stops[stops.length - 1].color);
-}
-
-type CycleArcConfig = {
-	xMin: number; // % at phase 0 (rise)
-	xMax: number; // % at phase 1 (set)
-	sunYBase: number; // % at horizon; y = base − arc·amp
-	sunYAmp: number;
-	moonYBase: number;
-	moonYAmp: number;
-};
-
-// Per-theme celestial arc box, so the sun/moon travel only through each
-// background's actual open-sky region instead of one arc tuned for the
-// night art. Hand-tuned against the static PNGs at a 16:9 desktop
-// breakpoint (see docs/cycle-sun-moon-occlusion-fix-report.md §2) —
-// `night` MUST keep the original constants unchanged (regression guard).
-const CYCLE_ARCS: Record<CycleTheme, CycleArcConfig> = {
-	night: { xMin: -12, xMax: 112, sunYBase: 72, sunYAmp: 62, moonYBase: 74, moonYAmp: 58 },
-	sunset: { xMin: -6, xMax: 106, sunYBase: 44, sunYAmp: 32, moonYBase: 45, moonYAmp: 30 },
-	sunrise: { xMin: 8, xMax: 92, sunYBase: 18, sunYAmp: 13, moonYBase: 19, moonYAmp: 12 },
-	login: { xMin: 12, xMax: 88, sunYBase: 13, sunYAmp: 9, moonYBase: 14, moonYAmp: 8 },
-};
-
-function applyCycleVisuals(
-	node: HTMLDivElement,
-	progress: number,
-	theme: CycleTheme,
-): void {
-	const normalized = ((progress % 1) + 1) % 1;
-	const isDay = normalized >= 0.25 && normalized < 0.75;
-	const dayPhase = clamp((normalized - 0.25) / 0.5, 0, 1);
-	const nightPhase = clamp(getNightPhase(normalized), 0, 1);
-	const dayArc = Math.sin(dayPhase * Math.PI);
-	const nightArc = Math.sin(nightPhase * Math.PI);
-	const arc = CYCLE_ARCS[theme];
-	const sunX = arc.xMin + dayPhase * (arc.xMax - arc.xMin);
-	const sunY = arc.sunYBase - dayArc * arc.sunYAmp;
-	const moonX = arc.xMin + nightPhase * (arc.xMax - arc.xMin);
-	const moonY = arc.moonYBase - nightArc * arc.moonYAmp;
-	const dawnBlend = clamp(1 - Math.abs(normalized - 0.25) / 0.08, 0, 1);
-	const duskBlend = clamp(1 - Math.abs(normalized - 0.75) / 0.08, 0, 1);
-	const twilight = Math.max(dawnBlend, duskBlend);
-	const nightStrength = isDay ? 0 : 0.55 + nightArc * 0.45;
-	const starsOpacity = clamp(nightStrength - twilight * 0.6, 0, 1);
-	// Relights themes whose foreground art has baked-in lighting (interim
-	// static-PNG route): full brightness by day, dimmest at solar midnight,
-	// eased back to 1 through the dawn/dusk twilight windows.
-	const fgBrightness = isDay
-		? 1
-		: lerp(0.45 + (1 - nightArc) * 0.15, 1, twilight);
-
-	const topColor = interpolatePalette(normalized, [
-		{ at: 0, color: { r: 7, g: 13, b: 28 } },
-		{ at: 0.2, color: { r: 24, g: 49, b: 88 } },
-		{ at: 0.28, color: { r: 123, g: 154, b: 212 } },
-		{ at: 0.5, color: { r: 103, g: 196, b: 255 } },
-		{ at: 0.72, color: { r: 241, g: 150, b: 92 } },
-		{ at: 0.82, color: { r: 35, g: 45, b: 87 } },
-		{ at: 1, color: { r: 7, g: 13, b: 28 } },
-	]);
-	const horizonColor = interpolatePalette(normalized, [
-		{ at: 0, color: { r: 18, g: 25, b: 51 } },
-		{ at: 0.2, color: { r: 93, g: 73, b: 111 } },
-		{ at: 0.28, color: { r: 255, g: 202, b: 150 } },
-		{ at: 0.5, color: { r: 178, g: 225, b: 255 } },
-		{ at: 0.72, color: { r: 255, g: 177, b: 122 } },
-		{ at: 0.82, color: { r: 64, g: 47, b: 80 } },
-		{ at: 1, color: { r: 18, g: 25, b: 51 } },
-	]);
-
-	node.style.setProperty("--cycle-top", topColor);
-	node.style.setProperty("--cycle-horizon", horizonColor);
-	node.style.setProperty("--cycle-sun-x", `${sunX}%`);
-	node.style.setProperty("--cycle-sun-y", `${sunY}%`);
-	node.style.setProperty("--cycle-moon-x", `${moonX}%`);
-	node.style.setProperty("--cycle-moon-y", `${moonY}%`);
-	node.style.setProperty("--cycle-sun-opacity", isDay ? "1" : "0");
-	node.style.setProperty("--cycle-moon-opacity", isDay ? "0" : "1");
-	node.style.setProperty("--cycle-stars-opacity", starsOpacity.toFixed(3));
-	node.style.setProperty("--cycle-twilight-opacity", twilight.toFixed(3));
-	node.style.setProperty("--cycle-fg-brightness", fgBrightness.toFixed(3));
-}
-
-const CycleBackdrop = memo(function CycleBackdrop({
-	manualMinutes,
-	theme,
-}: {
-	manualMinutes: number | null;
-	theme: CycleTheme;
-}): JSX.Element {
-	const backdropRef = useRef<HTMLDivElement | null>(null);
-	const stars = useMemo(() => createCycleStars(CYCLE_STAR_COUNT), []);
-
-	// The backdrop owns its own second-aligned tick, so it keeps its
-	// per-second cadence without re-rendering the whole hub tree. A manual
-	// debug time is static, so it is applied once per change instead.
-	useEffect(() => {
-		const node = backdropRef.current;
-		if (!node) return;
-		if (manualMinutes !== null) {
-			applyCycleVisuals(
-				node,
-				getDayProgress(createManualTime(new Date(), manualMinutes)),
-				theme,
-			);
-			return;
-		}
-		let timerId = 0;
-		const tick = () => {
-			const current = new Date();
-			applyCycleVisuals(node, getDayProgress(current), theme);
-			timerId = window.setTimeout(tick, 1000 - current.getMilliseconds());
-		};
-		tick();
-		return () => window.clearTimeout(timerId);
-	}, [manualMinutes, theme]);
-
-	return (
-		<div
-			className={`hub-cycle hub-cycle--${theme}`}
-			ref={backdropRef}
-			aria-hidden="true"
-		>
-			<div className="hub-cycle__sky" />
-			<div className="hub-cycle__stars">
-				{stars.map((star, index) => (
-					<span
-						key={index}
-						className="hub-cycle__star"
-						style={
-							{
-								"--star-left": star.left,
-								"--star-top": star.top,
-								"--star-size": star.size,
-								"--star-color": star.color,
-								"--star-opacity": star.opacity.toString(),
-								"--star-blur": star.blur,
-								"--star-twinkle-duration": star.twinkleDuration,
-								"--star-twinkle-delay": star.twinkleDelay,
-							} as CSSProperties
-						}
-					/>
-				))}
-			</div>
-			<div className="hub-cycle__sun" />
-			<div className="hub-cycle__moon" />
-			<div className="hub-cycle__glow" />
-			<div className="hub-cycle__clouds" />
-			<div className="hub-cycle__foreground" />
-		</div>
-	);
-});
-
 /** Displays a live countdown to a lobby/invite expiry timestamp. */
 function LobbyCountdown({ expiresAt }: { expiresAt: number }): JSX.Element {
 	const [remaining, setRemaining] = useState(() =>
@@ -623,7 +369,10 @@ function LobbyCountdown({ expiresAt }: { expiresAt: number }): JSX.Element {
 
 	useEffect(() => {
 		const id = setInterval(() => {
-			const secs = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+			const secs = Math.max(
+				0,
+				Math.ceil((expiresAt - Date.now()) / 1000),
+			);
 			setRemaining(secs);
 			if (secs === 0) clearInterval(id);
 		}, 1000);
@@ -666,12 +415,19 @@ function HomeMenu(): JSX.Element {
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
 	const [minigames, setMinigames] = useState<MiniGameDefinition[]>([]);
 	const [leaderboardGame, setLeaderboardGame] = useState<string>("overall");
-	const [leaderboardScope, setLeaderboardScope] = useState<LeaderboardScope>("global");
+	const [leaderboardScope, setLeaderboardScope] =
+		useState<LeaderboardScope>("global");
 	const toggleLeaderboardScope = () => {
-		setLeaderboardScope((scope) => (scope === "global" ? "friends" : "global"));
+		setLeaderboardScope((scope) =>
+			scope === "global" ? "friends" : "global",
+		);
 	};
-	const [gameLeaderboard, setGameLeaderboard] = useState<GameLeaderboardEntry[]>([]);
-	const [overallLeaderboard, setOverallLeaderboard] = useState<OverallLeaderboardEntry[]>([]);
+	const [gameLeaderboard, setGameLeaderboard] = useState<
+		GameLeaderboardEntry[]
+	>([]);
+	const [overallLeaderboard, setOverallLeaderboard] = useState<
+		OverallLeaderboardEntry[]
+	>([]);
 	const [tournamentLeaderboard, setTournamentLeaderboard] = useState<
 		TournamentLeaderboardEntry[]
 	>([]);
@@ -679,7 +435,9 @@ function HomeMenu(): JSX.Element {
 	// Rankings Bug Audit M2: distinct from "no rows returned" — a fetch
 	// failure (e.g. the backend 500ing under H1) must not render as the same
 	// "No rankings yet." empty state a healthy-but-empty board would show.
-	const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+	const [leaderboardError, setLeaderboardError] = useState<string | null>(
+		null,
+	);
 	const [isNotifDrawerOpen, setIsNotifDrawerOpen] = useState(false);
 	// Private lobby — host side
 	const [activeLobby, setActiveLobby] = useState<{
@@ -692,7 +450,9 @@ function HomeMenu(): JSX.Element {
 		userId: number;
 		name: string;
 	} | null>(null);
-	const [inviteGameId, setInviteGameId] = useState(RANKED_GAMES[0].id as string);
+	const [inviteGameId, setInviteGameId] = useState(
+		RANKED_GAMES[0].id as string,
+	);
 	// Incoming invite — invitee side
 	const [incomingInvite, setIncomingInvite] = useState<{
 		lobbyId: string;
@@ -702,13 +462,18 @@ function HomeMenu(): JSX.Element {
 	} | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isTournamentModalOpen, setIsTournamentModalOpen] = useState(false);
-	const [wipGameId, setWipGameId] = useState<"river-rush" | "oni-dodge" | null>(null);
+	const [wipGameId, setWipGameId] = useState<
+		"river-rush" | "oni-dodge" | null
+	>(null);
 	const [infoModal, setInfoModal] = useState<InfoModal>(null);
-	const [achievements, setAchievements] = useState<Achievement[] | null>(null);
+	const [achievements, setAchievements] = useState<Achievement[] | null>(
+		null,
+	);
 	const [achievementFilter, setAchievementFilter] =
 		useState<AchievementFilter>("all");
 	const [cosmetics, setCosmetics] = useState<Cosmetic[] | null>(null);
-	const [activeCosmeticTab, setActiveCosmeticTab] = useState<CosmeticTabType>("all");
+	const [activeCosmeticTab, setActiveCosmeticTab] =
+		useState<CosmeticTabType>("all");
 	const [selectedShellCosmetic, setSelectedShellCosmetic] =
 		useState<Cosmetic | null>(null);
 	const [modalError, setModalError] = useState("");
@@ -732,39 +497,52 @@ function HomeMenu(): JSX.Element {
 	const [avatarSaving, setAvatarSaving] = useState(false);
 	const [profileSuccess, setProfileSuccess] = useState("");
 	const [profileTurtleName, setProfileTurtleName] = useState("");
-	const [profileDojoTagId, setProfileDojoTagId] = useState<string | null>(null);
-	const [profileShowcasedAchievements, setProfileShowcasedAchievements] = useState<(string | null)[]>([null, null, null]);
+	const [profileDojoTagId, setProfileDojoTagId] = useState<string | null>(
+		null,
+	);
+	const [profileShowcasedAchievements, setProfileShowcasedAchievements] =
+		useState<(string | null)[]>([null, null, null]);
 	const accountLinkReturnHandled = useRef(false);
 	const [replays, setReplays] = useState<ReplaySummary[] | null>(null);
 	const [replaysLoading, setReplaysLoading] = useState(false);
-	const [selectedReplay, setSelectedReplay] = useState<ReplayDetail | null>(null);
-	const [replayActionLoading, setReplayActionLoading] = useState<string | null>(
+	const [selectedReplay, setSelectedReplay] = useState<ReplayDetail | null>(
 		null,
 	);
+	const [replayActionLoading, setReplayActionLoading] = useState<
+		string | null
+	>(null);
 	const [replayTab, setReplayTab] = useState<"match" | "saved">("match");
-	const [showcasePickerSlot, setShowcasePickerSlot] = useState<number | null>(null);
-	const [friends, setFriends] = useState<FriendView[] | null>(null);
-	const [pendingRequests, setPendingRequests] = useState<PendingView[] | null>(null);
-	const [outgoingRequests, setOutgoingRequests] = useState<PendingView[] | null>(
+	const [showcasePickerSlot, setShowcasePickerSlot] = useState<number | null>(
 		null,
 	);
+	const [friends, setFriends] = useState<FriendView[] | null>(null);
+	const [pendingRequests, setPendingRequests] = useState<
+		PendingView[] | null
+	>(null);
+	const [outgoingRequests, setOutgoingRequests] = useState<
+		PendingView[] | null
+	>(null);
 	const [suggestions, setSuggestions] = useState<PendingView[] | null>(null);
-	const [blockedUsers, setBlockedUsers] = useState<PendingView[] | null>(null);
+	const [blockedUsers, setBlockedUsers] = useState<PendingView[] | null>(
+		null,
+	);
 	const [socialLoading, setSocialLoading] = useState(false);
 	// Left-pane tab for the redesigned two-pane Social modal (Workstream C).
-	const [socialTab, setSocialTab] = useState<"friends" | "chats" | "requests">(
-		"friends",
-	);
+	const [socialTab, setSocialTab] = useState<
+		"friends" | "chats" | "requests"
+	>("friends");
 	const [friendSearchQuery, setFriendSearchQuery] = useState("");
 	const [friendUsername, setFriendUsername] = useState("");
 	const [friendActionLoading, setFriendActionLoading] = useState(false);
 	const { showToast } = useToast();
 
 	// ── Chat ─────────────────────────────────────────────────────────────────
-	const [conversations, setConversations] = useState<ConversationSummaryView[] | null>(null);
-	const [activeConversationId, setActiveConversationId] = useState<number | null>(
-		null,
-	);
+	const [conversations, setConversations] = useState<
+		ConversationSummaryView[] | null
+	>(null);
+	const [activeConversationId, setActiveConversationId] = useState<
+		number | null
+	>(null);
 	/** Oldest → newest, for display top-to-bottom in the thread view. */
 	const [chatMessages, setChatMessages] = useState<ChatMessageView[]>([]);
 	const [chatMessageDraft, setChatMessageDraft] = useState("");
@@ -776,7 +554,9 @@ function HomeMenu(): JSX.Element {
 	const [chatActionLoading, setChatActionLoading] = useState(false);
 	const [isNewGroupOpen, setIsNewGroupOpen] = useState(false);
 	const [newGroupName, setNewGroupName] = useState("");
-	const [newGroupMemberIds, setNewGroupMemberIds] = useState<Set<number>>(new Set());
+	const [newGroupMemberIds, setNewGroupMemberIds] = useState<Set<number>>(
+		new Set(),
+	);
 	const [isGifPickerOpen, setIsGifPickerOpen] = useState(false);
 	const [gifSearchQuery, setGifSearchQuery] = useState("");
 	const [gifResults, setGifResults] = useState<GifSearchResult[]>([]);
@@ -789,10 +569,14 @@ function HomeMenu(): JSX.Element {
 	// `groupMembers` is the open group's member list (null = panel closed / not
 	// loaded); the rest drive the member panel, add-member picker, and the
 	// owner-only rename control.
-	const [groupMembers, setGroupMembers] = useState<GroupMemberView[] | null>(null);
+	const [groupMembers, setGroupMembers] = useState<GroupMemberView[] | null>(
+		null,
+	);
 	const [groupMembersLoading, setGroupMembersLoading] = useState(false);
 	const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
-	const [groupRenameDraft, setGroupRenameDraft] = useState<string | null>(null);
+	const [groupRenameDraft, setGroupRenameDraft] = useState<string | null>(
+		null,
+	);
 	const [groupActionLoading, setGroupActionLoading] = useState(false);
 	/** Pending friend-removal timers keyed by userId; cleared on Undo. */
 	const removalTimers = useRef(
@@ -810,7 +594,9 @@ function HomeMenu(): JSX.Element {
 	const [hoveredFriendUsername, setHoveredFriendUsername] = useState<
 		string | null
 	>(null);
-	const [hoveredProfile, setHoveredProfile] = useState<PublicUserView | null>(null);
+	const [hoveredProfile, setHoveredProfile] = useState<PublicUserView | null>(
+		null,
+	);
 	const [hoveredProfileLoading, setHoveredProfileLoading] = useState(false);
 	const profileCardCache = useRef(
 		createProfileCardCache<PublicUserView>(),
@@ -866,24 +652,24 @@ function HomeMenu(): JSX.Element {
 		let cancelled = false;
 
 		async function loadHub(): Promise<void> {
-				try {
-					const [nextMinigames, nextAchievements] = await Promise.all([
-							api.getMiniGames().catch(() => []),
-							api.getAchievements().catch(() => []),
-						]);
+			try {
+				const [nextMinigames, nextAchievements] = await Promise.all([
+					api.getMiniGames().catch(() => []),
+					api.getAchievements().catch(() => []),
+				]);
 
-					if (!cancelled) {
-						setMinigames(nextMinigames);
-						setAchievements(nextAchievements);
-					}
-				} catch (err: unknown) {
-					console.warn("[HomeMenu] Failed to load hub:", err);
-					if (!cancelled && err instanceof AuthError) {
-						navigate("/auth", { replace: true });
-					}
-				} finally {
-					if (!cancelled) setIsLoading(false);
+				if (!cancelled) {
+					setMinigames(nextMinigames);
+					setAchievements(nextAchievements);
 				}
+			} catch (err: unknown) {
+				console.warn("[HomeMenu] Failed to load hub:", err);
+				if (!cancelled && err instanceof AuthError) {
+					navigate("/auth", { replace: true });
+				}
+			} finally {
+				if (!cancelled) setIsLoading(false);
+			}
 		}
 
 		void loadHub();
@@ -910,17 +696,23 @@ function HomeMenu(): JSX.Element {
 			// fetching so a slow or failed request can't leave stale entries on
 			// screen mislabelled as the newly-selected tab.
 			if (leaderboardGame === "overall") setOverallLeaderboard([]);
-			else if (leaderboardGame === "tournaments") setTournamentLeaderboard([]);
+			else if (leaderboardGame === "tournaments")
+				setTournamentLeaderboard([]);
 			else setGameLeaderboard([]);
 			try {
 				if (leaderboardGame === "overall") {
-					const rows = await api.getOverallLeaderboard(leaderboardScope);
+					const rows =
+						await api.getOverallLeaderboard(leaderboardScope);
 					if (!cancelledRef.current) setOverallLeaderboard(rows);
 				} else if (leaderboardGame === "tournaments") {
-					const rows = await api.getTournamentLeaderboard(leaderboardScope);
+					const rows =
+						await api.getTournamentLeaderboard(leaderboardScope);
 					if (!cancelledRef.current) setTournamentLeaderboard(rows);
 				} else {
-					const rows = await api.getGameLeaderboard(leaderboardGame, leaderboardScope);
+					const rows = await api.getGameLeaderboard(
+						leaderboardGame,
+						leaderboardScope,
+					);
 					if (!cancelledRef.current) setGameLeaderboard(rows);
 				}
 			} catch (err) {
@@ -962,16 +754,22 @@ function HomeMenu(): JSX.Element {
 	// these track the caller's own row within it so it can be pinned in a
 	// summary bar regardless of scroll position.
 	const ownOverallRank = useMemo(
-		() => overallLeaderboard.find((entry) => entry.userId === player?.id) ?? null,
+		() =>
+			overallLeaderboard.find((entry) => entry.userId === player?.id) ??
+			null,
 		[overallLeaderboard, player],
 	);
 	const ownGameRank = useMemo(
-		() => gameLeaderboard.find((entry) => entry.userId === player?.id) ?? null,
+		() =>
+			gameLeaderboard.find((entry) => entry.userId === player?.id) ??
+			null,
 		[gameLeaderboard, player],
 	);
 	const ownTournamentRank = useMemo(
 		() =>
-			tournamentLeaderboard.find((entry) => entry.userId === player?.id) ?? null,
+			tournamentLeaderboard.find(
+				(entry) => entry.userId === player?.id,
+			) ?? null,
 		[tournamentLeaderboard, player],
 	);
 
@@ -999,7 +797,11 @@ function HomeMenu(): JSX.Element {
 		// nothing to resync) and guard against a burst of removals firing
 		// concurrent refetches (Bug B3).
 		const onFriendRemoved = () => {
-			if (friendsRef.current === null || friendRemovedRefetchInFlightRef.current) return;
+			if (
+				friendsRef.current === null ||
+				friendRemovedRefetchInFlightRef.current
+			)
+				return;
 			friendRemovedRefetchInFlightRef.current = true;
 			void refreshSocial().finally(() => {
 				friendRemovedRefetchInFlightRef.current = false;
@@ -1011,15 +813,24 @@ function HomeMenu(): JSX.Element {
 		// handler doesn't read a stale `friends`; a no-op when the modal has
 		// never been opened (friends === null) or the user isn't in the list.
 		const onPresenceChanged = (data: PresenceChange) =>
-			setFriends((prev) => (prev ? patchFriendPresence(prev, data) : prev));
+			setFriends((prev) =>
+				prev ? patchFriendPresence(prev, data) : prev,
+			);
 
-		const onLobbyCreated = (data: { lobbyId: string; gameId: string; expiresAt: number }) =>
-			setActiveLobby(data);
+		const onLobbyCreated = (data: {
+			lobbyId: string;
+			gameId: string;
+			expiresAt: number;
+		}) => setActiveLobby(data);
 
 		const onLobbyExpired = () => setActiveLobby(null);
 		const onLobbyCancelled = (data: { lobbyId: string }) => {
-			setActiveLobby((prev) => (prev?.lobbyId === data.lobbyId ? null : prev));
-			setIncomingInvite((prev) => (prev?.lobbyId === data.lobbyId ? null : prev));
+			setActiveLobby((prev) =>
+				prev?.lobbyId === data.lobbyId ? null : prev,
+			);
+			setIncomingInvite((prev) =>
+				prev?.lobbyId === data.lobbyId ? null : prev,
+			);
 		};
 
 		const onLobbyDeclined = () => {
@@ -1038,10 +849,16 @@ function HomeMenu(): JSX.Element {
 		// match instead of leaving them to separately find their way to the game
 		// page and click "Rejoin Match". GamePage reads autoJoinMatch from router
 		// state and auto-launches once its own match:status round trip resolves.
-		const onLobbyMatched = (data: { matchId: string; side: number; gameId: string }) => {
+		const onLobbyMatched = (data: {
+			matchId: string;
+			side: number;
+			gameId: string;
+		}) => {
 			setActiveLobby(null);
 			setIncomingInvite(null);
-			navigate(`/play/${data.gameId}`, { state: { autoJoinMatch: true } });
+			navigate(`/play/${data.gameId}`, {
+				state: { autoJoinMatch: true },
+			});
 		};
 
 		socket.on("friend:removed", onFriendRemoved);
@@ -1092,7 +909,9 @@ function HomeMenu(): JSX.Element {
 	// own just-sent message arrives, even if they'd scrolled up.
 	const chatListRef = useRef<HTMLUListElement | null>(null);
 	const chatScrollActionRef = useRef<
-		{ kind: "bottom" } | { kind: "preserve"; prevScrollHeight: number } | null
+		| { kind: "bottom" }
+		| { kind: "preserve"; prevScrollHeight: number }
+		| null
 	>(null);
 	const chatMessagesRef = useRef<ChatMessageView[]>([]);
 	const pendingSendScrollRef = useRef(false);
@@ -1133,7 +952,9 @@ function HomeMenu(): JSX.Element {
 				// own broadcast, and a message can race the initial history fetch
 				// (Bug Audit L1). Dedup off the ref (not the stale closure) so the
 				// scroll decision below only runs for a genuine append.
-				const isNew = !chatMessagesRef.current.some((m) => m.id === message.id);
+				const isNew = !chatMessagesRef.current.some(
+					(m) => m.id === message.id,
+				);
 				if (isNew) {
 					// Decide the scroll action *before* the DOM grows (Bug B2): stick
 					// to the bottom if the reader was already near it, or if this is
@@ -1151,12 +972,16 @@ function HomeMenu(): JSX.Element {
 							el.clientHeight,
 							CHAT_SCROLL_STICK_THRESHOLD_PX,
 						);
-					chatScrollActionRef.current = pinned ? { kind: "bottom" } : null;
+					chatScrollActionRef.current = pinned
+						? { kind: "bottom" }
+						: null;
 					// A message landed in the open thread → our own send (if any) was
 					// accepted, so disarm the draft-restore ref (Bug B8).
 					lastSentChatBodyRef.current = "";
 					setChatMessages((prev) =>
-						prev.some((m) => m.id === message.id) ? prev : [...prev, message],
+						prev.some((m) => m.id === message.id)
+							? prev
+							: [...prev, message],
 					);
 				}
 			}
@@ -1201,7 +1026,9 @@ function HomeMenu(): JSX.Element {
 			const pending = lastSentChatBodyRef.current;
 			if (pending) {
 				lastSentChatBodyRef.current = "";
-				setChatMessageDraft((prev) => (prev.length === 0 ? pending : prev));
+				setChatMessageDraft((prev) =>
+					prev.length === 0 ? pending : prev,
+				);
 			}
 		};
 
@@ -1239,9 +1066,12 @@ function HomeMenu(): JSX.Element {
 					? prev.map((c) => {
 							if (c.id !== data.conversationId) return c;
 							const patched = { ...c };
-							if (data.name !== undefined) patched.name = data.name;
-							if (data.avatar !== undefined) patched.avatar = data.avatar;
-							if (data.ownerId !== undefined) patched.ownerId = data.ownerId;
+							if (data.name !== undefined)
+								patched.name = data.name;
+							if (data.avatar !== undefined)
+								patched.avatar = data.avatar;
+							if (data.ownerId !== undefined)
+								patched.ownerId = data.ownerId;
 							return patched;
 						})
 					: prev,
@@ -1280,7 +1110,11 @@ function HomeMenu(): JSX.Element {
 	 * then declining the duplicate would otherwise net to added-then-removed.
 	 */
 	function handleResolveFriendRequestNotifs(fromUserId: number): void {
-		const ids = notificationIdsFrom(notifications, fromUserId, "friend_request");
+		const ids = notificationIdsFrom(
+			notifications,
+			fromUserId,
+			"friend_request",
+		);
 		for (const id of ids) {
 			getGameSocket().emit("notification:read", { notificationId: id });
 		}
@@ -1293,7 +1127,10 @@ function HomeMenu(): JSX.Element {
 		getGameSocket().emit("lobby:create", { gameId, shellSelection: [] });
 		// After lobby:created fires, send the invite
 		getGameSocket().once("lobby:created", (data: { lobbyId: string }) => {
-			getGameSocket().emit("lobby:invite", { lobbyId: data.lobbyId, inviteeUserId: friendUserId });
+			getGameSocket().emit("lobby:invite", {
+				lobbyId: data.lobbyId,
+				inviteeUserId: friendUserId,
+			});
 			setInviteTarget(null);
 		});
 	}
@@ -1306,13 +1143,18 @@ function HomeMenu(): JSX.Element {
 
 	function handleAcceptInvite(): void {
 		if (!incomingInvite) return;
-		getGameSocket().emit("lobby:join", { lobbyId: incomingInvite.lobbyId, shellSelection: [] });
+		getGameSocket().emit("lobby:join", {
+			lobbyId: incomingInvite.lobbyId,
+			shellSelection: [],
+		});
 		setIncomingInvite(null);
 	}
 
 	function handleDeclineInvite(): void {
 		if (!incomingInvite) return;
-		getGameSocket().emit("lobby:decline", { lobbyId: incomingInvite.lobbyId });
+		getGameSocket().emit("lobby:decline", {
+			lobbyId: incomingInvite.lobbyId,
+		});
 		setIncomingInvite(null);
 	}
 
@@ -1333,7 +1175,10 @@ function HomeMenu(): JSX.Element {
 					? prev
 					: current,
 			);
-			timerId = window.setTimeout(scheduleTick, 1000 - current.getMilliseconds());
+			timerId = window.setTimeout(
+				scheduleTick,
+				1000 - current.getMilliseconds(),
+			);
 		};
 
 		scheduleTick();
@@ -1389,7 +1234,10 @@ function HomeMenu(): JSX.Element {
 		groups.set("dojo_tag", []);
 		for (const cosmetic of cosmetics ?? []) {
 			if (cosmetic.type === "hub_background_alter") continue;
-			groups.set(cosmetic.type, [...(groups.get(cosmetic.type) ?? []), cosmetic]);
+			groups.set(cosmetic.type, [
+				...(groups.get(cosmetic.type) ?? []),
+				cosmetic,
+			]);
 		}
 		return groups;
 	}, [cosmetics]);
@@ -1405,8 +1253,16 @@ function HomeMenu(): JSX.Element {
 	}, [cosmeticGroups]);
 
 	const cosmeticCategoryProgress = useMemo(() => {
-		const progress = new Map<CosmeticCategoryType, { owned: number; total: number }>();
-		for (const category of ["shell_skin", "hub_background", "trail_effect", "dojo_tag"] as const) {
+		const progress = new Map<
+			CosmeticCategoryType,
+			{ owned: number; total: number }
+		>();
+		for (const category of [
+			"shell_skin",
+			"hub_background",
+			"trail_effect",
+			"dojo_tag",
+		] as const) {
 			const group = cosmeticGroups.get(category) ?? [];
 			progress.set(category, {
 				owned: group.filter((cosmetic) => cosmetic.owned).length,
@@ -1540,7 +1396,8 @@ function HomeMenu(): JSX.Element {
 			!player ||
 			(!searchParams.has("account_link_conflict") &&
 				!searchParams.has("account_linked"))
-		) return;
+		)
+			return;
 		accountLinkReturnHandled.current = true;
 		void openProfile();
 		navigate(`/?view=${view}`, { replace: true });
@@ -1597,19 +1454,22 @@ function HomeMenu(): JSX.Element {
 				} catch {
 					// Keep the local cosmetic update if the balance refresh fails.
 				}
-				setPlayer(refreshedPlayer ?? {
-					...player,
-					hubBackground: equippedBackground?.id ?? player.hubBackground,
-					hubBackgroundAlter: equippedBackgroundAlter?.id ?? null,
-					shellSkin: equippedShell?.id ?? player.shellSkin,
-					trailEffect: equippedTrail?.id ?? player.trailEffect,
-					profile: player.profile
-						? {
-								...player.profile,
-								tag: equippedTag?.id ?? player.profile.tag,
-							}
-						: player.profile,
-				});
+				setPlayer(
+					refreshedPlayer ?? {
+						...player,
+						hubBackground:
+							equippedBackground?.id ?? player.hubBackground,
+						hubBackgroundAlter: equippedBackgroundAlter?.id ?? null,
+						shellSkin: equippedShell?.id ?? player.shellSkin,
+						trailEffect: equippedTrail?.id ?? player.trailEffect,
+						profile: player.profile
+							? {
+									...player.profile,
+									tag: equippedTag?.id ?? player.profile.tag,
+								}
+							: player.profile,
+					},
+				);
 			}
 		} catch {
 			setModalError("Could not update customisation.");
@@ -1642,7 +1502,8 @@ function HomeMenu(): JSX.Element {
 			await api.getCsrfToken();
 			setShowcasePickerSlot(null);
 			const updates: Parameters<typeof api.updateProfile>[0] = {};
-			if (profileTurtleName.trim()) updates.turtleName = profileTurtleName.trim();
+			if (profileTurtleName.trim())
+				updates.turtleName = profileTurtleName.trim();
 			updates.tag = profileDojoTagId;
 			updates.showcasedAchievements = profileShowcasedAchievements.filter(
 				(id): id is string => id !== null,
@@ -1662,7 +1523,12 @@ function HomeMenu(): JSX.Element {
 		event.target.value = "";
 		if (!file || avatarSaving) return;
 
-		const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+		const allowedTypes = new Set([
+			"image/jpeg",
+			"image/png",
+			"image/webp",
+			"image/gif",
+		]);
 		if (!allowedTypes.has(file.type) || file.size > 2 * 1024 * 1024) {
 			setModalError("Choose a JPEG, PNG, WebP, or GIF image up to 2 MB.");
 			return;
@@ -1674,7 +1540,9 @@ function HomeMenu(): JSX.Element {
 		try {
 			await api.getCsrfToken();
 			const { avatarUrl } = await api.uploadAvatar(file);
-			setPlayer((current) => current ? { ...current, avatar: avatarUrl } : current);
+			setPlayer((current) =>
+				current ? { ...current, avatar: avatarUrl } : current,
+			);
 			setProfileSuccess("Portrait updated.");
 		} catch (err: unknown) {
 			setModalError(describeModalError(err, "Portrait upload failed."));
@@ -1691,7 +1559,9 @@ function HomeMenu(): JSX.Element {
 		try {
 			await api.getCsrfToken();
 			await api.clearAvatar();
-			setPlayer((current) => current ? { ...current, avatar: null } : current);
+			setPlayer((current) =>
+				current ? { ...current, avatar: null } : current,
+			);
 			setProfileSuccess("Equipped shell restored as your portrait.");
 		} catch (err: unknown) {
 			setModalError(describeModalError(err, "Could not reset portrait."));
@@ -1776,7 +1646,9 @@ function HomeMenu(): JSX.Element {
 		}
 	};
 
-	const handleOpenConversation = async (conversationId: number): Promise<void> => {
+	const handleOpenConversation = async (
+		conversationId: number,
+	): Promise<void> => {
 		setActiveConversationId(conversationId);
 		setChatMessages([]);
 		setChatHasMoreOlder(false);
@@ -1799,7 +1671,8 @@ function HomeMenu(): JSX.Element {
 			setChatMessages((live) => {
 				const seen = new Set(ordered.map((m) => m.id));
 				const extras = live.filter(
-					(m) => m.conversationId === conversationId && !seen.has(m.id),
+					(m) =>
+						m.conversationId === conversationId && !seen.has(m.id),
 				);
 				return [...ordered, ...extras];
 			});
@@ -1808,12 +1681,17 @@ function HomeMenu(): JSX.Element {
 			// A full page implies there may be older history to page in (L6).
 			setChatHasMoreOlder(messages.length >= CHAT_MESSAGE_PAGE_SIZE);
 			getGameSocket().emit("chat:read", { conversationId });
-			setUnreadConversationIds((prev) => removeUnread(prev, conversationId));
+			setUnreadConversationIds((prev) =>
+				removeUnread(prev, conversationId),
+			);
 		} catch (err: unknown) {
 			// Ignore a stale failure so it doesn't clobber the newer thread (Bug B5).
 			if (activeConversationIdRef.current !== conversationId) return;
 			showToast({
-				message: err instanceof Error ? err.message : "Could not load messages.",
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not load messages.",
 				variant: "error",
 			});
 			setActiveConversationId(null);
@@ -1827,7 +1705,11 @@ function HomeMenu(): JSX.Element {
 
 	/** Page in the previous batch of messages, prepending them (Bug Audit L6). */
 	const handleLoadOlderMessages = async (): Promise<void> => {
-		if (!activeConversationId || chatLoadingOlder || chatMessages.length === 0) {
+		if (
+			!activeConversationId ||
+			chatLoadingOlder ||
+			chatMessages.length === 0
+		) {
 			return;
 		}
 		const oldest = chatMessages[0];
@@ -1835,7 +1717,10 @@ function HomeMenu(): JSX.Element {
 		try {
 			// Cursor by id, not createdAt, so a page boundary that lands between
 			// two messages sharing a millisecond can't skip one (Bug B6).
-			const older = await api.getChatMessages(activeConversationId, oldest.id);
+			const older = await api.getChatMessages(
+				activeConversationId,
+				oldest.id,
+			);
 			// Server returns newest-first; reverse to oldest-first, dedup, prepend.
 			const ordered = [...older].reverse();
 			// Capture the pre-prepend height so the layout effect can hold the
@@ -1879,7 +1764,9 @@ function HomeMenu(): JSX.Element {
 		setGroupRenameDraft(null);
 	};
 
-	const handleStartDirectMessage = async (friend: { userId: number }): Promise<void> => {
+	const handleStartDirectMessage = async (friend: {
+		userId: number;
+	}): Promise<void> => {
 		if (chatActionLoading) return;
 		setChatActionLoading(true);
 		try {
@@ -1889,7 +1776,10 @@ function HomeMenu(): JSX.Element {
 			await handleOpenConversation(conversation.id);
 		} catch (err: unknown) {
 			showToast({
-				message: err instanceof Error ? err.message : "Could not start conversation.",
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not start conversation.",
 				variant: "error",
 			});
 		} finally {
@@ -1949,7 +1839,10 @@ function HomeMenu(): JSX.Element {
 	};
 
 	const gifSearchDebounce = useRef(
-		debounce((query: string) => void runGifSearch(query), GIF_SEARCH_DEBOUNCE_MS),
+		debounce(
+			(query: string) => void runGifSearch(query),
+			GIF_SEARCH_DEBOUNCE_MS,
+		),
 	).current;
 
 	const handleGifSearchChange = (value: string): void => {
@@ -1997,7 +1890,8 @@ function HomeMenu(): JSX.Element {
 
 	const handleCreateGroup = async (): Promise<void> => {
 		const trimmedName = newGroupName.trim();
-		if (!trimmedName || newGroupMemberIds.size === 0 || chatActionLoading) return;
+		if (!trimmedName || newGroupMemberIds.size === 0 || chatActionLoading)
+			return;
 		setChatActionLoading(true);
 		try {
 			await api.getCsrfToken();
@@ -2009,10 +1903,16 @@ function HomeMenu(): JSX.Element {
 			setNewGroupMemberIds(new Set());
 			await refreshConversations();
 			await handleOpenConversation(conversation.id);
-			showToast({ message: `Created ${trimmedName}`, variant: "success" });
+			showToast({
+				message: `Created ${trimmedName}`,
+				variant: "success",
+			});
 		} catch (err: unknown) {
 			showToast({
-				message: err instanceof Error ? err.message : "Could not create group.",
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not create group.",
 				variant: "error",
 			});
 		} finally {
@@ -2031,7 +1931,10 @@ function HomeMenu(): JSX.Element {
 			showToast({ message: "Left group", variant: "info" });
 		} catch (err: unknown) {
 			showToast({
-				message: err instanceof Error ? err.message : "Could not leave group.",
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not leave group.",
 				variant: "error",
 			});
 		} finally {
@@ -2040,7 +1943,9 @@ function HomeMenu(): JSX.Element {
 	};
 
 	/** Fetch and cache the open group's member list (Decision 2). */
-	const refreshGroupMembers = async (conversationId: number): Promise<void> => {
+	const refreshGroupMembers = async (
+		conversationId: number,
+	): Promise<void> => {
 		try {
 			const members = await api.getGroupMembers(conversationId);
 			// Guard against a stale response for a thread that's since closed/changed.
@@ -2075,7 +1980,10 @@ function HomeMenu(): JSX.Element {
 			await refreshGroupMembers(activeConversationId);
 		} catch (err: unknown) {
 			showToast({
-				message: err instanceof Error ? err.message : "Could not remove member.",
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not remove member.",
 				variant: "error",
 			});
 		} finally {
@@ -2094,7 +2002,10 @@ function HomeMenu(): JSX.Element {
 			setIsAddMemberOpen(false);
 		} catch (err: unknown) {
 			showToast({
-				message: err instanceof Error ? err.message : "Could not add member.",
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not add member.",
 				variant: "error",
 			});
 		} finally {
@@ -2104,7 +2015,11 @@ function HomeMenu(): JSX.Element {
 
 	/** Owner-only: commit a group rename (Decision 1). */
 	const handleRenameGroup = async (): Promise<void> => {
-		if (!activeConversationId || groupActionLoading || groupRenameDraft === null) {
+		if (
+			!activeConversationId ||
+			groupActionLoading ||
+			groupRenameDraft === null
+		) {
 			return;
 		}
 		const trimmed = groupRenameDraft.trim();
@@ -2117,7 +2032,10 @@ function HomeMenu(): JSX.Element {
 			setGroupRenameDraft(null);
 		} catch (err: unknown) {
 			showToast({
-				message: err instanceof Error ? err.message : "Could not rename group.",
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not rename group.",
 				variant: "error",
 			});
 		} finally {
@@ -2135,7 +2053,12 @@ function HomeMenu(): JSX.Element {
 		event.target.value = "";
 		if (!file || !activeConversationId || groupActionLoading) return;
 
-		const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+		const allowedTypes = new Set([
+			"image/jpeg",
+			"image/png",
+			"image/webp",
+			"image/gif",
+		]);
 		if (!allowedTypes.has(file.type) || file.size > 2 * 1024 * 1024) {
 			showToast({
 				message: "Choose a JPEG, PNG, WebP, or GIF image up to 2 MB.",
@@ -2163,7 +2086,9 @@ function HomeMenu(): JSX.Element {
 		} catch (err: unknown) {
 			showToast({
 				message:
-					err instanceof Error ? err.message : "Could not update group photo.",
+					err instanceof Error
+						? err.message
+						: "Could not update group photo.",
 				variant: "error",
 			});
 		} finally {
@@ -2183,7 +2108,10 @@ function HomeMenu(): JSX.Element {
 			showToast({ message: "Group deleted", variant: "info" });
 		} catch (err: unknown) {
 			showToast({
-				message: err instanceof Error ? err.message : "Could not delete group.",
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not delete group.",
 				variant: "error",
 			});
 		} finally {
@@ -2194,7 +2122,8 @@ function HomeMenu(): JSX.Element {
 	// Derived group/owner state for the member panel (Decision 1/2).
 	const activeConversation =
 		activeConversationId !== null
-			? (conversations?.find((c) => c.id === activeConversationId) ?? null)
+			? (conversations?.find((c) => c.id === activeConversationId) ??
+				null)
 			: null;
 	const isActiveGroup = activeConversation?.type === "group";
 	const isOwnerOfActiveGroup =
@@ -2253,7 +2182,9 @@ function HomeMenu(): JSX.Element {
 			const refreshedReplays = await api.getMyReplays();
 			setReplays(refreshedReplays);
 			setSelectedReplay((prev) =>
-				prev && prev.matchId === matchId ? { ...prev, ...updated } : prev,
+				prev && prev.matchId === matchId
+					? { ...prev, ...updated }
+					: prev,
 			);
 		} catch (err: unknown) {
 			setModalError(describeModalError(err, "Could not update replay."));
@@ -2291,7 +2222,9 @@ function HomeMenu(): JSX.Element {
 
 	/** Unblock a user and optimistically drop them from the Blocked list. */
 	const handleUnblockUser = async (blocked: PendingView): Promise<void> => {
-		setBlockedUsers((prev) => (prev ? removeById(prev, blocked.userId) : prev));
+		setBlockedUsers((prev) =>
+			prev ? removeById(prev, blocked.userId) : prev,
+		);
 		try {
 			await api.getCsrfToken();
 			await api.unblockUser(blocked.userId);
@@ -2301,7 +2234,10 @@ function HomeMenu(): JSX.Element {
 			});
 		} catch (err: unknown) {
 			showToast({
-				message: err instanceof Error ? err.message : "Could not unblock user.",
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not unblock user.",
 				variant: "error",
 			});
 			void refreshSocial();
@@ -2343,7 +2279,9 @@ function HomeMenu(): JSX.Element {
 		} catch (err: unknown) {
 			showToast({
 				message:
-					err instanceof Error ? err.message : "Could not send request.",
+					err instanceof Error
+						? err.message
+						: "Could not send request.",
 				variant: "error",
 			});
 		} finally {
@@ -2369,7 +2307,9 @@ function HomeMenu(): JSX.Element {
 		} catch (err: unknown) {
 			showToast({
 				message:
-					err instanceof Error ? err.message : "Could not send request.",
+					err instanceof Error
+						? err.message
+						: "Could not send request.",
 				variant: "error",
 			});
 			void refreshSocial();
@@ -2391,7 +2331,9 @@ function HomeMenu(): JSX.Element {
 			lastSeenAt: null,
 			requesterId: req.userId,
 		};
-		setPendingRequests((prev) => (prev ? removeById(prev, req.userId) : prev));
+		setPendingRequests((prev) =>
+			prev ? removeById(prev, req.userId) : prev,
+		);
 		setFriends((prev) => upsertById(prev ?? [], optimisticFriend));
 		try {
 			await api.getCsrfToken();
@@ -2410,7 +2352,9 @@ function HomeMenu(): JSX.Element {
 		} catch (err: unknown) {
 			showToast({
 				message:
-					err instanceof Error ? err.message : "Could not accept request.",
+					err instanceof Error
+						? err.message
+						: "Could not accept request.",
 				variant: "error",
 			});
 		} finally {
@@ -2496,7 +2440,9 @@ function HomeMenu(): JSX.Element {
 		);
 		// Also drop from suggestions — otherwise a blocked user lingers there
 		// with an Add button that 409s against the new block row (Bug Audit M5).
-		setSuggestions((prev) => (prev ? removeById(prev, friend.userId) : prev));
+		setSuggestions((prev) =>
+			prev ? removeById(prev, friend.userId) : prev,
+		);
 		try {
 			await api.getCsrfToken();
 			await api.blockUser(friend.userId);
@@ -2508,7 +2454,10 @@ function HomeMenu(): JSX.Element {
 			void refreshSocial();
 		} catch (err: unknown) {
 			showToast({
-				message: err instanceof Error ? err.message : "Could not block user.",
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not block user.",
 				variant: "error",
 			});
 			void refreshSocial();
@@ -2555,7 +2504,9 @@ function HomeMenu(): JSX.Element {
 		} catch (err: unknown) {
 			showToast({
 				message:
-					err instanceof Error ? err.message : "Could not submit report.",
+					err instanceof Error
+						? err.message
+						: "Could not submit report.",
 				variant: "error",
 			});
 		} finally {
@@ -2565,7 +2516,9 @@ function HomeMenu(): JSX.Element {
 
 	const handleDeclineRequest = async (req: PendingView) => {
 		// Declines are immediate (no undo): drop from pending, delete server-side.
-		setPendingRequests((prev) => (prev ? removeById(prev, req.userId) : prev));
+		setPendingRequests((prev) =>
+			prev ? removeById(prev, req.userId) : prev,
+		);
 		try {
 			await api.getCsrfToken();
 			await api.declineOrCancelFriendRequest(req.userId);
@@ -2576,7 +2529,9 @@ function HomeMenu(): JSX.Element {
 		} catch (err: unknown) {
 			showToast({
 				message:
-					err instanceof Error ? err.message : "Could not decline request.",
+					err instanceof Error
+						? err.message
+						: "Could not decline request.",
 				variant: "error",
 			});
 			void refreshSocial();
@@ -2598,7 +2553,9 @@ function HomeMenu(): JSX.Element {
 		} catch (err: unknown) {
 			showToast({
 				message:
-					err instanceof Error ? err.message : "Could not cancel request.",
+					err instanceof Error
+						? err.message
+						: "Could not cancel request.",
 				variant: "error",
 			});
 			void refreshSocial();
@@ -2700,8 +2657,8 @@ function HomeMenu(): JSX.Element {
 					<small> @{friend.username}</small>
 					{friend.status === "in-game" ? (
 						<span className="hub-modal__social-status hub-modal__social-status--ingame">
-							{RANKED_GAMES.find((g) => g.id === friend.gameId)?.label ??
-								"In a match"}
+							{RANKED_GAMES.find((g) => g.id === friend.gameId)
+								?.label ?? "In a match"}
 						</span>
 					) : friend.status === "online" ? (
 						<span
@@ -2715,7 +2672,10 @@ function HomeMenu(): JSX.Element {
 						</span>
 					)}
 					{hoveredFriendUsername === friend.username ? (
-						<ProfileCard user={hoveredProfile} loading={hoveredProfileLoading} />
+						<ProfileCard
+							user={hoveredProfile}
+							loading={hoveredProfileLoading}
+						/>
 					) : null}
 				</span>
 			</div>
@@ -2750,7 +2710,9 @@ function HomeMenu(): JSX.Element {
 							type="button"
 							className="hub-modal__social-message-btn"
 							disabled={chatActionLoading}
-							onClick={() => void handleStartDirectMessage(friend)}
+							onClick={() =>
+								void handleStartDirectMessage(friend)
+							}
 						>
 							Message
 						</button>
@@ -2761,7 +2723,9 @@ function HomeMenu(): JSX.Element {
 								onClick={() =>
 									setInviteTarget({
 										userId: friend.userId,
-										name: friend.turtleName ?? friend.username,
+										name:
+											friend.turtleName ??
+											friend.username,
 									})
 								}
 							>
@@ -2776,18 +2740,25 @@ function HomeMenu(): JSX.Element {
 								type="button"
 								className="hub-modal__social-menu-toggle"
 								aria-haspopup="true"
-								aria-expanded={friendMenuUserId === friend.userId}
+								aria-expanded={
+									friendMenuUserId === friend.userId
+								}
 								aria-label={`More actions for ${friend.turtleName ?? friend.username}`}
 								onClick={() =>
 									setFriendMenuUserId((prev) =>
-										prev === friend.userId ? null : friend.userId,
+										prev === friend.userId
+											? null
+											: friend.userId,
 									)
 								}
 							>
 								⋯
 							</button>
 							{friendMenuUserId === friend.userId ? (
-								<div className="hub-modal__social-menu" role="menu">
+								<div
+									className="hub-modal__social-menu"
+									role="menu"
+								>
 									<button
 										type="button"
 										role="menuitem"
@@ -2804,7 +2775,9 @@ function HomeMenu(): JSX.Element {
 										className="hub-modal__social-block-btn"
 										onClick={() => {
 											setFriendMenuUserId(null);
-											setBlockConfirmUserId(friend.userId);
+											setBlockConfirmUserId(
+												friend.userId,
+											);
 										}}
 									>
 										Block
@@ -2843,7 +2816,9 @@ function HomeMenu(): JSX.Element {
 	const unlockedProfileTags = (cosmetics ?? [])
 		.filter((cosmetic) => cosmetic.type === "dojo_tag" && cosmetic.owned)
 		.flatMap((cosmetic) => {
-			const tag = TURTLE_TAGS.find((candidate) => candidate.id === cosmetic.id);
+			const tag = TURTLE_TAGS.find(
+				(candidate) => candidate.id === cosmetic.id,
+			);
 			return tag ? [tag] : [];
 		});
 
@@ -2852,8 +2827,10 @@ function HomeMenu(): JSX.Element {
 	const totalAchievementCount = achievements?.length ?? 0;
 	const filteredAchievements = achievements
 		? achievements.filter((achievement) => {
-				if (achievementFilter === "unlocked") return achievement.unlocked;
-				if (achievementFilter === "locked") return !achievement.unlocked;
+				if (achievementFilter === "unlocked")
+					return achievement.unlocked;
+				if (achievementFilter === "locked")
+					return !achievement.unlocked;
 				return true;
 			})
 		: [];
@@ -2862,7 +2839,9 @@ function HomeMenu(): JSX.Element {
 		manualMinutes === null ? now : createManualTime(now, manualMinutes);
 	const currentTimeParts = formatClockParts(displayedNow);
 	const currentTimeLabel = formatClockTime(displayedNow);
-	const manualTimeLabel = formatClockTime(createManualTime(now, manualMinutes ?? getTotalMinutes(now)));
+	const manualTimeLabel = formatClockTime(
+		createManualTime(now, manualMinutes ?? getTotalMinutes(now)),
+	);
 
 	return (
 		<main className={`menu-page hub-page ${backgroundClass}`}>
@@ -2870,6 +2849,7 @@ function HomeMenu(): JSX.Element {
 				<CycleBackdrop
 					manualMinutes={manualMinutes}
 					theme={cycleTheme}
+					covered={activeModal !== null}
 				/>
 			) : null}
 			<div className="menu-page__shell hub-page__shell">
@@ -2880,42 +2860,57 @@ function HomeMenu(): JSX.Element {
 							type="button"
 							onClick={() => void openProfile()}
 						>
-						<ShellPortrait
-							avatar={player?.avatar}
-							shellSkin={player?.shellSkin}
-							displayName={playerName}
-							level={player?.level ?? 1}
-							size="small"
-						/>
-						<span className="hub-page__player-copy">
-							<span className="hub-page__player-name-row">
-								<strong className="menu-page__player-name">{playerName}</strong>
-								{currentTag ? (
-									<span className="hub-page__player-tag">
-										{currentTag.emoji} {currentTag.label}
+							<ShellPortrait
+								avatar={player?.avatar}
+								shellSkin={player?.shellSkin}
+								displayName={playerName}
+								level={player?.level ?? 1}
+								size="small"
+							/>
+							<span className="hub-page__player-copy">
+								<span className="hub-page__player-name-row">
+									<strong className="menu-page__player-name">
+										{playerName}
+									</strong>
+									{currentTag ? (
+										<span className="hub-page__player-tag">
+											{currentTag.emoji}{" "}
+											{currentTag.label}
+										</span>
+									) : null}
+								</span>
+								<span className="hub-page__xp-row">
+									<ExperienceProgress
+										level={player?.level ?? 1}
+										xp={player?.xp ?? 0}
+										compact
+									/>
+									<span
+										className="hub-page__coins-badge"
+										aria-label={`${player?.coins ?? 0} coins`}
+									>
+										<span
+											className="hub-page__coins-icon"
+											aria-hidden="true"
+										>
+											⬡
+										</span>
+										{(player?.coins ?? 0).toLocaleString(
+											"en-GB",
+										)}
+									</span>
+								</span>
+								{player?.mostPlayedGame ? (
+									<span className="hub-page__most-played">
+										🐢 {player.mostPlayedGame.gameName} ·{" "}
+										{player.mostPlayedGame.gamesPlayed}{" "}
+										{player.mostPlayedGame.gamesPlayed === 1
+											? "match"
+											: "matches"}{" "}
+										· {player.mostPlayedGame.winRate}% wins
 									</span>
 								) : null}
 							</span>
-							<span className="hub-page__xp-row">
-								<ExperienceProgress
-									level={player?.level ?? 1}
-									xp={player?.xp ?? 0}
-									compact
-								/>
-								<span
-									className="hub-page__coins-badge"
-									aria-label={`${player?.coins ?? 0} coins`}
-								>
-									<span className="hub-page__coins-icon" aria-hidden="true">⬡</span>
-									{(player?.coins ?? 0).toLocaleString("en-GB")}
-								</span>
-							</span>
-							{player?.mostPlayedGame ? (
-								<span className="hub-page__most-played">
-									🐢 {player.mostPlayedGame.gameName} · {player.mostPlayedGame.gamesPlayed} {player.mostPlayedGame.gamesPlayed === 1 ? "match" : "matches"} · {player.mostPlayedGame.winRate}% wins
-								</span>
-							) : null}
-						</span>
 						</button>
 						{player?.username ? (
 							<ViewProfileLink
@@ -2938,13 +2933,18 @@ function HomeMenu(): JSX.Element {
 							<span className="hub-page__clock-time">
 								<span>{currentTimeParts.time}</span>
 								{currentTimeParts.period ? (
-									<span className="hub-page__clock-period">{currentTimeParts.period}</span>
+									<span className="hub-page__clock-period">
+										{currentTimeParts.period}
+									</span>
 								) : null}
 							</span>
 						</button>
 						{showCycleBackdrop && isClockDebugOpen ? (
 							<div className="hub-page__clock-debug">
-								<label className="hub-page__clock-debug-label" htmlFor="hub-clock-debug-slider">
+								<label
+									className="hub-page__clock-debug-label"
+									htmlFor="hub-clock-debug-slider"
+								>
 									Debug time
 								</label>
 								<input
@@ -2954,9 +2954,13 @@ function HomeMenu(): JSX.Element {
 									min="0"
 									max="1439"
 									step="1"
-									value={manualMinutes ?? getTotalMinutes(now)}
+									value={
+										manualMinutes ?? getTotalMinutes(now)
+									}
 									onChange={(event) => {
-										setManualMinutes(Number(event.target.value));
+										setManualMinutes(
+											Number(event.target.value),
+										);
 									}}
 								/>
 								<div className="hub-page__clock-debug-meta">
@@ -2985,7 +2989,9 @@ function HomeMenu(): JSX.Element {
 							🔔
 							{unreadCount > 0 && (
 								<span className="hub-notif-bell__badge">
-									{unreadCount > NOTIF_BADGE_CAP ? `${NOTIF_BADGE_CAP}+` : unreadCount}
+									{unreadCount > NOTIF_BADGE_CAP
+										? `${NOTIF_BADGE_CAP}+`
+										: unreadCount}
 								</span>
 							)}
 						</button>
@@ -3034,9 +3040,15 @@ function HomeMenu(): JSX.Element {
 						>
 							REPLAYS
 						</NineSliceButton>
-						<NineSliceButton type="button" className="hub-panel__button" onClick={() => void openSocial()}>
+						<NineSliceButton
+							type="button"
+							className="hub-panel__button"
+							onClick={() => void openSocial()}
+						>
 							SOCIAL
-							{unreadConversationIds.size > 0 ? ` (${unreadConversationIds.size})` : ""}
+							{unreadConversationIds.size > 0
+								? ` (${unreadConversationIds.size})`
+								: ""}
 						</NineSliceButton>
 						<NineSliceButton
 							type="button"
@@ -3063,33 +3075,55 @@ function HomeMenu(): JSX.Element {
 									type="button"
 									onClick={() => setView("normal")}
 								>
-									<span className="menu-page__mode-corners" aria-hidden="true" />
+									<span
+										className="menu-page__mode-corners"
+										aria-hidden="true"
+									/>
 									<img
 										className="menu-page__mode-art"
 										src="/assets/ui/modesButtons/normalButton.png"
 										alt=""
 										aria-hidden="true"
 									/>
-									<span className="menu-page__mode-title">Normal Mode</span>
-									<span className="menu-page__mode-divider" aria-hidden="true" />
-									<span className="menu-page__mode-description">Play a standard match.</span>
+									<span className="menu-page__mode-title">
+										Normal Mode
+									</span>
+									<span
+										className="menu-page__mode-divider"
+										aria-hidden="true"
+									/>
+									<span className="menu-page__mode-description">
+										Play a standard match.
+									</span>
 								</button>
 
 								<button
 									className="menu-page__mode-card menu-page__mode-card--tournament"
 									type="button"
-									onClick={() => setIsTournamentModalOpen(true)}
+									onClick={() =>
+										setIsTournamentModalOpen(true)
+									}
 								>
-									<span className="menu-page__mode-corners" aria-hidden="true" />
+									<span
+										className="menu-page__mode-corners"
+										aria-hidden="true"
+									/>
 									<img
 										className="menu-page__mode-art"
 										src="/assets/ui/modesButtons/tournamentButton.png"
 										alt=""
 										aria-hidden="true"
 									/>
-									<span className="menu-page__mode-title">Tournament</span>
-									<span className="menu-page__mode-divider" aria-hidden="true" />
-									<span className="menu-page__mode-description">Compete for the top.</span>
+									<span className="menu-page__mode-title">
+										Tournament
+									</span>
+									<span
+										className="menu-page__mode-divider"
+										aria-hidden="true"
+									/>
+									<span className="menu-page__mode-description">
+										Compete for the top.
+									</span>
 								</button>
 
 								<button
@@ -3097,16 +3131,26 @@ function HomeMenu(): JSX.Element {
 									type="button"
 									onClick={() => setView("gambit")}
 								>
-									<span className="menu-page__mode-corners" aria-hidden="true" />
+									<span
+										className="menu-page__mode-corners"
+										aria-hidden="true"
+									/>
 									<img
 										className="menu-page__mode-art"
 										src="/assets/ui/modesButtons/gambitButton.png"
 										alt=""
 										aria-hidden="true"
 									/>
-									<span className="menu-page__mode-title">Shell's Gambit</span>
-									<span className="menu-page__mode-divider" aria-hidden="true" />
-									<span className="menu-page__mode-description">Risk coins for glory.</span>
+									<span className="menu-page__mode-title">
+										Shell's Gambit
+									</span>
+									<span
+										className="menu-page__mode-divider"
+										aria-hidden="true"
+									/>
+									<span className="menu-page__mode-description">
+										Risk coins for glory.
+									</span>
 								</button>
 							</div>
 						) : (
@@ -3117,50 +3161,91 @@ function HomeMenu(): JSX.Element {
 											<button
 												className="hub-game-card hub-game-card--fortune-wheel"
 												type="button"
-												onClick={() => setActiveModal("casino")}
+												onClick={() =>
+													setActiveModal("casino")
+												}
 											>
-												<span className="hub-game-card__title">Fortune Wheel</span>
-												<small>Wager coins at the gambling den</small>
+												<span className="hub-game-card__title">
+													Fortune Wheel
+												</span>
+												<small>
+													Wager coins at the gambling
+													den
+												</small>
 											</button>
 											<button
 												className="hub-game-card hub-game-card--shell-flip"
 												type="button"
-												onClick={() => setActiveModal("flip")}
+												onClick={() =>
+													setActiveModal("flip")
+												}
 											>
-												<span className="hub-game-card__title">Shell Flip</span>
-												<small>Call a shell, double or nothing</small>
+												<span className="hub-game-card__title">
+													Shell Flip
+												</span>
+												<small>
+													Call a shell, double or
+													nothing
+												</small>
 											</button>
 											<button
 												className="hub-game-card hub-game-card--three-shell-monte"
 												type="button"
-												onClick={() => setActiveModal("monte")}
+												onClick={() =>
+													setActiveModal("monte")
+												}
 											>
-												<span className="hub-game-card__title">Three-Shell Monte</span>
-												<small>Find the pearl, pay up to 5×</small>
+												<span className="hub-game-card__title">
+													Three-Shell Monte
+												</span>
+												<small>
+													Find the pearl, pay up to 5×
+												</small>
 											</button>
 											<button
 												className="hub-game-card hub-game-card--shrine-slots"
 												type="button"
-												onClick={() => setActiveModal("slots")}
+												onClick={() =>
+													setActiveModal("slots")
+												}
 											>
-												<span className="hub-game-card__title">Shrine Slots</span>
-												<small>Spin three reels for the jackpot</small>
+												<span className="hub-game-card__title">
+													Shrine Slots
+												</span>
+												<small>
+													Spin three reels for the
+													jackpot
+												</small>
 											</button>
 											<button
 												className="hub-game-card hub-game-card--koi-dice"
 												type="button"
-												onClick={() => setActiveModal("dice")}
+												onClick={() =>
+													setActiveModal("dice")
+												}
 											>
-												<span className="hub-game-card__title">Koi Dice</span>
-												<small>Set your own odds, under or over</small>
+												<span className="hub-game-card__title">
+													Koi Dice
+												</span>
+												<small>
+													Set your own odds, under or
+													over
+												</small>
 											</button>
 											<button
 												className="hub-game-card hub-game-card--shell-drop"
 												type="button"
-												onClick={() => setActiveModal("drop")}
+												onClick={() =>
+													setActiveModal("drop")
+												}
 											>
-												<span className="hub-game-card__title">Shell Drop</span>
-												<small>Drop a shell through the pegs</small>
+												<span className="hub-game-card__title">
+													Shell Drop
+												</span>
+												<small>
+													Drop a shell through the
+													pegs
+												</small>
 											</button>
 										</>
 									) : (
@@ -3171,8 +3256,12 @@ function HomeMenu(): JSX.Element {
 													className={`hub-game-card hub-game-card--${game.id}`}
 													to={`/play/${game.id}`}
 												>
-													<span className="hub-game-card__title">{game.name}</span>
-													<small>{game.description}</small>
+													<span className="hub-game-card__title">
+														{game.name}
+													</span>
+													<small>
+														{game.description}
+													</small>
 												</Link>
 											) : (
 												<button
@@ -3180,16 +3269,24 @@ function HomeMenu(): JSX.Element {
 													className={`hub-game-card hub-game-card--locked hub-game-card--${game.id}`}
 													type="button"
 													onClick={() =>
-												game.id === "river-rush" || game.id === "oni-dodge"
-													? setWipGameId(game.id)
+														game.id ===
+															"river-rush" ||
+														game.id === "oni-dodge"
+															? setWipGameId(
+																	game.id,
+																)
 															: setInfoModal({
 																	title: game.name,
 																	description: `${game.description}\n\nArena is being built. Check back soon!`,
 																})
 													}
 												>
-													<span className="hub-game-card__title">{game.name}</span>
-													<small>{game.description}</small>
+													<span className="hub-game-card__title">
+														{game.name}
+													</span>
+													<small>
+														{game.description}
+													</small>
 												</button>
 											),
 										)
@@ -3207,7 +3304,6 @@ function HomeMenu(): JSX.Element {
 							</div>
 						)}
 					</section>
-
 				</section>
 			</div>
 
@@ -3237,7 +3333,9 @@ function HomeMenu(): JSX.Element {
 							Waiting for friend to accept…
 						</p>
 						<p className="hub-lobby-waiting__game">
-							{RANKED_GAMES.find((g) => g.id === activeLobby.gameId)?.label ?? activeLobby.gameId}
+							{RANKED_GAMES.find(
+								(g) => g.id === activeLobby.gameId,
+							)?.label ?? activeLobby.gameId}
 						</p>
 						<LobbyCountdown expiresAt={activeLobby.expiresAt} />
 						<button
@@ -3253,13 +3351,20 @@ function HomeMenu(): JSX.Element {
 
 			{/* Incoming game invite popup (invitee side) */}
 			{incomingInvite && (
-				<div className="hub-invite-popup" role="dialog" aria-label="Game invite">
+				<div
+					className="hub-invite-popup"
+					role="dialog"
+					aria-label="Game invite"
+				>
 					<div className="hub-invite-popup__inner">
 						<p className="hub-invite-popup__from">
-							<strong>{incomingInvite.fromUsername}</strong> invited you to play
+							<strong>{incomingInvite.fromUsername}</strong>{" "}
+							invited you to play
 						</p>
 						<p className="hub-invite-popup__game">
-							{RANKED_GAMES.find((g) => g.id === incomingInvite.gameId)?.label ?? incomingInvite.gameId}
+							{RANKED_GAMES.find(
+								(g) => g.id === incomingInvite.gameId,
+							)?.label ?? incomingInvite.gameId}
 						</p>
 						<LobbyCountdown expiresAt={incomingInvite.expiresAt} />
 						<div className="hub-invite-popup__actions">
@@ -3297,165 +3402,224 @@ function HomeMenu(): JSX.Element {
 						role="dialog"
 						aria-label="Notifications"
 					>
-					<div className="hub-notif-drawer__header">
-						<h3>Notifications</h3>
-						{unreadCount > 0 && (
+						<div className="hub-notif-drawer__header">
+							<h3>Notifications</h3>
+							{unreadCount > 0 && (
+								<button
+									className="hub-notif-drawer__mark-all"
+									type="button"
+									onClick={handleMarkAllRead}
+								>
+									Mark all read
+								</button>
+							)}
 							<button
-								className="hub-notif-drawer__mark-all"
+								className="hub-notif-drawer__close"
 								type="button"
-								onClick={handleMarkAllRead}
+								aria-label="Close notifications"
+								onClick={() => setIsNotifDrawerOpen(false)}
 							>
-								Mark all read
+								✕
 							</button>
-						)}
-						<button
-							className="hub-notif-drawer__close"
-							type="button"
-							aria-label="Close notifications"
-							onClick={() => setIsNotifDrawerOpen(false)}
-						>
-							✕
-						</button>
-					</div>
+						</div>
 
-					{notifications.length === 0 ? (
-						<p className="hub-notif-drawer__empty">No new notifications.</p>
-					) : (
-						<ul className="hub-notif-drawer__list">
-							{notifications.map((notif) => (
-								<li key={notif.id} className="hub-notif-drawer__item">
-									<div className="hub-notif-drawer__item-body">
-										{notif.type === "friend_request" && (
-											<span>
-												<strong>{notif.fromUsername}</strong> sent you a friend request.
-											</span>
-										)}
-										{notif.type === "friend_accepted" && (
-											<span>
-												<strong>{notif.fromUsername}</strong> accepted your friend request.
-											</span>
-										)}
-										{/* Bug Audit L6 — createdAt was fetched but never rendered. */}
-										<time
-											className="hub-notif-drawer__item-time"
-											dateTime={notif.createdAt}
-										>
-											{formatRelativeTime(notif.createdAt)}
-										</time>
-									</div>
-									<div className="hub-notif-drawer__item-actions">
-										{notif.type === "friend_request" && (
-											<>
-												<button
-													type="button"
-													className="hub-notif-drawer__action hub-notif-drawer__action--accept"
-													onClick={async () => {
-														try {
-															await api.acceptFriendRequest(notif.fromUserId);
-															handleResolveFriendRequestNotifs(notif.fromUserId);
-															// Keep the social tab's friends/pending state in sync in
-															// case it's open (or opened next) elsewhere.
-															void refreshSocial();
-														} catch (err: unknown) {
-															// Bug Audit M3: this used to swallow every failure
-															// silently — rate-limited (429), or the request
-															// was already resolved elsewhere (404) — so the
-															// button visibly did nothing. A 404 here means the
-															// pending row is already gone (accepted/declined/
-															// cancelled from another tab or device), so treat
-															// it as resolved rather than a real error — this
-															// also closes the H3 dead-end where an accept that
-															// 404s left the notification stuck forever.
-															if (err instanceof AuthError && err.status === 404) {
-																handleResolveFriendRequestNotifs(notif.fromUserId);
+						{notifications.length === 0 ? (
+							<p className="hub-notif-drawer__empty">
+								No new notifications.
+							</p>
+						) : (
+							<ul className="hub-notif-drawer__list">
+								{notifications.map((notif) => (
+									<li
+										key={notif.id}
+										className="hub-notif-drawer__item"
+									>
+										<div className="hub-notif-drawer__item-body">
+											{notif.type ===
+												"friend_request" && (
+												<span>
+													<strong>
+														{notif.fromUsername}
+													</strong>{" "}
+													sent you a friend request.
+												</span>
+											)}
+											{notif.type ===
+												"friend_accepted" && (
+												<span>
+													<strong>
+														{notif.fromUsername}
+													</strong>{" "}
+													accepted your friend
+													request.
+												</span>
+											)}
+											{/* Bug Audit L6 — createdAt was fetched but never rendered. */}
+											<time
+												className="hub-notif-drawer__item-time"
+												dateTime={notif.createdAt}
+											>
+												{formatRelativeTime(
+													notif.createdAt,
+												)}
+											</time>
+										</div>
+										<div className="hub-notif-drawer__item-actions">
+											{notif.type ===
+												"friend_request" && (
+												<>
+													<button
+														type="button"
+														className="hub-notif-drawer__action hub-notif-drawer__action--accept"
+														onClick={async () => {
+															try {
+																await api.acceptFriendRequest(
+																	notif.fromUserId,
+																);
+																handleResolveFriendRequestNotifs(
+																	notif.fromUserId,
+																);
+																// Keep the social tab's friends/pending state in sync in
+																// case it's open (or opened next) elsewhere.
 																void refreshSocial();
-																return;
+															} catch (err: unknown) {
+																// Bug Audit M3: this used to swallow every failure
+																// silently — rate-limited (429), or the request
+																// was already resolved elsewhere (404) — so the
+																// button visibly did nothing. A 404 here means the
+																// pending row is already gone (accepted/declined/
+																// cancelled from another tab or device), so treat
+																// it as resolved rather than a real error — this
+																// also closes the H3 dead-end where an accept that
+																// 404s left the notification stuck forever.
+																if (
+																	err instanceof
+																		AuthError &&
+																	err.status ===
+																		404
+																) {
+																	handleResolveFriendRequestNotifs(
+																		notif.fromUserId,
+																	);
+																	void refreshSocial();
+																	return;
+																}
+																showToast({
+																	message:
+																		err instanceof
+																		Error
+																			? err.message
+																			: "Could not accept request.",
+																	variant:
+																		"error",
+																});
 															}
-															showToast({
-																message:
-																	err instanceof Error
-																		? err.message
-																		: "Could not accept request.",
-																variant: "error",
-															});
-														}
-													}}
-												>
-													Accept
-												</button>
-												<button
-													type="button"
-													className="hub-notif-drawer__action hub-notif-drawer__action--decline"
-													onClick={async () => {
-														try {
-															await api.declineOrCancelFriendRequest(notif.fromUserId);
-															handleResolveFriendRequestNotifs(notif.fromUserId);
-															// Keep the social tab's friends/pending state in sync in
-															// case it's open (or opened next) elsewhere.
-															void refreshSocial();
-														} catch (err: unknown) {
-															// Bug Audit M3 — see the Accept handler above;
-															// decline is idempotent server-side so a 404 here
-															// is rarer, but the stale-notification cleanup
-															// still applies if it happens.
-															if (err instanceof AuthError && err.status === 404) {
-																handleResolveFriendRequestNotifs(notif.fromUserId);
+														}}
+													>
+														Accept
+													</button>
+													<button
+														type="button"
+														className="hub-notif-drawer__action hub-notif-drawer__action--decline"
+														onClick={async () => {
+															try {
+																await api.declineOrCancelFriendRequest(
+																	notif.fromUserId,
+																);
+																handleResolveFriendRequestNotifs(
+																	notif.fromUserId,
+																);
+																// Keep the social tab's friends/pending state in sync in
+																// case it's open (or opened next) elsewhere.
 																void refreshSocial();
-																return;
+															} catch (err: unknown) {
+																// Bug Audit M3 — see the Accept handler above;
+																// decline is idempotent server-side so a 404 here
+																// is rarer, but the stale-notification cleanup
+																// still applies if it happens.
+																if (
+																	err instanceof
+																		AuthError &&
+																	err.status ===
+																		404
+																) {
+																	handleResolveFriendRequestNotifs(
+																		notif.fromUserId,
+																	);
+																	void refreshSocial();
+																	return;
+																}
+																showToast({
+																	message:
+																		err instanceof
+																		Error
+																			? err.message
+																			: "Could not decline request.",
+																	variant:
+																		"error",
+																});
 															}
-															showToast({
-																message:
-																	err instanceof Error
-																		? err.message
-																		: "Could not decline request.",
-																variant: "error",
-															});
-														}
-													}}
-												>
-													Decline
-												</button>
-											</>
-										)}
-										<button
-											type="button"
-											className="hub-notif-drawer__dismiss"
-											aria-label="Dismiss notification"
-											onClick={() => handleMarkRead(notif.id)}
-										>
-											✕
-										</button>
-									</div>
-								</li>
-							))}
-						</ul>
-					)}
+														}}
+													>
+														Decline
+													</button>
+												</>
+											)}
+											<button
+												type="button"
+												className="hub-notif-drawer__dismiss"
+												aria-label="Dismiss notification"
+												onClick={() =>
+													handleMarkRead(notif.id)
+												}
+											>
+												✕
+											</button>
+										</div>
+									</li>
+								))}
+							</ul>
+						)}
 					</div>
 				</>
 			)}
 
 			{infoModal ? (
-				<HubModal title={infoModal.title} onClose={() => setInfoModal(null)}>
+				<HubModal
+					title={infoModal.title}
+					onClose={() => setInfoModal(null)}
+				>
 					<p>{infoModal.description}</p>
 				</HubModal>
 			) : null}
 
 			{activeModal === "rankings" ? (
-				<HubModal title="Rankings" onClose={() => setActiveModal(null)} variant="wide">
+				<HubModal
+					title="Rankings"
+					onClose={() => setActiveModal(null)}
+					variant="wide"
+				>
 					<div className="hub-modal__rankings">
 						<div className="hub-ranking-controls">
-							<nav className="hub-ranking-tabs" aria-label="Select game leaderboard">
+							<nav
+								className="hub-ranking-tabs"
+								aria-label="Select game leaderboard"
+							>
 								<button
 									type="button"
 									className={`hub-ranking-tab${leaderboardGame === "overall" ? " hub-ranking-tab--active" : ""}`}
-									onClick={() => setLeaderboardGame("overall")}
+									onClick={() =>
+										setLeaderboardGame("overall")
+									}
 								>
 									Total
 								</button>
 								<button
 									type="button"
 									className={`hub-ranking-tab${leaderboardGame === "tournaments" ? " hub-ranking-tab--active" : ""}`}
-									onClick={() => setLeaderboardGame("tournaments")}
+									onClick={() =>
+										setLeaderboardGame("tournaments")
+									}
 								>
 									Tournaments
 								</button>
@@ -3476,13 +3640,20 @@ function HomeMenu(): JSX.Element {
 								className="hub-ranking-scope-toggle"
 								onClick={toggleLeaderboardScope}
 								aria-label={`Currently showing ${leaderboardScope} rankings. Click to switch to ${
-									leaderboardScope === "global" ? "friends" : "global"
+									leaderboardScope === "global"
+										? "friends"
+										: "global"
 								}.`}
 							>
-								<span className="hub-ranking-scope-toggle__icon" aria-hidden="true">
+								<span
+									className="hub-ranking-scope-toggle__icon"
+									aria-hidden="true"
+								>
 									⇄
 								</span>
-								{leaderboardScope === "global" ? "Global" : "Friends"}
+								{leaderboardScope === "global"
+									? "Global"
+									: "Friends"}
 							</button>
 						</div>
 
@@ -3492,7 +3663,9 @@ function HomeMenu(): JSX.Element {
 							// Rankings Bug Audit M2: a fetch failure gets its own state,
 							// distinct from "the board is genuinely empty" below.
 							<div className="hub-modal__rankings-error">
-								<p className="hub-modal__error">{leaderboardError}</p>
+								<p className="hub-modal__error">
+									{leaderboardError}
+								</p>
 								<button
 									type="button"
 									className="hub-modal__retry-button"
@@ -3514,9 +3687,12 @@ function HomeMenu(): JSX.Element {
 														: undefined
 												}
 											>
-												<span className="hub-ranking-list__rank">#{entry.rank}</span>
+												<span className="hub-ranking-list__rank">
+													#{entry.rank}
+												</span>
 												<strong className="hub-ranking-list__name">
-													{entry.turtleName ?? entry.username}
+													{entry.turtleName ??
+														entry.username}
 												</strong>
 												<small className="hub-ranking-list__stat">
 													{entry.totalWins} wins
@@ -3527,13 +3703,19 @@ function HomeMenu(): JSX.Element {
 									{ownOverallRank ? (
 										<div className="hub-ranking-list__own-rank">
 											<span>Your rank</span>
-											<strong>#{ownOverallRank.rank}</strong>
-											<small>{ownOverallRank.totalWins} wins</small>
+											<strong>
+												#{ownOverallRank.rank}
+											</strong>
+											<small>
+												{ownOverallRank.totalWins} wins
+											</small>
 										</div>
 									) : null}
 								</>
 							) : (
-								<p className="hub-panel__muted">No rankings yet.</p>
+								<p className="hub-panel__muted">
+									No rankings yet.
+								</p>
 							)
 						) : leaderboardGame === "tournaments" ? (
 							tournamentLeaderboard.length > 0 ? (
@@ -3548,12 +3730,16 @@ function HomeMenu(): JSX.Element {
 														: undefined
 												}
 											>
-												<span className="hub-ranking-list__rank">#{entry.rank}</span>
+												<span className="hub-ranking-list__rank">
+													#{entry.rank}
+												</span>
 												<strong className="hub-ranking-list__name">
-													{entry.turtleName ?? entry.username}
+													{entry.turtleName ??
+														entry.username}
 												</strong>
 												<small className="hub-ranking-list__stat">
-													{entry.tournamentWins} tournaments won
+													{entry.tournamentWins}{" "}
+													tournaments won
 												</small>
 											</li>
 										))}
@@ -3561,117 +3747,169 @@ function HomeMenu(): JSX.Element {
 									{ownTournamentRank ? (
 										<div className="hub-ranking-list__own-rank">
 											<span>Your rank</span>
-											<strong>#{ownTournamentRank.rank}</strong>
-											<small>{ownTournamentRank.tournamentWins} tournaments won</small>
-										</div>
-									) : null}
-								</>
-							) : (
-								<p className="hub-panel__muted">No rankings yet.</p>
-							)
-						) : (
-							gameLeaderboard.length > 0 ? (
-								<>
-									<ol className="hub-ranking-list hub-ranking-list--scrollable">
-										{gameLeaderboard.map((entry) => (
-											<li
-												key={entry.userId}
-												className={
-													entry.userId === player?.id
-														? "hub-ranking-list__self"
-														: undefined
-												}
-											>
-												<span className="hub-ranking-list__rank">#{entry.rank}</span>
-												<strong className="hub-ranking-list__name">
-													{entry.turtleName ?? entry.username}
-												</strong>
-												<small className="hub-ranking-list__stat">
-													{entry.rating} ELO · {entry.wins}W/{entry.losses}L
-												</small>
-											</li>
-										))}
-									</ol>
-									{ownGameRank ? (
-										<div className="hub-ranking-list__own-rank">
-											<span>Your rank</span>
-											<strong>#{ownGameRank.rank}</strong>
+											<strong>
+												#{ownTournamentRank.rank}
+											</strong>
 											<small>
-												{ownGameRank.rating} ELO · {ownGameRank.wins}W/
-												{ownGameRank.losses}L
+												{
+													ownTournamentRank.tournamentWins
+												}{" "}
+												tournaments won
 											</small>
 										</div>
 									) : null}
 								</>
 							) : (
-								<p className="hub-panel__muted">No rankings yet.</p>
+								<p className="hub-panel__muted">
+									No rankings yet.
+								</p>
 							)
+						) : gameLeaderboard.length > 0 ? (
+							<>
+								<ol className="hub-ranking-list hub-ranking-list--scrollable">
+									{gameLeaderboard.map((entry) => (
+										<li
+											key={entry.userId}
+											className={
+												entry.userId === player?.id
+													? "hub-ranking-list__self"
+													: undefined
+											}
+										>
+											<span className="hub-ranking-list__rank">
+												#{entry.rank}
+											</span>
+											<strong className="hub-ranking-list__name">
+												{entry.turtleName ??
+													entry.username}
+											</strong>
+											<small className="hub-ranking-list__stat">
+												{entry.rating} ELO ·{" "}
+												{entry.wins}W/{entry.losses}L
+											</small>
+										</li>
+									))}
+								</ol>
+								{ownGameRank ? (
+									<div className="hub-ranking-list__own-rank">
+										<span>Your rank</span>
+										<strong>#{ownGameRank.rank}</strong>
+										<small>
+											{ownGameRank.rating} ELO ·{" "}
+											{ownGameRank.wins}W/
+											{ownGameRank.losses}L
+										</small>
+									</div>
+								) : null}
+							</>
+						) : (
+							<p className="hub-panel__muted">No rankings yet.</p>
 						)}
 					</div>
 				</HubModal>
 			) : null}
 
 			{activeModal === "achievements" ? (
-				<HubModal title="Achievements" onClose={() => setActiveModal(null)} variant="wide">
-					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
+				<HubModal
+					title="Achievements"
+					onClose={() => setActiveModal(null)}
+					variant="wide"
+				>
+					{modalError ? (
+						<p className="hub-modal__error">{modalError}</p>
+					) : null}
 					{achievements ? (
 						<div className="hub-modal__achievements">
 							<div className="hub-modal__achievements-toolbar">
 								<p className="hub-modal__achievement-count">
-									{unlockedAchievementCount}/{totalAchievementCount} unlocked
+									{unlockedAchievementCount}/
+									{totalAchievementCount} unlocked
 								</p>
-								<div className="hub-modal__achievement-filters" aria-label="Achievement filter">
-									{ACHIEVEMENT_FILTER_OPTIONS.map((option) => (
-										<button
-											key={option.value}
-											type="button"
-											className={
-												achievementFilter === option.value
-													? "hub-modal__achievement-filter hub-modal__achievement-filter--active"
-													: "hub-modal__achievement-filter"
-											}
-											onClick={() => setAchievementFilter(option.value)}
-										>
-											{option.label}
-										</button>
-									))}
+								<div
+									className="hub-modal__achievement-filters"
+									aria-label="Achievement filter"
+								>
+									{ACHIEVEMENT_FILTER_OPTIONS.map(
+										(option) => (
+											<button
+												key={option.value}
+												type="button"
+												className={
+													achievementFilter ===
+													option.value
+														? "hub-modal__achievement-filter hub-modal__achievement-filter--active"
+														: "hub-modal__achievement-filter"
+												}
+												onClick={() =>
+													setAchievementFilter(
+														option.value,
+													)
+												}
+											>
+												{option.label}
+											</button>
+										),
+									)}
 								</div>
 							</div>
 							{filteredAchievements.length > 0 ? (
 								<div className="hub-modal__list hub-modal__list--achievements">
 									{filteredAchievements.map((achievement) => {
-										const progress = getAchievementProgress(achievement);
-										const panel = getAchievementPanel(achievement.id);
+										const progress =
+											getAchievementProgress(achievement);
+										const panel = getAchievementPanel(
+											achievement.id,
+										);
 
 										return (
 											<article
 												key={achievement.id}
 												className={`hub-modal__achievement-card hub-modal__achievement-card--${panel}${
-													achievement.unlocked ? " is-unlocked" : ""
+													achievement.unlocked
+														? " is-unlocked"
+														: ""
 												}`}
 											>
-												<strong>{achievement.title}</strong>
+												<strong>
+													{achievement.title}
+												</strong>
 												<p>{achievement.description}</p>
 												<div className="hub-modal__achievement-status">
-													<small>{achievement.unlocked ? "Unlocked" : "Locked"}</small>
-													<small>{progress.label}</small>
+													<small>
+														{achievement.unlocked
+															? "Unlocked"
+															: "Locked"}
+													</small>
+													<small>
+														{progress.label}
+													</small>
 												</div>
 												<div
 													className="hub-modal__achievement-progress"
 													role="progressbar"
 													aria-label={`${achievement.title} progress`}
 													aria-valuemin={0}
-													aria-valuemax={progress.target}
-													aria-valuenow={progress.current}
+													aria-valuemax={
+														progress.target
+													}
+													aria-valuenow={
+														progress.current
+													}
 												>
-													<span style={{ width: `${progress.ratio * 100}%` }} />
+													<span
+														style={{
+															width: `${progress.ratio * 100}%`,
+														}}
+													/>
 												</div>
 											</article>
 										);
 									})}
 								</div>
 							) : (
-								<p className="hub-modal__empty">No achievements match this filter.</p>
+								<p className="hub-modal__empty">
+									No achievements match this filter.
+								</p>
 							)}
 						</div>
 					) : (
@@ -3688,8 +3926,12 @@ function HomeMenu(): JSX.Element {
 						setActiveModal(null);
 					}}
 				>
-					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
-					{profileSuccess ? <p className="hub-modal__success">{profileSuccess}</p> : null}
+					{modalError ? (
+						<p className="hub-modal__error">{modalError}</p>
+					) : null}
+					{profileSuccess ? (
+						<p className="hub-modal__success">{profileSuccess}</p>
+					) : null}
 					<div className="hub-modal__profile">
 						<div className="hub-modal__profile-layout">
 							<section
@@ -3698,36 +3940,55 @@ function HomeMenu(): JSX.Element {
 							>
 								<div className="hub-modal__section-heading">
 									<span>Profile customisation</span>
-									<h3 id="profile-customisation-heading">Build your player card</h3>
+									<h3 id="profile-customisation-heading">
+										Build your player card
+									</h3>
 								</div>
 
 								<div className="hub-modal__profile-fields">
 									<label htmlFor="turtle-name-input">
-										<span className="hub-modal__field-label">Turtle name</span>
+										<span className="hub-modal__field-label">
+											Turtle name
+										</span>
 										<input
 											id="turtle-name-input"
 											className="hub-modal__field-input"
 											type="text"
 											maxLength={32}
 											value={profileTurtleName}
-											placeholder={displayUsername(player?.username)}
-											onChange={(e) => setProfileTurtleName(e.target.value)}
+											placeholder={displayUsername(
+												player?.username,
+											)}
+											onChange={(e) =>
+												setProfileTurtleName(
+													e.target.value,
+												)
+											}
 										/>
 									</label>
 									<label htmlFor="dojo-tag-select">
-										<span className="hub-modal__field-label">Dojo tag</span>
+										<span className="hub-modal__field-label">
+											Dojo tag
+										</span>
 										<select
 											id="dojo-tag-select"
 											className="hub-modal__field-input hub-modal__field-select"
 											value={profileDojoTagId ?? ""}
 											disabled={cosmetics === null}
 											onChange={(event) =>
-												setProfileDojoTagId(event.target.value || null)
+												setProfileDojoTagId(
+													event.target.value || null,
+												)
 											}
 										>
-											<option value="">No dojo tag</option>
+											<option value="">
+												No dojo tag
+											</option>
 											{unlockedProfileTags.map((tag) => (
-												<option key={tag.id} value={tag.id}>
+												<option
+													key={tag.id}
+													value={tag.id}
+												>
 													{tag.emoji} {tag.label}
 												</option>
 											))}
@@ -3735,144 +3996,225 @@ function HomeMenu(): JSX.Element {
 									</label>
 								</div>
 
-								<div className="hub-modal__portrait-editor" aria-labelledby="portrait-heading">
+								<div
+									className="hub-modal__portrait-editor"
+									aria-labelledby="portrait-heading"
+								>
 									<ShellPortrait
 										avatar={player?.avatar}
 										shellSkin={player?.shellSkin}
-										displayName={profileTurtleName.trim() || playerName}
+										displayName={
+											profileTurtleName.trim() ||
+											playerName
+										}
 										level={player?.level ?? 1}
 										size="medium"
 									/>
 									<div className="hub-modal__portrait-copy">
-										<span className="hub-modal__portrait-kicker">Portrait</span>
-										<h3 id="portrait-heading">Choose your image</h3>
+										<span className="hub-modal__portrait-kicker">
+											Portrait
+										</span>
+										<h3 id="portrait-heading">
+											Choose your image
+										</h3>
 										<div className="hub-modal__portrait-actions">
 											<label className="hub-modal__portrait-upload">
-												{avatarSaving ? "Updating…" : player?.avatar ? "Replace image" : "Choose image"}
+												{avatarSaving
+													? "Updating…"
+													: player?.avatar
+														? "Replace image"
+														: "Choose image"}
 												<input
 													type="file"
 													accept="image/jpeg,image/png,image/webp,image/gif"
 													disabled={avatarSaving}
-													onChange={(event) => void handleAvatarUpload(event)}
+													onChange={(event) =>
+														void handleAvatarUpload(
+															event,
+														)
+													}
 												/>
 											</label>
 											<button
 												type="button"
 												className="hub-modal__portrait-reset"
-												disabled={avatarSaving || !player?.avatar}
-												onClick={() => void handleAvatarClear()}
+												disabled={
+													avatarSaving ||
+													!player?.avatar
+												}
+												onClick={() =>
+													void handleAvatarClear()
+												}
 											>
 												Use equipped shell
 											</button>
 										</div>
-										<small>JPEG, PNG, WebP, or GIF · 2 MB maximum</small>
+										<small>
+											JPEG, PNG, WebP, or GIF · 2 MB
+											maximum
+										</small>
 									</div>
 								</div>
 
-								<span className="hub-modal__field-label">Achievement showcase</span>
+								<span className="hub-modal__field-label">
+									Achievement showcase
+								</span>
 								<div className="hub-modal__showcase-slots">
-									{profileShowcasedAchievements.map((achievementId, slotIdx) => {
-										const achievement = achievementId
-											? achievements?.find((a) => a.id === achievementId)
-											: null;
-										const isOpen = showcasePickerSlot === slotIdx;
-										// The showcase accepts any achievement in the catalog, not
-										// just unlocked ones — the backend already validates
-										// `showcasedAchievements` against the full achievement list
-										// with no unlock check (`update-profile.dto.ts`), so the
-										// picker offering only unlocked entries was a needless
-										// client-side restriction the server never enforced.
-										const pickableAchievements = achievements ?? [];
+									{profileShowcasedAchievements.map(
+										(achievementId, slotIdx) => {
+											const achievement = achievementId
+												? achievements?.find(
+														(a) =>
+															a.id ===
+															achievementId,
+													)
+												: null;
+											const isOpen =
+												showcasePickerSlot === slotIdx;
+											// The showcase accepts any achievement in the catalog, not
+											// just unlocked ones — the backend already validates
+											// `showcasedAchievements` against the full achievement list
+											// with no unlock check (`update-profile.dto.ts`), so the
+											// picker offering only unlocked entries was a needless
+											// client-side restriction the server never enforced.
+											const pickableAchievements =
+												achievements ?? [];
 
-										return (
-									<div
-										key={slotIdx}
-										className="hub-modal__showcase-slot-wrapper"
-									>
-										<button
-											type="button"
-											className={`hub-modal__showcase-slot${achievement ? " hub-modal__showcase-slot--filled" : ""}`}
-											aria-expanded={isOpen}
-											aria-label={
-												achievement
-													? `Slot ${slotIdx + 1}: ${achievement.title}. Click to change.`
-													: `Slot ${slotIdx + 1}: empty. Click to add.`
-											}
-											onClick={() =>
-												setShowcasePickerSlot(isOpen ? null : slotIdx)
-											}
-										>
-											{achievement ? (
-												<span className="hub-modal__showcase-title">
-													{achievement.title}
-												</span>
-											) : (
-												<>
-													<span className="hub-modal__showcase-lock">🔒</span>
-													<span className="hub-modal__showcase-empty-label">
-														{achievements ? "Empty" : "Loading…"}
-													</span>
-												</>
-											)}
-										</button>
+											return (
+												<div
+													key={slotIdx}
+													className="hub-modal__showcase-slot-wrapper"
+												>
+													<button
+														type="button"
+														className={`hub-modal__showcase-slot${achievement ? " hub-modal__showcase-slot--filled" : ""}`}
+														aria-expanded={isOpen}
+														aria-label={
+															achievement
+																? `Slot ${slotIdx + 1}: ${achievement.title}. Click to change.`
+																: `Slot ${slotIdx + 1}: empty. Click to add.`
+														}
+														onClick={() =>
+															setShowcasePickerSlot(
+																isOpen
+																	? null
+																	: slotIdx,
+															)
+														}
+													>
+														{achievement ? (
+															<span className="hub-modal__showcase-title">
+																{
+																	achievement.title
+																}
+															</span>
+														) : (
+															<>
+																<span className="hub-modal__showcase-lock">
+																	🔒
+																</span>
+																<span className="hub-modal__showcase-empty-label">
+																	{achievements
+																		? "Empty"
+																		: "Loading…"}
+																</span>
+															</>
+														)}
+													</button>
 
-										{isOpen ? (
-											<div
-												className="hub-modal__showcase-picker"
-												role="listbox"
-												aria-label={`Choose achievement for slot ${slotIdx + 1}`}
-											>
-												{pickableAchievements.length === 0 ? (
-													<p className="hub-modal__showcase-picker-empty">
-														{achievements
-															? "No achievements available."
-															: "Loading achievements…"}
-													</p>
-												) : (
-													pickableAchievements.map((a) => {
-														const isSelected =
-															profileShowcasedAchievements[slotIdx] === a.id;
-														const usedInOtherSlot =
-															profileShowcasedAchievements.some(
-																(id, i) => i !== slotIdx && id === a.id,
-															);
-														return (
-															<button
-																key={a.id}
-																type="button"
-																role="option"
-																aria-selected={isSelected}
-																disabled={usedInOtherSlot}
-																className={[
-																	"hub-modal__showcase-option",
-																	isSelected
-																		? "hub-modal__showcase-option--selected"
-																		: "",
-																	usedInOtherSlot
-																		? "hub-modal__showcase-option--used"
-																		: "",
-																]
-																	.filter(Boolean)
-																	.join(" ")}
-																onClick={() => {
-																	const next = [
-																		...profileShowcasedAchievements,
-																	];
-																	next[slotIdx] = isSelected ? null : a.id;
-																	setProfileShowcasedAchievements(next);
-																	setShowcasePickerSlot(null);
-																}}
-															>
-																{a.title}
-															</button>
-														);
-													})
-												)}
-											</div>
-										) : null}
-									</div>
-										);
-									})}
+													{isOpen ? (
+														<div
+															className="hub-modal__showcase-picker"
+															role="listbox"
+															aria-label={`Choose achievement for slot ${slotIdx + 1}`}
+														>
+															{pickableAchievements.length ===
+															0 ? (
+																<p className="hub-modal__showcase-picker-empty">
+																	{achievements
+																		? "No achievements available."
+																		: "Loading achievements…"}
+																</p>
+															) : (
+																pickableAchievements.map(
+																	(a) => {
+																		const isSelected =
+																			profileShowcasedAchievements[
+																				slotIdx
+																			] ===
+																			a.id;
+																		const usedInOtherSlot =
+																			profileShowcasedAchievements.some(
+																				(
+																					id,
+																					i,
+																				) =>
+																					i !==
+																						slotIdx &&
+																					id ===
+																						a.id,
+																			);
+																		return (
+																			<button
+																				key={
+																					a.id
+																				}
+																				type="button"
+																				role="option"
+																				aria-selected={
+																					isSelected
+																				}
+																				disabled={
+																					usedInOtherSlot
+																				}
+																				className={[
+																					"hub-modal__showcase-option",
+																					isSelected
+																						? "hub-modal__showcase-option--selected"
+																						: "",
+																					usedInOtherSlot
+																						? "hub-modal__showcase-option--used"
+																						: "",
+																				]
+																					.filter(
+																						Boolean,
+																					)
+																					.join(
+																						" ",
+																					)}
+																				onClick={() => {
+																					const next =
+																						[
+																							...profileShowcasedAchievements,
+																						];
+																					next[
+																						slotIdx
+																					] =
+																						isSelected
+																							? null
+																							: a.id;
+																					setProfileShowcasedAchievements(
+																						next,
+																					);
+																					setShowcasePickerSlot(
+																						null,
+																					);
+																				}}
+																			>
+																				{
+																					a.title
+																				}
+																			</button>
+																		);
+																	},
+																)
+															)}
+														</div>
+													) : null}
+												</div>
+											);
+										},
+									)}
 								</div>
 
 								<button
@@ -3886,23 +4228,29 @@ function HomeMenu(): JSX.Element {
 							</section>
 
 							<PlayerProfilePreview
-								displayName={profileTurtleName.trim() || playerName}
+								displayName={
+									profileTurtleName.trim() || playerName
+								}
 								avatar={player?.avatar}
 								shellSkin={player?.shellSkin}
 								level={player?.level ?? 1}
 								xp={player?.xp ?? 0}
 								tag={selectedProfileTag}
-								achievements={profileShowcasedAchievements.map((achievementId) =>
-									achievementId
-										? achievements?.find(
-												(achievement) => achievement.id === achievementId,
-											) ?? null
-										: null,
+								achievements={profileShowcasedAchievements.map(
+									(achievementId) =>
+										achievementId
+											? (achievements?.find(
+													(achievement) =>
+														achievement.id ===
+														achievementId,
+												) ?? null)
+											: null,
 								)}
 								statistics={[
 									{
 										label: "Matches",
-										value: player?.profile?.gamesPlayed ?? 0,
+										value:
+											player?.profile?.gamesPlayed ?? 0,
 									},
 									{
 										label: "Wins",
@@ -3910,7 +4258,9 @@ function HomeMenu(): JSX.Element {
 									},
 									{
 										label: "Gold earned",
-										value: player?.profile?.totalCoinsEarned ?? 0,
+										value:
+											player?.profile?.totalCoinsEarned ??
+											0,
 									},
 								]}
 							/>
@@ -3942,20 +4292,34 @@ function HomeMenu(): JSX.Element {
 			) : null}
 
 			{activeModal === "social" ? (
-				<HubModal title="Social" onClose={() => { setActiveModal(null); setFriendUsername(""); }} variant="wide">
-					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
+				<HubModal
+					title="Social"
+					onClose={() => {
+						setActiveModal(null);
+						setFriendUsername("");
+					}}
+					variant="wide"
+				>
+					{modalError ? (
+						<p className="hub-modal__error">{modalError}</p>
+					) : null}
 
 					<div className="hub-modal__social-grid">
 						<div className="hub-modal__social-sidebar">
 							{player?.username ? (
 								<div className="hub-modal__social-code">
 									<span>
-										Your friend code: <code>{buildFriendCode(player.username)}</code>
+										Your friend code:{" "}
+										<code>
+											{buildFriendCode(player.username)}
+										</code>
 									</span>
 									<button
 										className="hub-modal__save-button"
 										type="button"
-										onClick={() => void handleCopyFriendCode()}
+										onClick={() =>
+											void handleCopyFriendCode()
+										}
 									>
 										Copy
 									</button>
@@ -3968,24 +4332,40 @@ function HomeMenu(): JSX.Element {
 									placeholder="Username"
 									maxLength={32}
 									value={friendUsername}
-									onChange={(e) => setFriendUsername(e.target.value)}
+									onChange={(e) =>
+										setFriendUsername(e.target.value)
+									}
 									onKeyDown={(e) => {
 										// Ignore Enter while an IME composition is active (Bug Audit L4).
-										if (e.key === "Enter" && !e.nativeEvent.isComposing)
+										if (
+											e.key === "Enter" &&
+											!e.nativeEvent.isComposing
+										)
 											void handleSendFriendRequest();
 									}}
 								/>
 								<button
 									className="hub-modal__save-button"
 									type="button"
-									disabled={friendActionLoading || !friendUsername.trim()}
-									onClick={() => void handleSendFriendRequest()}
+									disabled={
+										friendActionLoading ||
+										!friendUsername.trim()
+									}
+									onClick={() =>
+										void handleSendFriendRequest()
+									}
 								>
-									{friendActionLoading ? "Sending…" : "Add friend"}
+									{friendActionLoading
+										? "Sending…"
+										: "Add friend"}
 								</button>
 							</div>
 
-							<div className="hub-modal__social-tabs" role="tablist" aria-label="Social categories">
+							<div
+								className="hub-modal__social-tabs"
+								role="tablist"
+								aria-label="Social categories"
+							>
 								<button
 									type="button"
 									role="tab"
@@ -4013,7 +4393,9 @@ function HomeMenu(): JSX.Element {
 								>
 									Requests
 									{pendingRequestsCount > 0 ? (
-										<span className="hub-modal__social-tab-badge">{pendingRequestsCount}</span>
+										<span className="hub-modal__social-tab-badge">
+											{pendingRequestsCount}
+										</span>
 									) : null}
 								</button>
 							</div>
@@ -4038,79 +4420,147 @@ function HomeMenu(): JSX.Element {
 													Friends
 													{friendStats.total > 0 ? (
 														<span className="hub-modal__social-count">
-															{friendStats.online}/{friendStats.total} online
+															{friendStats.online}
+															/{friendStats.total}{" "}
+															online
 														</span>
 													) : null}
 												</h3>
-												{friends && friends.length > 0 ? (
+												{friends &&
+												friends.length > 0 ? (
 													<input
 														className="hub-modal__field-input hub-modal__social-search"
 														type="text"
 														placeholder="Search friends…"
-														value={friendSearchQuery}
-														onChange={(e) => setFriendSearchQuery(e.target.value)}
+														value={
+															friendSearchQuery
+														}
+														onChange={(e) =>
+															setFriendSearchQuery(
+																e.target.value,
+															)
+														}
 														aria-label="Search friends"
 													/>
 												) : null}
-												{friendGroups && filteredFriends && filteredFriends.length > 0 ? (
+												{friendGroups &&
+												filteredFriends &&
+												filteredFriends.length > 0 ? (
 													<>
-														{friendGroups.inGame.length > 0 ? (
+														{friendGroups.inGame
+															.length > 0 ? (
 															<div className="hub-modal__social-group">
-																<h4 className="hub-modal__social-group-label">In game</h4>
+																<h4 className="hub-modal__social-group-label">
+																	In game
+																</h4>
 																<ul className="hub-modal__social-list">
-																	{friendGroups.inGame.map(friendRow)}
+																	{friendGroups.inGame.map(
+																		friendRow,
+																	)}
 																</ul>
 															</div>
 														) : null}
-														{friendGroups.online.length > 0 ? (
+														{friendGroups.online
+															.length > 0 ? (
 															<div className="hub-modal__social-group">
-																<h4 className="hub-modal__social-group-label">Online</h4>
+																<h4 className="hub-modal__social-group-label">
+																	Online
+																</h4>
 																<ul className="hub-modal__social-list">
-																	{friendGroups.online.map(friendRow)}
+																	{friendGroups.online.map(
+																		friendRow,
+																	)}
 																</ul>
 															</div>
 														) : null}
-														{friendGroups.offline.length > 0 ? (
+														{friendGroups.offline
+															.length > 0 ? (
 															<div className="hub-modal__social-group">
-																<h4 className="hub-modal__social-group-label">Offline</h4>
+																<h4 className="hub-modal__social-group-label">
+																	Offline
+																</h4>
 																<ul className="hub-modal__social-list">
-																	{friendGroups.offline.map(friendRow)}
+																	{friendGroups.offline.map(
+																		friendRow,
+																	)}
 																</ul>
 															</div>
 														) : null}
 													</>
-												) : friends && friends.length > 0 ? (
-													<p className="hub-panel__muted">No friends match your search.</p>
+												) : friends &&
+												  friends.length > 0 ? (
+													<p className="hub-panel__muted">
+														No friends match your
+														search.
+													</p>
 												) : (
-													<p className="hub-panel__muted">No friends yet. Add someone above.</p>
+													<p className="hub-panel__muted">
+														No friends yet. Add
+														someone above.
+													</p>
 												)}
 
 												{/* Inline game picker — shown after clicking Invite on a friend */}
 												{inviteTarget && (
 													<div className="hub-lobby-picker">
-														<p>Invite <strong>{inviteTarget.name}</strong> to play:</p>
+														<p>
+															Invite{" "}
+															<strong>
+																{
+																	inviteTarget.name
+																}
+															</strong>{" "}
+															to play:
+														</p>
 														<select
 															className="hub-leaderboard-select"
 															value={inviteGameId}
-															onChange={(e) => setInviteGameId(e.target.value)}
+															onChange={(e) =>
+																setInviteGameId(
+																	e.target
+																		.value,
+																)
+															}
 															aria-label="Select game to invite to"
 														>
-															{RANKED_GAMES.map((g) => (
-																<option key={g.id} value={g.id}>{g.label}</option>
-															))}
+															{RANKED_GAMES.map(
+																(g) => (
+																	<option
+																		key={
+																			g.id
+																		}
+																		value={
+																			g.id
+																		}
+																	>
+																		{
+																			g.label
+																		}
+																	</option>
+																),
+															)}
 														</select>
 														<div className="hub-lobby-picker__actions">
 															<button
 																type="button"
 																className="hub-lobby-picker__confirm"
-																onClick={() => handleCreateLobby(inviteTarget.userId, inviteGameId)}
+																onClick={() =>
+																	handleCreateLobby(
+																		inviteTarget.userId,
+																		inviteGameId,
+																	)
+																}
 															>
 																Send invite
 															</button>
 															<button
 																type="button"
 																className="hub-lobby-picker__cancel"
-																onClick={() => setInviteTarget(null)}
+																onClick={() =>
+																	setInviteTarget(
+																		null,
+																	)
+																}
 															>
 																Cancel
 															</button>
@@ -4122,47 +4572,89 @@ function HomeMenu(): JSX.Element {
 												{reportTarget && (
 													<div className="hub-lobby-picker">
 														<p>
-															Report <strong>{reportTarget.turtleName ?? reportTarget.username}</strong>?
-															This will also block them.
+															Report{" "}
+															<strong>
+																{reportTarget.turtleName ??
+																	reportTarget.username}
+															</strong>
+															? This will also
+															block them.
 														</p>
 														<select
-															ref={reportCategorySelectRef}
+															ref={
+																reportCategorySelectRef
+															}
 															className="hub-leaderboard-select"
-															value={reportCategory}
+															value={
+																reportCategory
+															}
 															onChange={(e) =>
-																setReportCategory(e.target.value as ReportCategory)
+																setReportCategory(
+																	e.target
+																		.value as ReportCategory,
+																)
 															}
 															aria-label="Report reason"
 														>
-															{REPORT_CATEGORIES.map((c) => (
-																<option key={c.id} value={c.id}>
-																	{c.label}
-																</option>
-															))}
+															{REPORT_CATEGORIES.map(
+																(c) => (
+																	<option
+																		key={
+																			c.id
+																		}
+																		value={
+																			c.id
+																		}
+																	>
+																		{
+																			c.label
+																		}
+																	</option>
+																),
+															)}
 														</select>
 														<textarea
 															className="hub-modal__field-input"
 															placeholder="Additional details (optional)"
 															maxLength={500}
-															value={reportMessage}
-															onChange={(e) => setReportMessage(e.target.value)}
+															value={
+																reportMessage
+															}
+															onChange={(e) =>
+																setReportMessage(
+																	e.target
+																		.value,
+																)
+															}
 														/>
 														<div className="hub-lobby-picker__actions">
 															<button
 																type="button"
 																className="hub-lobby-picker__confirm"
-																disabled={reportLoading}
-																onClick={() => void handleSubmitReport()}
+																disabled={
+																	reportLoading
+																}
+																onClick={() =>
+																	void handleSubmitReport()
+																}
 															>
-																{reportLoading ? "Submitting…" : "Submit report"}
+																{reportLoading
+																	? "Submitting…"
+																	: "Submit report"}
 															</button>
 															<button
 																type="button"
 																className="hub-lobby-picker__cancel"
-																disabled={reportLoading}
+																disabled={
+																	reportLoading
+																}
 																onClick={() => {
-																	setReportTarget(null);
-																	setReportMessage("");
+																	setReportTarget(
+																		null,
+																	);
+																	setReportMessage(
+																		"",
+																	);
 																}}
 															>
 																Cancel
@@ -4180,9 +4672,15 @@ function HomeMenu(): JSX.Element {
 													<button
 														type="button"
 														className="hub-modal__save-button"
-														onClick={() => setIsNewGroupOpen((prev) => !prev)}
+														onClick={() =>
+															setIsNewGroupOpen(
+																(prev) => !prev,
+															)
+														}
 													>
-														{isNewGroupOpen ? "Cancel" : "New group"}
+														{isNewGroupOpen
+															? "Cancel"
+															: "New group"}
 													</button>
 												</div>
 
@@ -4194,28 +4692,58 @@ function HomeMenu(): JSX.Element {
 															placeholder="Group name"
 															maxLength={60}
 															value={newGroupName}
-															onChange={(e) => setNewGroupName(e.target.value)}
+															onChange={(e) =>
+																setNewGroupName(
+																	e.target
+																		.value,
+																)
+															}
 														/>
-														{(friends ?? []).length === 0 ? (
+														{(friends ?? [])
+															.length === 0 ? (
 															<p className="hub-panel__muted">
-																Add some friends first — groups are friends-only.
+																Add some friends
+																first — groups
+																are
+																friends-only.
 															</p>
 														) : (
 															<>
-																<p className="hub-modal__chat-new-group-hint">Add friends:</p>
+																<p className="hub-modal__chat-new-group-hint">
+																	Add friends:
+																</p>
 																<ul className="hub-modal__social-list">
-																	{(friends ?? []).map((friend) => (
-																		<li key={friend.userId} className="hub-modal__chat-member-row">
-																			<label>
-																				<input
-																					type="checkbox"
-																					checked={newGroupMemberIds.has(friend.userId)}
-																					onChange={() => handleToggleNewGroupMember(friend.userId)}
-																				/>
-																				{friend.turtleName ?? friend.username}
-																			</label>
-																		</li>
-																	))}
+																	{(
+																		friends ??
+																		[]
+																	).map(
+																		(
+																			friend,
+																		) => (
+																			<li
+																				key={
+																					friend.userId
+																				}
+																				className="hub-modal__chat-member-row"
+																			>
+																				<label>
+																					<input
+																						type="checkbox"
+																						checked={newGroupMemberIds.has(
+																							friend.userId,
+																						)}
+																						onChange={() =>
+																							handleToggleNewGroupMember(
+																								friend.userId,
+																							)
+																						}
+																					/>
+																					{friend.turtleName ??
+																						friend.username}
+																				</label>
+																			</li>
+																		),
+																	)}
 																</ul>
 																<button
 																	type="button"
@@ -4223,9 +4751,12 @@ function HomeMenu(): JSX.Element {
 																	disabled={
 																		chatActionLoading ||
 																		!newGroupName.trim() ||
-																		newGroupMemberIds.size === 0
+																		newGroupMemberIds.size ===
+																			0
 																	}
-																	onClick={() => void handleCreateGroup()}
+																	onClick={() =>
+																		void handleCreateGroup()
+																	}
 																>
 																	Create group
 																</button>
@@ -4235,45 +4766,71 @@ function HomeMenu(): JSX.Element {
 												) : null}
 
 												<ul className="hub-modal__social-list">
-													{conversations && conversations.length > 0 ? (
-														conversations.map((conversation) => (
-															<li key={conversation.id} className="hub-modal__social-row">
-																<button
-																	type="button"
-																	className="hub-modal__chat-conversation-btn"
-																	onClick={() => void handleOpenConversation(conversation.id)}
+													{conversations &&
+													conversations.length > 0 ? (
+														conversations.map(
+															(conversation) => (
+																<li
+																	key={
+																		conversation.id
+																	}
+																	className="hub-modal__social-row"
 																>
-																	<ShellPortrait
-																		avatar={
-																			conversation.type === "group"
-																				? (conversation.avatar ??
-																					GROUP_DEFAULT_AVATAR_SRC)
-																				: conversation.avatar
+																	<button
+																		type="button"
+																		className="hub-modal__chat-conversation-btn"
+																		onClick={() =>
+																			void handleOpenConversation(
+																				conversation.id,
+																			)
 																		}
-																		shellSkin={conversation.shellSkin}
-																		displayName={conversationTitle(conversation)}
-																		size="mini"
-																	/>
-																	<span className="hub-modal__chat-conversation-text">
-																		<span className="hub-modal__social-name">
-																			{conversationTitle(conversation)}
-																			{unreadConversationIds.has(conversation.id) ? (
-																				<span
-																					className="hub-modal__chat-unread-dot"
-																					role="img"
-																					aria-label="Unread"
-																				/>
-																			) : null}
+																	>
+																		<ShellPortrait
+																			avatar={
+																				conversation.type ===
+																				"group"
+																					? (conversation.avatar ??
+																						GROUP_DEFAULT_AVATAR_SRC)
+																					: conversation.avatar
+																			}
+																			shellSkin={
+																				conversation.shellSkin
+																			}
+																			displayName={conversationTitle(
+																				conversation,
+																			)}
+																			size="mini"
+																		/>
+																		<span className="hub-modal__chat-conversation-text">
+																			<span className="hub-modal__social-name">
+																				{conversationTitle(
+																					conversation,
+																				)}
+																				{unreadConversationIds.has(
+																					conversation.id,
+																				) ? (
+																					<span
+																						className="hub-modal__chat-unread-dot"
+																						role="img"
+																						aria-label="Unread"
+																					/>
+																				) : null}
+																			</span>
+																			<small className="hub-modal__chat-preview">
+																				{conversation.lastMessagePreview ??
+																					"No messages yet"}
+																			</small>
 																		</span>
-																		<small className="hub-modal__chat-preview">
-																			{conversation.lastMessagePreview ?? "No messages yet"}
-																		</small>
-																	</span>
-																</button>
-															</li>
-														))
+																	</button>
+																</li>
+															),
+														)
 													) : (
-														<p>No conversations yet — message a friend to get started.</p>
+														<p>
+															No conversations yet
+															— message a friend
+															to get started.
+														</p>
 													)}
 												</ul>
 											</section>
@@ -4281,144 +4838,259 @@ function HomeMenu(): JSX.Element {
 
 										{socialTab === "requests" ? (
 											<>
-												{pendingRequests && pendingRequests.length > 0 ? (
+												{pendingRequests &&
+												pendingRequests.length > 0 ? (
 													<section className="hub-modal__social-section">
-														<h3>Pending requests</h3>
+														<h3>
+															Pending requests
+														</h3>
 														<ul className="hub-modal__social-list">
-															{pendingRequests.map((req) => (
-																<li key={req.userId} className="hub-modal__social-row">
-																	<span className="hub-modal__social-name">
-																		{req.turtleName ?? req.username}
-																		<small> @{req.username}</small>
-																	</span>
-																	<div className="hub-modal__social-actions">
-																		{blockConfirmUserId === req.userId ? (
-																			<>
-																				<span className="hub-modal__social-confirm-label">
-																					Block {req.turtleName ?? req.username}?
-																				</span>
-																				<button
-																					type="button"
-																					ref={blockConfirmButtonRef}
-																					className="hub-modal__social-confirm-btn"
-																					onClick={() => void handleBlockUser(req)}
-																				>
-																					Confirm
-																				</button>
-																				<button
-																					type="button"
-																					onClick={() => setBlockConfirmUserId(null)}
-																				>
-																					Cancel
-																				</button>
-																			</>
-																		) : (
-																			<>
-																				<button type="button" onClick={() => void handleAcceptRequest(req)}>Accept</button>
-																				<button type="button" onClick={() => void handleDeclineRequest(req)}>Decline</button>
-																				<button
-																					type="button"
-																					className="hub-modal__social-block-btn"
-																					onClick={() => setBlockConfirmUserId(req.userId)}
-																				>
-																					Block
-																				</button>
-																				<button
-																					type="button"
-																					className="hub-modal__social-block-btn"
-																					onClick={() =>
-																						setReportTarget({
-																							userId: req.userId,
-																							username: req.username,
-																							turtleName: req.turtleName,
-																						})
-																					}
-																				>
-																					Report
-																				</button>
-																			</>
-																		)}
-																	</div>
-																</li>
-															))}
+															{pendingRequests.map(
+																(req) => (
+																	<li
+																		key={
+																			req.userId
+																		}
+																		className="hub-modal__social-row"
+																	>
+																		<span className="hub-modal__social-name">
+																			{req.turtleName ??
+																				req.username}
+																			<small>
+																				{" "}
+																				@
+																				{
+																					req.username
+																				}
+																			</small>
+																		</span>
+																		<div className="hub-modal__social-actions">
+																			{blockConfirmUserId ===
+																			req.userId ? (
+																				<>
+																					<span className="hub-modal__social-confirm-label">
+																						Block{" "}
+																						{req.turtleName ??
+																							req.username}
+
+																						?
+																					</span>
+																					<button
+																						type="button"
+																						ref={
+																							blockConfirmButtonRef
+																						}
+																						className="hub-modal__social-confirm-btn"
+																						onClick={() =>
+																							void handleBlockUser(
+																								req,
+																							)
+																						}
+																					>
+																						Confirm
+																					</button>
+																					<button
+																						type="button"
+																						onClick={() =>
+																							setBlockConfirmUserId(
+																								null,
+																							)
+																						}
+																					>
+																						Cancel
+																					</button>
+																				</>
+																			) : (
+																				<>
+																					<button
+																						type="button"
+																						onClick={() =>
+																							void handleAcceptRequest(
+																								req,
+																							)
+																						}
+																					>
+																						Accept
+																					</button>
+																					<button
+																						type="button"
+																						onClick={() =>
+																							void handleDeclineRequest(
+																								req,
+																							)
+																						}
+																					>
+																						Decline
+																					</button>
+																					<button
+																						type="button"
+																						className="hub-modal__social-block-btn"
+																						onClick={() =>
+																							setBlockConfirmUserId(
+																								req.userId,
+																							)
+																						}
+																					>
+																						Block
+																					</button>
+																					<button
+																						type="button"
+																						className="hub-modal__social-block-btn"
+																						onClick={() =>
+																							setReportTarget(
+																								{
+																									userId: req.userId,
+																									username:
+																										req.username,
+																									turtleName:
+																										req.turtleName,
+																								},
+																							)
+																						}
+																					>
+																						Report
+																					</button>
+																				</>
+																			)}
+																		</div>
+																	</li>
+																),
+															)}
 														</ul>
 													</section>
 												) : null}
 
-												{outgoingRequests && outgoingRequests.length > 0 ? (
+												{outgoingRequests &&
+												outgoingRequests.length > 0 ? (
 													<section className="hub-modal__social-section">
-														<h3>Outgoing requests</h3>
+														<h3>
+															Outgoing requests
+														</h3>
 														<ul className="hub-modal__social-list">
-															{outgoingRequests.map((req) => (
-																<li key={req.userId} className="hub-modal__social-row">
-																	<span className="hub-modal__social-name">
-																		{req.turtleName ?? req.username}
-																		<small> @{req.username}</small>
-																	</span>
-																	<div className="hub-modal__social-actions">
-																		<button
-																			type="button"
-																			onClick={() => void handleCancelOutgoingRequest(req)}
-																		>
-																			Cancel
-																		</button>
-																	</div>
-																</li>
-															))}
+															{outgoingRequests.map(
+																(req) => (
+																	<li
+																		key={
+																			req.userId
+																		}
+																		className="hub-modal__social-row"
+																	>
+																		<span className="hub-modal__social-name">
+																			{req.turtleName ??
+																				req.username}
+																			<small>
+																				{" "}
+																				@
+																				{
+																					req.username
+																				}
+																			</small>
+																		</span>
+																		<div className="hub-modal__social-actions">
+																			<button
+																				type="button"
+																				onClick={() =>
+																					void handleCancelOutgoingRequest(
+																						req,
+																					)
+																				}
+																			>
+																				Cancel
+																			</button>
+																		</div>
+																	</li>
+																),
+															)}
 														</ul>
 													</section>
 												) : null}
 
-												{suggestions && suggestions.length > 0 ? (
+												{suggestions &&
+												suggestions.length > 0 ? (
 													<section className="hub-modal__social-section">
-														<h3>People you may know</h3>
+														<h3>
+															People you may know
+														</h3>
 														<ul className="hub-modal__social-list">
-															{suggestions.map((suggestion) => (
-																<li
-																	key={suggestion.userId}
-																	className="hub-modal__social-row"
-																>
-																	<span className="hub-modal__social-name">
-																		{suggestion.turtleName ?? suggestion.username}
-																		<small> @{suggestion.username}</small>
-																	</span>
-																	<div className="hub-modal__social-actions">
-																		<button
-																			type="button"
-																			onClick={() => void handleAddSuggestion(suggestion)}
-																		>
-																			Add
-																		</button>
-																	</div>
-																</li>
-															))}
+															{suggestions.map(
+																(
+																	suggestion,
+																) => (
+																	<li
+																		key={
+																			suggestion.userId
+																		}
+																		className="hub-modal__social-row"
+																	>
+																		<span className="hub-modal__social-name">
+																			{suggestion.turtleName ??
+																				suggestion.username}
+																			<small>
+																				{" "}
+																				@
+																				{
+																					suggestion.username
+																				}
+																			</small>
+																		</span>
+																		<div className="hub-modal__social-actions">
+																			<button
+																				type="button"
+																				onClick={() =>
+																					void handleAddSuggestion(
+																						suggestion,
+																					)
+																				}
+																			>
+																				Add
+																			</button>
+																		</div>
+																	</li>
+																),
+															)}
 														</ul>
 													</section>
 												) : null}
 
-												{blockedUsers && blockedUsers.length > 0 ? (
+												{blockedUsers &&
+												blockedUsers.length > 0 ? (
 													<section className="hub-modal__social-section">
 														<h3>Blocked users</h3>
 														<ul className="hub-modal__social-list">
-															{blockedUsers.map((blocked) => (
-																<li
-																	key={blocked.userId}
-																	className="hub-modal__social-row"
-																>
-																	<span className="hub-modal__social-name">
-																		{blocked.turtleName ?? blocked.username}
-																		<small> @{blocked.username}</small>
-																	</span>
-																	<div className="hub-modal__social-actions">
-																		<button
-																			type="button"
-																			onClick={() => void handleUnblockUser(blocked)}
-																		>
-																			Unblock
-																		</button>
-																	</div>
-																</li>
-															))}
+															{blockedUsers.map(
+																(blocked) => (
+																	<li
+																		key={
+																			blocked.userId
+																		}
+																		className="hub-modal__social-row"
+																	>
+																		<span className="hub-modal__social-name">
+																			{blocked.turtleName ??
+																				blocked.username}
+																			<small>
+																				{" "}
+																				@
+																				{
+																					blocked.username
+																				}
+																			</small>
+																		</span>
+																		<div className="hub-modal__social-actions">
+																			<button
+																				type="button"
+																				onClick={() =>
+																					void handleUnblockUser(
+																						blocked,
+																					)
+																				}
+																			>
+																				Unblock
+																			</button>
+																		</div>
+																	</li>
+																),
+															)}
 														</ul>
 													</section>
 												) : null}
@@ -4433,12 +5105,20 @@ function HomeMenu(): JSX.Element {
 							{activeConversationId ? (
 								<div className="hub-modal__chat-thread">
 									<div className="hub-modal__chat-thread-header">
-										<button type="button" className="hub-modal__chat-back-button" onClick={handleCloseConversation}>
+										<button
+											type="button"
+											className="hub-modal__chat-back-button"
+											onClick={handleCloseConversation}
+										>
 											← Back
 										</button>
 										<span className="hub-modal__chat-thread-title">
 											{conversationTitle(
-												conversations?.find((c) => c.id === activeConversationId) ?? {
+												conversations?.find(
+													(c) =>
+														c.id ===
+														activeConversationId,
+												) ?? {
 													name: null,
 													type: "dm",
 												},
@@ -4449,7 +5129,9 @@ function HomeMenu(): JSX.Element {
 												<button
 													type="button"
 													className="hub-modal__chat-members-toggle"
-													onClick={handleToggleMembers}
+													onClick={
+														handleToggleMembers
+													}
 												>
 													{groupMembers !== null
 														? "Hide members"
@@ -4460,32 +5142,47 @@ function HomeMenu(): JSX.Element {
 														<button
 															type="button"
 															className="hub-modal__chat-members-toggle"
-															disabled={groupActionLoading}
+															disabled={
+																groupActionLoading
+															}
 															onClick={() =>
 																setGroupRenameDraft(
-																	activeConversation?.name ?? "",
+																	activeConversation?.name ??
+																		"",
 																)
 															}
 														>
 															Rename
 														</button>
 														<label className="hub-modal__chat-members-toggle hub-modal__chat-photo-upload">
-															{groupActionLoading ? "Uploading…" : "Photo"}
+															{groupActionLoading
+																? "Uploading…"
+																: "Photo"}
 															<input
 																type="file"
 																accept="image/jpeg,image/png,image/webp,image/gif"
-																disabled={groupActionLoading}
-																onChange={(event) =>
-																	void handleGroupAvatarUpload(event)
+																disabled={
+																	groupActionLoading
+																}
+																onChange={(
+																	event,
+																) =>
+																	void handleGroupAvatarUpload(
+																		event,
+																	)
 																}
 															/>
 														</label>
 														<button
 															type="button"
 															className="hub-modal__chat-members-toggle"
-															disabled={chatActionLoading}
+															disabled={
+																chatActionLoading
+															}
 															onClick={() =>
-																void handleLeaveGroup(activeConversationId)
+																void handleLeaveGroup(
+																	activeConversationId,
+																)
 															}
 															title="Leave the group; ownership passes to the longest-standing member"
 														>
@@ -4494,8 +5191,12 @@ function HomeMenu(): JSX.Element {
 														<button
 															type="button"
 															className="hub-modal__social-block-btn"
-															disabled={groupActionLoading}
-															onClick={() => void handleDeleteGroup()}
+															disabled={
+																groupActionLoading
+															}
+															onClick={() =>
+																void handleDeleteGroup()
+															}
 														>
 															Delete group
 														</button>
@@ -4504,9 +5205,13 @@ function HomeMenu(): JSX.Element {
 													<button
 														type="button"
 														className="hub-modal__social-block-btn"
-														disabled={chatActionLoading}
+														disabled={
+															chatActionLoading
+														}
 														onClick={() =>
-															void handleLeaveGroup(activeConversationId)
+															void handleLeaveGroup(
+																activeConversationId,
+															)
 														}
 													>
 														Leave group
@@ -4516,7 +5221,8 @@ function HomeMenu(): JSX.Element {
 										) : null}
 									</div>
 
-									{isActiveGroup && groupRenameDraft !== null ? (
+									{isActiveGroup &&
+									groupRenameDraft !== null ? (
 										<form
 											className="hub-modal__chat-rename"
 											onSubmit={(e) => {
@@ -4529,20 +5235,27 @@ function HomeMenu(): JSX.Element {
 												value={groupRenameDraft}
 												maxLength={60}
 												autoFocus
-												onChange={(e) => setGroupRenameDraft(e.target.value)}
+												onChange={(e) =>
+													setGroupRenameDraft(
+														e.target.value,
+													)
+												}
 												placeholder="Group name"
 											/>
 											<button
 												type="submit"
 												disabled={
-													groupActionLoading || !groupRenameDraft.trim()
+													groupActionLoading ||
+													!groupRenameDraft.trim()
 												}
 											>
 												Save
 											</button>
 											<button
 												type="button"
-												onClick={() => setGroupRenameDraft(null)}
+												onClick={() =>
+													setGroupRenameDraft(null)
+												}
 											>
 												Cancel
 											</button>
@@ -4555,36 +5268,48 @@ function HomeMenu(): JSX.Element {
 												<p>Loading members…</p>
 											) : (
 												<ul className="hub-modal__chat-members-list">
-													{groupMembers.map((member) => (
-														<li
-															key={member.userId}
-															className="hub-modal__chat-member"
-														>
-															<span
-																className={
-																	member.isOnline
-																		? "hub-modal__presence-dot hub-modal__presence-dot--online"
-																		: "hub-modal__presence-dot"
+													{groupMembers.map(
+														(member) => (
+															<li
+																key={
+																	member.userId
 																}
-															/>
-															<span className="hub-modal__chat-member-name">
-																{member.turtleName ?? member.username}
-																{member.isOwner ? " (owner)" : ""}
-															</span>
-															{isOwnerOfActiveGroup && !member.isOwner ? (
-																<button
-																	type="button"
-																	className="hub-modal__social-block-btn"
-																	disabled={groupActionLoading}
-																	onClick={() =>
-																		void handleKickMember(member.userId)
+																className="hub-modal__chat-member"
+															>
+																<span
+																	className={
+																		member.isOnline
+																			? "hub-modal__presence-dot hub-modal__presence-dot--online"
+																			: "hub-modal__presence-dot"
 																	}
-																>
-																	Remove
-																</button>
-															) : null}
-														</li>
-													))}
+																/>
+																<span className="hub-modal__chat-member-name">
+																	{member.turtleName ??
+																		member.username}
+																	{member.isOwner
+																		? " (owner)"
+																		: ""}
+																</span>
+																{isOwnerOfActiveGroup &&
+																!member.isOwner ? (
+																	<button
+																		type="button"
+																		className="hub-modal__social-block-btn"
+																		disabled={
+																			groupActionLoading
+																		}
+																		onClick={() =>
+																			void handleKickMember(
+																				member.userId,
+																			)
+																		}
+																	>
+																		Remove
+																	</button>
+																) : null}
+															</li>
+														),
+													)}
 												</ul>
 											)}
 
@@ -4592,33 +5317,49 @@ function HomeMenu(): JSX.Element {
 												type="button"
 												className="hub-modal__chat-members-toggle"
 												disabled={groupActionLoading}
-												onClick={() => setIsAddMemberOpen((v) => !v)}
+												onClick={() =>
+													setIsAddMemberOpen(
+														(v) => !v,
+													)
+												}
 											>
-												{isAddMemberOpen ? "Cancel" : "Add friend"}
+												{isAddMemberOpen
+													? "Cancel"
+													: "Add friend"}
 											</button>
 
 											{isAddMemberOpen ? (
 												addableFriends.length === 0 ? (
 													<p className="hub-modal__chat-members-empty">
-														All your friends are already in this group.
+														All your friends are
+														already in this group.
 													</p>
 												) : (
 													<ul className="hub-modal__chat-members-add-list">
-														{addableFriends.map((friend) => (
-															<li key={friend.userId}>
-																<button
-																	type="button"
-																	disabled={groupActionLoading}
-																	onClick={() =>
-																		void handleAddMemberToGroup(
-																			friend.userId,
-																		)
+														{addableFriends.map(
+															(friend) => (
+																<li
+																	key={
+																		friend.userId
 																	}
 																>
-																	{friend.turtleName ?? friend.username}
-																</button>
-															</li>
-														))}
+																	<button
+																		type="button"
+																		disabled={
+																			groupActionLoading
+																		}
+																		onClick={() =>
+																			void handleAddMemberToGroup(
+																				friend.userId,
+																			)
+																		}
+																	>
+																		{friend.turtleName ??
+																			friend.username}
+																	</button>
+																</li>
+															),
+														)}
 													</ul>
 												)
 											) : null}
@@ -4636,7 +5377,9 @@ function HomeMenu(): JSX.Element {
 												<li className="hub-modal__chat-load-older">
 													<button
 														type="button"
-														disabled={chatLoadingOlder}
+														disabled={
+															chatLoadingOlder
+														}
 														onClick={() =>
 															void handleLoadOlderMessages()
 														}
@@ -4650,46 +5393,71 @@ function HomeMenu(): JSX.Element {
 											{chatMessages.map((message) => {
 												const gif =
 													message.type === "gif"
-														? parseGifMetadata(message.metadata)
+														? parseGifMetadata(
+																message.metadata,
+															)
 														: null;
 												return (
 													<li
 														key={message.id}
 														className={
-															message.type === "system"
+															message.type ===
+															"system"
 																? "hub-modal__chat-message hub-modal__chat-message--system"
 																: "hub-modal__chat-message"
 														}
 													>
-														{message.type === "system" ? (
-															<span>{message.body}</span>
-														) : message.type === "gif" && gif ? (
+														{message.type ===
+														"system" ? (
+															<span>
+																{message.body}
+															</span>
+														) : message.type ===
+																"gif" && gif ? (
 															<>
 																<span className="hub-modal__chat-message-sender">
-																	{message.senderUsername}
+																	{
+																		message.senderUsername
+																	}
 																</span>
 																<img
 																	className="hub-modal__chat-gif-image"
-																	src={gif.url}
-																	alt={message.body}
-																	width={gif.width}
-																	height={gif.height}
+																	src={
+																		gif.url
+																	}
+																	alt={
+																		message.body
+																	}
+																	width={
+																		gif.width
+																	}
+																	height={
+																		gif.height
+																	}
 																	loading="lazy"
 																/>
 																<span className="hub-modal__chat-message-time">
-																	{formatRelativeTime(message.createdAt)}
+																	{formatRelativeTime(
+																		message.createdAt,
+																	)}
 																</span>
 															</>
 														) : (
 															<>
 																<span className="hub-modal__chat-message-sender">
-																	{message.senderUsername}
+																	{
+																		message.senderUsername
+																	}
 																</span>
 																<span className="hub-modal__chat-message-body">
-																	{message.body}
+																	{
+																		message.body
+																	}
 																</span>
 																<span className="hub-modal__chat-message-time">
-																	{formatRelativeTime(message.createdAt)}
+																	{formatRelativeTime(
+																		message.createdAt,
+																	)}
 																</span>
 															</>
 														)}
@@ -4707,14 +5475,21 @@ function HomeMenu(): JSX.Element {
 												placeholder="Search gifs…"
 												maxLength={200}
 												value={gifSearchQuery}
-												onChange={(e) => handleGifSearchChange(e.target.value)}
+												onChange={(e) =>
+													handleGifSearchChange(
+														e.target.value,
+													)
+												}
 												autoFocus
 											/>
 											{gifSearchLoading ? (
-												<p className="hub-modal__chat-gif-status">Searching…</p>
+												<p className="hub-modal__chat-gif-status">
+													Searching…
+												</p>
 											) : gifSearchError ? (
 												<p className="hub-modal__chat-gif-status hub-modal__chat-gif-status--error">
-													GIF search is unavailable right now.
+													GIF search is unavailable
+													right now.
 												</p>
 											) : gifResults.length > 0 ? (
 												<ul className="hub-modal__chat-gif-grid">
@@ -4723,19 +5498,30 @@ function HomeMenu(): JSX.Element {
 															<button
 																type="button"
 																className="hub-modal__chat-gif-thumb"
-																onClick={() => handleSendGif(gif)}
+																onClick={() =>
+																	handleSendGif(
+																		gif,
+																	)
+																}
 															>
 																<img
-																	src={gif.previewUrl}
-																	alt={gif.title}
+																	src={
+																		gif.previewUrl
+																	}
+																	alt={
+																		gif.title
+																	}
 																	loading="lazy"
 																/>
 															</button>
 														</li>
 													))}
 												</ul>
-											) : gifSearchQuery.trim().length >= GIF_SEARCH_MIN_LENGTH ? (
-												<p className="hub-modal__chat-gif-status">No gifs found.</p>
+											) : gifSearchQuery.trim().length >=
+											  GIF_SEARCH_MIN_LENGTH ? (
+												<p className="hub-modal__chat-gif-status">
+													No gifs found.
+												</p>
 											) : (
 												<p className="hub-modal__chat-gif-status">
 													Type to search for gifs.
@@ -4743,7 +5529,9 @@ function HomeMenu(): JSX.Element {
 											)}
 											{/* Required by Klipy's attribution guidelines
 											    (https://docs.klipy.com/attribution). */}
-											<p className="hub-modal__chat-gif-attribution">Powered by KLIPY</p>
+											<p className="hub-modal__chat-gif-attribution">
+												Powered by KLIPY
+											</p>
 										</div>
 									) : null}
 
@@ -4754,10 +5542,17 @@ function HomeMenu(): JSX.Element {
 											placeholder="Message…"
 											maxLength={2000}
 											value={chatMessageDraft}
-											onChange={(e) => setChatMessageDraft(e.target.value)}
+											onChange={(e) =>
+												setChatMessageDraft(
+													e.target.value,
+												)
+											}
 											onKeyDown={(e) => {
 												// Ignore Enter while an IME composition is active (Bug Audit L4).
-												if (e.key === "Enter" && !e.nativeEvent.isComposing)
+												if (
+													e.key === "Enter" &&
+													!e.nativeEvent.isComposing
+												)
 													handleSendChatMessage();
 											}}
 										/>
@@ -4806,23 +5601,30 @@ function HomeMenu(): JSX.Element {
 					onClose={() => setActiveModal(null)}
 					variant="wide"
 				>
-					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
+					{modalError ? (
+						<p className="hub-modal__error">{modalError}</p>
+					) : null}
 					{cosmetics ? (
 						<div className="hub-modal__cosmetics">
 							<div className="hub-cards__store">
 								<div className="hub-cards__store-info">
 									<strong>Collection</strong>
 									<span>
-										{cosmeticCollectionProgress.owned} / {cosmeticCollectionProgress.total} items
+										{cosmeticCollectionProgress.owned} /{" "}
+										{cosmeticCollectionProgress.total} items
 									</span>
 								</div>
 								<div className="hub-cards__store-coins">
-									<span aria-hidden="true">⬡</span> {player?.coins ?? 0} coins
+									<span aria-hidden="true">⬡</span>{" "}
+									{player?.coins ?? 0} coins
 								</div>
 							</div>
 
 							<div className="hub-modal__cosmetic-topbar">
-								<nav className="hub-modal__cosmetic-tabs" aria-label="Customisation categories">
+								<nav
+									className="hub-modal__cosmetic-tabs"
+									aria-label="Customisation categories"
+								>
 									{COSMETIC_TABS.map((tab) => (
 										<button
 											key={tab.id}
@@ -4833,7 +5635,9 @@ function HomeMenu(): JSX.Element {
 													: ""
 											}${tab.disabled ? " hub-modal__cosmetic-tab--disabled" : ""}`}
 											disabled={tab.disabled}
-											onClick={() => setActiveCosmeticTab(tab.id)}
+											onClick={() =>
+												setActiveCosmeticTab(tab.id)
+											}
 										>
 											{tab.title}
 										</button>
@@ -4841,131 +5645,228 @@ function HomeMenu(): JSX.Element {
 								</nav>
 							</div>
 
-							{activeCosmeticTab === "all" || activeCosmeticTab === "shell_skin" ? (
+							{activeCosmeticTab === "all" ||
+							activeCosmeticTab === "shell_skin" ? (
 								<section className="hub-modal__cosmetic-category hub-modal__cosmetic-category--shells">
 									<header className="hub-modal__cosmetic-category-header">
 										<h3>Shells</h3>
 										<span className="hub-modal__cosmetic-category-progress">
-											{cosmeticCategoryProgress.get("shell_skin")?.owned ?? 0} /{" "}
-											{cosmeticCategoryProgress.get("shell_skin")?.total ?? 0}
+											{cosmeticCategoryProgress.get(
+												"shell_skin",
+											)?.owned ?? 0}{" "}
+											/{" "}
+											{cosmeticCategoryProgress.get(
+												"shell_skin",
+											)?.total ?? 0}
 										</span>
 									</header>
 									<div className="hub-modal__shell-grid">
-										{(cosmeticGroups.get("shell_skin") ?? []).map((cosmetic) => {
-											const hasImage = COSMETIC_PREVIEWS[cosmetic.id] !== undefined;
+										{(
+											cosmeticGroups.get("shell_skin") ??
+											[]
+										).map((cosmetic) => {
+											const hasImage =
+												COSMETIC_PREVIEWS[
+													cosmetic.id
+												] !== undefined;
 											return (
 												<button
 													key={cosmetic.id}
 													type="button"
 													className={`hub-modal__shell-card${
-														cosmetic.equipped ? " hub-modal__shell-card--equipped" : ""
+														cosmetic.equipped
+															? " hub-modal__shell-card--equipped"
+															: ""
 													}`}
-													style={getCosmeticPreviewStyle(cosmetic)}
-													title={getCosmeticDisplayDescription(cosmetic)}
-													onClick={() => setSelectedShellCosmetic(cosmetic)}
+													style={getCosmeticPreviewStyle(
+														cosmetic,
+													)}
+													title={getCosmeticDisplayDescription(
+														cosmetic,
+													)}
+													onClick={() =>
+														setSelectedShellCosmetic(
+															cosmetic,
+														)
+													}
 												>
-													<span className="hub-modal__shell-frame" aria-hidden="true">
+													<span
+														className="hub-modal__shell-frame"
+														aria-hidden="true"
+													>
 														{hasImage ? (
 															<span className="hub-modal__shell-image" />
 														) : (
-															<span className="hub-modal__shell-placeholder">?</span>
+															<span className="hub-modal__shell-placeholder">
+																?
+															</span>
 														)}
 													</span>
-													<strong>{getCosmeticDisplayName(cosmetic)}</strong>
-													{cosmetic.equipped ? <small>Equipped</small> : null}
+													<strong>
+														{getCosmeticDisplayName(
+															cosmetic,
+														)}
+													</strong>
+													{cosmetic.equipped ? (
+														<small>Equipped</small>
+													) : null}
 												</button>
 											);
 										})}
-										{SHELL_PLACEHOLDERS.map((placeholderId) => (
-											<button
-												key={placeholderId}
-												type="button"
-												className="hub-modal__shell-card hub-modal__shell-card--mystery"
-												disabled
-											>
-												<span className="hub-modal__shell-frame" aria-hidden="true">
-													<span className="hub-modal__shell-placeholder">?</span>
-												</span>
-												<strong>?</strong>
-											</button>
-										))}
+										{SHELL_PLACEHOLDERS.map(
+											(placeholderId) => (
+												<button
+													key={placeholderId}
+													type="button"
+													className="hub-modal__shell-card hub-modal__shell-card--mystery"
+													disabled
+												>
+													<span
+														className="hub-modal__shell-frame"
+														aria-hidden="true"
+													>
+														<span className="hub-modal__shell-placeholder">
+															?
+														</span>
+													</span>
+													<strong>?</strong>
+												</button>
+											),
+										)}
 									</div>
 								</section>
 							) : null}
 
-							{activeCosmeticTab === "all" || activeCosmeticTab === "hub_background" ? (
+							{activeCosmeticTab === "all" ||
+							activeCosmeticTab === "hub_background" ? (
 								<section className="hub-modal__cosmetic-category">
 									<header className="hub-modal__cosmetic-category-header">
 										<h3>Backgrounds</h3>
 										<span className="hub-modal__cosmetic-category-progress">
-											{cosmeticCategoryProgress.get("hub_background")?.owned ?? 0} /{" "}
-											{cosmeticCategoryProgress.get("hub_background")?.total ?? 0}
+											{cosmeticCategoryProgress.get(
+												"hub_background",
+											)?.owned ?? 0}{" "}
+											/{" "}
+											{cosmeticCategoryProgress.get(
+												"hub_background",
+											)?.total ?? 0}
 										</span>
 									</header>
 									<div className="hub-modal__list hub-modal__cosmetic-grid hub-modal__cosmetic-grid--backgrounds">
-										{(cosmeticGroups.get("hub_background") ?? []).map((cosmetic) => {
-											const alters = backgroundAlters.get(cosmetic.id) ?? [];
+										{(
+											cosmeticGroups.get(
+												"hub_background",
+											) ?? []
+										).map((cosmetic) => {
+											const alters =
+												backgroundAlters.get(
+													cosmetic.id,
+												) ?? [];
 											return (
 												<article key={cosmetic.id}>
 													<div
 														className="hub-modal__cosmetic-preview hub-modal__cosmetic-preview--hub_background has-image"
-														style={getCosmeticPreviewStyle(cosmetic)}
+														style={getCosmeticPreviewStyle(
+															cosmetic,
+														)}
 														aria-hidden="true"
 													/>
-													<strong>{getCosmeticDisplayName(cosmetic)}</strong>
-													<p>{getCosmeticDisplayDescription(cosmetic)}</p>
+													<strong>
+														{getCosmeticDisplayName(
+															cosmetic,
+														)}
+													</strong>
+													<p>
+														{getCosmeticDisplayDescription(
+															cosmetic,
+														)}
+													</p>
 													<button
 														type="button"
-														disabled={isCosmeticActionDisabled(cosmetic)}
-														onClick={() => void handleCosmeticAction(cosmetic)}
+														disabled={isCosmeticActionDisabled(
+															cosmetic,
+														)}
+														onClick={() =>
+															void handleCosmeticAction(
+																cosmetic,
+															)
+														}
 													>
-														{getCosmeticActionLabel(cosmetic)}
+														{getCosmeticActionLabel(
+															cosmetic,
+														)}
 													</button>
 													{alters.length > 0 ? (
 														<div className="hub-modal__cosmetic-alters">
-															<span className="hub-modal__cosmetic-alters-label">Alter art</span>
-															{alters.map((alter) => (
-																<div
-																	key={alter.id}
-																	className={`hub-modal__cosmetic-alter${
-																		alter.equipped
-																			? " hub-modal__cosmetic-alter--active"
-																			: ""
-																	}${!alter.owned ? " hub-modal__cosmetic-alter--locked" : ""}`}
-																>
-																	<div className="hub-modal__cosmetic-alter-main">
-																		<span className="hub-modal__cosmetic-alter-copy">
-																			<strong>{alter.name}</strong>
-																		</span>
+															<span className="hub-modal__cosmetic-alters-label">
+																Alter art
+															</span>
+															{alters.map(
+																(alter) => (
+																	<div
+																		key={
+																			alter.id
+																		}
+																		className={`hub-modal__cosmetic-alter${
+																			alter.equipped
+																				? " hub-modal__cosmetic-alter--active"
+																				: ""
+																		}${!alter.owned ? " hub-modal__cosmetic-alter--locked" : ""}`}
+																	>
+																		<div className="hub-modal__cosmetic-alter-main">
+																			<span className="hub-modal__cosmetic-alter-copy">
+																				<strong>
+																					{
+																						alter.name
+																					}
+																				</strong>
+																			</span>
+																			<button
+																				type="button"
+																				role="switch"
+																				aria-checked={
+																					alter.equipped
+																				}
+																				aria-label={`Toggle ${alter.name}`}
+																				className={`hub-modal__cosmetic-toggle${
+																					alter.equipped
+																						? " hub-modal__cosmetic-toggle--on"
+																						: ""
+																				}`}
+																				disabled={
+																					!alter.owned
+																				}
+																				onClick={() =>
+																					void handleBackgroundAlterAction(
+																						cosmetic,
+																						alter,
+																					)
+																				}
+																			>
+																				<span className="hub-modal__cosmetic-toggle-thumb" />
+																			</button>
+																		</div>
 																		<button
 																			type="button"
-																			role="switch"
-																			aria-checked={alter.equipped}
-																			aria-label={`Toggle ${alter.name}`}
-																			className={`hub-modal__cosmetic-toggle${
-																				alter.equipped ? " hub-modal__cosmetic-toggle--on" : ""
-																			}`}
-																			disabled={!alter.owned}
+																			className="hub-modal__cosmetic-alter-buy"
+																			disabled={
+																				alter.owned ||
+																				alter.lockedReason ===
+																					"achievement-locked"
+																			}
 																			onClick={() =>
-																				void handleBackgroundAlterAction(cosmetic, alter)
+																				void handleCosmeticAction(
+																					alter,
+																				)
 																			}
 																		>
-																			<span className="hub-modal__cosmetic-toggle-thumb" />
+																			{alter.owned
+																				? "Purchased"
+																				: `Buy alter · ${alter.price} coins`}
 																		</button>
 																	</div>
-																	<button
-																		type="button"
-																		className="hub-modal__cosmetic-alter-buy"
-																		disabled={
-																			alter.owned ||
-																			alter.lockedReason === "achievement-locked"
-																		}
-																		onClick={() => void handleCosmeticAction(alter)}
-																	>
-																		{alter.owned ? "Purchased" : `Buy alter · ${alter.price} coins`}
-																	</button>
-																</div>
-															))}
+																),
+															)}
 														</div>
 													) : null}
 												</article>
@@ -4975,37 +5876,70 @@ function HomeMenu(): JSX.Element {
 								</section>
 							) : null}
 
-							{activeCosmeticTab === "all" || activeCosmeticTab === "trail_effect" ? (
+							{activeCosmeticTab === "all" ||
+							activeCosmeticTab === "trail_effect" ? (
 								<section className="hub-modal__cosmetic-category">
 									<header className="hub-modal__cosmetic-category-header">
 										<h3>Trails</h3>
 										<span className="hub-modal__cosmetic-category-progress">
-											{cosmeticCategoryProgress.get("trail_effect")?.owned ?? 0} /{" "}
-											{cosmeticCategoryProgress.get("trail_effect")?.total ?? 0}
+											{cosmeticCategoryProgress.get(
+												"trail_effect",
+											)?.owned ?? 0}{" "}
+											/{" "}
+											{cosmeticCategoryProgress.get(
+												"trail_effect",
+											)?.total ?? 0}
 										</span>
 									</header>
 									<div className="hub-modal__trail-effects">
-										{(cosmeticGroups.get("trail_effect") ?? []).map((cosmetic) => (
+										{(
+											cosmeticGroups.get(
+												"trail_effect",
+											) ?? []
+										).map((cosmetic) => (
 											<article
 												key={cosmetic.id}
 												className={`hub-modal__trail-card hub-modal__trail-card--${cosmetic.id}${
-													cosmetic.equipped ? " hub-modal__trail-card--equipped" : ""
+													cosmetic.equipped
+														? " hub-modal__trail-card--equipped"
+														: ""
 												}`}
-												style={getCosmeticPreviewStyle(cosmetic)}
+												style={getCosmeticPreviewStyle(
+													cosmetic,
+												)}
 											>
-												<span className="hub-modal__trail-preview" aria-hidden="true">
+												<span
+													className="hub-modal__trail-preview"
+													aria-hidden="true"
+												>
 													<span className="hub-modal__trail-line" />
 												</span>
 												<span className="hub-modal__trail-copy">
-													<strong>{getCosmeticDisplayName(cosmetic)}</strong>
-													<small>{getCosmeticDisplayDescription(cosmetic)}</small>
+													<strong>
+														{getCosmeticDisplayName(
+															cosmetic,
+														)}
+													</strong>
+													<small>
+														{getCosmeticDisplayDescription(
+															cosmetic,
+														)}
+													</small>
 												</span>
 												<button
 													type="button"
-													disabled={isCosmeticActionDisabled(cosmetic)}
-													onClick={() => void handleCosmeticAction(cosmetic)}
+													disabled={isCosmeticActionDisabled(
+														cosmetic,
+													)}
+													onClick={() =>
+														void handleCosmeticAction(
+															cosmetic,
+														)
+													}
 												>
-													{getCosmeticActionLabel(cosmetic)}
+													{getCosmeticActionLabel(
+														cosmetic,
+													)}
 												</button>
 											</article>
 										))}
@@ -5013,37 +5947,68 @@ function HomeMenu(): JSX.Element {
 								</section>
 							) : null}
 
-							{activeCosmeticTab === "all" || activeCosmeticTab === "dojo_tag" ? (
+							{activeCosmeticTab === "all" ||
+							activeCosmeticTab === "dojo_tag" ? (
 								<section className="hub-modal__cosmetic-category">
 									<header className="hub-modal__cosmetic-category-header">
 										<h3>Dojo Tags</h3>
 										<span className="hub-modal__cosmetic-category-progress">
-											{cosmeticCategoryProgress.get("dojo_tag")?.owned ?? 0} /{" "}
-											{cosmeticCategoryProgress.get("dojo_tag")?.total ?? 0}
+											{cosmeticCategoryProgress.get(
+												"dojo_tag",
+											)?.owned ?? 0}{" "}
+											/{" "}
+											{cosmeticCategoryProgress.get(
+												"dojo_tag",
+											)?.total ?? 0}
 										</span>
 									</header>
 									<div className="hub-modal__dojo-tags">
-										{(cosmeticGroups.get("dojo_tag") ?? []).map((cosmetic) => (
+										{(
+											cosmeticGroups.get("dojo_tag") ?? []
+										).map((cosmetic) => (
 											<article
 												key={cosmetic.id}
 												className={`hub-modal__dojo-tag-card${
-													cosmetic.equipped ? " hub-modal__dojo-tag-card--equipped" : ""
+													cosmetic.equipped
+														? " hub-modal__dojo-tag-card--equipped"
+														: ""
 												}`}
-												style={getCosmeticPreviewStyle(cosmetic)}
+												style={getCosmeticPreviewStyle(
+													cosmetic,
+												)}
 											>
-												<span className="hub-modal__dojo-tag-icon" aria-hidden="true">
+												<span
+													className="hub-modal__dojo-tag-icon"
+													aria-hidden="true"
+												>
 													{cosmetic.tagEmoji}
 												</span>
 												<span className="hub-modal__dojo-tag-copy">
-													<strong>{getCosmeticDisplayName(cosmetic)}</strong>
-													<small>{getCosmeticDisplayDescription(cosmetic)}</small>
+													<strong>
+														{getCosmeticDisplayName(
+															cosmetic,
+														)}
+													</strong>
+													<small>
+														{getCosmeticDisplayDescription(
+															cosmetic,
+														)}
+													</small>
 												</span>
 												<button
 													type="button"
-													disabled={isCosmeticActionDisabled(cosmetic)}
-													onClick={() => void handleCosmeticAction(cosmetic)}
+													disabled={isCosmeticActionDisabled(
+														cosmetic,
+													)}
+													onClick={() =>
+														void handleCosmeticAction(
+															cosmetic,
+														)
+													}
 												>
-													{getCosmeticActionLabel(cosmetic)}
+													{getCosmeticActionLabel(
+														cosmetic,
+													)}
 												</button>
 											</article>
 										))}
@@ -5052,40 +6017,70 @@ function HomeMenu(): JSX.Element {
 							) : null}
 
 							{selectedShellCosmetic ? (
-								<div className="hub-modal__shell-detail" role="dialog" aria-modal="true">
+								<div
+									className="hub-modal__shell-detail"
+									role="dialog"
+									aria-modal="true"
+								>
 									<button
 										type="button"
 										className="hub-modal__shell-detail-backdrop"
 										aria-label="Close shell details"
-										onClick={() => setSelectedShellCosmetic(null)}
+										onClick={() =>
+											setSelectedShellCosmetic(null)
+										}
 									/>
 									<article className="hub-modal__shell-detail-card">
 										<button
 											type="button"
 											className="hub-modal__shell-detail-close"
-											onClick={() => setSelectedShellCosmetic(null)}
+											onClick={() =>
+												setSelectedShellCosmetic(null)
+											}
 										>
 											Close
 										</button>
 										<div
 											className="hub-modal__shell-detail-preview"
-											style={getCosmeticPreviewStyle(selectedShellCosmetic)}
+											style={getCosmeticPreviewStyle(
+												selectedShellCosmetic,
+											)}
 											aria-hidden="true"
 										>
-											{COSMETIC_PREVIEWS[selectedShellCosmetic.id] ? (
+											{COSMETIC_PREVIEWS[
+												selectedShellCosmetic.id
+											] ? (
 												<span className="hub-modal__shell-image" />
 											) : (
-												<span className="hub-modal__shell-placeholder">?</span>
+												<span className="hub-modal__shell-placeholder">
+													?
+												</span>
 											)}
 										</div>
-										<strong>{getCosmeticDisplayName(selectedShellCosmetic)}</strong>
-										<p>{getCosmeticDisplayDescription(selectedShellCosmetic)}</p>
+										<strong>
+											{getCosmeticDisplayName(
+												selectedShellCosmetic,
+											)}
+										</strong>
+										<p>
+											{getCosmeticDisplayDescription(
+												selectedShellCosmetic,
+											)}
+										</p>
 										<button
 											type="button"
-											disabled={isCosmeticActionDisabled(selectedShellCosmetic)}
-											onClick={() => void handleCosmeticAction(selectedShellCosmetic)}
+											disabled={isCosmeticActionDisabled(
+												selectedShellCosmetic,
+											)}
+											onClick={() =>
+												void handleCosmeticAction(
+													selectedShellCosmetic,
+												)
+											}
 										>
-											{getCosmeticActionLabel(selectedShellCosmetic)}
+											{getCosmeticActionLabel(
+												selectedShellCosmetic,
+											)}
 										</button>
 									</article>
 								</div>
@@ -5098,33 +6093,49 @@ function HomeMenu(): JSX.Element {
 			) : null}
 
 			{activeModal === "cards" ? (
-				<HubModal title="Shell Cards" onClose={() => setActiveModal(null)} variant="wide">
+				<HubModal
+					title="Shell Cards"
+					onClose={() => setActiveModal(null)}
+					variant="wide"
+				>
 					<ShellCardsModal
 						coins={player?.coins ?? 0}
 						onCoinsChange={(coins) =>
-							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+							setPlayer((prev) =>
+								prev ? { ...prev, coins } : prev,
+							)
 						}
 					/>
 				</HubModal>
 			) : null}
 
 			{activeModal === "casino" ? (
-				<HubModal title="Fortune Wheel" onClose={() => setActiveModal(null)}>
+				<HubModal
+					title="Fortune Wheel"
+					onClose={() => setActiveModal(null)}
+				>
 					<FortuneWheelModal
 						coins={player?.coins ?? 0}
 						onCoinsChange={(coins) =>
-							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+							setPlayer((prev) =>
+								prev ? { ...prev, coins } : prev,
+							)
 						}
 					/>
 				</HubModal>
 			) : null}
 
 			{activeModal === "flip" ? (
-				<HubModal title="Shell Flip" onClose={() => setActiveModal(null)}>
+				<HubModal
+					title="Shell Flip"
+					onClose={() => setActiveModal(null)}
+				>
 					<ShellFlipModal
 						coins={player?.coins ?? 0}
 						onCoinsChange={(coins) =>
-							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+							setPlayer((prev) =>
+								prev ? { ...prev, coins } : prev,
+							)
 						}
 					/>
 				</HubModal>
@@ -5138,18 +6149,25 @@ function HomeMenu(): JSX.Element {
 					<ThreeShellMonteModal
 						coins={player?.coins ?? 0}
 						onCoinsChange={(coins) =>
-							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+							setPlayer((prev) =>
+								prev ? { ...prev, coins } : prev,
+							)
 						}
 					/>
 				</HubModal>
 			) : null}
 
 			{activeModal === "slots" ? (
-				<HubModal title="Shrine Slots" onClose={() => setActiveModal(null)}>
+				<HubModal
+					title="Shrine Slots"
+					onClose={() => setActiveModal(null)}
+				>
 					<ShrineSlotsModal
 						coins={player?.coins ?? 0}
 						onCoinsChange={(coins) =>
-							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+							setPlayer((prev) =>
+								prev ? { ...prev, coins } : prev,
+							)
 						}
 					/>
 				</HubModal>
@@ -5160,19 +6178,26 @@ function HomeMenu(): JSX.Element {
 					<KoiDiceModal
 						coins={player?.coins ?? 0}
 						onCoinsChange={(coins) =>
-							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+							setPlayer((prev) =>
+								prev ? { ...prev, coins } : prev,
+							)
 						}
 					/>
 				</HubModal>
 			) : null}
 
 			{activeModal === "drop" ? (
-				<HubModal title="Shell Drop" onClose={() => setActiveModal(null)}>
+				<HubModal
+					title="Shell Drop"
+					onClose={() => setActiveModal(null)}
+				>
 					<ShellDropModal
 						coins={player?.coins ?? 0}
 						shellSkin={player?.shellSkin}
 						onCoinsChange={(coins) =>
-							setPlayer((prev) => (prev ? { ...prev, coins } : prev))
+							setPlayer((prev) =>
+								prev ? { ...prev, coins } : prev,
+							)
 						}
 					/>
 				</HubModal>
@@ -5206,16 +6231,18 @@ function HubModal({
 	useEffect(() => {
 		const previouslyFocused = document.activeElement as HTMLElement | null;
 		const panel = panelRef.current;
-		const firstFocusable = panel?.querySelector<HTMLElement>(
-			FOCUSABLE_SELECTOR,
-		);
+		const firstFocusable =
+			panel?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
 		(firstFocusable ?? panel)?.focus();
 
 		const onKeyDown = (e: KeyboardEvent) => {
 			if (
-				document.querySelector(".account-conflict[aria-modal='true']") &&
+				document.querySelector(
+					".account-conflict[aria-modal='true']",
+				) &&
 				!panel?.contains(document.activeElement)
-			) return;
+			)
+				return;
 			if (e.key === "Escape") {
 				onClose();
 				return;
@@ -5247,7 +6274,12 @@ function HubModal({
 	}, []);
 
 	return (
-		<div className="hub-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+		<div
+			className="hub-modal"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby={titleId}
+		>
 			<button
 				className="hub-modal__backdrop"
 				type="button"
@@ -5264,7 +6296,11 @@ function HubModal({
 						<h2 id={titleId}>{title}</h2>
 						{headerAddon}
 					</div>
-					<button className="hub-modal__close-button" type="button" onClick={onClose}>
+					<button
+						className="hub-modal__close-button"
+						type="button"
+						onClick={onClose}
+					>
 						Close
 					</button>
 				</header>
@@ -5274,7 +6310,7 @@ function HubModal({
 	);
 }
 
-function ReplayModal({
+export function ReplayModal({
 	error,
 	loading,
 	replayTab,
@@ -5299,121 +6335,114 @@ function ReplayModal({
 	onToggleSaved: (matchId: string, nextSavedState: boolean) => void;
 	onClose: () => void;
 }): JSX.Element {
-	const [selectedReplayFrame, setSelectedReplayFrame] = useState(0);
-	const [replayFrameProgress, setReplayFrameProgress] = useState(0);
-	const [isReplayPlaying, setIsReplayPlaying] = useState(false);
 	const [isReplayExpanded, setIsReplayExpanded] = useState(false);
 
 	useEffect(() => {
-		setSelectedReplayFrame(0);
-		setReplayFrameProgress(0);
-		setIsReplayPlaying(false);
 		setIsReplayExpanded(false);
 	}, [selectedReplay?.matchId]);
 
-	useEffect(() => {
-		setReplayFrameProgress(0);
-	}, [selectedReplayFrame]);
-
 	return (
-		<>
-			<HubModal title="Match Replays" variant="wide" onClose={onClose}>
-				<p className="hub-modal__replay-notice">
-					Replays are unavailable while power-ups are enabled.
-				</p>
-				{error ? <p className="hub-modal__error">{error}</p> : null}
-				<div className="hub-modal__replays">
-					<div className="hub-modal__replay-list">
-						{loading ? (
-							<p>Loading…</p>
-						) : (
-							<>
-								<div className="hub-modal__replay-tabs" role="tablist" aria-label="Replay categories">
-									<button
-										type="button"
-										role="tab"
-										aria-selected={replayTab === "match"}
-										className={`hub-modal__replay-tab${replayTab === "match" ? " hub-modal__replay-tab--active" : ""}`}
-										onClick={() => onReplayTabChange("match")}
-									>
-										Match replays
-									</button>
-									<button
-										type="button"
-										role="tab"
-										aria-selected={replayTab === "saved"}
-										className={`hub-modal__replay-tab${replayTab === "saved" ? " hub-modal__replay-tab--active" : ""}`}
-										onClick={() => onReplayTabChange("saved")}
-									>
-										My replays
-									</button>
-								</div>
-								<ReplayListSection
-									title={replayTab === "match" ? "Match replays" : "My replays"}
-									replays={replayTab === "match" ? matchReplays : savedReplays}
-									selectedReplay={selectedReplay}
-									replayActionLoading={replayActionLoading}
-									onLoadReplay={onLoadReplay}
-									onToggleSaved={onToggleSaved}
-									emptyMessage={
-										replayTab === "match"
-											? "No temporary match replays available."
-											: "You have no saved replays yet."
-									}
-								/>
-							</>
-						)}
-					</div>
-					<div className="hub-modal__replay-viewer">
-						<h3>Replay viewer</h3>
-						{selectedReplay ? (
-							<ReplayViewer
-								replay={selectedReplay}
-								selectedReplayFrame={selectedReplayFrame}
-								replayFrameProgress={replayFrameProgress}
-								isReplayPlaying={isReplayPlaying}
-								onSelectedReplayFrameChange={setSelectedReplayFrame}
-								onReplayFrameProgressChange={setReplayFrameProgress}
-								onIsReplayPlayingChange={setIsReplayPlaying}
-								onExpand={() => setIsReplayExpanded(true)}
-							/>
-						) : (
-							<div className="hub-modal__replay-empty">
-								<img
-									className="hub-modal__replay-empty-logo"
-									src="/assets/logoShellSmash.png"
-									alt="Shell Smash"
-								/>
-								<p className="hub-panel__muted">
-									Select a replay to inspect its timeline.
-								</p>
+		<HubModal title="Match Replays" variant="wide" onClose={onClose}>
+			<p className="hub-modal__replay-notice">
+				Replays are unavailable while power-ups are enabled.
+			</p>
+			{error ? <p className="hub-modal__error">{error}</p> : null}
+			<div className="hub-modal__replays">
+				<div className="hub-modal__replay-list">
+					{loading ? (
+						<p>Loading…</p>
+					) : (
+						<>
+							<div
+								className="hub-modal__replay-tabs"
+								role="tablist"
+								aria-label="Replay categories"
+							>
+								<button
+									type="button"
+									role="tab"
+									aria-selected={replayTab === "match"}
+									className={`hub-modal__replay-tab${replayTab === "match" ? " hub-modal__replay-tab--active" : ""}`}
+									onClick={() => onReplayTabChange("match")}
+								>
+									Match replays
+								</button>
+								<button
+									type="button"
+									role="tab"
+									aria-selected={replayTab === "saved"}
+									className={`hub-modal__replay-tab${replayTab === "saved" ? " hub-modal__replay-tab--active" : ""}`}
+									onClick={() => onReplayTabChange("saved")}
+								>
+									My replays
+								</button>
 							</div>
-						)}
-					</div>
+							<ReplayListSection
+								title={
+									replayTab === "match"
+										? "Match replays"
+										: "My replays"
+								}
+								replays={
+									replayTab === "match"
+										? matchReplays
+										: savedReplays
+								}
+								selectedReplay={selectedReplay}
+								replayActionLoading={replayActionLoading}
+								onLoadReplay={onLoadReplay}
+								onToggleSaved={onToggleSaved}
+								emptyMessage={
+									replayTab === "match"
+										? "No temporary match replays available."
+										: "You have no saved replays yet."
+								}
+							/>
+						</>
+					)}
 				</div>
-			</HubModal>
-
-			{isReplayExpanded && selectedReplay ? (
-				<HubModal
-					title={`${getReplayGameLabel(selectedReplay.gameId)} Replay`}
-					variant="wide"
-					onClose={() => setIsReplayExpanded(false)}
+				<div
+					className={`hub-modal__replay-viewer${
+						isReplayExpanded
+							? " hub-modal__replay-viewer--expanded"
+							: ""
+					}`}
+					role={isReplayExpanded ? "dialog" : undefined}
+					aria-modal={isReplayExpanded ? true : undefined}
+					aria-label={
+						isReplayExpanded && selectedReplay
+							? `${getReplayGameLabel(selectedReplay.gameId)} replay`
+							: undefined
+					}
 				>
-					<div className="hub-modal__replay-viewer hub-modal__replay-viewer--expanded">
+					<h3>
+						{isReplayExpanded && selectedReplay
+							? `${getReplayGameLabel(selectedReplay.gameId)} replay`
+							: "Replay viewer"}
+					</h3>
+					{selectedReplay ? (
 						<ReplayViewer
 							replay={selectedReplay}
-							selectedReplayFrame={selectedReplayFrame}
-							replayFrameProgress={replayFrameProgress}
-							isReplayPlaying={isReplayPlaying}
-							onSelectedReplayFrameChange={setSelectedReplayFrame}
-							onReplayFrameProgressChange={setReplayFrameProgress}
-							onIsReplayPlayingChange={setIsReplayPlaying}
-							expanded
+							onExpand={() =>
+								setIsReplayExpanded((current) => !current)
+							}
+							expanded={isReplayExpanded}
 						/>
-					</div>
-				</HubModal>
-			) : null}
-		</>
+					) : (
+						<div className="hub-modal__replay-empty">
+							<img
+								className="hub-modal__replay-empty-logo"
+								src="/assets/logoShellSmash.png"
+								alt="Shell Smash"
+							/>
+							<p className="hub-panel__muted">
+								Select a replay to inspect its timeline.
+							</p>
+						</div>
+					)}
+				</div>
+			</div>
+		</HubModal>
 	);
 }
 
@@ -5441,14 +6470,24 @@ function ReplayListSection({
 				<div className="hub-modal__replay-items-scroll">
 					<ul className="hub-modal__replay-items">
 						{replays.map((replay) => (
-							<li key={replay.matchId} className="hub-modal__replay-item">
+							<li
+								key={replay.matchId}
+								className="hub-modal__replay-item"
+							>
 								<div className="hub-modal__replay-copy">
-									<strong>{getReplayGameLabel(replay.gameId)}</strong>
+									<strong>
+										{getReplayGameLabel(replay.gameId)}
+									</strong>
 									<small>
-										{replay.playerNames.map(displayUsername).join(" vs ")}
+										{replay.playerNames
+											.map(displayUsername)
+											.join(" vs ")}
 									</small>
-									<small>{formatReplayDate(replay.finishedAt)}</small>
-									{replay.metadata.statistics.replayTooLong === true ? (
+									<small>
+										{formatReplayDate(replay.finishedAt)}
+									</small>
+									{replay.metadata.statistics
+										.replayTooLong === true ? (
 										<small>Replay too long to play</small>
 									) : null}
 								</div>
@@ -5456,21 +6495,36 @@ function ReplayListSection({
 									<button
 										type="button"
 										disabled={
-											replayActionLoading === replay.matchId ||
-											replay.metadata.statistics.replayTooLong === true
+											replayActionLoading ===
+												replay.matchId ||
+											replay.metadata.statistics
+												.replayTooLong === true
 										}
-										onClick={() => onLoadReplay(replay.matchId)}
+										onClick={() =>
+											onLoadReplay(replay.matchId)
+										}
 									>
-										{selectedReplay?.matchId === replay.matchId ? "Viewing" : "View"}
+										{selectedReplay?.matchId ===
+										replay.matchId
+											? "Viewing"
+											: "View"}
 									</button>
 									<button
 										type="button"
-										disabled={replayActionLoading === replay.matchId}
+										disabled={
+											replayActionLoading ===
+											replay.matchId
+										}
 										onClick={() =>
-											onToggleSaved(replay.matchId, !replay.isSavedByCurrentUser)
+											onToggleSaved(
+												replay.matchId,
+												!replay.isSavedByCurrentUser,
+											)
 										}
 									>
-										{replay.isSavedByCurrentUser ? "Remove saved" : "Save"}
+										{replay.isSavedByCurrentUser
+											? "Remove saved"
+											: "Save"}
 									</button>
 								</div>
 							</li>

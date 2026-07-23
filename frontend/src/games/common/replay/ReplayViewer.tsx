@@ -192,7 +192,7 @@ export function ReplayViewer({
 						</button>
 						{onExpand ? (
 							<button type="button" onClick={onExpand}>
-								{expanded ? "Expanded" : "Expand"}
+								{expanded ? "Collapse" : "Expand"}
 							</button>
 						) : null}
 					</div>

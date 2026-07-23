@@ -1,7 +1,7 @@
 # Frontend Performance Remediation Checkpoint
 
-Last updated: 23 July 2026 — target-machine Phase 1 baseline complete
-Overall status: Phase 1 complete; Phase 2 ready to start
+Last updated: 23 July 2026 — Phases 2–8 integrated; destination acceptance pending
+Overall status: Phase 1 complete; Phases 2–8 partially complete; Phase 9 in progress
 Source plan: [`frontend-performance-profiler-report-and-plan-2026-07-23.md`](frontend-performance-profiler-report-and-plan-2026-07-23.md)
 
 ## 1. Purpose
@@ -20,14 +20,14 @@ open.
 | Phase | Scope | Status | Last validation | Remaining work |
 | --- | --- | --- | --- | --- |
 | 1 | Reproducible production baseline | Complete | Target-machine development and production matrices at 1440 x 900, Firefox profiles, React replay capture, lifecycle counters, build, tests, and health | None |
-| 2 | Singular replay runtime | Not started | Existing React profile exposes two viewers | Full phase |
-| 3 | Replay render optimisation | Not started | Static code and existing profiles reviewed | Full phase |
-| 4 | Typed replay capture and delta encoding | Not started | Existing GC and encoder reviewed | Full phase |
-| 5 | Hub backdrop redesign and suspension | Not started | Existing renderer profile and CSS reviewed | Full phase |
-| 6 | Phaser lifecycle and start-up stalls | Not started | Existing long tasks classified | Full phase |
-| 7 | Game and casino hot paths | Not started | Existing source hot paths ranked | Full phase |
-| 8 | React and data ownership | Not started | Existing React and network patterns reviewed | Full phase |
-| 9 | Integrated validation and closure | Not started | None | Full phase |
+| 2 | Singular replay runtime | Partially complete | Singular session merged; integration test proves one viewer across expansion and collapse | Destination lifecycle counters and React profile |
+| 3 | Replay render optimisation | Partially complete | Retained replay renderer and targeted tests merged; full frontend suite passes | Destination allocation profile and four-game visual parity |
+| 4 | Typed replay capture and delta encoding | Partially complete | Typed encoder, capture runtime, reconstruction tests, and game adapters merged | Destination GC profile and replay visual validation |
+| 5 | Hub backdrop redesign and suspension | Partially complete | Extracted canvas backdrop mounted from the hub; legacy DOM stars removed; build and tests pass | Destination renderer profile, responsive and reduced-motion checks |
+| 6 | Phaser lifecycle and start-up stalls | Partially complete | Factory lifecycle changes merged with targeted tests | Destination route matrix, context counters, and long-task profile |
+| 7 | Game and casino hot paths | Partially complete | Incremental panels, bounded trails, retained Shell Drop board, and imperative wheel merged | Destination game/casino profiles and visual checks |
+| 8 | React and data ownership | Partially complete | Persistent session and inbox providers, deduplication, and guard fixes merged | Destination network and React profiles |
+| 9 | Integrated validation and closure | In progress | Full frontend suite, production build, stylesheet manifest, stack health, OpenAPI, and diff checks pass | Destination development/production matrix, profiler comparison, and TypeScript baseline resolution |
 
 ## 3. Current Baseline Evidence
 
@@ -507,7 +507,116 @@ the source plan. Capture development first with `make dev`, stop it with
 `make down`, then repeat with `make prod`. Save files with the mode, scenario,
 commit, Firefox version, and date in their names.
 
-## 8. Per-Phase Update Template
+## 8. Checkpoint 2026-07-23 — Phases 2–9 Integration
+
+### Phase and subtask attempted
+
+Merged all four distributed performance workstreams, completed their deferred
+page and route connections, and ran the reproducible portion of Phase 9 on the
+current computer.
+
+### Status
+
+Partially complete. The implementation and automated integration gates pass.
+The destination-machine visual, lifecycle, Firefox, React, allocation, and
+network comparisons remain required.
+
+### Changes made
+
+- Merged replay workstream head `5948affe3301a8e0fd50f2439def339cc3b332e0`.
+- Merged hub and casino workstream head
+  `1cdc505136fd47af641bc7dd44e28a74317f1405`.
+- Merged Phaser and games workstream head
+  `0195b059d930dffcbf96b22e488325d4b22568d0`.
+- Merged React and data workstream head
+  `aed3a642db61b18276f1d95c691b7cc49a9e225b`.
+- Replaced the page-owned replay frame, progress, and playback state with the
+  workstream's singular `ReplaySession`. Expansion now changes the existing
+  viewer's presentation class instead of mounting a second viewer.
+- Mounted the extracted `CycleBackdrop` from the hub and connected modal
+  coverage to its suspension input. Removed the superseded 420-star DOM
+  implementation, repainting cloud rule, and star animation styles.
+- Confirmed that the final game scenes use the typed `ReplayCaptureRuntime`,
+  the route tree owns persistent session and inbox providers, and the final
+  Phaser factory changes require no additional cross-workstream adapter.
+- Added a focused integration test proving that replay expansion and collapse
+  preserve exactly one `ReplayViewer`.
+- Reviewed `docs/modules-progress.md`; this performance integration changes no
+  specification module claim, so no module status changed.
+
+### Decisions and rejected alternatives
+
+- Kept one replay component in one React tree position and changed only its
+  layout class. Moving it between separate modal trees or portals could
+  recreate presentation state and would weaken the singular-runtime guarantee.
+- Treated the current computer's healthy stack as service-level evidence only.
+  It is not a replacement for the destination machine's graphics, viewport,
+  interaction, and profiler evidence.
+- Kept the performance plan and checkpoint live. The closure rule requires the
+  destination production matrix and profiles before archival.
+
+### Automated validation
+
+- Runtime — Node.js 24.13.0 and npm 11.18.0.
+- `cd frontend && npm run test:run -- src/pages/HomePage.replay-integration.test.tsx`
+  — pass, one file and one test.
+- `cd frontend && npm run test:run` — pass, 87 files and 483 tests.
+- `cd frontend && npm run build` — pass, 250 modules transformed and all
+  production assets emitted.
+- Stylesheet manifest inspection — pass, all 19 feature stylesheets are
+  reachable through `frontend/src/styles/modules/index.css`.
+- Static integration checks — pass; `HomePage.tsx` contains one
+  `ReplayViewer`, mounts the extracted backdrop, and no legacy star or cloud
+  selector remains in its former owners.
+- `make health` — pass, all 13 services healthy.
+- `make validate-openapi` — pass, 97 paths and 108 operations.
+- `git diff --check` — pass.
+- `cd frontend && npx tsc --noEmit` — blocked by the existing dependency and
+  configuration mismatch: the lock installs TypeScript 5.9.3 while
+  `ignoreDeprecations` is set to `6.0`. A diagnostic run with the compatible
+  value reached existing repository-wide type errors in unrelated code and
+  tests. The tracked configuration was left unchanged.
+
+### Manual and profiler validation
+
+- Workstream B supplied headless Firefox evidence for the extracted backdrop,
+  Fortune Wheel, and Shell Drop before integration.
+- No comparable manual or profiler validation was claimed for this integrated
+  commit. The user confirmed that the current computer is not the destination
+  environment, so its graphics and interaction results would not satisfy the
+  Phase 1 comparison controls.
+
+### Known limitations or regressions
+
+- Destination lifecycle counters, React commits, browser renderer occupancy,
+  event delay, long tasks, minor collections, network request ownership, and
+  four-game replay parity remain unmeasured.
+- Responsive, reduced-motion, casino, game, and replay presentation checks
+  remain pending on the destination display and graphics renderer.
+- Repository-wide TypeScript validation remains blocked as recorded above.
+- No automated regression failed, and no known functional regression was
+  observed in the reproducible checks.
+
+### Work remaining in this phase
+
+- Run the complete fixed development and production scenario matrix on the
+  destination machine.
+- Capture comparable Firefox and React profiles and record every Phase 2–8
+  acceptance metric against the Phase 1 baseline.
+- Resolve or deliberately rebaseline the TypeScript configuration and existing
+  errors, then rerun `npx tsc --noEmit`.
+- Update the phase table with measured results. Archive this checkpoint and the
+  source plan only if every closure gate passes.
+
+### Exact next action
+
+On the destination machine, check out the final merged commit, run `make dev`,
+and capture inline replay followed by expanded replay for 60 seconds each.
+Record the development counters before, during, and after expansion; exactly
+one game, controller, scene, canvas, observer, and playback clock must remain
+live throughout.
+
+## 9. Per-Phase Update Template
 
 Copy this section under a new dated heading whenever work advances:
 
@@ -551,7 +660,7 @@ Copy this section under a new dated heading whenever work advances:
 <One concrete technical action that starts the next continuation.>
 ```
 
-## 9. Closure Rule
+## 10. Closure Rule
 
 The programme is complete only when all nine phases are marked complete, the
 integrated production-mode validation matrix passes, and no required manual or

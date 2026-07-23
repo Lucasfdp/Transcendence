@@ -49,7 +49,7 @@
 	@apply flex-wrap;
 	gap: 0.5rem;
 	padding: 0.35rem 0.5rem;
-	background: rgba(255,255,255,0.05);
+	background: rgba(255, 255, 255, 0.05);
 	border-radius: 4px;
 }
 .hub-modal__social-identity {
@@ -243,7 +243,11 @@
 
 .hub-modal__social-tab--active {
 	color: #eaffc8;
-	background: linear-gradient(180deg, rgba(43, 67, 35, 0.9), rgba(13, 38, 18, 0.94));
+	background: linear-gradient(
+		180deg,
+		rgba(43, 67, 35, 0.9),
+		rgba(13, 38, 18, 0.94)
+	);
 	border-color: rgba(216, 255, 159, 0.72);
 }
 
@@ -268,7 +272,11 @@
 	border: 1px solid rgba(245, 214, 119, 0.16);
 	border-radius: 14px;
 	background:
-		radial-gradient(circle at 50% 36%, rgba(184, 219, 134, 0.12), transparent 34%),
+		radial-gradient(
+			circle at 50% 36%,
+			rgba(184, 219, 134, 0.12),
+			transparent 34%
+		),
 		linear-gradient(180deg, rgba(13, 17, 11, 0.72), rgba(5, 7, 8, 0.82));
 	@apply text-center;
 }
@@ -660,7 +668,11 @@
 
 .hub-modal__replay-tab--active {
 	color: #eaffc8;
-	background: linear-gradient(180deg, rgba(43, 67, 35, 0.9), rgba(13, 38, 18, 0.94));
+	background: linear-gradient(
+		180deg,
+		rgba(43, 67, 35, 0.9),
+		rgba(13, 38, 18, 0.94)
+	);
 	border-color: rgba(216, 255, 159, 0.72);
 }
 
@@ -701,7 +713,11 @@
 	border: 1px solid rgba(245, 214, 119, 0.16);
 	border-radius: 14px;
 	background:
-		radial-gradient(circle at 50% 36%, rgba(184, 219, 134, 0.12), transparent 34%),
+		radial-gradient(
+			circle at 50% 36%,
+			rgba(184, 219, 134, 0.12),
+			transparent 34%
+		),
 		linear-gradient(180deg, rgba(13, 17, 11, 0.72), rgba(5, 7, 8, 0.82));
 	@apply text-center;
 }
@@ -765,7 +781,11 @@
 	@apply w-full;
 	aspect-ratio: 1 / 1;
 	border-radius: 14px;
-	background: radial-gradient(circle at top, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.35));
+	background: radial-gradient(
+		circle at top,
+		rgba(255, 255, 255, 0.06),
+		rgba(0, 0, 0, 0.35)
+	);
 	border: 1px solid rgba(245, 214, 119, 0.16);
 }
 
@@ -776,8 +796,16 @@
 	@apply overflow-hidden;
 	border-radius: 14px;
 	background:
-		radial-gradient(circle at 18% 18%, rgba(255, 244, 210, 0.16), transparent 34%),
-		radial-gradient(circle at 78% 12%, rgba(143, 176, 128, 0.14), transparent 30%),
+		radial-gradient(
+			circle at 18% 18%,
+			rgba(255, 244, 210, 0.16),
+			transparent 34%
+		),
+		radial-gradient(
+			circle at 78% 12%,
+			rgba(143, 176, 128, 0.14),
+			transparent 30%
+		),
 		linear-gradient(180deg, rgba(10, 9, 14, 0.78), rgba(8, 7, 11, 0.9));
 	border: 1px solid rgba(245, 214, 119, 0.16);
 	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
@@ -793,7 +821,23 @@
 }
 
 .hub-modal__replay-viewer--expanded {
-	@apply h-full overflow-hidden;
+	@apply fixed inset-0 overflow-y-auto;
+	z-index: 1200;
+	padding: clamp(1rem, 3vw, 2.5rem);
+	border-left: 0;
+	background:
+		radial-gradient(
+			circle at 50% 20%,
+			rgba(51, 78, 43, 0.32),
+			transparent 40%
+		),
+		rgba(5, 7, 8, 0.98);
+}
+
+.hub-modal__replay-viewer--expanded > * {
+	width: min(70rem, 100%);
+	margin-right: auto;
+	margin-left: auto;
 }
 
 .hub-modal__replay-scoreboard {
@@ -940,7 +984,11 @@
 
 .hub-ranking-tab:hover,
 .hub-ranking-tab--active {
-	background: linear-gradient(180deg, rgba(43, 67, 35, 0.9), rgba(13, 38, 18, 0.94));
+	background: linear-gradient(
+		180deg,
+		rgba(43, 67, 35, 0.9),
+		rgba(13, 38, 18, 0.94)
+	);
 	color: #e4f5b9;
 }
 
@@ -951,7 +999,11 @@
 	padding: 0.4rem 1.1rem;
 	border: 1px solid rgba(123, 183, 111, 0.42);
 	border-radius: 0.7rem;
-	background: linear-gradient(180deg, rgba(43, 67, 35, 0.9), rgba(13, 38, 18, 0.94));
+	background: linear-gradient(
+		180deg,
+		rgba(43, 67, 35, 0.9),
+		rgba(13, 38, 18, 0.94)
+	);
 	color: #eaffc8;
 	font-family: var(--body-font);
 	font-size: 0.8rem;
@@ -1065,7 +1117,9 @@
 	color: var(--text);
 	font-size: 1rem;
 	@apply cursor-pointer;
-	transition: background 0.15s, border-color 0.15s;
+	transition:
+		background 0.15s,
+		border-color 0.15s;
 	flex-shrink: 0;
 }
 
@@ -1112,8 +1166,16 @@
 	width: min(26rem, calc(100vw - 1.4rem));
 	@apply flex flex-col;
 	background:
-		radial-gradient(circle at 82% 8%, rgba(184, 219, 134, 0.11), transparent 28%),
-		linear-gradient(160deg, rgba(31, 38, 23, 0.985), rgba(7, 12, 12, 0.99) 72%);
+		radial-gradient(
+			circle at 82% 8%,
+			rgba(184, 219, 134, 0.11),
+			transparent 28%
+		),
+		linear-gradient(
+			160deg,
+			rgba(31, 38, 23, 0.985),
+			rgba(7, 12, 12, 0.99) 72%
+		);
 	border: 1px solid rgba(202, 204, 142, 0.48);
 	border-radius: 1.2rem;
 	box-shadow:
@@ -1139,7 +1201,11 @@
 	gap: 0.65rem;
 	padding: 1.25rem 1.15rem 1rem;
 	border-bottom: 1px solid rgba(241, 211, 145, 0.22);
-	background: linear-gradient(180deg, rgba(42, 51, 27, 0.76), rgba(18, 26, 17, 0.34));
+	background: linear-gradient(
+		180deg,
+		rgba(42, 51, 27, 0.76),
+		rgba(18, 26, 17, 0.34)
+	);
 	flex-shrink: 0;
 }
 
@@ -1169,7 +1235,10 @@
 	@apply font-bold;
 	letter-spacing: 0.025em;
 	@apply cursor-pointer whitespace-nowrap;
-	transition: color 0.15s, border-color 0.15s, background 0.15s;
+	transition:
+		color 0.15s,
+		border-color 0.15s,
+		background 0.15s;
 }
 
 .hub-notif-drawer__mark-all:hover {
@@ -1188,7 +1257,10 @@
 	font-size: 0.9rem;
 	@apply cursor-pointer;
 	border-radius: 0.6rem;
-	transition: color 0.15s, background 0.15s, border-color 0.15s;
+	transition:
+		color 0.15s,
+		background 0.15s,
+		border-color 0.15s;
 }
 
 .hub-notif-drawer__close:hover {
@@ -1206,7 +1278,11 @@
 	border: 1px solid rgba(245, 214, 119, 0.14);
 	border-radius: 0.9rem;
 	background:
-		radial-gradient(circle at 50% 42%, rgba(184, 219, 134, 0.1), transparent 36%),
+		radial-gradient(
+			circle at 50% 42%,
+			rgba(184, 219, 134, 0.1),
+			transparent 36%
+		),
 		rgba(5, 9, 9, 0.42);
 	color: #aeb99d;
 	font-size: 0.92rem;
@@ -1229,15 +1305,26 @@
 	padding: 0.9rem;
 	border: 1px solid rgba(123, 183, 111, 0.28);
 	border-radius: 0.85rem;
-	background: linear-gradient(145deg, rgba(18, 31, 18, 0.84), rgba(8, 14, 13, 0.78));
+	background: linear-gradient(
+		145deg,
+		rgba(18, 31, 18, 0.84),
+		rgba(8, 14, 13, 0.78)
+	);
 	box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
-	transition: background 0.12s, border-color 0.12s, transform 0.12s;
+	transition:
+		background 0.12s,
+		border-color 0.12s,
+		transform 0.12s;
 }
 
 .hub-notif-drawer__item:hover {
 	transform: translateY(-1px);
 	border-color: rgba(184, 219, 134, 0.5);
-	background: linear-gradient(145deg, rgba(25, 42, 23, 0.92), rgba(9, 17, 14, 0.86));
+	background: linear-gradient(
+		145deg,
+		rgba(25, 42, 23, 0.92),
+		rgba(9, 17, 14, 0.86)
+	);
 }
 
 .hub-notif-drawer__item-body {
@@ -1276,7 +1363,9 @@
 	letter-spacing: 0.025em;
 	@apply cursor-pointer;
 	border: 1px solid transparent;
-	transition: filter 0.15s, transform 0.15s;
+	transition:
+		filter 0.15s,
+		transform 0.15s;
 }
 
 .hub-notif-drawer__action:hover {
@@ -1306,7 +1395,10 @@
 	font-size: 0.75rem;
 	@apply cursor-pointer;
 	border-radius: 0.5rem;
-	transition: color 0.12s, background 0.12s, border-color 0.12s;
+	transition:
+		color 0.12s,
+		background 0.12s,
+		border-color 0.12s;
 }
 
 .hub-notif-drawer__dismiss:hover {

@@ -3,9 +3,7 @@
    star field and the transform-driven cloud strip. The static layers (sky,
    sun, moon, glow, foreground) deliberately keep their `.hub-cycle` rules in
    hub.css so the art, masks, and theme overrides stay identical — this
-   module only adds what the new runtime needs. The legacy `.hub-cycle__star`
-   and `.hub-cycle__clouds` rules in hub.css serve the inline page backdrop
-   until the integrator mounts this feature, then become removable. */
+   module only adds what the new runtime needs. */
 
 /* One canvas replaces the previous per-star DOM elements. Its opacity is
    still driven by the cycle engine through --cycle-stars-opacity, so the
@@ -24,7 +22,11 @@
 	@apply absolute inset-0 overflow-hidden;
 	z-index: 4;
 	opacity: 0.92;
-	background: linear-gradient(180deg, rgba(255, 245, 208, calc(var(--cycle-twilight-opacity) * 0.12)), transparent 32%);
+	background: linear-gradient(
+		180deg,
+		rgba(255, 245, 208, calc(var(--cycle-twilight-opacity) * 0.12)),
+		transparent 32%
+	);
 }
 
 /* The strip is one drift period (240px) wider than the layer, so the
@@ -33,7 +35,8 @@
 	@apply absolute inset-y-0;
 	left: 0;
 	width: calc(100% + 240px);
-	background: url("/assets/backgrounds/night_cycle_part2.png") repeat-x left top / auto 100%;
+	background: url("/assets/backgrounds/night_cycle_part2.png") repeat-x left
+		top / auto 100%;
 	animation: cycle-clouds-drift 42s linear infinite;
 	will-change: transform;
 }
