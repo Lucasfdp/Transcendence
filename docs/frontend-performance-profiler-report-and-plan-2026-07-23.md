@@ -429,10 +429,15 @@ before/after comparisons.
 
 Implementation checkpoint, 23 July 2026: the Node.js 24 execution path,
 served-commit marker, development-only lifecycle counters, and fixed scenario
-protocol are implemented. The production and development scenario captures
-remain pending because the configured deployment was unreachable and the local
-Docker filesystem could not extract even the frontend dependency graph. See the
-live checkpoint for the recorded evidence and exact continuation action.
+protocol are implemented. The Docker data root has since been relocated to a
+volume with sufficient space, the complete development stack builds and becomes
+healthy, and the non-headless idle-hub and opaque-modal lifecycle captures pass.
+Complete Fortune Wheel and Shell Drop animations plus idle captures also pass
+their lifecycle assertions. Kame Knock also retains one game and canvas during
+idle and active input, then releases both on return to the hub. The remaining
+development matrix, every production capture, and comparable profiles on the
+target graphics environment remain pending. See the live checkpoint for the
+recorded evidence and exact continuation action.
 
 ### Phase 2 — Make Replay Runtime Singular
 

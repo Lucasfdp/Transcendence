@@ -1,6 +1,6 @@
 # Frontend Performance Remediation Checkpoint
 
-Last updated: 23 July 2026 — Phase 1 baseline instrumentation and preflight  
+Last updated: 23 July 2026 — Phase 1 development hub captures
 Overall status: In progress  
 Source plan: [`frontend-performance-profiler-report-and-plan-2026-07-23.md`](frontend-performance-profiler-report-and-plan-2026-07-23.md)
 
@@ -19,7 +19,7 @@ validation phases are complete.
 
 | Phase | Scope | Status | Last validation | Remaining work |
 | --- | --- | --- | --- | --- |
-| 1 | Reproducible production baseline | Partially complete | Node.js 24 build/tests, served-commit marker, counters, and headless graphics preflight | Capture the fixed scenarios in development and production on the target graphics environment |
+| 1 | Reproducible production baseline | Partially complete | Full development stack plus non-headless hub, modal, casino, and Kame Knock counter captures | Capture the remaining development scenarios, every production scenario, and comparable profiles on the target graphics environment |
 | 2 | Singular replay runtime | Not started | Existing React profile exposes two viewers | Full phase |
 | 3 | Replay render optimisation | Not started | Static code and existing profiles reviewed | Full phase |
 | 4 | Typed replay capture and delta encoding | Not started | Existing GC and encoder reviewed | Full phase |
@@ -79,6 +79,16 @@ not the final production baseline required by Phase 1.
   WebGL 2 through Mesa llvmpipe (LLVM 20.1.2, 256 bits), X11, device pixel ratio
   1. This is automation-environment evidence only and is not a substitute for a
   non-headless capture on the profiled Radeon hardware.
+- The rootless Docker data directory was relocated from the full `/goinfre`
+  volume to `/var/tmp/marcnava-docker` on the root volume. The destination had
+  302 GB free before the build and 298 GB free after the stack started.
+- The complete development stack built under the pinned Node.js 24 images and
+  all 13 services became healthy. The served commit was
+  `a0626653cc71a402df55deb0e233a0380b52e398`.
+- Non-headless Firefox 152.0.6 reported X11, device pixel ratio 1, WebRender
+  (Software), and Mesa llvmpipe for both WebGL renderers. The host therefore
+  still cannot provide a hardware-accelerated comparison with the profiled
+  Radeon environment.
 
 ## 4. Active Phase Record
 
@@ -151,35 +161,56 @@ Partially complete.
   resource counters started at zero on the unauthenticated route.
 - Firefox `about:support` was captured through WebDriver. The graphics fields
   are recorded in the environment preflight above.
-- No authenticated hub, game, or replay scenario was captured. The configured
-  deployment timed out and the complete local stack could not be built within
-  the Docker filesystem.
+- The complete development stack was built and started through `make dev`; all
+  13 services became healthy and the HTTPS document exposed the expected
+  served-commit marker.
+- An authenticated, non-headless Firefox idle-hub capture remained visible for
+  66.8 seconds. Every live, created, and peak lifecycle counter remained zero,
+  and the DOM contained no canvas.
+- The same session held the opaque Shell Cards modal open for 71.6 seconds.
+  Every lifecycle counter again remained zero, and the DOM contained no canvas.
+- A complete Fortune Wheel wager animated for 4.319 seconds and was followed by
+  ten seconds idle. The result and balance settled correctly, every lifecycle
+  counter remained zero, and the DOM contained no canvas.
+- A complete Shell Drop wager animated for 5.035 seconds and was followed by
+  ten seconds idle. The result and balance settled correctly, every lifecycle
+  counter remained zero, and the expected canvas 2D board remained mounted.
+- Kame Knock ran for 30 seconds idle and approximately 60 seconds under pointer
+  input with exactly one Phaser game and one canvas. Returning to the hub
+  released both live resources and removed the canvas from the DOM.
+- The clean page load accumulated six `auth/me` resource entries before the
+  idle capture ended. This is baseline evidence for Phase 8, not an isolated
+  request count for the 60-second window.
 
 ### Known limitations
 
 - The configured public deployment remains unreachable, so its historical
   commit is unknown. Future builds expose the commit in the
   `shell-smash-commit` meta element.
-- The recorded graphics data is headless and software-rendered. Comparable
-  non-headless graphics details and profiles on the target machine remain open.
-- Development and production captures for the isolated scenarios remain open.
+- Both headless and non-headless graphics data are software-rendered.
+  Comparable profiles on the target machine remain open.
+- The desktop work area limited the browser content viewport to 1440 x 893
+  rather than the specified 1440 x 900. The development captures must be
+  repeated at the exact height for the final comparison.
+- Development captures after Kame Knock and every production capture
+  remain open.
 - Authenticated counter values for inline and expanded replay have not yet been
   observed; the expected values below are assertions for the capture, not
   results.
-- The full stack still cannot be built in the current Docker storage allocation.
 
 ### Work remaining in this phase
 
-Provision enough Docker storage, start both stack modes, and record the fixed
-scenario matrix with the target non-headless Firefox graphics configuration.
-Record the development counter snapshots and the production/React/Firefox
-profile metrics in this checkpoint.
+Record the remaining development and production scenario matrix with the exact
+viewport and target non-headless Firefox graphics configuration. Record the
+development counter snapshots and the production, React, and Firefox profile
+metrics in this checkpoint. Repeat the two hub scenarios on the target machine
+because this environment uses software rendering and a 1440 x 893 viewport.
 
 ### Exact next action
 
-Increase or relocate the Docker data allocation, run `make dev`, and capture the
-60-second idle-hub scenario at 1440 × 900 in a clean non-headless Firefox
-profile before proceeding through the remaining scenarios.
+Using the current `make dev` stack and `perfbaseline` account, capture Bamboo
+Bash for 30 seconds idle plus 60 seconds active, then return to the hub and
+record its lifecycle counters before and after navigation.
 
 ## 5. Checkpoint 2026-07-23 — Post-Pull Plan Compatibility Review
 
@@ -238,7 +269,107 @@ Complete for the compatibility review. Phase 1 remains Not started.
 Measure free storage and Docker cache usage, then establish the Node.js 24
 execution environment without creating mixed-version dependency artefacts.
 
-## 6. Fixed Phase 1 Capture Procedure
+## 6. Checkpoint 2026-07-23 — Phase 1 Development Hub Captures
+
+### Phase and subtask attempted
+
+Removed the local Docker storage blocker, started the complete development
+stack, and captured the idle-hub, opaque-modal, casino, and first Phaser-game
+counter scenarios in clean authenticated Firefox sessions.
+
+### Status
+
+Partially complete. The development hub counter assertions pass in this local
+environment; comparable hardware profiles and the rest of the matrix remain
+open.
+
+### Changes made
+
+- Relocated the local rootless Docker data directory from the full `/goinfre`
+  volume to `/var/tmp/marcnava-docker`, which is on the root volume. This is a
+  user-environment change outside the repository; the previous directory was
+  left intact.
+- Bootstrapped Vault, built every development image, started the complete
+  Compose stack, and created the dedicated local `perfbaseline` account.
+- Set the local `perfbaseline` balance to 100,000 coins through a targeted SQL
+  update so casino scenarios can use the same reproducible account.
+- Updated this checkpoint with the environment, served commit, graphics
+  configuration, viewport limitation, and the first two scenario results.
+- Reviewed `docs/modules-progress.md`; baseline execution does not advance or
+  complete a specification module, so its status remains unchanged.
+
+### Decisions and rejected alternatives
+
+- Used the repository Makefile and pinned container images for the stack rather
+  than treating the unsupported host Node.js 22 runtime as acceptance evidence.
+- Retained the non-headless software-rendered results as local lifecycle
+  evidence but did not classify them as the target graphics baseline.
+- Did not stretch or scale the 1440 x 893 browser viewport to claim a 1440 x
+  900 result. The seven-pixel limitation is recorded and the final comparable
+  capture remains open.
+
+### Automated validation
+
+- `make dev` — pass; all development images built and Compose started.
+- `make health` — pass; all 13 services reported healthy.
+- HTTPS document inspection — pass; the served-commit marker was
+  `a0626653cc71a402df55deb0e233a0380b52e398`.
+- Docker storage inspection — pass; the active data root was
+  `/var/tmp/marcnava-docker` with 298 GB free after the build.
+- Targeted database setup — pass; exactly one `perfbaseline` row was updated and
+  the resulting balance was 100,000 coins.
+
+### Manual and profiler validation
+
+- Firefox 152.0.6 ran non-headless over X11 at device pixel ratio 1. Its
+  1440 x 893 content viewport reported WebRender (Software) and Mesa llvmpipe
+  for WebGL 1 and WebGL 2.
+- Idle hub — 66.8 seconds visible; every Phaser and replay lifecycle counter
+  remained at zero, with no canvas in the DOM.
+- Opaque Shell Cards modal — 71.6 seconds visible; every lifecycle counter
+  remained at zero, with no canvas in the DOM.
+- Fortune Wheel — the wager animation settled after 4.319 seconds and remained
+  idle for another ten seconds. The visible result was `½× · -5`, the balance
+  changed from 100,000 to 99,995 coins, every lifecycle counter remained zero,
+  and the DOM contained no canvas.
+- Shell Drop — the wager animation settled after 5.035 seconds and remained
+  idle for another ten seconds. The visible result was
+  `Bucket 4 · 0.54× · -5`, the balance changed from 99,995 to 99,990 coins,
+  every lifecycle counter remained zero, and the expected canvas 2D board
+  remained mounted.
+- Kame Knock — after start-up, 30 seconds idle and approximately 60 seconds of
+  pointer input retained exactly one Phaser game and one canvas, with no replay
+  resources. Returning through browser history released both live resources
+  and removed the canvas from the DOM; the measurement window retained
+  `created=1` and `peak=1` for both resource types.
+- Firefox Profiler CPU and memory recordings were not captured, so these runs
+  validate lifecycle ownership only.
+
+### Known limitations or regressions
+
+- Hardware acceleration on the profiled Radeon machine is unavailable here.
+- The exact 1440 x 900 content viewport could not fit inside the current X11
+  work area.
+- The fixed account has no replay history yet, so replay scenarios remain
+  unmeasured.
+- Six `auth/me` entries accumulated during the clean page load and idle run;
+  their ownership remains scheduled for Phase 8.
+
+### Work remaining in this phase
+
+- Capture Bamboo Bash, Temple Curling, Bell Clash, inline replay, expanded
+  replay, and five route round trips in development.
+- Repeat the complete matrix in production mode.
+- Repeat comparable profiles at the exact viewport on the target graphics
+  environment and record Firefox and React metrics.
+
+### Exact next action
+
+Capture Bamboo Bash for 30 seconds idle plus 60 seconds active with the
+`perfbaseline` account in development mode, then return to the hub and record
+the lifecycle snapshots before and after navigation.
+
+## 7. Fixed Phase 1 Capture Procedure
 
 Use the same account, replay, viewport, display scale, Firefox profile, graphics
 configuration, and interaction timing for the development and production pair.
@@ -294,7 +425,7 @@ the source plan. Capture development first with `make dev`, stop it with
 `make down`, then repeat with `make prod`. Save files with the mode, scenario,
 commit, Firefox version, and date in their names.
 
-## 7. Per-Phase Update Template
+## 8. Per-Phase Update Template
 
 Copy this section under a new dated heading whenever work advances:
 
@@ -338,7 +469,7 @@ Copy this section under a new dated heading whenever work advances:
 <One concrete technical action that starts the next continuation.>
 ```
 
-## 8. Closure Rule
+## 9. Closure Rule
 
 The programme is complete only when all nine phases are marked complete, the
 integrated production-mode validation matrix passes, and no required manual or
