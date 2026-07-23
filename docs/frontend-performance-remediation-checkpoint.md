@@ -1,6 +1,6 @@
 # Frontend Performance Remediation Checkpoint
 
-Last updated: 23 July 2026 — Phases 2–8 integrated; destination acceptance pending
+Last updated: 23 July 2026 — destination acceptance paused after partial profiling
 Overall status: Phase 1 complete; Phases 2–8 partially complete; Phase 9 in progress
 Source plan: [`frontend-performance-profiler-report-and-plan-2026-07-23.md`](frontend-performance-profiler-report-and-plan-2026-07-23.md)
 
@@ -20,14 +20,14 @@ open.
 | Phase | Scope | Status | Last validation | Remaining work |
 | --- | --- | --- | --- | --- |
 | 1 | Reproducible production baseline | Complete | Target-machine development and production matrices at 1440 x 900, Firefox profiles, React replay capture, lifecycle counters, build, tests, and health | None |
-| 2 | Singular replay runtime | Partially complete | Singular session merged; integration test proves one viewer across expansion and collapse | Destination lifecycle counters and React profile |
-| 3 | Replay render optimisation | Partially complete | Retained replay renderer and targeted tests merged; full frontend suite passes | Destination allocation profile and four-game visual parity |
-| 4 | Typed replay capture and delta encoding | Partially complete | Typed encoder, capture runtime, reconstruction tests, and game adapters merged | Destination GC profile and replay visual validation |
-| 5 | Hub backdrop redesign and suspension | Partially complete | Extracted canvas backdrop mounted from the hub; legacy DOM stars removed; build and tests pass | Destination renderer profile, responsive and reduced-motion checks |
-| 6 | Phaser lifecycle and start-up stalls | Partially complete | Factory lifecycle changes merged with targeted tests | Destination route matrix, context counters, and long-task profile |
-| 7 | Game and casino hot paths | Partially complete | Incremental panels, bounded trails, retained Shell Drop board, and imperative wheel merged | Destination game/casino profiles and visual checks |
-| 8 | React and data ownership | Partially complete | Persistent session and inbox providers, deduplication, and guard fixes merged | Destination network and React profiles |
-| 9 | Integrated validation and closure | In progress | Full frontend suite, production build, stylesheet manifest, stack health, OpenAPI, and diff checks pass | Destination development/production matrix, profiler comparison, and TypeScript baseline resolution |
+| 2 | Singular replay runtime | Partially complete | Destination development counters show one live replay runtime through inline, expanded, collapsed, and teardown states | Explain the remaining background `HomeMenu` commit and obtain a strictly comparable React capture if required |
+| 3 | Replay render optimisation | Partially complete | Destination replay ownership and static Kame Knock parity pass | Strictly comparable allocation profile and Bamboo Bash, Temple Curling, and Bell Clash replay parity |
+| 4 | Typed replay capture and delta encoding | Partially complete | Three active-game profiles provide diagnostic GC data | Repeat all four active-game profiles with a full retained 60-second window and validate replay reconstruction |
+| 5 | Hub backdrop redesign and suspension | Partially complete | Isolated destination hub profile passes idle renderer and event-delay gates; responsive static check passes | Reduced-motion check and strict modal-versus-idle interpretation |
+| 6 | Phaser lifecycle and start-up stalls | Partially complete | Production matrix shows one canvas per game and zero after each of five returns | Repeat comparable route profiling and explain any post-initialisation long tasks |
+| 7 | Game and casino hot paths | Partially complete | Development and production functional/visual matrices pass for both casinos and all four games | Repeat complete active profiles for all four games |
+| 8 | React and data ownership | Partially complete | Focused replay resource check reports no duplicate session or inbox requests | Run one persistent-provider SPA round-trip network check and complete React acceptance evidence |
+| 9 | Integrated validation and closure | In progress | Destination development and production functional matrices, focused replay validation, isolated hub profiles, and static visual review recorded | Resume the explicitly listed repeated and missing checks, rerun automated gates, and resolve or rebaseline TypeScript |
 
 ## 3. Current Baseline Evidence
 
@@ -616,7 +616,148 @@ Record the development counters before, during, and after expansion; exactly
 one game, controller, scene, canvas, observer, and playback clock must remain
 live throughout.
 
-## 9. Per-Phase Update Template
+## 9. Checkpoint 2026-07-23 — Destination Acceptance Pause
+
+### Phase and subtask attempted
+
+Ran the destination-machine development and production functional matrices,
+focused replay validation, isolated hub profiling, and part of the per-game
+active profiling against commit `349cd846`. Work was paused at the user's
+request during the Bell Clash active profile.
+
+### Status
+
+Partially complete and safely paused. No browser, profiler, or WebDriver process
+is running. The production stack remains available for the next session. The
+working tree contains only this checkpoint update.
+
+### Environment and controls
+
+- Firefox 152 ran on X11 with software WebRender and device pixel ratio 1.
+- The current desktop chrome limited the measured viewport to 1440 x 893 rather
+  than the baseline's 1440 x 900. The captures are diagnostic and visual
+  evidence, but do not satisfy strict profile comparability.
+- The Phase 9 profiler feature and thread lists also differ slightly from the
+  Phase 1 baseline. The next comparable capture must restore the baseline
+  configuration.
+- Docker had reverted to a nearly full `/goinfre` data root. The external
+  user-level Docker daemon configuration was corrected to use
+  `/var/tmp/marcnava-docker`, after which the existing images, containers, and
+  persistent database became available again. This was an environment repair,
+  not a repository change.
+- The dedicated technical performance account was reset locally so that the
+  destination browser flows could be exercised. No project user data was
+  changed.
+
+### Completed destination evidence
+
+- Development focused replay:
+  `/tmp/shell-smash-phase9/development-replay-results.json`.
+  One game, controller, scene, canvas, observer, and playback clock remained
+  live through inline playback, expansion, collapse, and continued playback;
+  teardown returned every live counter and DOM canvas count to zero. The
+  longest measured React commit was 6 ms and no commit exceeded 16 ms.
+  `ReplayViewer` peaked at one. Each 60-second interval recorded one
+  `HomeMenu` commit, which is not playback-frequency activity but still means
+  the literal zero-update criterion has not been demonstrated.
+- Production focused replay:
+  `/tmp/shell-smash-phase9/production-replay-results.json` and
+  `/tmp/shell-smash-phase9/production-replay-firefox-profile.json`.
+  Singular ownership, playback-position continuity, clean teardown, and the
+  focused resource check passed. The retained 68.14-second profile reported
+  application CPU 4.876%, Renderer 92.716%, CanvasRenderer 2.180%, application
+  event-delay p99 24.878 ms, and two long tasks with a maximum of approximately
+  89 ms. It therefore does not pass the global p99 or unexplained
+  post-initialisation long-task gates. Production React duration fields are
+  unavailable and their recorded zeroes are not acceptance evidence.
+- Development functional matrix:
+  `/tmp/shell-smash-phase9/development-matrix-results.json`.
+  The hub and opaque modal had no replay resources; both casinos rendered; all
+  four games maintained one game canvas while active and zero after return;
+  and five repeated game-to-hub returns completed without a retained canvas.
+- Production functional matrix:
+  `/tmp/shell-smash-phase9/production-matrix-results.json` and
+  `/tmp/shell-smash-phase9/production-matrix-firefox-profile.json`.
+  The same functional canvas and route checks passed. Its profiler ring buffer
+  retained only the final approximately 20 seconds of a 619-second run, so its
+  scenario CPU, event-delay, long-task, and GC figures are not acceptance
+  measurements and must not be attributed to the complete matrix.
+- Isolated production idle hub:
+  `/tmp/shell-smash-phase9/production-idle-hub-firefox-profile.json`.
+  Application CPU was 0.203%, Renderer 0.131%, CanvasRenderer 0%, application
+  event-delay p99 14.769 ms, and no long task was recorded. This passes the
+  idle renderer, event-delay, and long-task gates.
+- Isolated opaque modal:
+  `/tmp/shell-smash-phase9/production-opaque-modal-firefox-profile.json`.
+  Application CPU was 0.160%, Renderer 0.290%, CanvasRenderer 0%, application
+  event-delay p99 12.824 ms, and no long task was recorded. Its absolute cost
+  is negligible, but Renderer is higher than the isolated idle result, so the
+  literal “no more expensive than idle” criterion is not yet met.
+- Static visual review found development/production parity for the hub, modal,
+  casinos, all four live games, Kame Knock inline and expanded replay, and the
+  972 x 627 responsive hub. It found no blank canvas, duplication, horizontal
+  overflow, or material composition regression. The evidence does not cover
+  reduced motion, interactive motion, complete vertical scrolling, or replay
+  parity for the other three games.
+
+### Interrupted and diagnostic-only game profiles
+
+The Kame Knock, Bamboo Bash, and Temple Curling active runs reached their
+nominal 60-second interaction loops and recorded 20 input attempts each.
+However, the ring buffer retained only approximately 34.49, 37.24, and
+41.37 seconds respectively. Their files and summaries are preserved under
+`/tmp/shell-smash-phase9/production-<game>-active-*` for diagnosis only.
+Kame Knock recorded 1,560 minor collections, Bamboo Bash 842, and Temple
+Curling 2,388 in their retained windows; those rates remain high relative to
+the Phase 4 target. Bamboo Bash recorded one 72 ms long task, while Temple
+Curling recorded two long tasks with a maximum of approximately 309 ms.
+
+Bell Clash was interrupted during its active loop and produced no profile
+file. The three short-window profiles and the interrupted Bell Clash attempt
+must all be repeated; none is accepted as the final four-game comparison.
+
+### New functional and security finding
+
+The replay list exposed summaries belonging to another account, while opening
+the same replay correctly returned 403. Static diagnosis identified ungrouped
+`OR` predicates in `ReplayService.listForUser()` in
+`backend/src/modules/matchmaking/replay.service.ts`. PostgreSQL precedence
+allows any unexpired replay to enter the list, leaking replay metadata although
+the detailed frames remain protected. This medium-severity horizontal
+authorisation issue is outside the performance validation change and remains
+unfixed. Its remediation requires grouped predicates and PostgreSQL-backed
+list/detail authorisation regression tests.
+
+### Work remaining after resumption
+
+1. Repeat all four production game profiles from the start, serially, with the
+   Phase 1 profiler configuration and enough buffer capacity to retain the
+   complete 60-second active interval. Treat the existing three profiles as
+   diagnostic only.
+2. Run one persistent-provider SPA route loop without full document reloads,
+   then inspect session, notification, unread-count, failed-resource, console,
+   and lifecycle evidence.
+3. Validate reduced motion and vertical scrolling, and capture replay parity
+   for Bamboo Bash, Temple Curling, and Bell Clash.
+4. Repeat any acceptance profiles needed at a strictly comparable
+   1440 x 900 viewport. Explain or remediate the replay event-delay and long-task
+   failures and the high active-game allocation rates.
+5. Rerun the frontend full suite, production build, stylesheet manifest,
+   `make health`, `make validate-openapi`, `git diff --check`, and the tracked
+   TypeScript command. Resolve or deliberately rebaseline the known TypeScript
+   configuration and repository-wide errors.
+6. Address the replay-list authorisation finding in a separately scoped change
+   before treating the replay matrix as complete.
+
+### Exact next action
+
+Confirm that the production stack is healthy, then rerun the complete
+Kame Knock, Bamboo Bash, Temple Curling, and Bell Clash active-profile sequence
+with an enlarged buffer and the exact Phase 1 profiler feature and thread
+configuration. Do not reuse the three short retained-window profiles as final
+evidence.
+
+## 10. Per-Phase Update Template
 
 Copy this section under a new dated heading whenever work advances:
 
@@ -660,7 +801,7 @@ Copy this section under a new dated heading whenever work advances:
 <One concrete technical action that starts the next continuation.>
 ```
 
-## 10. Closure Rule
+## 11. Closure Rule
 
 The programme is complete only when all nine phases are marked complete, the
 integrated production-mode validation matrix passes, and no required manual or
