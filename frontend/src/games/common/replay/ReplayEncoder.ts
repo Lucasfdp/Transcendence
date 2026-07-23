@@ -1,22 +1,105 @@
 import { REPLAY_KEYFRAME_INTERVAL_MS, type ReplayFrameV2 } from "./contracts";
 
-function clone<T>(value: T): T {
-	return JSON.parse(JSON.stringify(value)) as T;
+type ReplayValue =
+	| null
+	| boolean
+	| number
+	| string
+	| ReplayValue[]
+	| { [key: string]: ReplayValue | undefined }
+	| undefined;
+
+function cloneReplayValue<T>(value: T): T {
+	if (Array.isArray(value)) {
+		const clone: unknown[] = [];
+		for (const entry of value) clone.push(cloneReplayValue(entry));
+		return clone as T;
+	}
+	if (value && typeof value === "object") {
+		const clone: Record<string, unknown> = {};
+		for (const [key, entry] of Object.entries(value))
+			clone[key] = cloneReplayValue(entry);
+		return clone as T;
+	}
+	return value;
+}
+
+function replayValuesEqual(left: ReplayValue, right: ReplayValue): boolean {
+	if (Object.is(left, right)) return true;
+	if (typeof left !== typeof right || left === null || right === null)
+		return false;
+	if (Array.isArray(left) || Array.isArray(right)) {
+		if (!Array.isArray(left) || !Array.isArray(right)) return false;
+		if (left.length !== right.length) return false;
+		for (let index = 0; index < left.length; index += 1) {
+			if (!replayValuesEqual(left[index], right[index])) return false;
+		}
+		return true;
+	}
+	if (typeof left !== "object" || typeof right !== "object") return false;
+	const leftKeys = Object.keys(left);
+	const rightKeys = Object.keys(right);
+	if (leftKeys.length !== rightKeys.length) return false;
+	for (const key of leftKeys) {
+		if (
+			!Object.prototype.hasOwnProperty.call(right, key) ||
+			!replayValuesEqual(left[key], right[key])
+		)
+			return false;
+	}
+	return true;
+}
+
+function entityId(value: ReplayValue): number | string | undefined {
+	if (!value || Array.isArray(value) || typeof value !== "object")
+		return undefined;
+	const id = value.id;
+	return typeof id === "number" || typeof id === "string" ? id : undefined;
+}
+
+function entityCollectionsEqual(
+	left: ReplayValue,
+	right: ReplayValue,
+): boolean {
+	if (!Array.isArray(left) || !Array.isArray(right))
+		return replayValuesEqual(left, right);
+	if (left.length !== right.length) return false;
+	for (let index = 0; index < left.length; index += 1) {
+		const previousEntity = left[index];
+		const currentEntity = right[index];
+		if (entityId(previousEntity) !== entityId(currentEntity)) return false;
+		if (!replayValuesEqual(previousEntity, currentEntity)) return false;
+	}
+	return true;
+}
+
+function snapshotValuesEqual(
+	key: string,
+	left: unknown,
+	right: unknown,
+): boolean {
+	if (key === "entities" || key === "balls" || key === "objects")
+		return entityCollectionsEqual(
+			left as ReplayValue,
+			right as ReplayValue,
+		);
+	return replayValuesEqual(left as ReplayValue, right as ReplayValue);
 }
 
 function withoutRepeatedTrails(
 	snapshot: Record<string, unknown>,
 ): Record<string, unknown> {
-	const normalised = clone(snapshot);
+	const normalised = cloneReplayValue(snapshot);
 	for (const collection of ["entities", "balls", "objects"] as const) {
 		const values = normalised[collection];
 		if (!Array.isArray(values)) continue;
-		normalised[collection] = values.map((value) => {
-			if (!value || typeof value !== "object") return value;
+		for (let index = 0; index < values.length; index += 1) {
+			const value = values[index];
+			if (!value || typeof value !== "object") continue;
 			const entity = { ...(value as Record<string, unknown>) };
 			delete entity.trail;
-			return entity;
-		});
+			values[index] = entity;
+		}
 	}
 	return normalised;
 }
@@ -65,20 +148,17 @@ export class ReplayEncoder {
 		const removals: string[] = [];
 
 		if (keyframe) {
-			Object.assign(changes, clone(snapshot));
+			Object.assign(changes, cloneReplayValue(snapshot));
 		} else {
 			for (const [key, value] of Object.entries(snapshot)) {
-				if (
-					JSON.stringify(this.previous?.[key]) !==
-					JSON.stringify(value)
-				)
-					changes[key] = clone(value);
+				if (!snapshotValuesEqual(key, this.previous?.[key], value))
+					changes[key] = cloneReplayValue(value);
 			}
 			for (const key of Object.keys(this.previous ?? {})) {
 				if (!(key in snapshot)) removals.push(key);
 			}
 		}
-		this.previous = clone(snapshot);
+		this.previous = cloneReplayValue(snapshot);
 		if (keyframe) this.lastKeyframeMs = tMs;
 		if (
 			!keyframe &&
@@ -119,12 +199,13 @@ function cloneReconstructionState(
 	state: ReplayReconstructionState,
 ): ReplayReconstructionState {
 	const trails = new Map<string, Array<{ x: number; y: number }>>();
-	for (const [key, points] of state.trails) trails.set(key, clone(points));
+	for (const [key, points] of state.trails)
+		trails.set(key, cloneReplayValue(points));
 	const observations = new Map<string, ReplayTrailObservation>();
 	for (const [key, observation] of state.observations)
 		observations.set(key, { ...observation });
 	return {
-		snapshot: clone(state.snapshot),
+		snapshot: cloneReplayValue(state.snapshot),
 		trails,
 		observations,
 	};
@@ -139,7 +220,7 @@ function applyReplayFrame(
 		for (const key of Object.keys(snapshot)) delete snapshot[key];
 	}
 	for (const key of frame.removals) delete snapshot[key];
-	Object.assign(snapshot, clone(frame.changes));
+	Object.assign(snapshot, cloneReplayValue(frame.changes));
 	const presentTrailKeys = new Set<string>();
 	for (const collection of ["entities", "balls", "objects"] as const) {
 		const values = snapshot[collection];
@@ -245,7 +326,10 @@ export function reconstructReplayFrame(
 			if (!value || typeof value !== "object") return value;
 			const entity = value as Record<string, unknown>;
 			const key = `${collection}:${String(entity.id)}`;
-			return { ...entity, trail: clone(state.trails.get(key) ?? []) };
+			return {
+				...entity,
+				trail: cloneReplayValue(state.trails.get(key) ?? []),
+			};
 		});
 	}
 	return state.snapshot;

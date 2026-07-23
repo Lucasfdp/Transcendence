@@ -1,45 +1,36 @@
 import { useEffect, useState } from "react";
-import { api, AuthError } from "../features/hub/api";
-import { disconnectGameSocket } from "../services/network/gameSocket";
-
-export type SessionStatus = "checking" | "authenticated" | "unauthenticated";
+import { useLocation } from "react-router-dom";
+import { useSession, type SessionStatus } from "../app/session/SessionContext";
+import { isSessionFresh } from "../app/session/sessionStore";
 
 export function useSessionGate(): { status: SessionStatus } {
-	const [status, setStatus] = useState<SessionStatus>("checking");
+	const location = useLocation();
+	const { status, refreshSession } = useSession();
+	const [validation, setValidation] = useState(() => ({
+		path: location.pathname,
+		pending: !isSessionFresh(),
+	}));
+	const validating =
+		validation.path === location.pathname
+			? validation.pending
+			: !isSessionFresh();
 
 	useEffect(() => {
-		let cancelled = false;
-
-		void api
-			.getMe()
-			.then(() => {
-				if (!cancelled) {
-					setStatus("authenticated");
+		let active = true;
+		if (!isSessionFresh()) {
+			setValidation({ path: location.pathname, pending: true });
+		}
+		void refreshSession()
+			.catch(() => undefined)
+			.finally(() => {
+				if (active) {
+					setValidation({ path: location.pathname, pending: false });
 				}
-			})
-			.catch((err: unknown) => {
-				if (cancelled) return;
-
-				// Bug Audit H2: any path that lands here means ProtectedRoute is
-				// about to redirect to /auth. Drop the shared game socket too —
-				// otherwise a session invalidated server-side (revoked token,
-				// expired cookie) leaves a stale authenticated socket connected,
-				// which the next SPA login on this tab would silently inherit.
-				disconnectGameSocket();
-
-				if (err instanceof AuthError) {
-					setStatus("unauthenticated");
-					return;
-				}
-
-				console.warn("[useSessionGate] Session check failed:", err);
-				setStatus("unauthenticated");
 			});
-
 		return () => {
-			cancelled = true;
+			active = false;
 		};
-	}, []);
+	}, [location.pathname, refreshSession]);
 
-	return { status };
+	return { status: validating ? "checking" : status };
 }

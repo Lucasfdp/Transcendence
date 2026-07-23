@@ -1,0 +1,65 @@
+/* ── Extracted hub cycle backdrop (performance plan, Phase 5) ──────────────
+   Styles for the layers the extracted backdrop runtime replaces: the canvas
+   star field and the transform-driven cloud strip. The static layers (sky,
+   sun, moon, glow, foreground) deliberately keep their `.hub-cycle` rules in
+   hub.css so the art, masks, and theme overrides stay identical — this
+   module only adds what the new runtime needs. */
+
+/* One canvas replaces the previous per-star DOM elements. Its opacity is
+   still driven by the cycle engine through --cycle-stars-opacity, so the
+   field fades exactly as the DOM stars did at dawn and dusk. */
+.cycle-backdrop__stars {
+	@apply absolute inset-0 w-full h-full;
+	z-index: 1;
+	opacity: var(--cycle-stars-opacity);
+}
+
+/* Cloud drift, recomposed: the container clips and keeps the (static)
+   twilight tint, while an oversized strip carries the repeating cloud art
+   and moves on `transform` — animating a compositor-owned property instead
+   of `background-position`, which forced continuous repaints. */
+.cycle-backdrop__clouds {
+	@apply absolute inset-0 overflow-hidden;
+	z-index: 4;
+	opacity: 0.92;
+	background: linear-gradient(
+		180deg,
+		rgba(255, 245, 208, calc(var(--cycle-twilight-opacity) * 0.12)),
+		transparent 32%
+	);
+}
+
+/* The strip is one drift period (240px) wider than the layer, so the
+   translate loop never exposes an uncovered edge. */
+.cycle-backdrop__clouds-strip {
+	@apply absolute inset-y-0;
+	left: 0;
+	width: calc(100% + 240px);
+	background: url("/assets/backgrounds/night_cycle_part2.png") repeat-x left
+		top / auto 100%;
+	animation: cycle-clouds-drift 42s linear infinite;
+	will-change: transform;
+}
+
+/* Suspension: the runtime sets this modifier while the document is hidden or
+   an opaque surface covers the backdrop; the star canvas is paused from
+   JavaScript, the cloud drift declaratively here. */
+.cycle-backdrop--suspended .cycle-backdrop__clouds-strip {
+	animation-play-state: paused;
+}
+
+@keyframes cycle-clouds-drift {
+	from {
+		transform: translate3d(0, 0, 0);
+	}
+
+	to {
+		transform: translate3d(-240px, 0, 0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cycle-backdrop__clouds-strip {
+		animation: none;
+	}
+}

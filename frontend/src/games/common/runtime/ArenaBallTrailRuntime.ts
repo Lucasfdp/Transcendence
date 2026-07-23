@@ -161,23 +161,31 @@ export class ArenaBallTrailRuntime {
 	}
 
 	recordSet(options: ArenaBallTrailSetOptions): void {
+		// Runs every frame while stones move. The freshly-built objects are not
+		// shared, so resolve each missing trailEffect in place rather than mapping
+		// the whole array into a second set of spread copies — that removed a
+		// per-frame reallocation of every trail object on a crowded sheet.
 		const objects = [
 			...buildArenaBallTrailObjects(options.balls, options.isMoving),
 			...buildArenaPowerBallTrailObjects(
 				options.powerBalls ?? [],
 				options.isMoving,
 			),
-		].map((object) => ({
-			...object,
-			trailEffect:
-				object.trailEffect ?? options.trailEffectByPlayer?.(object.player),
-		}));
+		];
+		const resolveTrailEffect = options.trailEffectByPlayer;
+		if (resolveTrailEffect)
+			for (const object of objects)
+				if (object.trailEffect === undefined)
+					object.trailEffect = resolveTrailEffect(object.player);
 		this.record(objects, options.trailOptions);
-		if (options.fadeAbsentIds)
+		if (options.fadeAbsentIds) {
+			const activeIds = new Set<ArenaBallTrailId>();
+			for (const object of objects) activeIds.add(object.id);
 			this.fadeAbsent(
-				new Set(objects.map((object) => object.id)),
+				activeIds,
 				options.trailOptions?.stoppedFadePointsPerRecord ?? 0,
 			);
+		}
 	}
 
 	// Balls removed from play stop appearing in record calls, so their trails
