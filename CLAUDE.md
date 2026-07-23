@@ -37,6 +37,64 @@
   is complete and no other plans are listed here, replace its entry with
   `- None.` so the guides explicitly state that no plans are pending.
 
+## Distributed Performance Workstreams
+
+The commands `do wave A`, `do wave B`, `do wave C`, `do wave D`, their Spanish
+equivalents, and references to a workstream letter are complete execution
+requests for one distributed performance workstream. In this context, "wave"
+and "workstream" are aliases. The assignments are:
+
+- Wave A — Replay: `perf/workstream-replay`.
+- Wave B — Hub and casino rendering: `perf/workstream-hub-casino`.
+- Wave C — Phaser lifecycle and games: `perf/workstream-phaser-games`.
+- Wave D — React and data ownership: `perf/workstream-react-data`.
+
+The live performance plan defines the complete scope, owned files, forbidden
+files, acceptance criteria, deferred integration points, and hand-off format
+for each wave. An agent receiving a wave command must complete the whole
+assigned workstream on its current computer, not merely analyse it or prepare a
+plan.
+
+Follow this workflow:
+
+1. Read this guide, `CLAUDE.md`, the live performance plan, its checkpoint, and
+   `docs/modules-progress.md` before changing code.
+2. Inspect the current branch, worktree status, remotes, and recent history.
+   Preserve unrelated user changes and never absorb them into the wave.
+3. Use the immutable base commit supplied by the coordinator. If no separate
+   SHA is supplied and the computer is on a clean `main` or `master`, first
+   fast-forward it from its configured remote, then create the assigned branch
+   from that exact HEAD. If it is already on the assigned branch, verify its
+   base and continue. If the worktree is dirty with unrelated changes, the
+   published base is unavailable, or a different branch contains ambiguous
+   work, stop and report the exact conflict instead of guessing.
+4. Create the assigned branch when currently on `main` or `master`. Never
+   implement a wave directly on `main`, `master`, or the integration branch.
+5. Modify only files owned by the assigned wave. Treat forbidden files,
+   another wave's files, `AGENTS.md`, `CLAUDE.md`, the canonical checkpoint,
+   and `docs/modules-progress.md` as read-only. Record required cross-workstream
+   or canonical-document changes in the hand-off for the integrator.
+6. Implement the complete workstream, including its targeted tests, regression
+   tests, production build, static checks, and local visual validation. Use the
+   Makefile for any local integrated stack. Performance results from a worker
+   computer are diagnostic; final acceptance profiles run on the destination
+   computer.
+7. Review the final diff for scope and forbidden-file violations. Commit the
+   wave as one or more clear commits and push only its assigned branch to the
+   configured remote. A wave command authorises creating, committing, and
+   pushing that workstream branch; it does not authorise merging, force-pushing,
+   rebasing shared branches, opening a pull request, or modifying another
+   branch.
+8. Return the structured hand-off required by the live plan: base and head
+   commits, changed files, decisions, validation results, visual evidence,
+   environment differences, known failures, deferred connections, and
+   destination-machine checks still required.
+
+The integrator alone merges workstream branches, performs deferred
+cross-workstream connections, updates canonical performance documentation, and
+runs Phase 9. A worker must not mark a phase complete when its integration or
+destination-machine acceptance remains outstanding.
+
 ## Operational Index
 
 - Product context: `docs/project-overview.md`

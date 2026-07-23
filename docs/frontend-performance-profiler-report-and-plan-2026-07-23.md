@@ -598,135 +598,156 @@ Acceptance criteria:
 - Move this report and its checkpoint to `docs/old_docs/` only when all phases,
   visual checks, and profiling validation are complete.
 
-### Parallel Delivery Topology For Phases 2–9
+### Parallel Computer Workstreams For Phases 2–9
 
-Phases must not be assigned one-to-one to long-lived branches. Several phases
-share `HomePage.tsx`, replay contracts, Phaser scenes, or the running stack.
-Use one integration branch, `perf/phases-2-9-integration`, created from the
-committed Phase 1 closure. Every worker branch starts from the latest completed
-wave on that branch.
+The parallel unit is a complete computer workstream rather than an ordered
+wave. Four agents on four separate computers may start simultaneously from the
+same immutable Phase 1 commit. Each computer owns one long-lived branch and a
+non-overlapping set of files. The branches are merged only after every
+workstream has returned its code, tests, and hand-off report.
 
-The dependency graph is:
+Use the remote integration branch `perf/phases-2-9-integration`. Before work
+starts, publish one coordination package containing:
 
-```text
-Phase 1 ──┬── Phase 2 ──┬── Phase 3 ───────────────┐
-          │             ├── Phase 6 ───────────────┤
-          │             └── Phase 8 ───────────────┤
-          ├── Phase 4 ───── Phase 7 game work ─────┤
-          └── Phase 5 ─────────────────────────────┤
-                                                   └── Phase 9
-```
+- the repository and exact immutable base commit SHA;
+- the same `AGENTS.md`, `CLAUDE.md`, source plan, checkpoint, and
+  `docs/modules-progress.md`;
+- the assigned branch, objectives, acceptance criteria, owned files, forbidden
+  files, and required Node.js 24 commands; and
+- the hand-off report format defined below.
 
-Phase 4 encoder-core work may start with Phase 2 only while it preserves the
-current version-two wire format and reconstructed-frame output. Scene producer
-adapters wait for Phase 2 integration. Phase 6 auditing may start early, but
-the phase cannot close until Phase 2 proves that replay expansion does not
-create another context.
+#### Workstream A — Replay
 
-#### Wave 0 — Integration Contracts
+Branch: `perf/workstream-replay`
 
-The integrator records and protects these seams before worker branches begin:
+This computer implements Phases 2 and 3 plus the core of Phase 4:
 
-- one replay-session owner for the controller, Phaser game, scene, playback
-  clock, canvas, RAF loop, and resize observer;
-- one resolved replay-frame value per render tick, independent of encoder
-  storage details;
-- an unchanged version-two replay wire format unless a separately approved
-  versioned contract change is required;
-- one Phaser factory and lifecycle contract covering listeners, timers,
-  observers, canvases, and destruction;
-- incremental side-panel updates based on stable models or versions rather
-  than JSON render keys;
-- explicit session-cache invalidation for login, logout, authentication
-  failure, and relevant profile mutations; and
-- backdrop suspension inputs for document visibility, opaque coverage,
-  reduced motion, viewport, and renderer capability.
+- one presentation-independent replay session and runtime;
+- toolbar commands and local playback state;
+- one resolved frame per render tick, retained render objects, and
+  static/dynamic replay layers; and
+- the typed encoder, deterministic reconstruction, capture runtimes, and
+  version-two replay-contract tests.
 
-The integrator has exclusive ownership of shared documentation,
-`HomePage.tsx` conflict resolution, replay-contract changes, profiler counters,
-and control of the Makefile stack.
+It owns `frontend/src/games/common/ReplayController.ts`,
+`frontend/src/games/common/ReplayScene.ts`,
+`frontend/src/games/common/replay/`, replay-common tests, and replay-specific
+styles. It must not modify `HomePage.tsx`, game scenes, the general Phaser
+factory, route ownership, or canonical project documentation. It exposes a
+stable replay component and command API for the integrator to connect later.
 
-#### Wave 1 — Three Parallel Branches
+#### Workstream B — Hub And Casino Rendering
 
-| Branch | Scope | Must not own |
-| --- | --- | --- |
-| `perf/p2-replay-session` | Phase 2 singular session, stable canvas host, local toolbar state, expansion without remounting | Encoder internals or general Phaser lifecycle |
-| `perf/p4-replay-encoder-core` | Typed encoder, deterministic reconstruction, capture runtimes, and contract tests while preserving the wire format | `ReplayScene`, presentation, or broad game-scene optimisation |
-| `perf/p5-hub-backdrop-core` | Extracted backdrop component/runtime, bounded rendering, suspension, responsive and reduced-motion behaviour | Replay state or broad `HomeMenu` restructuring |
+Branch: `perf/workstream-hub-casino`
 
-Merge Phase 2 first. Rebase and merge the Phase 4 core next, followed by its
-small producer-adapter integration. Merge Phase 5 last, with the integrator
-performing the narrow `HomePage.tsx` connection. Phase 2 must pass the singular
-runtime, preserved-position, zero-playback-commit, and no-asset-reload gates
-before Wave 2 starts.
+This computer implements Phase 5 and the casino portion of Phase 7:
 
-#### Wave 2 — Three Parallel Branches
+- an extracted, bounded backdrop runtime with visibility, opaque-cover,
+  reduced-motion, viewport, and renderer-capability inputs;
+- transformed cloud layers and removal of per-star compositor pressure;
+- imperative Fortune Wheel rotation;
+- retained static Shell Drop board rendering; and
+- the same audit for the remaining casino animations.
 
-| Branch | Scope | Ownership boundary |
-| --- | --- | --- |
-| `perf/p3-replay-renderer` | Phase 3 `ReplayScene`, resolved-frame cache, retained render records, and static/dynamic layers | Owns replay rendering; does not change capture or presentation |
-| `perf/p6-phaser-lifecycle` | Phase 6 game factory, route host, preload, teardown, context creation, DPR policy, and transition fallback | Does not modify replay rendering or game hot paths |
-| `perf/p7-casino` | Fortune Wheel, Shell Drop, and audit of the remaining casino animations | Component and gambling-feature files only; integrator owns `HomePage.tsx` wiring |
+It owns the extracted backdrop feature, hub backdrop styles,
+`frontend/src/components/gambling/`, relevant
+`frontend/src/features/gambling/` files, casino styles, and targeted tests. It
+must not modify replay-common, game scenes, route/session ownership, or
+`HomePage.tsx`. The integrator later connects its backdrop and modal APIs to
+the page.
 
-Merge only after rebasing each branch onto the complete Wave 1 integration
-head. A persistent Phaser shell, if measurements justify it, is a separate
-reviewable change inside Phase 6 rather than part of the initial lifecycle
-patch.
+#### Workstream C — Phaser Lifecycle And Games
 
-#### Wave 3 — Phase 7 Game Lanes
+Branch: `perf/workstream-phaser-games`
 
-First merge the small `perf/p7-side-panel-core` branch. It owns the incremental
-side-panel contract and shared panel implementation. From that integration
-commit, run these branches in parallel:
+This computer implements the non-replay portion of Phase 6 and the game portion
+of Phase 7:
 
-- `perf/p7-shell-curl`, covering the code-backed Shell Curl game presented to
-  users as Temple Curling;
-- `perf/p7-bell-clash`; and
-- `perf/p7-kame-bamboo`, covering the Kame Knock and Bamboo Bash audit.
+- Phaser factory, preload, route-host, teardown, listener, timer, observer,
+  context, DPR, and transition-fallback work;
+- the incremental shared side-panel implementation;
+- Shell Curl, presented to users as Temple Curling;
+- Bell Clash snapshot and rendering hot paths; and
+- the Kame Knock and Bamboo Bash audit.
 
-Each lane exclusively owns its game scenes, online adapters, views, and
-targeted tests. It must not change replay-common, lifecycle-common, shared
-panel, or `HomePage.tsx` files. Every lane records feature-specific automated
-and visual acceptance evidence before merge.
+It owns `frontend/src/lib/createShellSmashGame.ts`, `GamePage`, shared Phaser
+lifecycle and panel files, all four game directories, and their targeted
+tests. It must not modify replay-common, `HomePage.tsx`, `AppRoutes`, session
+providers, or canonical documentation. Replay-expansion lifecycle acceptance
+is deliberately deferred to integration with Workstream A.
 
-#### Wave 4 — Phase 8 Ownership Work
+#### Workstream D — React And Data Ownership
 
-Phase 8 starts after replay, backdrop, lifecycle, casino, and game branches no
-longer restructure `HomePage.tsx` or route ownership. Use this short stack:
+Branch: `perf/workstream-react-data`
 
-1. `perf/p8-session-cache`: persistent provider, `auth/me` single-flight
-   behaviour, freshness, and invalidation;
-2. `perf/p8-notification-store`: notification and unread ownership across
-   route transitions with REST reconciliation and socket updates; and
-3. `perf/p8-home-slices`: feature ownership extraction, local fast-changing
-   state, and the no-op `ViewportGuard` correction.
+This computer implements Phase 8:
 
-The branches are sequential because they intentionally build on the same
-provider and page ownership. The final gate requires one logical session
-request, correct invalidation, persistent inbox state, no unrelated animation
-renders, and a maximum React commit below 16 ms.
+- persistent session ownership and `auth/me` single-flight behaviour;
+- explicit authentication and freshness invalidation;
+- persistent notification and unread state with REST reconciliation and socket
+  updates;
+- feature-owned fast-changing state and narrower `HomeMenu` ownership; and
+- the no-op `ViewportGuard` correction.
 
-#### Wave 5 — Phase 9 Serial Integration
+It exclusively owns `HomePage.tsx`, `AppRoutes`, `ProtectedRoute`,
+`useSessionGate`, new application providers and stores, `ViewportGuard`, and
+the relevant API/session tests. It must not reimplement replay, backdrop,
+casino, Phaser, or game internals. Where those workstreams introduce a new
+component API, this branch leaves a narrow integration point rather than
+guessing an unmerged interface.
 
-Phase 9 contains no planned feature development. Freeze code, run targeted
-validation shards, and then run the comparable Firefox profiles and complete
-production matrix serially on the destination machine. Unit tests and builds
-may run concurrently in isolated worktrees, but workers must not concurrently
+#### Deferred Cross-Workstream Integration
+
+Complete independence is achieved by deferring only these connections:
+
+1. mount Workstream A's singular replay component from Workstream D's page;
+2. connect Workstream B's backdrop and casino presentation APIs to that page;
+3. connect Workstream A's typed capture adapters to Workstream C's final game
+   scenes without changing the version-two wire format;
+4. validate replay context ownership through Workstream C's final Phaser
+   lifecycle; and
+5. resolve any route-provider connection between Workstreams C and D.
+
+No worker may implement another workstream's side of these connections. This
+keeps all four branches independently reviewable and makes the final merge
+conflicts small and intentional.
+
+#### Worker Hand-Off
+
+Each computer returns:
+
+1. workstream, base commit, branch, and resulting head commit;
+2. every changed file and confirmation that no forbidden file changed;
+3. design decisions and assumed integration APIs;
+4. exact targeted tests, full tests, builds, and static-check results;
+5. local visual evidence and environment differences;
+6. known failures and deferred integration points; and
+7. checks that still require the destination machine.
+
+Workers do not merge, rebase the integration branch, edit the canonical
+checkpoint, or rewrite another worker's history. The integrator merges the
+four branches, performs only the five deferred connections, updates the
+checkpoint, and runs Phase 9.
+
+#### Phase 9 — Serial Integration And Closure
+
+Phase 9 contains no planned feature development beyond the deferred
+connections. Merge the branches into `perf/phases-2-9-integration`, run
+targeted and full validation after each merge, then run the comparable Firefox
+profiles and complete production matrix serially on the destination machine.
+
+Unit tests and builds may run concurrently on worker computers. Only
+uncontaminated destination-machine measurements count against the Phase 1
+performance baseline. On any single computer, agents must not concurrently
 control `make dev`, `make prod`, `make down`, shared ports, Vault, the database,
-or the comparison browser. Browser-wide renderer measurements are invalid when
-other performance captures or workload run at the same time.
+or the comparison browser.
 
-For every merge:
-
-- rebase onto the current integration head and resolve conflicts there;
-- run targeted tests, the full frontend suite, production build, stylesheet
-  reachability check, and `git diff --check`;
-- run backend tests and OpenAPI validation when a shared or backend contract
-  changes;
-- let the integrator update the checkpoint and review
-  `docs/modules-progress.md`; and
-- do not mark a phase complete until its own automated, visual, lifecycle, and
-  profiler gates pass.
+For every merge, run targeted tests, the full frontend suite, the production
+build, stylesheet reachability, and `git diff --check`. Run backend tests and
+OpenAPI validation if a shared or backend contract changes. Review
+`docs/modules-progress.md`, update the canonical checkpoint, and mark a phase
+complete only after its cross-workstream, visual, lifecycle, and profiler gates
+pass.
 
 ## 8. Validation Matrix
 

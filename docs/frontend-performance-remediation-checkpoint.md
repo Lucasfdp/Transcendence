@@ -125,9 +125,16 @@ Complete.
   reset behaviour.
 - Defined the fixed development and production scenario procedure below.
 - Added the parallel delivery topology for Phases 2–9 to the source plan. It
-  defines one integration branch, five dependency-ordered waves, exclusive
-  file ownership, merge gates, and serial ownership of shared performance
-  resources.
+  defines four simultaneous computer workstreams, one remote integration
+  branch, an immutable shared base commit, exclusive file ownership, five
+  deliberately deferred cross-workstream connections, structured agent
+  hand-offs, merge gates, and serial ownership of destination-machine
+  performance resources.
+- Added identical distributed-wave execution rules to `AGENTS.md` and
+  `CLAUDE.md`. A command such as `do wave A` or `haz wave A` now authorises the
+  assigned computer to create or continue its scoped branch, implement the
+  complete workstream, validate it, commit it, push only that branch, and
+  return the required hand-off without merging shared branches.
 - Reviewed `docs/modules-progress.md`; this diagnostic infrastructure does not
   advance or complete a specification module, so no module status changed.
 
@@ -245,9 +252,9 @@ requirement has been recorded.
 ### Exact next action
 
 Commit the accepted Phase 1 closure, create
-`perf/phases-2-9-integration` from that commit, record the Wave 0 interface
-seams, and start the three Wave 1 branches for the singular replay session,
-typed encoder core, and isolated hub backdrop.
+`perf/phases-2-9-integration` from that commit, publish the distributed
+coordination package, and start the four independent replay, hub/casino,
+Phaser/game, and React/data workstreams on separate computers.
 
 ## 5. Checkpoint 2026-07-23 — Post-Pull Plan Compatibility Review
 
