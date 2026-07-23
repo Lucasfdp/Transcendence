@@ -1,5 +1,16 @@
 /**
  * shared/ui/panels/side-panel.ts — reusable Phaser side panel widget.
+ *
+ * Performance (Phase 7, Wave C): the panel keeps a positional pool of Text
+ * objects and updates them in place instead of destroying and recreating every
+ * text object whenever a row value changes. Each render acquires text slots in
+ * a stable order (title, chevron, visible rows, footer rows); a per-slot
+ * descriptor cache skips all Phaser setters — and therefore the underlying
+ * canvas-texture regeneration — for slots whose content and style did not
+ * change. Surplus slots are hidden rather than freed, so a busy in-game panel
+ * (scores, timers, event log) no longer churns the GPU/text texture cache or
+ * the JS heap on every update. The vector frame is a single retained Graphics
+ * object, and the collapse toggle is one retained interactive Zone.
  */
 
 import Phaser from "phaser";
@@ -49,10 +60,38 @@ const COLLAPSE_W = 200;
 const COLLAPSE_TOP = 74;
 const EDGE_PAD = 12;
 
+const TITLE_SHADOW = "rgba(5, 28, 18, 0.78)";
+const LABEL_SHADOW = "rgba(8, 18, 11, 0.65)";
+
+/** Text style plus placement, used to build a stable per-slot descriptor key. */
+interface TextSlotSpec {
+	content: string;
+	x: number;
+	y: number;
+	originX: number;
+	originY: number;
+	color: string;
+	fontSize: string;
+	fontFamily: string;
+	fontStyle: string;
+	depth: number;
+	shadow: string | null;
+}
+
 export class SidePanel {
 	private readonly gfx: Phaser.GameObjects.Graphics;
-	private readonly texts: Phaser.GameObjects.Text[] = [];
-	private readonly zones: Phaser.GameObjects.Zone[] = [];
+
+	// Positional Text pool. Slots are acquired in a stable order every render;
+	// `slotCache[i]` holds the descriptor last applied to `textPool[i]` so an
+	// unchanged slot performs no Phaser work at all.
+	private readonly textPool: Phaser.GameObjects.Text[] = [];
+	private readonly slotCache: (string | null)[] = [];
+	private poolCursor = 0;
+
+	// Single retained collapse toggle. Its pointer handler is attached once and
+	// reads the current panel state through `this`, so re-rendering only moves
+	// and resizes the zone rather than re-subscribing input.
+	private toggleZone: Phaser.GameObjects.Zone | null = null;
 
 	// Collapse state. The panel can be collapsed to its title strip in every
 	// mode; until the player chooses, drop-downs auto-compact (no room to
@@ -142,12 +181,13 @@ export class SidePanel {
 		this.lastConfig = config;
 		this.rect = rect;
 		this.maxScrollRows = 0; // recomputed in drawRows; stays 0 when collapsed
-		this.clearObjects();
+		this.poolCursor = 0;
 		this.drawFrame(rect);
 		this.drawTitle(config.title, rect);
 		if (!this.collapsed) {
 			this.drawRows(config.rows, rect, config.footerRows ?? []);
 		}
+		this.hideUnusedSlots();
 	}
 
 	private collapsibleRect(): PanelRect {
@@ -164,7 +204,11 @@ export class SidePanel {
 
 	destroy(): void {
 		this.scene.input.off("wheel", this.onWheel, this);
-		this.clearObjects();
+		for (const text of this.textPool) text.destroy();
+		this.textPool.length = 0;
+		this.slotCache.length = 0;
+		this.toggleZone?.destroy();
+		this.toggleZone = null;
 		this.gfx.destroy();
 	}
 
@@ -195,6 +239,69 @@ export class SidePanel {
 		};
 	}
 
+	/**
+	 * Reuse the next pooled Text slot (or create one on first use), applying the
+	 * spec only when it differs from the slot's cached descriptor. Returns the
+	 * live Text so callers can keep drawing, but no setter fires for an unchanged
+	 * slot, which is what keeps a frequently-updated panel cheap.
+	 */
+	private acquireText(spec: TextSlotSpec): void {
+		const index = this.poolCursor++;
+		const key = this.slotKey(spec);
+		let text = this.textPool[index];
+		if (!text) {
+			text = this.scene.add
+				.text(spec.x, spec.y, spec.content, {
+					fontSize: spec.fontSize,
+					color: spec.color,
+					fontFamily: spec.fontFamily,
+					fontStyle: spec.fontStyle,
+				})
+				.setOrigin(spec.originX, spec.originY)
+				.setDepth(spec.depth);
+			if (spec.shadow) text.setShadow(0, 2, spec.shadow, this.shadowBlur(spec));
+			this.textPool[index] = text;
+			this.slotCache[index] = key;
+			return;
+		}
+		if (this.slotCache[index] === key) {
+			// Unchanged slot: only make sure it is visible after a prior hide.
+			if (!text.visible) text.setVisible(true);
+			return;
+		}
+		text.setVisible(true);
+		text.setPosition(spec.x, spec.y);
+		text.setOrigin(spec.originX, spec.originY);
+		text.setStyle({
+			fontSize: spec.fontSize,
+			color: spec.color,
+			fontFamily: spec.fontFamily,
+			fontStyle: spec.fontStyle,
+		});
+		text.setDepth(spec.depth);
+		text.setShadow(0, 2, spec.shadow ?? "rgba(0,0,0,0)", this.shadowBlur(spec));
+		text.setText(spec.content);
+		this.slotCache[index] = key;
+	}
+
+	private shadowBlur(spec: TextSlotSpec): number {
+		return spec.shadow === TITLE_SHADOW ? 2 : 1;
+	}
+
+	private slotKey(spec: TextSlotSpec): string {
+		return `${spec.content}|${spec.x}|${spec.y}|${spec.originX}|${spec.originY}|${spec.color}|${spec.fontSize}|${spec.fontFamily}|${spec.fontStyle}|${spec.depth}|${spec.shadow ?? ""}`;
+	}
+
+	private hideUnusedSlots(): void {
+		for (let i = this.poolCursor; i < this.textPool.length; i += 1) {
+			const text = this.textPool[i];
+			if (text.visible) {
+				text.setVisible(false);
+				this.slotCache[i] = null;
+			}
+		}
+	}
+
 	private drawFrame(rect: PanelRect): void {
 		this.gfx.clear();
 		this.gfx.fillStyle(THEME.stoneDeep, 0.88);
@@ -206,49 +313,37 @@ export class SidePanel {
 	}
 
 	private drawTitle(title: string, rect: PanelRect): void {
-		const text = this.scene.add
-			.text(rect.x + PAD, rect.y + PAD - 2, title, {
-				fontSize: "20px",
-				color: THEME.textJade,
-				fontFamily: THEME.fontBlowbrush,
-				fontStyle: "bold",
-			})
-			.setDepth(this.depth + 1)
-			.setShadow(0, 2, "rgba(5, 28, 18, 0.78)", 2);
-		this.texts.push(text);
-
-		// Chevron + a click-zone over the title strip toggle the panel
-		// open/closed in every mode. When collapsed we draw only this strip.
-		const chev = this.scene.add
-			.text(
-				rect.x + rect.width - PAD - 12,
-				rect.y + PAD - 2,
-				this.collapsed ? "▾" : "▴",
-				{
-					fontSize: "16px",
-					color: THEME.textGold,
-					fontFamily: THEME.font,
-					fontStyle: "bold",
-				},
-			)
-			.setDepth(this.depth + 1);
-		this.texts.push(chev);
-
-		const toggle = this.scene.add
-			.zone(rect.x, rect.y, rect.width, PAD + TITLE_H)
-			.setOrigin(0, 0)
-			.setInteractive({ useHandCursor: true })
-			.setDepth(this.depth + 2);
-		toggle.on("pointerup", () => {
-			this.collapsedChoice = !this.collapsed;
-			if (!this.lastConfig) return;
-			this.render(
-				this.collapsible
-					? { ...this.lastConfig, rect: this.collapsibleRect() }
-					: this.lastConfig,
-			);
+		this.acquireText({
+			content: title,
+			x: rect.x + PAD,
+			y: rect.y + PAD - 2,
+			originX: 0,
+			originY: 0,
+			color: THEME.textJade,
+			fontSize: "20px",
+			fontFamily: THEME.fontBlowbrush,
+			fontStyle: "bold",
+			depth: this.depth + 1,
+			shadow: TITLE_SHADOW,
 		});
-		this.zones.push(toggle);
+
+		// Chevron toggles the panel open/closed in every mode.
+		this.acquireText({
+			content: this.collapsed ? "▾" : "▴",
+			x: rect.x + rect.width - PAD - 12,
+			y: rect.y + PAD - 2,
+			originX: 0,
+			originY: 0,
+			color: THEME.textGold,
+			fontSize: "16px",
+			fontFamily: THEME.font,
+			fontStyle: "bold",
+			depth: this.depth + 1,
+			shadow: null,
+		});
+
+		this.ensureToggleZone(rect);
+
 		if (this.collapsed) return;
 
 		this.gfx.lineStyle(1, THEME.stoneLight, 0.36);
@@ -258,6 +353,30 @@ export class SidePanel {
 			rect.x + rect.width - PAD,
 			rect.y + PAD + TITLE_H,
 		);
+	}
+
+	/** Create the collapse zone once, then only reposition/resize on later renders. */
+	private ensureToggleZone(rect: PanelRect): void {
+		if (!this.toggleZone) {
+			this.toggleZone = this.scene.add
+				.zone(rect.x, rect.y, rect.width, PAD + TITLE_H)
+				.setOrigin(0, 0)
+				.setInteractive({ useHandCursor: true })
+				.setDepth(this.depth + 2);
+			this.toggleZone.on("pointerup", () => {
+				this.collapsedChoice = !this.collapsed;
+				if (!this.lastConfig) return;
+				this.render(
+					this.collapsible
+						? { ...this.lastConfig, rect: this.collapsibleRect() }
+						: this.lastConfig,
+				);
+			});
+			return;
+		}
+		this.toggleZone.setPosition(rect.x, rect.y);
+		this.toggleZone.setSize(rect.width, PAD + TITLE_H);
+		this.toggleZone.input?.hitArea?.setTo?.(0, 0, rect.width, PAD + TITLE_H);
 	}
 
 	private drawRows(
@@ -335,49 +454,52 @@ export class SidePanel {
 
 		if (row.icon) row.icon(this.gfx, iconX, y + ICON_SIZE / 2, ICON_SIZE);
 
-		const label = this.scene.add
-			.text(textX, y + 2, row.label, {
-				fontSize: row.labelFontSize ?? "14px",
-				color: labelColor,
-				fontFamily: THEME.font,
-				fontStyle: "bold",
-			})
-			.setDepth(this.depth + 1)
-			.setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
-		this.texts.push(label);
+		this.acquireText({
+			content: row.label,
+			x: textX,
+			y: y + 2,
+			originX: 0,
+			originY: 0,
+			color: labelColor,
+			fontSize: row.labelFontSize ?? "14px",
+			fontFamily: THEME.font,
+			fontStyle: "bold",
+			depth: this.depth + 1,
+			shadow: LABEL_SHADOW,
+		});
 
 		// Two-line layout: subtitle replaces right-side value
 		if (row.subtitle) {
-			const sub = this.scene.add
-				.text(textX, y + 17, row.subtitle, {
-					fontSize: "11px",
-					color: THEME.textMutedHex,
-					fontFamily: THEME.font,
-				})
-				.setDepth(this.depth + 1);
-			this.texts.push(sub);
+			this.acquireText({
+				content: row.subtitle,
+				x: textX,
+				y: y + 17,
+				originX: 0,
+				originY: 0,
+				color: THEME.textMutedHex,
+				fontSize: "11px",
+				fontFamily: THEME.font,
+				fontStyle: "normal",
+				depth: this.depth + 1,
+				shadow: null,
+			});
 			return;
 		}
 
 		if (!row.value) return;
 
-		const value = this.scene.add
-			.text(valueX, y + 2, row.value, {
-				fontSize: row.valueFontSize ?? "14px",
-				color: valueColor,
-				fontFamily: THEME.font,
-				fontStyle: "bold",
-			})
-			.setOrigin(1, 0)
-			.setDepth(this.depth + 1)
-			.setShadow(0, 2, "rgba(8, 18, 11, 0.65)", 1);
-		this.texts.push(value);
-	}
-
-	private clearObjects(): void {
-		for (const text of this.texts) text.destroy();
-		this.texts.length = 0;
-		for (const zone of this.zones) zone.destroy();
-		this.zones.length = 0;
+		this.acquireText({
+			content: row.value,
+			x: valueX,
+			y: y + 2,
+			originX: 1,
+			originY: 0,
+			color: valueColor,
+			fontSize: row.valueFontSize ?? "14px",
+			fontFamily: THEME.font,
+			fontStyle: "bold",
+			depth: this.depth + 1,
+			shadow: LABEL_SHADOW,
+		});
 	}
 }
