@@ -15,6 +15,10 @@ interface PlayerRollState {
 	y: number;
 }
 
+interface PlayerRenderOptions {
+	initialRotation?: number;
+}
+
 const rollStates = new WeakMap<Phaser.GameObjects.Image, PlayerRollState>();
 
 // Per-scene cache of resolved player images so steady-state frames avoid
@@ -86,6 +90,7 @@ export function drawIngamePlayerTexture(
 	state: PlayerVisualState,
 	depth: number,
 	shellSkin?: string | null,
+	options: PlayerRenderOptions = {},
 ): boolean {
 	const shellAsset = resolveShellSkinAsset(shellSkin);
 	if (
@@ -110,14 +115,14 @@ export function drawIngamePlayerTexture(
 	);
 	hideFallbackTexture(scene, name);
 	if (shell.texture.key !== shellAsset.key) shell.setTexture(shellAsset.key);
-	updateIngamePlayerRoll(shell, state);
+	updateIngamePlayerRoll(shell, state, options.initialRotation);
 
 	const isRetracted = isPlayerMoving(state);
 	body
 		.setVisible(!isRetracted)
 		.setPosition(state.x, state.y)
 		.setDepth(depth)
-		.setRotation(0)
+		.setRotation(shell.rotation)
 		.setDisplaySize(state.r * 2, state.r * 2)
 		.setAlpha(state.alpha ?? 1);
 
@@ -125,7 +130,7 @@ export function drawIngamePlayerTexture(
 		.setVisible(true)
 		.setPosition(state.x, state.y)
 		.setDepth(depth + 0.01)
-		.setRotation(isRetracted ? shell.rotation : 0)
+		.setRotation(shell.rotation)
 		.setDisplaySize(state.r * 2, state.r * 2)
 		.setAlpha(state.alpha ?? 1);
 	return true;
@@ -137,6 +142,7 @@ export function drawIngameShellTexture(
 	state: PlayerVisualState,
 	depth: number,
 	shellSkin?: string | null,
+	options: PlayerRenderOptions = {},
 ): boolean {
 	const shellAsset = resolveShellSkinAsset(shellSkin);
 	if (!scene.textures.exists(shellAsset.key)) {
@@ -155,13 +161,13 @@ export function drawIngameShellTexture(
 	);
 	hideFallbackTexture(scene, name);
 	if (shell.texture.key !== shellAsset.key) shell.setTexture(shellAsset.key);
-	updateIngamePlayerRoll(shell, state);
+	updateIngamePlayerRoll(shell, state, options.initialRotation);
 
 	shell
 		.setVisible(true)
 		.setPosition(state.x, state.y)
 		.setDepth(depth + 0.01)
-		.setRotation(isPlayerMoving(state) ? shell.rotation : 0)
+		.setRotation(shell.rotation)
 		.setDisplaySize(state.r * 2.35, state.r * 2.35)
 		.setAlpha(state.alpha ?? 1);
 	return true;
@@ -187,9 +193,11 @@ function isPlayerMoving(state: PlayerVisualState): boolean {
 function updateIngamePlayerRoll(
 	image: Phaser.GameObjects.Image,
 	state: PlayerVisualState,
+	initialRotation = 0,
 ): void {
 	const previous = rollStates.get(image);
 	if (!previous) {
+		image.setRotation(initialRotation);
 		rollStates.set(image, { x: state.x, y: state.y });
 		return;
 	}

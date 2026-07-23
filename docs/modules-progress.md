@@ -171,6 +171,10 @@ Evidence:
 - `StoneButton` provides shared `back` and `base` artwork variants across the
   Hub mode and tournament-lobby return controls and the pre-game navigation,
   settings, player-count, matchmaking, and private-room actions.
+- The pre-game mode selector uses the Tournament board's gold divider treatment
+  across the titles and responsive vertical separators of its unboxed mode and
+  power-up groups. It also shares the Hub's background contrast filter while
+  fitting the full desktop flow without page scrolling.
 - Theme primitives in `frontend/src/shared/theme.ts`, Tailwind CSS configuration
   in `frontend/tailwind.config.cjs`, and feature-scoped style modules in
   `frontend/src/styles/modules/`.
@@ -395,6 +399,14 @@ Evidence:
   now marks the exact circular physics radius. Settled Temple Curling shells retain
   their coloured hitbox edge without the active shell's dark separator. Frontend
   validation passed with 72 files / 395 tests and a production build.
+- Idle turtle rendering now consistently restores the head and legs after movement
+  while retaining the shell's final rolled angle instead of straightening it.
+  Temple Curling uses the complete turtle renderer rather than its previous
+  shell-only variant, and newly created turtles face 90 degrees clockwise to align
+  with the map. Focused renderer tests cover the initial orientation, retraction,
+  and final-angle retention. The full frontend suite passed with 75 files / 415
+  tests, the production build passed, and Firefox validation covered launch,
+  settlement, desktop and 1000×700 layouts without console errors.
 - 2026-07-20 audit remediation. The stability and robustness findings from
   `docs/remote-multiplayer-modules-audit-2026-07-20.md` were implemented with
   regression tests: a second connection from the same user no longer hijacks a

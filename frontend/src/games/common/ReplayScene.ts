@@ -22,7 +22,13 @@ import {
 	preloadOvalArenaSkin,
 	texturedOvalArenaToScreenInRect,
 } from "../../shared/arenas/arena";
-import { CURL_SHEET } from "../../shared/arenas/curl-sheet";
+import {
+	CURL_SHEET_SKIN,
+	layoutCurlSheetSkin,
+	preloadCurlSheetSkin,
+	resolveCurlSheetLayoutInRect,
+	type CurlSheetSkinPixels,
+} from "../../shared/arenas/curl-sheet";
 import {
 	type BallState,
 	BALL_SRC_R,
@@ -31,8 +37,7 @@ import {
 } from "../../shared/mechanics/ball";
 import {
 	type RectArenaPixels,
-	drawIceSheet,
-	rectArenaPlayableToScreenInRect,
+	drawScoringHouse,
 } from "../../shared/mechanics/rect-arena";
 import { drawPlayerTrails } from "../../shared/mechanics/player-trails";
 import {
@@ -65,10 +70,7 @@ import {
 	layoutBellClashBell,
 	preloadBellClashBell,
 } from "../bell-clash/BellClashView";
-import {
-	drawShellCurlBackground,
-	drawShellCurlBall,
-} from "../shell-curl/ShellCurlView";
+import { drawShellCurlBall } from "../shell-curl/ShellCurlView";
 import { drawKameKnockBackground } from "../kame-knock/KameKnockView";
 
 const DEPTH_BG = 0;
@@ -166,6 +168,7 @@ export class ReplayScene extends ResponsiveScene {
 
 	private arena: ArenaPixels | null = null;
 	private curlArena: RectArenaPixels | null = null;
+	private curlSkinLayout: CurlSheetSkinPixels | null = null;
 
 	private objectImages = new Map<string, Phaser.GameObjects.Image>();
 	private ballGraphics = new Map<string, Phaser.GameObjects.Graphics>();
@@ -192,6 +195,7 @@ export class ReplayScene extends ResponsiveScene {
 
 	preload(): void {
 		preloadOvalArenaSkin(this);
+		preloadCurlSheetSkin(this);
 		preloadIngamePlayerTexture(this);
 		preloadBellClashBell(this);
 		for (const stage of [1, 2, 3]) {
@@ -276,17 +280,19 @@ export class ReplayScene extends ResponsiveScene {
 		if (!this.replay) return;
 		if (this.replay.gameId === "temple-curling") {
 			this.arena = null;
-			this.curlArena = rectArenaPlayableToScreenInRect(
-				CURL_SHEET,
+			const resolved = resolveCurlSheetLayoutInRect(
 				18,
 				18,
 				this.scale.width - 36,
 				this.scale.height - 36,
 			);
+			this.curlArena = resolved.arena;
+			this.curlSkinLayout = resolved.skin;
 			return;
 		}
 
 		this.curlArena = null;
+		this.curlSkinLayout = null;
 		this.arena = texturedOvalArenaToScreenInRect(
 			ARENA_01,
 			18,
@@ -312,15 +318,17 @@ export class ReplayScene extends ResponsiveScene {
 		if (!this.replay) return;
 		this.drawFlatBackground(0x10150f);
 
-		if (this.replay.gameId === "temple-curling" && this.curlArena) {
-			this.arenaSkin.setVisible(false);
-			drawShellCurlBackground(
-				this.gameBackgroundGfx,
-				this.curlArena,
-				this.scale.width,
-				this.scale.height,
-			);
-			drawIceSheet(this.arenaGfx, this.curlArena);
+		if (
+			this.replay.gameId === "temple-curling" &&
+			this.curlArena &&
+			this.curlSkinLayout
+		) {
+			this.arenaSkin
+				.setTexture(CURL_SHEET_SKIN.key)
+				.setDepth(DEPTH_ARENA - 0.1);
+			layoutCurlSheetSkin(this.arenaSkin, this.curlSkinLayout);
+			this.arenaSkin.setVisible(true);
+			drawScoringHouse(this.arenaGfx, this.curlArena);
 			return;
 		}
 

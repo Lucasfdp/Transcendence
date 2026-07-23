@@ -259,6 +259,15 @@ export function drawIceSheet(
 	}
 }
 
+/** Draw only the active scoring house over a textured curling sheet. */
+export function drawScoringHouse(
+	g: Phaser.GameObjects.Graphics,
+	a: RectArenaPixels,
+): void {
+	g.clear();
+	drawHouseRings(g, a.houseFarCX, a.houseFarCY, a.houseRadii, 1);
+}
+
 // ── Horizontal sheet (ball travels left → right) ────────────────────────────
 
 function drawHorizontalSheet(
