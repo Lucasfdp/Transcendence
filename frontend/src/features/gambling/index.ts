@@ -18,4 +18,5 @@ export * from "./dice";
 export * from "./slots";
 export * from "./plinko";
 export * from "./drop-path";
+export * from "./drop-board";
 export * from "./spin-rotation";

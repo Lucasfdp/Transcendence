@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, type Ref, useEffect, useRef, useState } from "react";
 import { api } from "../../features/hub/api";
 import {
 	easeOutCubic,
@@ -89,13 +89,23 @@ function slicePath(startDeg: number, endDeg: number): string {
 	return `M ${CENTER} ${CENTER} L ${start.x} ${start.y} A ${RADIUS} ${RADIUS} 0 ${largeArc} 1 ${end.x} ${end.y} Z`;
 }
 
-/** The rendered wheel face — pure presentation, rotated by `rotation` degrees. */
-function WheelFace({
+/**
+ * The rendered wheel face — pure presentation, rotated by `rotation` degrees.
+ * `rotation` only carries *committed* rest angles (initial, and where the
+ * wheel settles after each spin). The frame-by-frame spin writes the same
+ * transform imperatively through `faceRef` instead of re-rendering the SVG
+ * per animation frame (performance plan, Phase 7: commit only start/end
+ * rotation state to React). Memoised so unrelated modal re-renders (balance,
+ * stake typing) skip reconciling the slice tree entirely.
+ */
+const WheelFace = memo(function WheelFace({
 	segments,
 	rotation,
+	faceRef,
 }: {
 	segments: readonly WheelSegmentView[];
 	rotation: number;
+	faceRef: Ref<SVGGElement>;
 }): JSX.Element {
 	const sliceDeg = 360 / segments.length;
 	return (
@@ -107,6 +117,7 @@ function WheelFace({
 		>
 			<g
 				className="hub-wheel__face"
+				ref={faceRef}
 				style={{ transform: `rotate(${rotation}deg)` }}
 			>
 				{segments.map((segment, index) => {
@@ -138,7 +149,7 @@ function WheelFace({
 			</g>
 		</svg>
 	);
-}
+});
 
 export function FortuneWheelModal({
 	coins,
@@ -171,6 +182,13 @@ export function FortuneWheelModal({
 	const pendingCoinsRef = useRef<number | null>(null);
 	/** Pointer element the tick pulse is toggled on directly, bypassing re-renders. */
 	const pointerRef = useRef<HTMLDivElement | null>(null);
+	/**
+	 * Wheel face `<g>` the spin writes its per-frame rotation to directly.
+	 * Only the settled angle is committed to `rotation` state — routing every
+	 * animated frame through `setRotation` reconciled the whole modal ~60
+	 * times a second for the length of the spin.
+	 */
+	const faceRef = useRef<SVGGElement | null>(null);
 	/** Segment under the pointer as of the last animated frame, for tick detection. */
 	const lastSegmentRef = useRef(0);
 
@@ -262,7 +280,13 @@ export function FortuneWheelModal({
 				[{ durationMs: SPIN_DURATION_MS, data: { from, to } }],
 				(data, progress) => {
 					const angle = lerp(data.from, data.to, easeOutCubic(progress));
-					setRotation(angle);
+					// Imperative rotation: the animated frames never touch React
+					// state. `finish` commits the settled angle once, and the
+					// resulting render writes the same transform, so the DOM and
+					// the committed state converge.
+					if (faceRef.current) {
+						faceRef.current.style.transform = `rotate(${angle}deg)`;
+					}
 					const currentSegment = segmentAtTop(angle, segmentCount);
 					if (currentSegment !== lastSegmentRef.current) {
 						lastSegmentRef.current = currentSegment;
@@ -323,7 +347,11 @@ export function FortuneWheelModal({
 					ref={pointerRef}
 					aria-hidden="true"
 				/>
-				<WheelFace segments={wheel.segments} rotation={rotation} />
+				<WheelFace
+					segments={wheel.segments}
+					rotation={rotation}
+					faceRef={faceRef}
+				/>
 			</div>
 
 			<p className="hub-wheel__balance">Balance: {coins} ⬡</p>
