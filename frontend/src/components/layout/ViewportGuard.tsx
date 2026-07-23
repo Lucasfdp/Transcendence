@@ -45,8 +45,15 @@ function useViewportGuardState(): { mobile: boolean; portrait: boolean } {
 	}));
 
 	useEffect(() => {
-		const updateViewport = (): void =>
-			setState({ mobile: isMobileDevice(), portrait: isPortraitViewport() });
+		const updateViewport = (): void => {
+			const mobile = isMobileDevice();
+			const portrait = isPortraitViewport();
+			setState((current) =>
+				current.mobile === mobile && current.portrait === portrait
+					? current
+					: { mobile, portrait },
+			);
+		};
 
 		window.addEventListener("resize", updateViewport);
 		window.addEventListener("orientationchange", updateViewport);

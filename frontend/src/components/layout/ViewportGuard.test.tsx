@@ -68,4 +68,21 @@ describe("ViewportGuard", () => {
 		fireEvent.click(screen.getByRole("button", { name: "I understand, continue" }));
 		expect(screen.getByText("Game content")).toBeInTheDocument();
 	});
+
+	it("does not render its subtree again for an unchanged viewport", () => {
+		const renderChild = vi.fn();
+		function Child(): JSX.Element {
+			renderChild();
+			return <div>Game content</div>;
+		}
+
+		render(
+			<ViewportGuard>
+				<Child />
+			</ViewportGuard>,
+		);
+		fireEvent(window, new Event("resize"));
+
+		expect(renderChild).toHaveBeenCalledTimes(1);
+	});
 });
