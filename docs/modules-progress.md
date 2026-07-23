@@ -171,6 +171,10 @@ Evidence:
 - `StoneButton` provides shared `back` and `base` artwork variants across the
   Hub mode and tournament-lobby return controls and the pre-game navigation,
   settings, player-count, matchmaking, and private-room actions.
+- The pre-game mode selector uses the Tournament board's gold divider treatment
+  across the titles and responsive vertical separators of its unboxed mode and
+  power-up groups. It also shares the Hub's background contrast filter while
+  fitting the full desktop flow without page scrolling.
 - Theme primitives in `frontend/src/shared/theme.ts`, Tailwind CSS configuration
   in `frontend/tailwind.config.cjs`, and feature-scoped style modules in
   `frontend/src/styles/modules/`.
@@ -395,6 +399,21 @@ Evidence:
   now marks the exact circular physics radius. Settled Temple Curling shells retain
   their coloured hitbox edge without the active shell's dark separator. Frontend
   validation passed with 72 files / 395 tests and a production build.
+- Idle turtle rendering now consistently restores the head and legs after movement
+  while retaining the shell's final rolled angle instead of straightening it.
+  Temple Curling uses the complete turtle renderer rather than its previous
+  shell-only variant, and newly created turtles face 90 degrees clockwise to align
+  with the map. Its stone-frame texture is aligned to the authored physics sheet
+  in live play and replay, with the vector sheet retained as a load-failure
+  fallback. Replay rendering now passes interpolated velocity to the complete
+  turtle renderer, resets accumulated roll state after timeline jumps, and keeps
+  Bell Clash's cached zone layer visible between frames. Focused tests cover the
+  initial orientation, retraction, final-angle retention, replay velocity and
+  timeline reset. After integration with the frontend performance refactor, the
+  full frontend suite passed with 90 files / 490 tests, the Node.js 24 production
+  build passed and emitted the arena texture, and Firefox validation covered
+  launch, settlement, 1440×900 without page scrolling, and 1000×700 responsive
+  rendering without console errors.
 - 2026-07-20 audit remediation. The stability and robustness findings from
   `docs/remote-multiplayer-modules-audit-2026-07-20.md` were implemented with
   regression tests: a second connection from the same user no longer hijacks a

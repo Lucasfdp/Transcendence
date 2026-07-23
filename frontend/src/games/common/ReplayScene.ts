@@ -22,7 +22,13 @@ import {
 	preloadOvalArenaSkin,
 	texturedOvalArenaToScreenInRect,
 } from "../../shared/arenas/arena";
-import { CURL_SHEET } from "../../shared/arenas/curl-sheet";
+import {
+	CURL_SHEET_SKIN,
+	layoutCurlSheetSkin,
+	preloadCurlSheetSkin,
+	resolveCurlSheetLayoutInRect,
+	type CurlSheetSkinPixels,
+} from "../../shared/arenas/curl-sheet";
 import {
 	type BallState,
 	BALL_SRC_R,
@@ -32,13 +38,14 @@ import {
 import {
 	type RectArenaPixels,
 	drawIceSheet,
-	rectArenaPlayableToScreenInRect,
+	drawScoringHouse,
 } from "../../shared/mechanics/rect-arena";
 import { drawPlayerTrails } from "../../shared/mechanics/player-trails";
 import {
 	drawIngamePlayerTexture,
 	hideIngamePlayerTexture,
 	preloadIngamePlayerTexture,
+	resetIngamePlayerRoll,
 } from "../../shared/mechanics/player-renderer";
 import { type CurlingBallState } from "../../shared/mechanics/ball";
 import { type PowerType } from "../../shared/mechanics/power-system";
@@ -61,6 +68,7 @@ import {
 	resolveActiveReplayBackground,
 	resolveActiveReplaySide,
 } from "./replayVisuals";
+import { resolveCurlingReplayVelocity } from "./replay/curlingReplayRender";
 import { drawBambooBashBackground } from "../bamboo-bash/BambooBashView";
 import {
 	createBellClashBell,
@@ -69,10 +77,7 @@ import {
 	layoutBellClashBell,
 	preloadBellClashBell,
 } from "../bell-clash/BellClashView";
-import {
-	drawShellCurlBackground,
-	drawShellCurlBall,
-} from "../shell-curl/ShellCurlView";
+import { drawShellCurlBall } from "../shell-curl/ShellCurlView";
 import { drawKameKnockBackground } from "../kame-knock/KameKnockView";
 
 const DEPTH_BG = 0;
@@ -141,6 +146,8 @@ interface BallRenderState {
 	side: number;
 	x: number;
 	y: number;
+	vx: number;
+	vy: number;
 	r: number;
 	power?: string;
 	alpha: number;
@@ -155,6 +162,7 @@ export class ReplayScene extends ResponsiveScene {
 	private unsubscribeController: (() => void) | null = null;
 	private needsRender = true;
 	private ownsController = false;
+	private lastPlaybackTimeMs: number | null = null;
 	private releasePerformanceCounter: (() => void) | null = null;
 
 	private bgObjects: Phaser.GameObjects.GameObject[] = [];
@@ -171,6 +179,7 @@ export class ReplayScene extends ResponsiveScene {
 
 	private arena: ArenaPixels | null = null;
 	private curlArena: RectArenaPixels | null = null;
+	private curlSkinLayout: CurlSheetSkinPixels | null = null;
 
 	private objectImages = new Map<string, Phaser.GameObjects.Image>();
 	private ballGraphics = new Map<string, Phaser.GameObjects.Graphics>();
@@ -216,6 +225,7 @@ export class ReplayScene extends ResponsiveScene {
 			(data.replay ? new ReplayController(data.replay) : null);
 		this.autoAdvance = data.autoAdvance ?? true;
 		this.needsRender = true;
+		this.lastPlaybackTimeMs = null;
 		this.participantTrailBySide.clear();
 		this.participantShellBySide.clear();
 		this.participantShells = [];
@@ -235,6 +245,7 @@ export class ReplayScene extends ResponsiveScene {
 
 	preload(): void {
 		preloadOvalArenaSkin(this);
+		preloadCurlSheetSkin(this);
 		preloadIngamePlayerTexture(this);
 		preloadBellClashBell(this);
 		for (const stage of [1, 2, 3]) {
@@ -306,6 +317,7 @@ export class ReplayScene extends ResponsiveScene {
 		if (this.ownsController) this.controller?.destroy();
 		this.controller = null;
 		this.ownsController = false;
+		this.lastPlaybackTimeMs = null;
 		this.releasePerformanceCounter?.();
 		this.releasePerformanceCounter = null;
 		this.clearBackgroundObjects();
@@ -324,17 +336,19 @@ export class ReplayScene extends ResponsiveScene {
 		if (!this.replay) return;
 		if (this.replay.gameId === "temple-curling") {
 			this.arena = null;
-			this.curlArena = rectArenaPlayableToScreenInRect(
-				CURL_SHEET,
+			const resolved = resolveCurlSheetLayoutInRect(
 				18,
 				18,
 				this.scale.width - 36,
 				this.scale.height - 36,
 			);
+			this.curlArena = resolved.arena;
+			this.curlSkinLayout = resolved.skin;
 			return;
 		}
 
 		this.curlArena = null;
+		this.curlSkinLayout = null;
 		this.arena = texturedOvalArenaToScreenInRect(
 			ARENA_01,
 			18,
@@ -362,15 +376,21 @@ export class ReplayScene extends ResponsiveScene {
 		if (!this.replay) return;
 		this.drawFlatBackground(0x10150f);
 
-		if (this.replay.gameId === "temple-curling" && this.curlArena) {
-			this.arenaSkin.setVisible(false);
-			drawShellCurlBackground(
-				this.gameBackgroundGfx,
-				this.curlArena,
-				this.scale.width,
-				this.scale.height,
-			);
-			drawIceSheet(this.arenaGfx, this.curlArena);
+		if (
+			this.replay.gameId === "temple-curling" &&
+			this.curlArena &&
+			this.curlSkinLayout
+		) {
+			if (this.textures.exists(CURL_SHEET_SKIN.key)) {
+				this.arenaSkin
+					.setTexture(CURL_SHEET_SKIN.key)
+					.setDepth(DEPTH_ARENA - 0.1);
+				layoutCurlSheetSkin(this.arenaSkin, this.curlSkinLayout);
+				this.arenaSkin.setVisible(true);
+				drawScoringHouse(this.arenaGfx, this.curlArena);
+			} else {
+				drawIceSheet(this.arenaGfx, this.curlArena);
+			}
 			return;
 		}
 
@@ -416,7 +436,6 @@ export class ReplayScene extends ResponsiveScene {
 		this.needsRender = false;
 		this.actorGfx.clear();
 		this.trailGfx.clear();
-		this.bellZoneGfx.clear();
 		this.overlayGfx.clear();
 		this.visibleActorNames.clear();
 		this.visibleObjectKeys.clear();
@@ -430,6 +449,17 @@ export class ReplayScene extends ResponsiveScene {
 		}
 
 		if (!playback?.frame) return;
+		if (
+			this.lastPlaybackTimeMs !== null &&
+			playback.timeMs !== this.lastPlaybackTimeMs &&
+			(!playback.playing || playback.timeMs < this.lastPlaybackTimeMs)
+		) {
+			const initialRotation =
+				this.replay.gameId === "temple-curling" ? Math.PI / 2 : 0;
+			for (const actorName of this.actorNames)
+				resetIngamePlayerRoll(this, actorName, initialRotation);
+		}
+		this.lastPlaybackTimeMs = playback.timeMs;
 		this.renderReplayBackground(playback.frame);
 
 		switch (this.replay.gameId) {
@@ -502,6 +532,12 @@ export class ReplayScene extends ResponsiveScene {
 		this.activeCurlingBallStates.length = 0;
 		for (const object of this.currentCurlingBalls) {
 			const nextObject = this.nextCurlingBallById.get(object.id) ?? null;
+			const { vx, vy } = resolveCurlingReplayVelocity(
+				object,
+				nextObject,
+				progress,
+				this.curlArena.scale,
+			);
 			const renderState: BallRenderState = {
 				key: `curling-${object.id}`,
 				id: object.id,
@@ -518,6 +554,8 @@ export class ReplayScene extends ResponsiveScene {
 						? lerpNumber(object.y, nextObject.y, progress)
 						: object.y,
 				),
+				vx,
+				vy,
 				r: this.curlArena.scale * CURLING_BALL_SRC_R,
 				power: object.power,
 				alpha: Number(object.alpha ?? nextObject?.alpha ?? 1),
@@ -532,10 +570,7 @@ export class ReplayScene extends ResponsiveScene {
 				),
 				active:
 					Boolean(nextObject?.moving ?? object.moving) ||
-					Math.hypot(
-						nextObject?.vx ?? object.vx ?? 0,
-						nextObject?.vy ?? object.vy ?? 0,
-					) > 0.001,
+					Math.hypot(vx, vy) > 0.001,
 			};
 			this.curlingBallStates.push(renderState);
 			if (renderState.active)
@@ -814,8 +849,8 @@ export class ReplayScene extends ResponsiveScene {
 			teamId: ball.side,
 			x: ball.x,
 			y: ball.y,
-			vx: 0,
-			vy: 0,
+			vx: ball.vx,
+			vy: ball.vy,
 			r: ball.r,
 			power: parsePowerType(ball.power) ?? ("none" as PowerType),
 			stopped: !ball.active,

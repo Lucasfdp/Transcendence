@@ -6,9 +6,10 @@ import {
 	useNavigate,
 	useParams,
 } from "react-router-dom";
+import { useSession } from "../app/session/SessionContext";
 import { GameConfirmModal } from "../components/common/GameConfirmModal";
 import { StoneButton } from "../components/common/StoneButton";
-import { api, type User } from "../features/hub/api";
+import type { User } from "../features/hub/api";
 import { RETURN_TO_HUB_EVENT } from "../features/hub/ReturnToHubScene";
 import { TOURNAMENT_WS_MESSAGES } from "../features/tournaments/contracts";
 import type { TournamentMinigameStartPayload } from "../features/tournaments/TournamentBoardView";
@@ -94,13 +95,11 @@ export default function GamePage(): JSX.Element {
 	const hostRef = useRef<HTMLDivElement | null>(null);
 	const navigate = useNavigate();
 	const { gameId } = useParams();
-	const [hubBackground, setHubBackground] = useState<string | null>(null);
-	const [hubBackgroundAlter, setHubBackgroundAlter] = useState<string | null>(
-		null,
-	);
-	const [shellSkin, setShellSkin] = useState("base");
-	const [trailEffect, setTrailEffect] = useState("trail_classic");
-	const [currentUser, setCurrentUser] = useState<User | null>(null);
+	const { user: currentUser } = useSession();
+	const hubBackground = currentUser?.hubBackground ?? null;
+	const hubBackgroundAlter = currentUser?.hubBackgroundAlter ?? null;
+	const shellSkin = currentUser?.shellSkin || "base";
+	const trailEffect = currentUser?.trailEffect || "trail_classic";
 	const [launchData, setLaunchData] = useState<ShellSmashStartData | null>(
 		null,
 	);
@@ -118,30 +117,6 @@ export default function GamePage(): JSX.Element {
 			defaultLocalMode: game.defaultLocalMode,
 		};
 	}, [gameId]);
-
-	useEffect(() => {
-		let cancelled = false;
-
-		void api
-			.getMe()
-			.then((user) => {
-				if (!cancelled) {
-					setCurrentUser(user);
-					setHubBackground(user.hubBackground);
-					setHubBackgroundAlter(user.hubBackgroundAlter);
-					setShellSkin(user.shellSkin || "base");
-					setTrailEffect(user.trailEffect || "trail_classic");
-				}
-			})
-			.catch((err: unknown) => {
-				if (!cancelled)
-					console.warn("[GamePage] Failed to load user:", err);
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, []);
 
 	useEffect(() => {
 		if (!launchData) return;
@@ -274,9 +249,9 @@ function PowerupMatchmakingPanel({
 	// gameplay from it instead of re-discovering the match through the
 	// auto-join round trip below (see the effect using it further down).
 	const tournamentMinigame = (
-		location.state as
-			| { tournamentMinigame?: TournamentMinigameStartPayload }
-			| null
+		location.state as {
+			tournamentMinigame?: TournamentMinigameStartPayload;
+		} | null
 	)?.tournamentMinigame;
 	const hasAutoJoinedRef = useRef(false);
 	const [message, setMessage] = useState(
@@ -326,11 +301,9 @@ function PowerupMatchmakingPanel({
 	const detachOnlineSearchHandlers = () => {
 		const socket = getGameSocket();
 		const handlers = onlineSearchHandlersRef.current;
-		if (handlers.matchFound)
-			socket.off("match:found", handlers.matchFound);
+		if (handlers.matchFound) socket.off("match:found", handlers.matchFound);
 		if (handlers.state) socket.off("game:state", handlers.state);
-		if (handlers.queueError)
-			socket.off("queue:error", handlers.queueError);
+		if (handlers.queueError) socket.off("queue:error", handlers.queueError);
 		if (handlers.queueLeft) socket.off("queue:left", handlers.queueLeft);
 		onlineSearchHandlersRef.current = {};
 	};
@@ -537,7 +510,10 @@ function PowerupMatchmakingPanel({
 		label: string,
 		disabled = false,
 	) => (
-		<div className="power-picker-page__player-picker" aria-label={label}>
+		<div
+			className="power-picker-page__player-picker power-picker-page__mode-picker"
+			aria-label={label}
+		>
 			{(["casual", "ranked"] as const).map((mode) => (
 				<StoneButton
 					key={mode}
@@ -760,7 +736,9 @@ function PowerupMatchmakingPanel({
 				tournamentId: tournamentMinigame.tournamentId,
 				snapshot: tournamentMinigame.snapshot,
 				physicsState: tournamentMinigame.physicsState,
-				...replayAvailability(tournamentMinigame.snapshot.powerupsEnabled),
+				...replayAvailability(
+					tournamentMinigame.snapshot.powerupsEnabled,
+				),
 			} satisfies OnlineMatchContext,
 		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- onLaunch/sceneData/currentUser close over render-local values re-created every render; the ref guard makes re-running this effect body harmless
@@ -887,175 +865,75 @@ function PowerupMatchmakingPanel({
 					</div>
 				</header>
 
-				<section
-					className="power-picker-page__powerups"
-					aria-label="Power-ups available in this match"
-				>
-					<h2>Power-Ups in This Match</h2>
-					<div className="power-picker-page__grid">
-						{displayedPowerups.map((type) => {
-							const def = ALL_POWERS[type];
-							const imageSrc = POWER_UP_ASSETS[type];
-
-							return (
-								<article
-									key={type}
-									className="power-card"
-									style={
-										{
-											"--power-accent": toHex(
-												def.accentColour,
-											),
-										} as CSSProperties
-									}
-									title={def.description}
-								>
-									{imageSrc ? (
-										<img
-											className="power-card__orb"
-											src={imageSrc}
-											alt=""
-											aria-hidden="true"
-										/>
-									) : (
-										<span className="power-card__orb" />
-									)}
-									<strong>{def.label}</strong>
-								</article>
-							);
-						})}
-					</div>
-					<p
-						className={`power-picker-page__message power-picker-page__message--${messageTone}`}
+				<div className="power-picker-page__content">
+					<section
+						className="power-picker-page__powerups"
+						aria-label="Power-ups available in this match"
 					>
-						{message}
-					</p>
-				</section>
+						<h2>Power-Ups in This Match</h2>
+						<div className="power-picker-page__grid">
+							{displayedPowerups.map((type) => {
+								const def = ALL_POWERS[type];
+								const imageSrc = POWER_UP_ASSETS[type];
 
-				<footer className="power-picker-page__actions">
-					<section className="power-picker-page__mode-card">
-						<h2>Local Solo</h2>
-						<p>
-							Train alone and tune the chaos before facing other
-							turtles.
-						</p>
-						<div
-							className="power-picker-page__player-picker-spacer"
-							aria-hidden="true"
-						/>
-						<StoneButton
-							variant="back"
-							type="button"
-							className={`power-picker-page__stone-control ${soloPowerupsEnabled ? "is-selected" : ""}`}
-							aria-pressed={soloPowerupsEnabled}
-							onClick={() =>
-								togglePowerups(setSoloPowerupsEnabled)
-							}
+								return (
+									<article
+										key={type}
+										className="power-card"
+										style={
+											{
+												"--power-accent": toHex(
+													def.accentColour,
+												),
+											} as CSSProperties
+										}
+										title={def.description}
+									>
+										{imageSrc ? (
+											<img
+												className="power-card__orb"
+												src={imageSrc}
+												alt=""
+												aria-hidden="true"
+											/>
+										) : (
+											<span className="power-card__orb" />
+										)}
+										<strong>{def.label}</strong>
+									</article>
+								);
+							})}
+						</div>
+						<p
+							className={`power-picker-page__message power-picker-page__message--${messageTone}`}
 						>
-							Power-ups {soloPowerupsEnabled ? "On" : "Off"}
-						</StoneButton>
-						{soloPowerupsEnabled ? (
-							<p className="power-picker-page__replay-warning">
-								{REPLAY_DISABLED_MESSAGE}
-							</p>
-						) : null}
-						<StoneButton
-							variant="back"
-							type="button"
-							className="power-picker-page__stone-control"
-							disabled={!sceneData.localModes.solo}
-							onClick={() =>
-								launchLocalGame("solo", soloPowerupsEnabled)
-							}
-						>
-							Play Solo
-						</StoneButton>
-						<p className="power-picker-page__mode-note">
-							Play solo matches
+							{message}
 						</p>
 					</section>
 
-					<section className="power-picker-page__mode-card">
-						<h2>Local VS</h2>
-						<p>Couch battle setup for a bigger local showdown.</p>
-						{renderPlayerPicker(
-							localVsPlayerCount,
-							setLocalVsPlayerCount,
-							"Local VS player count",
-							!sceneData.localModes.versus,
-						)}
-						<StoneButton
-							variant="back"
-							type="button"
-							className={`power-picker-page__stone-control ${localVsPowerupsEnabled ? "is-selected" : ""}`}
-							aria-pressed={localVsPowerupsEnabled}
-							onClick={() =>
-								togglePowerups(setLocalVsPowerupsEnabled)
-							}
-						>
-							Power-ups {localVsPowerupsEnabled ? "On" : "Off"}
-						</StoneButton>
-						{localVsPowerupsEnabled ? (
-							<p className="power-picker-page__replay-warning">
-								{REPLAY_DISABLED_MESSAGE}
-							</p>
-						) : null}
-						<StoneButton
-							variant="back"
-							type="button"
-							className="power-picker-page__stone-control"
-							disabled={!sceneData.localModes.versus}
-							onClick={() =>
-								launchLocalGame(
-									"versus",
-									localVsPowerupsEnabled,
-								)
-							}
-						>
-							Start Local VS
-						</StoneButton>
-						<p className="power-picker-page__mode-note">
-							Players selected: {localVsPlayerCount}
-						</p>
-					</section>
-
-					{isOnlineGame ? (
-						<section className="power-picker-page__mode-card power-picker-page__mode-card--online">
-							<h2>Multiplayer Online</h2>
+					<footer className="power-picker-page__actions">
+						<section className="power-picker-page__mode-card">
+							<h2>Local Solo</h2>
 							<p>
-								Jump into matchmaking against online opponents.
+								Train alone and tune the chaos before facing
+								other turtles.
 							</p>
-							{!currentUser?.isGuest
-								? renderModePicker(
-										onlineMode,
-										setOnlineMode,
-										"Online match mode",
-										isSearchingOnline ||
-											Boolean(activeMatchStatus),
-									)
-								: null}
-							{renderPlayerPicker(
-								onlinePlayerCount,
-								setOnlinePlayerCount,
-								"Online player count",
-								Boolean(activeMatchStatus),
-							)}
+							<div
+								className="power-picker-page__player-picker-spacer"
+								aria-hidden="true"
+							/>
 							<StoneButton
 								variant="back"
 								type="button"
-								className={`power-picker-page__stone-control ${onlinePowerupsEnabled ? "is-selected" : ""}`}
-								aria-pressed={onlinePowerupsEnabled}
-								disabled={
-									isSearchingOnline ||
-									Boolean(activeMatchStatus)
-								}
+								className={`power-picker-page__stone-control ${soloPowerupsEnabled ? "is-selected" : ""}`}
+								aria-pressed={soloPowerupsEnabled}
 								onClick={() =>
-									togglePowerups(setOnlinePowerupsEnabled)
+									togglePowerups(setSoloPowerupsEnabled)
 								}
 							>
-								Power-ups {onlinePowerupsEnabled ? "On" : "Off"}
+								Power-ups {soloPowerupsEnabled ? "On" : "Off"}
 							</StoneButton>
-							{onlinePowerupsEnabled ? (
+							{soloPowerupsEnabled ? (
 								<p className="power-picker-page__replay-warning">
 									{REPLAY_DISABLED_MESSAGE}
 								</p>
@@ -1064,120 +942,229 @@ function PowerupMatchmakingPanel({
 								variant="back"
 								type="button"
 								className="power-picker-page__stone-control"
-								onClick={() => void findOnlineMatch()}
+								disabled={!sceneData.localModes.solo}
+								onClick={() =>
+									launchLocalGame("solo", soloPowerupsEnabled)
+								}
 							>
-								{activeMatchStatus
-									? "Rejoin Match"
-									: isSearchingOnline
-										? "Cancel Search"
-										: "Find Online Match"}
+								Play Solo
 							</StoneButton>
-							<p className="power-picker-page__online-status">
-								{activeMatchStatus
-									? `Reconnect window: ${activeReconnectSeconds}s`
-									: isSearchingOnline
-										? "Searching for opponents..."
-										: currentUser?.isGuest
-											? `Players selected: ${onlinePlayerCount}`
-											: `Players selected: ${onlinePlayerCount} · ${onlineMode === "ranked" ? "Ranked" : "Casual"}`}
+							<p className="power-picker-page__mode-note">
+								Play solo matches
 							</p>
-							{activeMatchStatus ? (
-								<button
-									type="button"
-									className="power-picker-page__danger"
-									onClick={abandonActiveMatch}
-								>
-									Abandon Match
-								</button>
-							) : null}
 						</section>
-					) : null}
 
-					<section className="power-picker-page__mode-card power-picker-page__mode-card--private">
-						<h2>Private Online</h2>
-						<p>
-							Create a room or prepare to enter a friend's{" "}
-							<span className="power-picker-page__pin-word">
-								PIN.
-							</span>
-						</p>
-						{renderPlayerPicker(
-							privateOnlinePlayerCount,
-							setPrivateOnlinePlayerCount,
-							"Private online player count",
-						)}
-						<StoneButton
-							variant="back"
-							type="button"
-							className={`power-picker-page__stone-control ${privateOnlinePowerupsEnabled ? "is-selected" : ""}`}
-							aria-pressed={privateOnlinePowerupsEnabled}
-							onClick={() =>
-								togglePowerups(setPrivateOnlinePowerupsEnabled)
-							}
-						>
-							Power-ups{" "}
-							{privateOnlinePowerupsEnabled ? "On" : "Off"}
-						</StoneButton>
-						{privateOnlinePowerupsEnabled ? (
-							<p className="power-picker-page__replay-warning">
-								{REPLAY_DISABLED_MESSAGE}
+						<section className="power-picker-page__mode-card">
+							<h2>Local VS</h2>
+							<p>
+								Couch battle setup for a bigger local showdown.
 							</p>
-						) : null}
-						<div className="power-picker-page__pin-row">
-							<input
-								className="power-picker-page__pin-input"
-								value={privateRoomPin}
-								onChange={(event) =>
-									setPrivateRoomPin(
-										event.target.value
-											.replace(/[^a-z0-9]/gi, "")
-											.toUpperCase(),
+							{renderPlayerPicker(
+								localVsPlayerCount,
+								setLocalVsPlayerCount,
+								"Local VS player count",
+								!sceneData.localModes.versus,
+							)}
+							<StoneButton
+								variant="back"
+								type="button"
+								className={`power-picker-page__stone-control ${localVsPowerupsEnabled ? "is-selected" : ""}`}
+								aria-pressed={localVsPowerupsEnabled}
+								onClick={() =>
+									togglePowerups(setLocalVsPowerupsEnabled)
+								}
+							>
+								Power-ups{" "}
+								{localVsPowerupsEnabled ? "On" : "Off"}
+							</StoneButton>
+							{localVsPowerupsEnabled ? (
+								<p className="power-picker-page__replay-warning">
+									{REPLAY_DISABLED_MESSAGE}
+								</p>
+							) : null}
+							<StoneButton
+								variant="back"
+								type="button"
+								className="power-picker-page__stone-control"
+								disabled={!sceneData.localModes.versus}
+								onClick={() =>
+									launchLocalGame(
+										"versus",
+										localVsPowerupsEnabled,
 									)
 								}
-								placeholder="PIN"
-								maxLength={6}
-								aria-label="Private room PIN"
-							/>
-							<StoneButton
-								type="button"
-								className="power-picker-page__stone-action"
-								onClick={joinPrivateRoom}
 							>
-								Join
+								Start Local VS
 							</StoneButton>
-							<StoneButton
-								type="button"
-								className="power-picker-page__stone-action"
-								onClick={createPrivateRoom}
-							>
-								Create
-							</StoneButton>
-							<StoneButton
-								type="button"
-								className="power-picker-page__stone-action"
-								onClick={spectatePrivateRoom}
-							>
-								Watch
-							</StoneButton>
-						</div>
-						{privateLobby ? (
-							<>
-								<p className="power-picker-page__mode-note">
-									PIN {privateLobby.pin} ·{" "}
-									{privateLobby.joinedCount}/
-									{privateLobby.playerCount} players
+							<p className="power-picker-page__mode-note">
+								Players selected: {localVsPlayerCount}
+							</p>
+						</section>
+
+						{isOnlineGame ? (
+							<section className="power-picker-page__mode-card power-picker-page__mode-card--online">
+								<h2>Multiplayer Online</h2>
+								<p>
+									Jump into matchmaking against online
+									opponents.
 								</p>
-								<button
+								{renderPlayerPicker(
+									onlinePlayerCount,
+									setOnlinePlayerCount,
+									"Online player count",
+									Boolean(activeMatchStatus),
+								)}
+								{!currentUser?.isGuest
+									? renderModePicker(
+											onlineMode,
+											setOnlineMode,
+											"Online match mode",
+											isSearchingOnline ||
+												Boolean(activeMatchStatus),
+										)
+									: null}
+								<StoneButton
+									variant="back"
 									type="button"
-									className="power-picker-page__danger"
-									onClick={cancelPrivateRoom}
+									className={`power-picker-page__stone-control ${onlinePowerupsEnabled ? "is-selected" : ""}`}
+									aria-pressed={onlinePowerupsEnabled}
+									disabled={
+										isSearchingOnline ||
+										Boolean(activeMatchStatus)
+									}
+									onClick={() =>
+										togglePowerups(setOnlinePowerupsEnabled)
+									}
 								>
-									Cancel Private Room
-								</button>
-							</>
+									Power-ups{" "}
+									{onlinePowerupsEnabled ? "On" : "Off"}
+								</StoneButton>
+								{onlinePowerupsEnabled ? (
+									<p className="power-picker-page__replay-warning">
+										{REPLAY_DISABLED_MESSAGE}
+									</p>
+								) : null}
+								<StoneButton
+									variant="back"
+									type="button"
+									className="power-picker-page__stone-control"
+									onClick={() => void findOnlineMatch()}
+								>
+									{activeMatchStatus
+										? "Rejoin Match"
+										: isSearchingOnline
+											? "Cancel Search"
+											: "Find Online Match"}
+								</StoneButton>
+								<p className="power-picker-page__online-status">
+									{activeMatchStatus
+										? `Reconnect window: ${activeReconnectSeconds}s`
+										: isSearchingOnline
+											? "Searching for opponents..."
+											: currentUser?.isGuest
+												? `Players selected: ${onlinePlayerCount}`
+												: `Players selected: ${onlinePlayerCount} · ${onlineMode === "ranked" ? "Ranked" : "Casual"}`}
+								</p>
+								{activeMatchStatus ? (
+									<button
+										type="button"
+										className="power-picker-page__danger"
+										onClick={abandonActiveMatch}
+									>
+										Abandon Match
+									</button>
+								) : null}
+							</section>
 						) : null}
-					</section>
-				</footer>
+
+						<section className="power-picker-page__mode-card power-picker-page__mode-card--private">
+							<h2>Private Online</h2>
+							<p>
+								Create a room or prepare to enter a friend's{" "}
+								<span className="power-picker-page__pin-word">
+									PIN.
+								</span>
+							</p>
+							{renderPlayerPicker(
+								privateOnlinePlayerCount,
+								setPrivateOnlinePlayerCount,
+								"Private online player count",
+							)}
+							<StoneButton
+								variant="back"
+								type="button"
+								className={`power-picker-page__stone-control ${privateOnlinePowerupsEnabled ? "is-selected" : ""}`}
+								aria-pressed={privateOnlinePowerupsEnabled}
+								onClick={() =>
+									togglePowerups(
+										setPrivateOnlinePowerupsEnabled,
+									)
+								}
+							>
+								Power-ups{" "}
+								{privateOnlinePowerupsEnabled ? "On" : "Off"}
+							</StoneButton>
+							{privateOnlinePowerupsEnabled ? (
+								<p className="power-picker-page__replay-warning">
+									{REPLAY_DISABLED_MESSAGE}
+								</p>
+							) : null}
+							<div className="power-picker-page__pin-row">
+								<input
+									className="power-picker-page__pin-input"
+									value={privateRoomPin}
+									onChange={(event) =>
+										setPrivateRoomPin(
+											event.target.value
+												.replace(/[^a-z0-9]/gi, "")
+												.toUpperCase(),
+										)
+									}
+									placeholder="PIN"
+									maxLength={6}
+									aria-label="Private room PIN"
+								/>
+								<StoneButton
+									type="button"
+									className="power-picker-page__stone-action"
+									onClick={joinPrivateRoom}
+								>
+									Join
+								</StoneButton>
+								<StoneButton
+									type="button"
+									className="power-picker-page__stone-action"
+									onClick={createPrivateRoom}
+								>
+									Create
+								</StoneButton>
+								<StoneButton
+									type="button"
+									className="power-picker-page__stone-action"
+									onClick={spectatePrivateRoom}
+								>
+									Watch
+								</StoneButton>
+							</div>
+							{privateLobby ? (
+								<>
+									<p className="power-picker-page__mode-note">
+										PIN {privateLobby.pin} ·{" "}
+										{privateLobby.joinedCount}/
+										{privateLobby.playerCount} players
+									</p>
+									<button
+										type="button"
+										className="power-picker-page__danger"
+										onClick={cancelPrivateRoom}
+									>
+										Cancel Private Room
+									</button>
+								</>
+							) : null}
+						</section>
+					</footer>
+				</div>
 				<StoneButton
 					variant="back"
 					type="button"

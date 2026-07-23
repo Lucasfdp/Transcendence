@@ -757,7 +757,102 @@ with an enlarged buffer and the exact Phase 1 profiler feature and thread
 configuration. Do not reuse the three short retained-window profiles as final
 evidence.
 
-## 10. Per-Phase Update Template
+## 10. Checkpoint 2026-07-23 — Local Gameplay Integration
+
+### Phase and subtask attempted
+
+Integrated the preserved pre-Wave-D gameplay branch with the completed
+performance workstreams without replacing their replay, Phaser lifecycle, or
+session-ownership architecture.
+
+### Status
+
+Partially complete. The gameplay integration and reproducible automated gates
+pass. Destination performance profiles and complete replay parity remain part
+of the open Phase 9 acceptance work.
+
+### Changes made
+
+- Added the textured Temple Curling sheet to live play and replay while keeping
+  the vector sheet as a load-failure fallback.
+- Restored complete turtle rendering, retained roll angle and clockwise initial
+  orientation for Temple Curling.
+- Passed interpolated recorded velocity into Temple Curling replay actors and
+  reset accumulated rotation after replay timeline jumps.
+- Preserved Bell Clash's retained replay zone layer instead of clearing it
+  before its cached redraw guard.
+- Integrated the unboxed responsive pre-game layout and removed its residual
+  1440 x 900 desktop scroll.
+- Changed `GamePage` to consume the persistent `SessionContext` user rather
+  than issuing another `auth/me` request.
+- Reviewed `docs/modules-progress.md`; the integration strengthens existing
+  evidence but does not change a module status.
+
+### Decisions and rejected alternatives
+
+- Kept `origin/main`'s singular replay session, retained render layers, pooled
+  collections and Phaser lifecycle. Replacing `ReplayScene` with the older
+  branch version was rejected because it would reinstate the performance
+  defects already removed by Phases 2–7.
+- Kept one shared route-level session owner. Page-local user hydration was
+  rejected because it duplicates requests and can retain stale cosmetics.
+- Kept the authored physics dimensions as the source of truth for the textured
+  sheet and retained a vector fallback rather than making successful asset
+  loading a gameplay requirement.
+
+### Automated validation
+
+- Node.js 24 frontend targeted tests — pass, 6 files and 14 tests.
+- `npm run test:run` in the Node.js 24 frontend container — pass, 90 files and
+  490 tests.
+- `npm run build -- --outDir /tmp/local-gameplay-integration-dist
+  --emptyOutDir` — pass, 256 modules transformed; the Temple Curling texture
+  was present in the emitted public assets.
+- Stylesheet manifest inspection — pass, all 19 feature stylesheets remain
+  reachable through `frontend/src/styles/modules/index.css`.
+- `git lfs fsck` — pass for the new arena texture.
+- `make health` — pass, all 13 services healthy.
+- `make validate-openapi` — pass, 97 paths and 108 operations.
+- `git diff --check` — pass.
+- `npx tsc --noEmit` — still blocked by the tracked `ignoreDeprecations` value.
+  Retrying with the compatible value reached only the previously recorded
+  repository-wide baseline errors; no integrated file reported an error.
+
+### Manual and profiler validation
+
+- Headless Firefox 152 at 1440 x 900 launched Temple Curling, rendered the
+  aligned textured sheet and complete turtle, completed a throw and settlement,
+  and reported no console, window or unhandled-rejection error.
+- The same flow remained aligned after resizing to 1000 x 700.
+- The pre-game matrix covered 1871 x 758, 1440 x 900, 1123 x 839, 1000 x 700
+  and 900 x 900. Standard 1440 x 900 desktop now has equal client and scroll
+  heights; compact and mobile layouts retain deliberate vertical scrolling.
+- No new profiler capture was claimed for this integration.
+
+### Known limitations or regressions
+
+- Temple Curling replay motion and Bell Clash retained zones have automated or
+  static regression coverage but still require the open destination replay
+  parity pass.
+- Active Temple Curling and replay allocation profiles must be repeated because
+  this integration changes their renderer and asset composition.
+- The broader TypeScript baseline and replay-list authorisation finding remain
+  unchanged.
+
+### Work remaining in this phase
+
+- Complete the destination replay parity and active-game profiles already
+  listed in the Phase 9 pause checkpoint.
+- Run the persistent-provider SPA network loop and remaining reduced-motion
+  checks.
+
+### Exact next action
+
+On the destination machine, capture a complete retained Temple Curling active
+profile and Temple Curling replay profile, then verify moving turtles retract,
+timeline seeking resets orientation, and one replay session remains live.
+
+## 11. Per-Phase Update Template
 
 Copy this section under a new dated heading whenever work advances:
 
@@ -801,7 +896,7 @@ Copy this section under a new dated heading whenever work advances:
 <One concrete technical action that starts the next continuation.>
 ```
 
-## 11. Closure Rule
+## 12. Closure Rule
 
 The programme is complete only when all nine phases are marked complete, the
 integrated production-mode validation matrix passes, and no required manual or
