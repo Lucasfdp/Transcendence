@@ -746,14 +746,16 @@ Validation completed on 14 July 2026:
   does not initialise playback for an incomplete recording.
 - The manual gameplay and frame-budget matrix remains outstanding, so Replay
   Mode and Multiplayer 3+ remain `In progress`.
-- The frontend performance programme completed its local Phase 1 procedure and
-  capture on 23 July 2026. Exact-viewport development and production matrices,
-  Firefox CPU and memory profiles, React replay commits, graphics information,
-  and lifecycle counters were captured and verified. Expanded replay
-  reproducibly retains two complete replay runtimes. The authoritative
-  performance baseline still requires the same capture on the original machine
-  where the problem was observed, so this evidence does not complete Phase 1 or
-  change the Replay mode module status.
+- The frontend performance programme completed its authoritative Phase 1
+  baseline on the destination machine on 23 July 2026. Matched development and
+  production matrices ran at 1440 x 900 and device pixel ratio 1 in Firefox
+  152.0.6 with the recorded software-rendered X11 configuration. The lifecycle,
+  React, and Firefox evidence reproduces the principal replay defect: inline
+  playback owns one complete replay runtime, expansion owns two, and teardown
+  returns every live resource to zero. This completes the performance
+  programme's baseline phase but does not change Replay Mode's module status;
+  the replay v2 acceptance and manual rendering-budget matrices remain
+  outstanding.
 
 Missing for completion:
 - Complete and execute the replay v2 acceptance matrix in

@@ -427,28 +427,24 @@ This phase must not be skipped. The current evidence is strong enough to order
 work, but browser-wide renderer numbers require an isolated baseline for fair
 before/after comparisons.
 
-Local capture checkpoint, 23 July 2026: the Phase 1 instrumentation, scenario
-automation, and local capture are complete against exact commit
-`bb0cf0fc7616858ae63f88acd31c55fe9dbdee4c`. The fixed 16-record matrix passed
-in development and production at 1440 x 900 CSS pixels and device pixel ratio
-1, covering the hub, opaque modal, casino interactions, every local game, five
-route round trips, inline replay, expanded replay, and teardown. Both matrices
-reported zero browser errors, unhandled rejections, and failed resources.
-Firefox captures were recorded at a 1 ms interval with CPU, memory, JS,
-responsiveness, stack walking, and screenshots enabled. The authenticated React
-replay capture and development counters reproduce the Phase 2 defect: expansion
-retains two complete replay runtimes and drives 354 `HomeMenu` commits over
-22.83 seconds.
+Target-machine closure checkpoint, 23 July 2026: Phase 1 is complete. The
+development and production matrices served the same frontend commit,
+`a0626653cc71a402df55deb0e233a0380b52e398`, from repository HEAD
+`a2ee19a2a91e801a2c02042eebea75fab7941104`. The fixed matrix passed in both
+modes at 1440 x 900 CSS pixels and device pixel ratio 1, covering the hub,
+opaque modal, both casino interactions, every local game, inline replay,
+expanded replay, teardown, and five route round trips.
 
-This local capture used X11, WebRender, and an AMD Radeon 610M. It validates the
-procedure, lifecycle ownership, and local behaviour, but it is not the
-authoritative performance baseline because this is not the machine where the
-problem was observed. Phase 1 remains partially complete until the same clean
-development and production capture is repeated on the original problem machine
-that reported the Radeon 780M and software-renderer activity. Before and after
-performance totals must use that same target machine and browser configuration.
-See the live checkpoint for the local evidence, checksums, and exact
-continuation action.
+Firefox 152.0.6 reported X11, WebRender (Software), and Mesa llvmpipe on the
+destination. Development counters reproduce the Phase 2 defect exactly:
+inline replay owns one complete runtime and expansion owns two, while teardown
+returns every live counter to zero. Production reproduces the corresponding
+one-canvas and two-canvas states. The isolated React replay capture recorded
+903 commits, 891 replay-period `HomeMenu` commits, 2,928 ms total render time,
+a 28 ms maximum commit, and two commits above 16 ms. The production replay and
+route profile retained Renderer work equal to 62.11% of one logical core and
+11 long tasks from 51.90 to 246.62 ms. See the live checkpoint for the complete
+environment, game-shard metrics, limitations, and SHA-256 values.
 
 ### Phase 2 — Make Replay Runtime Singular
 
@@ -601,6 +597,136 @@ Acceptance criteria:
   the supported module claims.
 - Move this report and its checkpoint to `docs/old_docs/` only when all phases,
   visual checks, and profiling validation are complete.
+
+### Parallel Delivery Topology For Phases 2–9
+
+Phases must not be assigned one-to-one to long-lived branches. Several phases
+share `HomePage.tsx`, replay contracts, Phaser scenes, or the running stack.
+Use one integration branch, `perf/phases-2-9-integration`, created from the
+committed Phase 1 closure. Every worker branch starts from the latest completed
+wave on that branch.
+
+The dependency graph is:
+
+```text
+Phase 1 ──┬── Phase 2 ──┬── Phase 3 ───────────────┐
+          │             ├── Phase 6 ───────────────┤
+          │             └── Phase 8 ───────────────┤
+          ├── Phase 4 ───── Phase 7 game work ─────┤
+          └── Phase 5 ─────────────────────────────┤
+                                                   └── Phase 9
+```
+
+Phase 4 encoder-core work may start with Phase 2 only while it preserves the
+current version-two wire format and reconstructed-frame output. Scene producer
+adapters wait for Phase 2 integration. Phase 6 auditing may start early, but
+the phase cannot close until Phase 2 proves that replay expansion does not
+create another context.
+
+#### Wave 0 — Integration Contracts
+
+The integrator records and protects these seams before worker branches begin:
+
+- one replay-session owner for the controller, Phaser game, scene, playback
+  clock, canvas, RAF loop, and resize observer;
+- one resolved replay-frame value per render tick, independent of encoder
+  storage details;
+- an unchanged version-two replay wire format unless a separately approved
+  versioned contract change is required;
+- one Phaser factory and lifecycle contract covering listeners, timers,
+  observers, canvases, and destruction;
+- incremental side-panel updates based on stable models or versions rather
+  than JSON render keys;
+- explicit session-cache invalidation for login, logout, authentication
+  failure, and relevant profile mutations; and
+- backdrop suspension inputs for document visibility, opaque coverage,
+  reduced motion, viewport, and renderer capability.
+
+The integrator has exclusive ownership of shared documentation,
+`HomePage.tsx` conflict resolution, replay-contract changes, profiler counters,
+and control of the Makefile stack.
+
+#### Wave 1 — Three Parallel Branches
+
+| Branch | Scope | Must not own |
+| --- | --- | --- |
+| `perf/p2-replay-session` | Phase 2 singular session, stable canvas host, local toolbar state, expansion without remounting | Encoder internals or general Phaser lifecycle |
+| `perf/p4-replay-encoder-core` | Typed encoder, deterministic reconstruction, capture runtimes, and contract tests while preserving the wire format | `ReplayScene`, presentation, or broad game-scene optimisation |
+| `perf/p5-hub-backdrop-core` | Extracted backdrop component/runtime, bounded rendering, suspension, responsive and reduced-motion behaviour | Replay state or broad `HomeMenu` restructuring |
+
+Merge Phase 2 first. Rebase and merge the Phase 4 core next, followed by its
+small producer-adapter integration. Merge Phase 5 last, with the integrator
+performing the narrow `HomePage.tsx` connection. Phase 2 must pass the singular
+runtime, preserved-position, zero-playback-commit, and no-asset-reload gates
+before Wave 2 starts.
+
+#### Wave 2 — Three Parallel Branches
+
+| Branch | Scope | Ownership boundary |
+| --- | --- | --- |
+| `perf/p3-replay-renderer` | Phase 3 `ReplayScene`, resolved-frame cache, retained render records, and static/dynamic layers | Owns replay rendering; does not change capture or presentation |
+| `perf/p6-phaser-lifecycle` | Phase 6 game factory, route host, preload, teardown, context creation, DPR policy, and transition fallback | Does not modify replay rendering or game hot paths |
+| `perf/p7-casino` | Fortune Wheel, Shell Drop, and audit of the remaining casino animations | Component and gambling-feature files only; integrator owns `HomePage.tsx` wiring |
+
+Merge only after rebasing each branch onto the complete Wave 1 integration
+head. A persistent Phaser shell, if measurements justify it, is a separate
+reviewable change inside Phase 6 rather than part of the initial lifecycle
+patch.
+
+#### Wave 3 — Phase 7 Game Lanes
+
+First merge the small `perf/p7-side-panel-core` branch. It owns the incremental
+side-panel contract and shared panel implementation. From that integration
+commit, run these branches in parallel:
+
+- `perf/p7-shell-curl`, covering the code-backed Shell Curl game presented to
+  users as Temple Curling;
+- `perf/p7-bell-clash`; and
+- `perf/p7-kame-bamboo`, covering the Kame Knock and Bamboo Bash audit.
+
+Each lane exclusively owns its game scenes, online adapters, views, and
+targeted tests. It must not change replay-common, lifecycle-common, shared
+panel, or `HomePage.tsx` files. Every lane records feature-specific automated
+and visual acceptance evidence before merge.
+
+#### Wave 4 — Phase 8 Ownership Work
+
+Phase 8 starts after replay, backdrop, lifecycle, casino, and game branches no
+longer restructure `HomePage.tsx` or route ownership. Use this short stack:
+
+1. `perf/p8-session-cache`: persistent provider, `auth/me` single-flight
+   behaviour, freshness, and invalidation;
+2. `perf/p8-notification-store`: notification and unread ownership across
+   route transitions with REST reconciliation and socket updates; and
+3. `perf/p8-home-slices`: feature ownership extraction, local fast-changing
+   state, and the no-op `ViewportGuard` correction.
+
+The branches are sequential because they intentionally build on the same
+provider and page ownership. The final gate requires one logical session
+request, correct invalidation, persistent inbox state, no unrelated animation
+renders, and a maximum React commit below 16 ms.
+
+#### Wave 5 — Phase 9 Serial Integration
+
+Phase 9 contains no planned feature development. Freeze code, run targeted
+validation shards, and then run the comparable Firefox profiles and complete
+production matrix serially on the destination machine. Unit tests and builds
+may run concurrently in isolated worktrees, but workers must not concurrently
+control `make dev`, `make prod`, `make down`, shared ports, Vault, the database,
+or the comparison browser. Browser-wide renderer measurements are invalid when
+other performance captures or workload run at the same time.
+
+For every merge:
+
+- rebase onto the current integration head and resolve conflicts there;
+- run targeted tests, the full frontend suite, production build, stylesheet
+  reachability check, and `git diff --check`;
+- run backend tests and OpenAPI validation when a shared or backend contract
+  changes;
+- let the integrator update the checkpoint and review
+  `docs/modules-progress.md`; and
+- do not mark a phase complete until its own automated, visual, lifecycle, and
+  profiler gates pass.
 
 ## 8. Validation Matrix
 

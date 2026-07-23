@@ -1,7 +1,7 @@
 # Frontend Performance Remediation Checkpoint
 
-Last updated: 23 July 2026 — local Phase 1 capture complete; target capture pending
-Overall status: Phase 1 partially complete
+Last updated: 23 July 2026 — target-machine Phase 1 baseline complete
+Overall status: Phase 1 complete; Phase 2 ready to start
 Source plan: [`frontend-performance-profiler-report-and-plan-2026-07-23.md`](frontend-performance-profiler-report-and-plan-2026-07-23.md)
 
 ## 1. Purpose
@@ -11,16 +11,15 @@ It must be updated in the same task as every implementation phase or partial
 phase. It records what changed, what was validated, what remains, and the exact
 next action for a future session.
 
-The diagnostic report and local Phase 1 capture are complete. The authoritative
-performance baseline on the machine where the problem was observed remains
-pending. This file and the source plan remain in `docs/` until all
-implementation and validation phases are complete.
+The authoritative Phase 1 baseline has now been captured on the destination
+machine. The report and checkpoint remain live because Phases 2–9 are still
+open.
 
 ## 2. Phase Summary
 
 | Phase | Scope | Status | Last validation | Remaining work |
 | --- | --- | --- | --- | --- |
-| 1 | Reproducible production baseline | Partially complete | Local exact-viewport development and production matrices, Firefox profiles, React replay capture, lifecycle counters, graphics record, build, tests, health, and OpenAPI validation | Repeat the comparable Firefox and React baseline on the original problem machine and record its exact environment |
+| 1 | Reproducible production baseline | Complete | Target-machine development and production matrices at 1440 x 900, Firefox profiles, React replay capture, lifecycle counters, build, tests, and health | None |
 | 2 | Singular replay runtime | Not started | Existing React profile exposes two viewers | Full phase |
 | 3 | Replay render optimisation | Not started | Static code and existing profiles reviewed | Full phase |
 | 4 | Typed replay capture and delta encoding | Not started | Existing GC and encoder reviewed | Full phase |
@@ -99,8 +98,7 @@ not the final production baseline required by Phase 1.
 
 ## 4. Active Phase Record
 
-Phase 1 remains active. Its local implementation and capture are complete, but
-the target-machine performance capture is still required.
+Phase 1 is complete.
 
 ### Phase attempted
 
@@ -108,7 +106,7 @@ Phase 1 — establish a reproducible production baseline.
 
 ### Status
 
-Partially complete.
+Complete.
 
 ### Changes made
 
@@ -126,6 +124,10 @@ Partially complete.
 - Added focused tests for counter increments, peaks, idempotent release, and
   reset behaviour.
 - Defined the fixed development and production scenario procedure below.
+- Added the parallel delivery topology for Phases 2–9 to the source plan. It
+  defines one integration branch, five dependency-ordered waves, exclusive
+  file ownership, merge gates, and serial ownership of shared performance
+  resources.
 - Reviewed `docs/modules-progress.md`; this diagnostic infrastructure does not
   advance or complete a specification module, so no module status changed.
 
@@ -147,97 +149,111 @@ Partially complete.
 
 ### Automated validation
 
-- Exact repository and served commit:
-  `bb0cf0fc7616858ae63f88acd31c55fe9dbdee4c`.
-- Host runtime: Node.js 24.13.0 and npm 11.18.0. Pinned frontend container
-  runtime: Node.js 24.18.0 and npm 11.16.0.
-- `cd frontend && npm run build` — pass, with 241 modules transformed and all
-  production assets emitted.
-- `cd frontend && npm run test:run` — pass, 74 files and 416 tests.
-- `make health` — pass, all 13 services healthy in development mode.
+- Repository HEAD: `a2ee19a2a91e801a2c02042eebea75fab7941104`.
+  Development and production served the same frontend commit marker,
+  `a0626653cc71a402df55deb0e233a0380b52e398`; changes after that frontend
+  commit are limited to documentation and the Vault development seed script.
+- Pinned frontend container runtime: Node.js 24.18.0 and npm 11.16.0.
+- `cd frontend && npm run test:run` in the pinned container — pass, 74 files
+  and 416 tests in 9.53 seconds.
+- `cd frontend && npm run build` in the pinned container — pass, 241 modules
+  transformed and all production assets emitted in 11.10 seconds.
+- Stylesheet manifest inspection — pass, all 18 feature stylesheets are
+  reachable through `frontend/src/styles/modules/index.css`.
+- `make health` — pass in both stack modes; all 13 services were healthy.
 - `make validate-openapi` — pass, 97 paths and 108 operations.
-- The production document exposed the exact commit and did not expose
-  `window.__SHELL_SMASH_PERFORMANCE__`.
+- The production document exposed the same commit marker as development and
+  did not expose `window.__SHELL_SMASH_PERFORMANCE__`.
 - `git diff --check` — pass.
 
 ### Manual and profiler validation
 
-- Firefox ESR 140.11.0 ran non-headless under X11 at exactly 1440 x 900 CSS
-  pixels and device pixel ratio 1. `about:support` reported WebRender and an
-  AMD Radeon 610M through `radeonsi` for WebGL 1 and WebGL 2.
-- The complete fixed matrix passed in both development and production: idle
-  hub, opaque Shell Cards modal, Fortune Wheel, Shell Drop, Kame Knock, Bamboo
-  Bash, Temple Curling, Bell Clash, five route round trips, inline replay,
-  expanded replay, and replay teardown. Each matrix contains 16 records.
-- Both matrices reported zero browser errors, zero unhandled rejections, and
-  zero failed resources.
-- Every Phaser game retained one game and one canvas while active, and no game
-  canvas remained after returning to the hub. All five route round trips
-  returned to zero live resources.
-- Inline replay retained one of each tracked replay resource. Expanded replay
-  retained two games, controllers, scenes, canvases, RAF loops, and resize
-  observers. Closing replay returned every live count to zero. This is the
-  reproducible defect baseline for Phase 2.
-- The local comparison Firefox captures used a 1 ms interval with JS, CPU,
-  memory, stack walking, responsiveness, and screenshots enabled. Production
-  recorded 134.29 seconds; development recorded 136.57 seconds.
-- Production CPU totals were 7.31 seconds on Renderer, 4.44 seconds on
-  CanvasRenderer, 2.07 seconds on Compositor, and 21.53 seconds across content
-  Gecko main threads. Development recorded 5.99, 4.10, 1.71, and 21.55 seconds
-  respectively.
-- Production recorded 1,095 minor collections and 42 major collections.
-  Development recorded 1,340 minor collections and 54 major collections.
-- The React replay window covered inline and expanded playback for 22.83
-  seconds: 354 `HomeMenu` commits, 1,506 ms total render duration, 4.25 ms
-  mean, 8 ms p95, 24 ms maximum, one commit over 16 ms, and 151 adjacent commit
-  intervals of 16 ms or less.
-- Raw development and production matrices, screenshots, Firefox profiles,
-  React commit data, and `about:support` data are retained under
-  `/tmp/phase1-results/`. The matrix SHA-256 values are
-  `8603764fc753b824da0789e46497fe2b67b52c5b367db4c9ad9e5113ffe591a1`
+- Firefox 152.0.6 ran non-headless over X11 at exactly 1440 x 900 CSS pixels
+  and device pixel ratio 1. The destination environment exposed WebRender
+  (Software) and Mesa llvmpipe for WebGL 1 and WebGL 2. This is the graphics
+  configuration recorded for later comparisons.
+- The complete fixed matrix passed in development and production: idle hub,
+  opaque Shell Cards modal, Fortune Wheel, Shell Drop, all four Phaser games,
+  inline replay, expanded replay, replay teardown, and five hub/game round
+  trips.
+- Every Phaser game retained exactly one game and one canvas while active.
+  Every game return and all five route round trips returned live ownership and
+  DOM canvas counts to zero.
+- Development inline replay retained one Phaser game, controller, scene,
+  canvas, RAF loop, and resize observer. Expanded replay retained two of each.
+  Closing replay returned all six live counters to zero. Production reproduced
+  the visible one-canvas and two-canvas ownership pattern and clean teardown.
+- The isolated React replay window recorded 903 commits and 2,928 ms total
+  render duration. Of these, 891 occurred while replay was mounted, all 891
+  included `HomeMenu`, the maximum commit was 28 ms, two commits exceeded
+  16 ms, and the maximum mounted `ReplayViewer` count was two.
+- Production core retained 138.08 seconds of application samples: application
+  main-thread CPU was 0.38% of one logical core, Renderer 11.02%, no
+  `MainThreadLongTask` marker was recorded, and the maximum measured GC slice
+  was 13.77 ms.
+- The two production game shards retained 39.03 and 45.98 seconds. Application
+  main-thread CPU was 17.96% and 12.94%, Renderer 20.71% and 25.01%, and
+  CanvasRenderer 27.84% and 25.38%; neither shard recorded a long task.
+- The production replay/route shard retained 55.81 seconds. Application
+  main-thread CPU was 9.10%, Renderer 62.11%, and CanvasRenderer 9.35%. It
+  recorded 11 long tasks totalling 1.59 seconds, from 51.90 to 246.62 ms.
+  Because the shard also contains route loads, these tasks are a combined
+  replay-and-navigation baseline rather than replay-only attribution.
+- The earlier development game profile retained 39.02 seconds with application
+  main-thread CPU at 13.81%, Renderer at 20.61%, CanvasRenderer at 24.67%, and
+  no long tasks. Its maximum measured GC slice was 16.71 ms.
+- Final matrix SHA-256 values are
+  `dcdc35b08cff3d180c6205693bce7496b21555db86de913131a58ec6e655cc66`
+  for development and
+  `451af835e6635de17a2da952ff965dbfa9e51e80a89337535f387aaf2647b8c9`,
+  `7b3f5188af228cc6126845b86e52cc5baecbf55c6b9ded1756d6323ba31627f3`,
+  `7268f3edfb0faf8ff538bb90559d98753bf9058268f446e7e719abd7a5e14edf`,
   and
-  `376519f3b0d46727bea9581fc50ce62f2ef9c9e2caed73395f37ee4220e1c20a`;
-  the Firefox profile values are
-  `8d94f5d2e9c92eb20c637af343fa5438b5513e1501d1d77b68bec8f76243c742`
+  `e0e28e92436588143a874d1f2d84c8787aec4878e720c29bfc82f4ba0a015638`
+  for the four production shards.
+- Firefox profile SHA-256 values are recorded as
+  `abe8c2b7085c0c01926c8fe7694752a382470f44a5bc762808f597d5ab116bc1`,
+  `dfdc536dfd6362dc62e1b9e4f1609807cbee43ad29c1728d31d14392c1e8acba`,
+  `61a6240cb67c0f2b3b5d8bf50eac8c864c9ed03c2f097306ea0ec800ba08c60d`,
+  `1aa96dcfbe0991be8bae2d2892e89e1cb735bc6f6baa0b5538271862960d9ee8`,
+  `3f93fc18aa62b06118109694ce2b4e24359634f15addd06ee99a6759ecf515c8`,
   and
-  `db9110c83203d5608b1983db42897a10ebe0ea589a19032fec5b56bfffa4f250`.
+  `692705bc416f417f06b8a7998e4b8103471c230359ef5214d5cbdf383374d403`.
+- The matrices remain under `/tmp/shell-smash-phase1/`, and the Firefox
+  profiles remain under `/home/marcnava/snap/firefox/common/` on the
+  destination machine. The SHA-256 values above identify the exact accepted
+  artefacts.
 
 ### Known limitations
 
-- The configured public deployment remains unreachable, so its historical
-  commit is unknown. Future builds expose the commit in the
-  `shell-smash-commit` meta element.
-- The current Radeon 610M machine is not the machine where the performance
-  problem was observed. Its captures validate the scenario automation,
-  lifecycle ownership, and local behaviour only; they are not the
-  authoritative graphics or CPU baseline.
-- The original diagnostic capture reported a Radeon 780M and software-renderer
-  activity. A clean baseline must be repeated on that original problem machine
-  with its exact Firefox `about:support` configuration. The post-remediation
-  comparison must then use that same machine, browser configuration, viewport,
-  and scripted sequence.
-- Startup and browser-shutdown activity remains in both comparable Firefox
-  captures. Later phase comparisons must use the same scripted sequence and
-  capture procedure.
+- Firefox's ring buffer discarded earlier parts of the longest recordings.
+  CPU, GC, and long-task figures therefore describe each retained tail, while
+  the separate matrix records prove that every required timed scenario ran.
+- The production replay profile includes route transitions after replay. Long
+  tasks from that shard cannot be attributed exclusively to replay without
+  narrower segmentation.
+- The current destination exposes software rendering rather than the Radeon
+  renderer mentioned in the original diagnostic notes. Later comparisons must
+  preserve the destination's recorded Firefox 152.0.6, llvmpipe, viewport, and
+  interaction procedure.
 
 ### Work remaining in this phase
 
-Run the fixed development and production comparison capture on the original
-problem machine. Record its exact commit, Node.js and npm versions, Firefox
-version, operating system, CPU, `about:support` Compositing, WebRender, WebGL 1
-and WebGL 2 fields, viewport, device pixel ratio, Firefox profile metrics, and
-React replay metrics. Preserve the raw profiles and checksums, then designate
-that capture as the authoritative Phase 1 performance baseline.
+None. Every Phase 1 environment, scenario, profiler, lifecycle, and validation
+requirement has been recorded.
 
 ### Exact next action
 
-On the original problem machine, check out exact commit
-`bb0cf0fc7616858ae63f88acd31c55fe9dbdee4c`, start the stack through the
-Makefile, capture Firefox `about:support`, and run the same development and
-production profiling sequence at 1440 x 900 and device pixel ratio 1. Do not
-start Phase 2 until that target-machine baseline has been recorded.
+Commit the accepted Phase 1 closure, create
+`perf/phases-2-9-integration` from that commit, record the Wave 0 interface
+seams, and start the three Wave 1 branches for the singular replay session,
+typed encoder core, and isolated hub backdrop.
 
 ## 5. Checkpoint 2026-07-23 — Post-Pull Plan Compatibility Review
+
+This section is a historical checkpoint. Its status and next action record the
+state at that point; the current Phase 1 status is the complete record in
+Section 4.
 
 ### Phase and subtask attempted
 
@@ -295,6 +311,9 @@ Measure free storage and Docker cache usage, then establish the Node.js 24
 execution environment without creating mixed-version dependency artefacts.
 
 ## 6. Checkpoint 2026-07-23 — Phase 1 Development Hub Captures
+
+This section is a historical checkpoint. Its partial results and remaining
+work were superseded by the complete target-machine record in Section 4.
 
 ### Phase and subtask attempted
 
