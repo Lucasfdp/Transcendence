@@ -23,8 +23,9 @@ import { ShellDropModal } from "../components/gambling/ShellDropModal";
 import { ShellFlipModal } from "../components/gambling/ShellFlipModal";
 import { ThreeShellMonteModal } from "../components/gambling/ThreeShellMonteModal";
 import { ShrineSlotsModal } from "../components/gambling/ShrineSlotsModal";
-import { ProtectedRoute } from "../routes/ProtectedRoute";
 import { ReplayViewer } from "../games/common/replay/ReplayViewer";
+import { useInbox } from "../app/inbox/InboxContext";
+import { useSession } from "../app/session/SessionContext";
 import {
 	type CycleTheme,
 	hubBackgroundClass,
@@ -43,7 +44,6 @@ import {
 	type GifSearchResult,
 	type GroupMemberView,
 	MiniGameDefinition,
-	NotificationView,
 	OverallLeaderboardEntry,
 	PendingView,
 	type PublicUserView,
@@ -54,13 +54,11 @@ import {
 	ReplaySummary,
 	type LeaderboardScope,
 	type TournamentLeaderboardEntry,
-	type UnreadConversationView,
 	type User,
 } from "../features/hub/api";
 import { TURTLE_TAGS } from "../shared/turtle-tags";
 import { accountDisplayName, displayUsername } from "../shared/player-labels";
 import {
-	disconnectGameSocket,
 	getGameSocket,
 	type BellClashSnapshot,
 	type BambooBashSnapshot,
@@ -74,13 +72,11 @@ import {
 } from "../features/social/friendsOps";
 import { buildFriendCode, parseFriendCode } from "../features/social/friendCode";
 import {
-	addUnread,
 	conversationTitle,
 	isNearBottom,
 	parseGifMetadata,
 	removeUnread,
 	sortConversationsByRecency,
-	unreadIdsFromInbox,
 	upsertConversationPreview,
 } from "../features/chat/chatOps";
 import { filterFriends } from "../features/social/friendFilter";
@@ -89,7 +85,6 @@ import { debounce } from "../features/social/profileCard/debounce";
 import { ProfileCard } from "../features/social/profileCard/ProfileCard";
 import {
 	notificationIdsFrom,
-	prependNotificationDeduped,
 	removeNotificationsFrom,
 } from "../features/social/notificationDedup";
 import {
@@ -647,6 +642,18 @@ function LobbyCountdown({ expiresAt }: { expiresAt: number }): JSX.Element {
 function HomeMenu(): JSX.Element {
 	const navigate = useNavigate();
 	const [searchParams] = useSearchParams();
+	const {
+		user: player,
+		setCurrentUser: setPlayer,
+		refreshSession,
+		invalidateSession,
+	} = useSession();
+	const {
+		notifications,
+		setNotifications,
+		unreadConversationIds,
+		setUnreadConversationIds,
+	} = useInbox();
 	const [now, setNow] = useState(() => new Date());
 	const [isClockDebugOpen, setIsClockDebugOpen] = useState(false);
 	const [manualMinutes, setManualMinutes] = useState<number | null>(null);
@@ -657,7 +664,6 @@ function HomeMenu(): JSX.Element {
 			: "choose";
 	});
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
-	const [player, setPlayer] = useState<User | null>(null);
 	const [minigames, setMinigames] = useState<MiniGameDefinition[]>([]);
 	const [leaderboardGame, setLeaderboardGame] = useState<string>("overall");
 	const [leaderboardScope, setLeaderboardScope] = useState<LeaderboardScope>("global");
@@ -674,7 +680,6 @@ function HomeMenu(): JSX.Element {
 	// failure (e.g. the backend 500ing under H1) must not render as the same
 	// "No rankings yet." empty state a healthy-but-empty board would show.
 	const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
-	const [notifications, setNotifications] = useState<NotificationView[]>([]);
 	const [isNotifDrawerOpen, setIsNotifDrawerOpen] = useState(false);
 	// Private lobby — host side
 	const [activeLobby, setActiveLobby] = useState<{
@@ -733,13 +738,9 @@ function HomeMenu(): JSX.Element {
 	const [replays, setReplays] = useState<ReplaySummary[] | null>(null);
 	const [replaysLoading, setReplaysLoading] = useState(false);
 	const [selectedReplay, setSelectedReplay] = useState<ReplayDetail | null>(null);
-	const [selectedReplayFrame, setSelectedReplayFrame] = useState(0);
-	const [replayFrameProgress, setReplayFrameProgress] = useState(0);
 	const [replayActionLoading, setReplayActionLoading] = useState<string | null>(
 		null,
 	);
-	const [isReplayPlaying, setIsReplayPlaying] = useState(false);
-	const [isReplayExpanded, setIsReplayExpanded] = useState(false);
 	const [replayTab, setReplayTab] = useState<"match" | "saved">("match");
 	const [showcasePickerSlot, setShowcasePickerSlot] = useState<number | null>(null);
 	const [friends, setFriends] = useState<FriendView[] | null>(null);
@@ -761,9 +762,6 @@ function HomeMenu(): JSX.Element {
 
 	// ── Chat ─────────────────────────────────────────────────────────────────
 	const [conversations, setConversations] = useState<ConversationSummaryView[] | null>(null);
-	const [unreadConversationIds, setUnreadConversationIds] = useState<Set<number>>(
-		new Set(),
-	);
 	const [activeConversationId, setActiveConversationId] = useState<number | null>(
 		null,
 	);
@@ -869,15 +867,12 @@ function HomeMenu(): JSX.Element {
 
 		async function loadHub(): Promise<void> {
 				try {
-					const [nextPlayer, nextMinigames, nextAchievements] =
-						await Promise.all([
-							api.getMe(),
-						api.getMiniGames().catch(() => []),
-						api.getAchievements().catch(() => []),
-					]);
+					const [nextMinigames, nextAchievements] = await Promise.all([
+							api.getMiniGames().catch(() => []),
+							api.getAchievements().catch(() => []),
+						]);
 
 					if (!cancelled) {
-						setPlayer(nextPlayer);
 						setMinigames(nextMinigames);
 						setAchievements(nextAchievements);
 					}
@@ -980,46 +975,6 @@ function HomeMenu(): JSX.Element {
 		[tournamentLeaderboard, player],
 	);
 
-	// Hydrate the notification inbox on every mount via REST (Bug Audit H1).
-	// The WS `notification:inbox` push below only fires once, at socket
-	// *connect* time — but the game socket is a module-level singleton that
-	// stays connected across route changes (hub → game → hub), so that
-	// one-time hydration never re-runs on a HomePage remount. Without this
-	// fetch the bell goes stale/empty after the most common navigation path
-	// in the app. REST is the source of truth; the WS events remain the live
-	// accelerator while this tab stays open.
-	useEffect(() => {
-		let cancelled = false;
-		api
-			.getNotifications()
-			.then((items) => {
-				if (!cancelled) setNotifications(items);
-			})
-			.catch(() => undefined);
-		return () => {
-			cancelled = true;
-		};
-	}, []);
-
-	// Hydrate the chat unread set on every mount via REST (Bug B1) — same
-	// rationale as the notification hydration above: the `chat:unread-inbox`
-	// socket push only fires at connect time on the singleton game socket, so
-	// after hub → game → hub the remounted component's unread set is empty
-	// until a new message arrives. REST rebuilds it; WS remains the live
-	// accelerator.
-	useEffect(() => {
-		let cancelled = false;
-		api
-			.getUnreadConversations()
-			.then((entries) => {
-				if (!cancelled) setUnreadConversationIds(unreadIdsFromInbox(entries));
-			})
-			.catch(() => undefined);
-		return () => {
-			cancelled = true;
-		};
-	}, []);
-
 	// Mirror of `friends` for the mount-bound socket effect below (Bug B3),
 	// which closes over its first-render `friends` value otherwise — the
 	// same staleness problem `conversationsRef` solves for the chat effect.
@@ -1035,13 +990,6 @@ function HomeMenu(): JSX.Element {
 	// Subscribe to notification + lobby events on the shared game socket
 	useEffect(() => {
 		const socket = getGameSocket();
-
-		const onInbox = (items: NotificationView[]) => setNotifications(items);
-		// Guard against a duplicated push (e.g. a reconnect race) rendering the
-		// same notification twice and producing duplicate React keys — mirrors
-		// the chat message handler's existing id-dedup (Bug Audit L4).
-		const onNew = (item: NotificationView) =>
-			setNotifications((prev) => prependNotificationDeduped(prev, item));
 
 		// Friend removal is delivered live-only (Bug Audit §3/#10 — see the
 		// backend NotificationType doc for why it's not a persisted bell
@@ -1096,8 +1044,6 @@ function HomeMenu(): JSX.Element {
 			navigate(`/play/${data.gameId}`, { state: { autoJoinMatch: true } });
 		};
 
-		socket.on("notification:inbox", onInbox);
-		socket.on("notification:new", onNew);
 		socket.on("friend:removed", onFriendRemoved);
 		socket.on("presence:changed", onPresenceChanged);
 		socket.on("lobby:created", onLobbyCreated);
@@ -1108,8 +1054,6 @@ function HomeMenu(): JSX.Element {
 		socket.on("lobby:matched", onLobbyMatched);
 
 		return () => {
-			socket.off("notification:inbox", onInbox);
-			socket.off("notification:new", onNew);
 			socket.off("friend:removed", onFriendRemoved);
 			socket.off("presence:changed", onPresenceChanged);
 			socket.off("lobby:created", onLobbyCreated);
@@ -1246,18 +1190,6 @@ function HomeMenu(): JSX.Element {
 			}
 		};
 
-		const onChatUnreadInbox = (entries: UnreadConversationView[]) => {
-			setUnreadConversationIds(unreadIdsFromInbox(entries));
-		};
-
-		const onChatUnread = (entry: UnreadConversationView) => {
-			setUnreadConversationIds((prev) => addUnread(prev, entry.conversationId));
-		};
-
-		const onChatReadSync = (data: { conversationId: number }) => {
-			setUnreadConversationIds((prev) => removeUnread(prev, data.conversationId));
-		};
-
 		const onChatError = (data: { message: string }) => {
 			showToast({ message: data.message, variant: "error" });
 			// The send that triggered this error cleared the draft optimistically;
@@ -1280,7 +1212,6 @@ function HomeMenu(): JSX.Element {
 			setConversations((prev) =>
 				prev ? prev.filter((c) => c.id !== data.conversationId) : prev,
 			);
-			setUnreadConversationIds((prev) => removeUnread(prev, data.conversationId));
 			if (activeConversationIdRef.current === data.conversationId) {
 				setActiveConversationId(null);
 				setChatMessages([]);
@@ -1318,18 +1249,12 @@ function HomeMenu(): JSX.Element {
 		};
 
 		socket.on("chat:message", onChatMessage);
-		socket.on("chat:unread-inbox", onChatUnreadInbox);
-		socket.on("chat:unread", onChatUnread);
-		socket.on("chat:read-sync", onChatReadSync);
 		socket.on("chat:error", onChatError);
 		socket.on("chat:removed", onChatRemoved);
 		socket.on("chat:conversation-updated", onChatConversationUpdated);
 
 		return () => {
 			socket.off("chat:message", onChatMessage);
-			socket.off("chat:unread-inbox", onChatUnreadInbox);
-			socket.off("chat:unread", onChatUnread);
-			socket.off("chat:read-sync", onChatReadSync);
 			socket.off("chat:error", onChatError);
 			socket.off("chat:removed", onChatRemoved);
 			socket.off("chat:conversation-updated", onChatConversationUpdated);
@@ -1421,10 +1346,6 @@ function HomeMenu(): JSX.Element {
 			setManualMinutes(null);
 		}
 	}, [showCycleBackdrop]);
-
-	useEffect(() => {
-		setReplayFrameProgress(0);
-	}, [selectedReplay?.matchId, selectedReplayFrame]);
 
 	const matchReplays = useMemo(
 		() => replays?.filter((replay) => !replay.isSavedByCurrentUser) ?? [],
@@ -1529,17 +1450,7 @@ function HomeMenu(): JSX.Element {
 		} catch (err: unknown) {
 			console.warn("[HomeMenu] Logout failed, redirecting anyway:", err);
 		} finally {
-			// Bug Audit H2: the game socket is a module-level singleton that
-			// otherwise stays connected — and authenticated as this user — right
-			// through logout. Left alone, the "logged-out" user stays "online"
-			// to friends until the tab closes, and if another user logs in on
-			// the same tab afterwards (SPA navigation, no reload) they'd inherit
-			// this still-open socket: receiving the previous user's pushes,
-			// never getting their own, and their notification:read/-all
-			// emissions would mutate the previous user's rows. Disconnecting
-			// here forces a fresh, correctly-authenticated socket on next
-			// connect (getGameSocket() re-creates it lazily).
-			disconnectGameSocket();
+			invalidateSession();
 			navigate("/auth", { replace: true });
 		}
 	};
@@ -1677,7 +1588,12 @@ function HomeMenu(): JSX.Element {
 			if (player) {
 				let refreshedPlayer: User | null = null;
 				try {
-					refreshedPlayer = await api.getMe();
+					const refreshedSession = await refreshSession(true);
+					if (refreshedSession.status === "unauthenticated") {
+						navigate("/auth", { replace: true });
+						return;
+					}
+					refreshedPlayer = refreshedSession.user;
 				} catch {
 					// Keep the local cosmetic update if the balance refresh fails.
 				}
@@ -1710,6 +1626,7 @@ function HomeMenu(): JSX.Element {
 	 */
 	const describeModalError = (err: unknown, fallback: string): string => {
 		if (err instanceof AuthError && err.status === 401) {
+			invalidateSession();
 			navigate("/auth", { replace: true });
 			return "Your session has expired — please log in again.";
 		}
@@ -2295,10 +2212,6 @@ function HomeMenu(): JSX.Element {
 		setModalError("");
 		setReplaysLoading(true);
 		setSelectedReplay(null);
-		setSelectedReplayFrame(0);
-		setReplayFrameProgress(0);
-		setIsReplayPlaying(false);
-		setIsReplayExpanded(false);
 		setReplayTab("match");
 		try {
 			const nextReplays = await api.getMyReplays();
@@ -2314,13 +2227,9 @@ function HomeMenu(): JSX.Element {
 	const handleLoadReplay = async (matchId: string) => {
 		setReplayActionLoading(matchId);
 		setModalError("");
-		setIsReplayPlaying(false);
-		setIsReplayExpanded(false);
 		try {
 			const replay = await api.getReplay(matchId);
 			setSelectedReplay(replay);
-			setSelectedReplayFrame(0);
-			setReplayFrameProgress(0);
 		} catch (err: unknown) {
 			setModalError(describeModalError(err, "Could not load replay."));
 		} finally {
@@ -4012,116 +3921,24 @@ function HomeMenu(): JSX.Element {
 			) : null}
 
 			{activeModal === "replays" ? (
-				<HubModal
-					title="Match Replays"
-					variant="wide"
+				<ReplayModal
+					error={modalError}
+					loading={replaysLoading}
+					replayTab={replayTab}
+					matchReplays={matchReplays}
+					savedReplays={savedReplays}
+					selectedReplay={selectedReplay}
+					replayActionLoading={replayActionLoading}
+					onReplayTabChange={setReplayTab}
+					onLoadReplay={(matchId) => void handleLoadReplay(matchId)}
+					onToggleSaved={(matchId, nextSavedState) =>
+						void handleSaveReplay(matchId, nextSavedState)
+					}
 					onClose={() => {
 						setActiveModal(null);
 						setSelectedReplay(null);
-						setSelectedReplayFrame(0);
-						setReplayFrameProgress(0);
-						setIsReplayPlaying(false);
-						setIsReplayExpanded(false);
 					}}
-				>
-					<p className="hub-modal__replay-notice">
-						Replays are unavailable while power-ups are enabled.
-					</p>
-					{modalError ? <p className="hub-modal__error">{modalError}</p> : null}
-					<div className="hub-modal__replays">
-						<div className="hub-modal__replay-list">
-							{replaysLoading ? (
-								<p>Loading…</p>
-							) : (
-								<>
-									<div className="hub-modal__replay-tabs" role="tablist" aria-label="Replay categories">
-										<button
-											type="button"
-											role="tab"
-											aria-selected={replayTab === "match"}
-											className={`hub-modal__replay-tab${replayTab === "match" ? " hub-modal__replay-tab--active" : ""}`}
-											onClick={() => setReplayTab("match")}
-										>
-											Match replays
-										</button>
-										<button
-											type="button"
-											role="tab"
-											aria-selected={replayTab === "saved"}
-											className={`hub-modal__replay-tab${replayTab === "saved" ? " hub-modal__replay-tab--active" : ""}`}
-											onClick={() => setReplayTab("saved")}
-										>
-											My replays
-										</button>
-									</div>
-									<ReplayListSection
-										title={replayTab === "match" ? "Match replays" : "My replays"}
-										replays={replayTab === "match" ? matchReplays : savedReplays}
-										selectedReplay={selectedReplay}
-										replayActionLoading={replayActionLoading}
-										onLoadReplay={(matchId) => void handleLoadReplay(matchId)}
-										onToggleSaved={(matchId, nextSavedState) =>
-											void handleSaveReplay(matchId, nextSavedState)
-										}
-										emptyMessage={
-											replayTab === "match"
-												? "No temporary match replays available."
-												: "You have no saved replays yet."
-										}
-									/>
-								</>
-							)}
-						</div>
-
-						<div className="hub-modal__replay-viewer">
-							<h3>Replay viewer</h3>
-							{selectedReplay ? (
-								<ReplayViewer
-									replay={selectedReplay}
-									selectedReplayFrame={selectedReplayFrame}
-									replayFrameProgress={replayFrameProgress}
-									isReplayPlaying={isReplayPlaying}
-									onSelectedReplayFrameChange={setSelectedReplayFrame}
-									onReplayFrameProgressChange={setReplayFrameProgress}
-									onIsReplayPlayingChange={setIsReplayPlaying}
-									onExpand={() => setIsReplayExpanded(true)}
-								/>
-							) : (
-								<div className="hub-modal__replay-empty">
-									<img
-										className="hub-modal__replay-empty-logo"
-										src="/assets/logoShellSmash.png"
-										alt="Shell Smash"
-									/>
-									<p className="hub-panel__muted">
-										Select a replay to inspect its timeline.
-									</p>
-								</div>
-							)}
-						</div>
-					</div>
-				</HubModal>
-			) : null}
-
-			{activeModal === "replays" && isReplayExpanded && selectedReplay ? (
-				<HubModal
-					title={`${getReplayGameLabel(selectedReplay.gameId)} Replay`}
-					variant="wide"
-					onClose={() => setIsReplayExpanded(false)}
-				>
-					<div className="hub-modal__replay-viewer hub-modal__replay-viewer--expanded">
-						<ReplayViewer
-							replay={selectedReplay}
-							selectedReplayFrame={selectedReplayFrame}
-							replayFrameProgress={replayFrameProgress}
-							isReplayPlaying={isReplayPlaying}
-							onSelectedReplayFrameChange={setSelectedReplayFrame}
-							onReplayFrameProgressChange={setReplayFrameProgress}
-							onIsReplayPlayingChange={setIsReplayPlaying}
-							expanded
-						/>
-					</div>
-				</HubModal>
+				/>
 			) : null}
 
 			{activeModal === "social" ? (
@@ -5457,6 +5274,149 @@ function HubModal({
 	);
 }
 
+function ReplayModal({
+	error,
+	loading,
+	replayTab,
+	matchReplays,
+	savedReplays,
+	selectedReplay,
+	replayActionLoading,
+	onReplayTabChange,
+	onLoadReplay,
+	onToggleSaved,
+	onClose,
+}: {
+	error: string;
+	loading: boolean;
+	replayTab: "match" | "saved";
+	matchReplays: ReplaySummary[];
+	savedReplays: ReplaySummary[];
+	selectedReplay: ReplayDetail | null;
+	replayActionLoading: string | null;
+	onReplayTabChange: (tab: "match" | "saved") => void;
+	onLoadReplay: (matchId: string) => void;
+	onToggleSaved: (matchId: string, nextSavedState: boolean) => void;
+	onClose: () => void;
+}): JSX.Element {
+	const [selectedReplayFrame, setSelectedReplayFrame] = useState(0);
+	const [replayFrameProgress, setReplayFrameProgress] = useState(0);
+	const [isReplayPlaying, setIsReplayPlaying] = useState(false);
+	const [isReplayExpanded, setIsReplayExpanded] = useState(false);
+
+	useEffect(() => {
+		setSelectedReplayFrame(0);
+		setReplayFrameProgress(0);
+		setIsReplayPlaying(false);
+		setIsReplayExpanded(false);
+	}, [selectedReplay?.matchId]);
+
+	useEffect(() => {
+		setReplayFrameProgress(0);
+	}, [selectedReplayFrame]);
+
+	return (
+		<>
+			<HubModal title="Match Replays" variant="wide" onClose={onClose}>
+				<p className="hub-modal__replay-notice">
+					Replays are unavailable while power-ups are enabled.
+				</p>
+				{error ? <p className="hub-modal__error">{error}</p> : null}
+				<div className="hub-modal__replays">
+					<div className="hub-modal__replay-list">
+						{loading ? (
+							<p>Loading…</p>
+						) : (
+							<>
+								<div className="hub-modal__replay-tabs" role="tablist" aria-label="Replay categories">
+									<button
+										type="button"
+										role="tab"
+										aria-selected={replayTab === "match"}
+										className={`hub-modal__replay-tab${replayTab === "match" ? " hub-modal__replay-tab--active" : ""}`}
+										onClick={() => onReplayTabChange("match")}
+									>
+										Match replays
+									</button>
+									<button
+										type="button"
+										role="tab"
+										aria-selected={replayTab === "saved"}
+										className={`hub-modal__replay-tab${replayTab === "saved" ? " hub-modal__replay-tab--active" : ""}`}
+										onClick={() => onReplayTabChange("saved")}
+									>
+										My replays
+									</button>
+								</div>
+								<ReplayListSection
+									title={replayTab === "match" ? "Match replays" : "My replays"}
+									replays={replayTab === "match" ? matchReplays : savedReplays}
+									selectedReplay={selectedReplay}
+									replayActionLoading={replayActionLoading}
+									onLoadReplay={onLoadReplay}
+									onToggleSaved={onToggleSaved}
+									emptyMessage={
+										replayTab === "match"
+											? "No temporary match replays available."
+											: "You have no saved replays yet."
+									}
+								/>
+							</>
+						)}
+					</div>
+					<div className="hub-modal__replay-viewer">
+						<h3>Replay viewer</h3>
+						{selectedReplay ? (
+							<ReplayViewer
+								replay={selectedReplay}
+								selectedReplayFrame={selectedReplayFrame}
+								replayFrameProgress={replayFrameProgress}
+								isReplayPlaying={isReplayPlaying}
+								onSelectedReplayFrameChange={setSelectedReplayFrame}
+								onReplayFrameProgressChange={setReplayFrameProgress}
+								onIsReplayPlayingChange={setIsReplayPlaying}
+								onExpand={() => setIsReplayExpanded(true)}
+							/>
+						) : (
+							<div className="hub-modal__replay-empty">
+								<img
+									className="hub-modal__replay-empty-logo"
+									src="/assets/logoShellSmash.png"
+									alt="Shell Smash"
+								/>
+								<p className="hub-panel__muted">
+									Select a replay to inspect its timeline.
+								</p>
+							</div>
+						)}
+					</div>
+				</div>
+			</HubModal>
+
+			{isReplayExpanded && selectedReplay ? (
+				<HubModal
+					title={`${getReplayGameLabel(selectedReplay.gameId)} Replay`}
+					variant="wide"
+					onClose={() => setIsReplayExpanded(false)}
+				>
+					<div className="hub-modal__replay-viewer hub-modal__replay-viewer--expanded">
+						<ReplayViewer
+							replay={selectedReplay}
+							selectedReplayFrame={selectedReplayFrame}
+							replayFrameProgress={replayFrameProgress}
+							isReplayPlaying={isReplayPlaying}
+							onSelectedReplayFrameChange={setSelectedReplayFrame}
+							onReplayFrameProgressChange={setReplayFrameProgress}
+							onIsReplayPlayingChange={setIsReplayPlaying}
+							expanded
+						/>
+					</div>
+				</HubModal>
+			) : null}
+		</>
+	);
+}
+
 function ReplayListSection({
 	title,
 	replays,
@@ -5525,9 +5485,5 @@ function ReplayListSection({
 }
 
 export function HomePage(): JSX.Element {
-	return (
-		<ProtectedRoute>
-			<HomeMenu />
-		</ProtectedRoute>
-	);
+	return <HomeMenu />;
 }
