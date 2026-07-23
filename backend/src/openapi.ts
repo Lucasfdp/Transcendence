@@ -27,9 +27,6 @@ const PUBLIC_AUTH_PATHS = new Set([
 	"/api/auth/42",
 	"/api/auth/42/authorise",
 	"/api/auth/42/callback",
-	"/api/auth/google",
-	"/api/auth/google/authorise",
-	"/api/auth/google/callback",
 ]);
 const PUBLIC_PATH_PREFIXES = ["/api/health", "/api/minigames"];
 

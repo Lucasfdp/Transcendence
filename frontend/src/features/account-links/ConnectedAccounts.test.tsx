@@ -11,8 +11,7 @@ const baseHook = {
 		prefill: { username: "dojo_user", email: "dojo@example.com" },
 		methods: [
 			{ method: "shellsmash" as const, linked: false },
-			{ method: "google" as const, linked: true },
-			{ method: "forty_two" as const, linked: false },
+			{ method: "forty_two" as const, linked: true },
 		],
 		conflict: null,
 	},
@@ -36,12 +35,11 @@ describe("ConnectedAccounts", () => {
 		vi.mocked(useAccountLinks).mockReturnValue(baseHook);
 	});
 
-	it("shows all three methods and the linked state", () => {
+	it("shows the two supported methods and the linked state", () => {
 		render(<ConnectedAccounts />);
 		expect(screen.getByText("ShellSmash account")).toBeInTheDocument();
-		expect(screen.getByText("Google")).toBeInTheDocument();
 		expect(screen.getByRole("heading", { name: "42" })).toBeInTheDocument();
-		expect(screen.getByText("1/3 linked")).toBeInTheDocument();
+		expect(screen.getByText("1/2 linked")).toBeInTheDocument();
 	});
 
 	it("prefills the ShellSmash creation form with available account data", async () => {

@@ -1,7 +1,7 @@
 import type { AuthMethod } from "./entities/auth-identity.entity";
 
 export interface VerifiedOAuthIdentity {
-	method: Exclude<AuthMethod, "shellsmash">;
+	method: "forty_two";
 	providerSubject: string;
 	username: string;
 	email: string | null;

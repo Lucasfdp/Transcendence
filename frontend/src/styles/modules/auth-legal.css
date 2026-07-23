@@ -362,15 +362,6 @@
 	);
 }
 
-.oauth-button--google {
-	background: linear-gradient(
-		135deg,
-		rgba(255, 255, 255, 0.96),
-		rgba(230, 236, 244, 0.9)
-	);
-	color: #202124;
-}
-
 .oauth-button--empty {
 	background: rgba(7, 10, 15, 0.38);
 	border-style: dashed;
@@ -693,4 +684,3 @@
 .oauth-button__logo--42 {
 	width: 1.6rem;
 }
-

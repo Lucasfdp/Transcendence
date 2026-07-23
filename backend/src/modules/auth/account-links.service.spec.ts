@@ -28,24 +28,40 @@ describe("AccountLinksService", () => {
 
 	it("rejects removal of the final sign-in method", async () => {
 		const { service, manager } = makeService([
-			{ id: "one", userId: 7, method: "google" },
+			{ id: "one", userId: 7, method: "forty_two" },
 		]);
-		await expect(service.unlink(7, "google")).rejects.toThrow(
+		await expect(service.unlink(7, "forty_two")).rejects.toThrow(
 			BadRequestException,
 		);
 		expect(manager.remove).not.toHaveBeenCalled();
 	});
 
 	it("removes only the requested method when another method remains", async () => {
-		const google = { id: "google", userId: 7, method: "google" } as AuthIdentity;
+		const fortyTwo = {
+			id: "forty-two",
+			userId: 7,
+			method: "forty_two",
+		} as AuthIdentity;
 		const shell = {
 			id: "shell",
 			userId: 7,
 			method: "shellsmash",
 		} as AuthIdentity;
-		const { service, manager, users } = makeService([google, shell]);
-		await service.unlink(9, "google");
+		const { service, manager, users } = makeService([fortyTwo, shell]);
+		await service.unlink(9, "forty_two");
 		expect(users.resolveCanonicalUserId).toHaveBeenCalledWith(9);
-		expect(manager.remove).toHaveBeenCalledWith(google);
+		expect(manager.remove).toHaveBeenCalledWith(fortyTwo);
+	});
+
+	it("does not count a retained legacy Google identity as a sign-in method", async () => {
+		const { service, manager } = makeService([
+			{ id: "legacy", userId: 7, method: "google" },
+			{ id: "forty-two", userId: 7, method: "forty_two" },
+		]);
+
+		await expect(service.unlink(7, "forty_two")).rejects.toThrow(
+			BadRequestException,
+		);
+		expect(manager.remove).not.toHaveBeenCalled();
 	});
 });

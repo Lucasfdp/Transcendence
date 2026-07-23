@@ -1,18 +1,6 @@
 import { api } from "../../features/hub/api";
 import { OAuthProviderButton } from "./OAuthProviderButton";
 
-function ImageLogo({
-	src,
-	alt,
-	className = "oauth-button__logo oauth-button__logo--image",
-}: {
-	src: string;
-	alt: string;
-	className?: string;
-}): JSX.Element {
-	return <img aria-hidden="true" className={className} src={src} alt={alt} />;
-}
-
 function FortyTwoLogo(): JSX.Element {
 	return (
 		<svg
@@ -32,12 +20,6 @@ function FortyTwoLogo(): JSX.Element {
 				42
 			</text>
 		</svg>
-	);
-}
-
-function GoogleLogo(): JSX.Element {
-	return (
-		<ImageLogo src="/assets/oauth/google.svg" alt="Google" />
 	);
 }
 
@@ -64,13 +46,6 @@ export function OAuthButtons({
 						tone="42"
 						disabled={isSubmitting}
 						onClick={() => onOAuthLogin(api.loginUrl())}
-					/>
-					<OAuthProviderButton
-						label="Continue with Google"
-						logo={<GoogleLogo />}
-						tone="google"
-						disabled={isSubmitting}
-						onClick={() => onOAuthLogin(api.googleLoginUrl())}
 					/>
 				</div>
 			</div>

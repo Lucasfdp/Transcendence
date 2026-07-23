@@ -502,9 +502,10 @@ in place; its stale `main.ts` comment is untouched pending that decision.
   `tsc -p tsconfig.build.json` with no new errors. Two pre-existing baseline
   issues remain in **untouched** files and are unrelated to this cleanup: an
   ESLint error in `tournaments/minigame/tournament-minigame.ts` and
-  `tournaments/state-machine/tournament-state-machine.ts`, and a `tsc` failure
-  from a missing dependency `passport-google-oauth20` (declared in
-  `package.json` but not installed in the current environment).
+  `tournaments/state-machine/tournament-state-machine.ts`. At the time, `tsc`
+  also failed because `passport-google-oauth20` was declared but not installed;
+  that dependency and the Google OAuth integration were removed on 23 July
+  2026.
 - **Frontend:** exhaustive reference sweep confirms **0** importers/references
   to every removed file, export, cascade symbol, and asset across `frontend/src`
   and `public`. `arena.ts` and `physics.ts` are internally consistent (no

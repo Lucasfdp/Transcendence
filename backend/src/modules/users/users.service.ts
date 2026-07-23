@@ -96,19 +96,6 @@ export class UsersService {
 		}
 	}
 
-	async findByGoogleId(googleId: string): Promise<User | null> {
-		try {
-			return await this.usersRepo.findOne({
-				where: { googleId },
-				relations: ["profile"],
-			});
-		} catch {
-			throw new InternalServerErrorException(
-				"Failed to find user by Google id",
-			);
-		}
-	}
-
 	/**
 	 * Returns the user with that username, or null if none exists.
 	 * Includes the passwordHash field (excluded from normal SELECT by `select: false`).

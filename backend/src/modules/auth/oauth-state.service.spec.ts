@@ -19,7 +19,7 @@ describe("OAuthStateService", () => {
 			)
 			.mockResolvedValue("OK");
 		const state = await service.create({
-			provider: "google",
+			provider: "forty_two",
 			initiatorUserId: 12,
 			returnTo: "/",
 		});

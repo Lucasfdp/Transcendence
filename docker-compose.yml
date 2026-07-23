@@ -121,7 +121,6 @@ services:
             - DEMO_USERNAME=${DEMO_USERNAME:-KameMaster}
             - DEMO_PASSWORD=${DEMO_PASSWORD:-KameMaster42}
             - FORTYTWO_CALLBACK_URL=${FORTYTWO_CALLBACK_URL:-https://localhost:42424/api/auth/42/callback}
-            - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL:-https://localhost:42424/api/auth/google/callback}
             - VAULT_ENV_FILE=/vault/secrets/backend.env
             - SECRETS_WAIT_TIMEOUT=${SECRETS_WAIT_TIMEOUT:-120}
             - UPLOADS_DIR=/app/uploads

@@ -71,7 +71,7 @@ Evidence:
 
 Validation:
 - Backend: full Jest suite green (`cd backend && npm run test`, all 65 spec files) — chat/friends/reports/matchmaking-gateway suites cover every owner action (happy / non-owner 403 / non-group 404 / self-kick 400 / transfer selection / delete cleanup), the presence fan-out (happy / guest short-circuit / non-fatal error), the Part B fixes, and the new `gif.service.spec.ts` cases (all three trusted CDN hosts, lookalike-host rejection, malformed-URL rejection, `getBySlug` on a `static1` item, 503 on missing app key).
-- `tsc --noEmit` clean for both `backend/` and `frontend/` on every touched file (remaining errors are pre-existing and unrelated — Phaser scene canvas typings, an untyped `passport-google-oauth20` module, etc.).
+- `tsc --noEmit` clean for both `backend/` and `frontend/` on every touched file (remaining errors are pre-existing and unrelated — Phaser scene canvas typings, etc.).
 - Frontend: pure helpers under `frontend/src/features/{chat,social}` have vitest coverage (`isNearBottom`, `patchFriendPresence`, conversation ops); `ShellPortrait.test.tsx` now also covers the `mini` size. The `HomePage.tsx` UI has no runner and was previously validated manually per `CLAUDE.md` (two accounts across friend request/accept, DM + gif + unread badges across hub→game→hub, group create/add/kick/rename/leave/delete, block/unblock, presence transitions) — **the 2026-07-17 redesign + GIF fix still needs a fresh manual pass** (GIF search/send/render both directions with a real `KLIPY_APP_KEY`, tab switching with a thread open, requests badge, mini avatars incl. fallbacks, mobile ≤1100px single-column + back button, block/report/invite from the new Friends tab) plus a `cd frontend && npm run test:run` run on the user's Mac — the sandbox can't run either. See `docs/social-tab-redesign-and-gif-fix-plan-2026-07-17.md` §6 for the checklist; that document stays in `docs/` (not moved to `docs/old_docs/`) until this manual pass is done.
 
 See `docs/social-module-completion-plan-2026-07-11.md` for the completion work order and `docs/social-page-bug-audit-2026-07-07.md` for the prior audit.
@@ -212,7 +212,7 @@ Evidence:
 - Local auth, guest, and OAuth in `backend/src/modules/auth/`
 - Local registration validates and stores a unique email address, while local
   login accepts either email or username.
-- Profile exposes ShellSmash, Google, and 42 connected-account controls.
+- Profile exposes ShellSmash and 42 connected-account controls.
   Authentication identities are separate from progress, legacy credentials
   are migrated, and a persistent two-preview conflict flow retains exactly one
   account's progress while preserving moderation and antifraud records.
@@ -287,16 +287,20 @@ Missing for completion:
 Status: `Done`
 
 Requirement breakdown:
-- Remote OAuth with providers such as Google or 42.
+- Remote OAuth with a provider such as 42.
 
 Evidence:
-- 42 and Google flows implemented in `backend/src/modules/auth/`
-- Both providers use expiring, single-use OAuth state in Redis and can be linked
-  or unlinked from Profile without relying on email-address matches.
+- The 42 flow is implemented in `backend/src/modules/auth/`; Google OAuth was
+  removed on 23 July 2026 so 42 is the only exposed remote provider.
+- 42 uses expiring, single-use OAuth state in Redis and can be linked or
+  unlinked from Profile without relying on email-address matches.
+- Provider callbacks are sourced from the configured callback URLs rather than
+  request forwarding headers, preventing proxy or `Host` variations from
+  causing redirect URI mismatches.
 - OAuth UI in `frontend/src/components/auth/OAuthButtons.tsx`
 
 Missing for completion:
-- End-to-end validation still requires real credentials for both providers.
+- End-to-end validation still requires real 42 credentials.
 
 ## Cybersecurity
 

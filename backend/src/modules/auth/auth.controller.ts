@@ -29,7 +29,6 @@ import { GuestGuard } from "./guards/guest.guard";
 import { RateLimiterService } from "./rate-limiter.service";
 import { TokenDenyListService } from "./token-deny-list.service";
 import { FortyTwoAuthGuard } from "./guards/ft-auth.guard";
-import { GoogleAuthGuard } from "./guards/google-auth.guard";
 import { AccountLinksService } from "./account-links.service";
 import { OAuthStateService } from "./oauth-state.service";
 import type { VerifiedOAuthIdentity } from "./account-links.types";
@@ -80,7 +79,7 @@ function validatePassword(raw: string | undefined): string {
 }
 
 function validateMethod(raw: string): AuthMethod {
-	if (!["shellsmash", "google", "forty_two"].includes(raw)) {
+	if (!["shellsmash", "forty_two"].includes(raw)) {
 		throw new BadRequestException("Unsupported authentication method");
 	}
 	return raw as AuthMethod;
@@ -328,45 +327,6 @@ export class AuthController {
 		res.redirect(result.conflict ? "/?account_link_conflict=1" : pending.returnTo);
 	}
 
-	@Get("google")
-	async googleLogin(@Res() res: Response): Promise<void> {
-		const state = await this.oauthStateService.create({
-			provider: "google",
-			initiatorUserId: null,
-			returnTo: "/",
-		});
-		res.redirect(`/api/auth/google/authorise?state=${encodeURIComponent(state)}`);
-	}
-
-	@Get("google/authorise")
-	@UseGuards(GoogleAuthGuard)
-	googleAuthorise(): void {
-		// Passport handles the provider redirect with the one-time state.
-	}
-
-	@Get("google/callback")
-	@UseGuards(GoogleAuthGuard)
-	async googleCallback(
-		@Req() req: Request & { user?: VerifiedOAuthIdentity },
-		@Res() res: Response,
-		@Query("state") state?: string,
-	): Promise<void> {
-		if (!req.user) {
-			res.redirect("/?auth_error=oauth_failed");
-			return;
-		}
-		const pending = await this.oauthStateService.consume(state);
-		if (pending.provider !== "google") {
-			throw new UnauthorizedException("OAuth provider state mismatch");
-		}
-		const result = await this.accountLinksService.completeOAuth(
-			req.user,
-			pending.initiatorUserId,
-		);
-		this.authService.issueAuthCookie(req, res, result.user);
-		res.redirect(result.conflict ? "/?account_link_conflict=1" : pending.returnTo);
-	}
-
 	@Get("account-links")
 	@UseGuards(JwtAuthGuard)
 	accountLinks(@Req() req: Request & { user: AuthenticatedUser }) {
@@ -420,13 +380,12 @@ export class AuthController {
 		}
 		await this.accountLinksService.assertCanStart(req.user.id);
 		const state = await this.oauthStateService.create({
-			provider: method,
+			provider: "forty_two",
 			initiatorUserId: req.user.id,
 			returnTo: "/?account_linked=1",
 		});
-		const route = method === "forty_two" ? "42" : "google";
 		return {
-			url: `/api/auth/${route}/authorise?state=${encodeURIComponent(state)}`,
+			url: `/api/auth/42/authorise?state=${encodeURIComponent(state)}`,
 		};
 	}
 

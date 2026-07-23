@@ -5,7 +5,6 @@ import type { AccountLinkConflict, AccountPreview, AuthMethod } from "./contract
 
 const METHOD_LABELS: Record<AuthMethod, string> = {
 	shellsmash: "ShellSmash",
-	google: "Google",
 	forty_two: "42",
 };
 

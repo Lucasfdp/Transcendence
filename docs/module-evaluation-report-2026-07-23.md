@@ -209,15 +209,16 @@ note history coverage across all exposed games should be reviewed once more.
 
 #### Minor — Remote authentication with OAuth 2.0 · Status: Done · Points: 1
 
-Google and 42 flows in `backend/src/modules/auth/` with single-use expiring
-state in Redis, link/unlink from Profile independent of email matching, UI in
-`frontend/src/components/auth/OAuthButtons.tsx`.
+The 42 flow in `backend/src/modules/auth/` uses single-use expiring state in
+Redis, supports link/unlink from Profile independently of email matching, and
+is exposed in `frontend/src/components/auth/OAuthButtons.tsx`. Google OAuth was
+removed so 42 is the only remote provider.
 
-How to demo: sign in with Google and with 42; link and unlink each from the
-Profile account-links panel.
+How to demo: sign in with 42, then link and unlink it from the Profile
+account-links panel.
 
-Rating: 8/10. Two providers, correctly stateful. The only caveat is that a
-clean end-to-end demo needs real provider credentials configured on the day.
+Rating: 8/10. The flow is correctly stateful. The only caveat is that a clean
+end-to-end demo needs real 42 credentials configured on the day.
 
 ### Cybersecurity category
 

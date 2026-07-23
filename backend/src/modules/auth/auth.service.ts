@@ -170,36 +170,6 @@ export class AuthService implements OnApplicationBootstrap {
 		}
 	}
 
-	async findOrCreateGoogleUser(data: {
-		googleId: string;
-		username: string;
-		email?: string | null;
-		avatar?: string | null;
-	}): Promise<User> {
-		try {
-			let user = await this.usersService.findByGoogleId(data.googleId);
-			if (user) return user;
-
-			const existingEmail = data.email
-				? await this.usersService.findByEmail(data.email)
-				: null;
-			const uniqueUsername = await this.makeUniqueOAuthUsername(
-				data.username,
-			);
-			user = await this.usersService.create({
-				googleId: data.googleId,
-				email: existingEmail ? null : (data.email ?? null),
-				username: uniqueUsername,
-				avatar: data.avatar ?? undefined,
-			});
-			return user;
-		} catch {
-			throw new InternalServerErrorException(
-				"Failed to find or create Google user",
-			);
-		}
-	}
-
 	private async makeUniqueOAuthUsername(
 		baseUsername: string,
 	): Promise<string> {

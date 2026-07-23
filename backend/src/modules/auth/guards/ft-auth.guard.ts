@@ -4,6 +4,7 @@ import {
 	Logger,
 	UnauthorizedException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { AuthGuard } from "@nestjs/passport";
 import { Request } from "express";
 
@@ -11,17 +12,18 @@ import { Request } from "express";
 export class FortyTwoAuthGuard extends AuthGuard("42") {
 	private readonly logger = new Logger(FortyTwoAuthGuard.name);
 
+	constructor(private readonly configService: ConfigService) {
+		super();
+	}
+
 	override getAuthenticateOptions(
 		context: ExecutionContext,
 	): Record<string, string> {
 		const req = context.switchToHttp().getRequest<Request>();
-		const proto =
-			(req.headers["x-forwarded-proto"] as string | undefined) ??
-			req.protocol ??
-			"https";
-		const host = req.headers.host ?? "localhost";
 		return {
-			callbackURL: `${proto}://${host}/api/auth/42/callback`,
+			callbackURL:
+				this.configService.get<string>("FORTYTWO_CALLBACK_URL") ||
+				"https://localhost:42424/api/auth/42/callback",
 			state: typeof req.query.state === "string" ? req.query.state : "",
 		};
 	}

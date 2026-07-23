@@ -1,4 +1,4 @@
-export type AuthMethod = "shellsmash" | "google" | "forty_two";
+export type AuthMethod = "shellsmash" | "forty_two";
 
 export interface AccountPreview {
 	userId: number;

@@ -5,7 +5,6 @@ import { useAccountLinks } from "./useAccountLinks";
 
 const DETAILS: Record<AuthMethod, { title: string; mark: string; copy: string }> = {
 	shellsmash: { title: "ShellSmash account", mark: "亀", copy: "Sign in with your ShellSmash username or email and password." },
-	google: { title: "Google", mark: "G", copy: "Use your Google identity to enter the dojo." },
 	forty_two: { title: "42", mark: "42", copy: "Connect your 42 intra identity." },
 };
 
@@ -16,7 +15,7 @@ export function ConnectedAccounts(): JSX.Element {
 		<section className="connected-accounts" aria-labelledby="connected-accounts-title">
 			<div className="connected-accounts__heading">
 				<div><p>Sign-in methods</p><h3 id="connected-accounts-title">Connected accounts</h3></div>
-				<span>{links.state?.methods.filter((method) => method.linked).length ?? 0}/3 linked</span>
+				<span>{links.state?.methods.filter((method) => method.linked).length ?? 0}/2 linked</span>
 			</div>
 			{links.state?.conflict && !links.conflictOpen ? (
 				<button className="connected-accounts__alert" type="button" onClick={() => links.setConflictOpen(true)}>

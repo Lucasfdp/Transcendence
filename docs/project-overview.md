@@ -85,19 +85,19 @@ A NestJS API server backed by TypeORM. It handles authentication, user data, and
 Root module. Wires up ConfigModule (global), TypeORM (async factory using ConfigService), and all feature modules. TypeORM `synchronize` is enabled in development so schema changes apply automatically — disabled in production.
 
 **AuthModule** (`backend/src/modules/auth/`)  
-Handles local, guest, 42, and Google authentication with JWTs stored in an
-HTTP-only cookie.
+Handles local, guest, and 42 authentication with JWTs stored in an HTTP-only
+cookie.
 
 - `AuthController` — local registration/login, guest sessions, session logout,
-  current-user lookup, connected-account operations, and the 42/Google OAuth
-  routes and callbacks.
+  current-user lookup, connected-account operations, and the 42 OAuth routes
+  and callback.
 - `AuthService` — local credential validation and auth-cookie issuance.
 - `AccountLinksService` — authentication identities, persistent conflicts,
   previews, unlinking, and transactional account consolidation.
 - `OAuthStateService` — expiring, single-use OAuth state stored in Redis.
 - `JwtStrategy` — validates the auth cookie and loads the current user.
-- `FortyTwoStrategy` and `GoogleStrategy` — the two supported remote OAuth
-  providers; they return verified provider identities and never create users.
+- `FortyTwoStrategy` — the only supported remote OAuth provider; it returns a
+  verified provider identity and never creates users.
 
 **UsersModule** (`backend/src/modules/users/`)  
 CRUD over the `users` table.
@@ -106,8 +106,8 @@ CRUD over the `users` table.
   current-user profile updates, avatar upload/removal and leaderboards. Public
   profile data is served by `GET /api/users/:username` without returning the
   `User` entity or private account fields.
-- `UsersService` — `findById`, `findByFortyTwoId`, `findByGoogleId`,
-  `findByUsername`, `create` (also creates a linked Profile row), and `findAll`.
+- `UsersService` — `findById`, `findByFortyTwoId`, `findByUsername`, `create`
+  (also creates a linked Profile row), and `findAll`.
 - `UserAccountActivityService` — process-local queue markers used to prevent an
   account consolidation while a player is waiting for a match.
 
@@ -307,10 +307,10 @@ OAuth sign-in or linking:
           → direct link, new user, or persistent account conflict
 ```
 
-42 and Google OAuth are wired through Passport strategies, provider-specific
-guards, controller callbacks, single-use Redis state, and HTTP-only auth
-cookies. Real client credentials are supplied through Vault; see
-`docs/oauth-setup.md`. Tokens are never stored in browser storage.
+42 OAuth is wired through its Passport strategy and guard, controller callback,
+single-use Redis state, and HTTP-only auth cookies. Real client credentials are
+supplied through Vault; see `docs/oauth-setup.md`. Tokens are never stored in
+browser storage.
 
 ---
 
@@ -342,8 +342,8 @@ compatibility. New authentication decisions use `AuthIdentity`.
 | --------------- | --------------- | -------------------------------------------- |
 | id              | UUID (PK)       |                                              |
 | userId          | int (FK)        | progress account                             |
-| method          | string          | `shellsmash`, `google`, or `forty_two`       |
-| providerSubject | string nullable | stable Google or 42 subject                  |
+| method          | string          | active: `shellsmash` or `forty_two`; legacy Google rows may remain |
+| providerSubject | string nullable | stable 42 subject, or a retained legacy subject |
 | shellUsername   | string nullable | ShellSmash sign-in name                      |
 | shellEmail      | string nullable | normalised ShellSmash sign-in email          |
 | passwordHash    | string nullable | private salted scrypt hash                   |
@@ -455,7 +455,6 @@ All variables live in `.env` at the repo root. Key ones to know during developme
 | `POSTGRES_*`                | see `.env`              | Database credentials                                            |
 | `VITE_API_URL`              | `https://localhost/api` | API base URL injected into the Vite build                       |
 | `FORTYTWO_CLIENT_ID/SECRET` | Vault                   | 42 OAuth credentials                                             |
-| `GOOGLE_CLIENT_ID/SECRET`   | Vault                   | Google OAuth credentials                                         |
 | `DOMAIN_NAME`               | `localhost`             | Used by Nginx server_name in production                         |
 
 > **Never commit real secrets.** `.env` is listed in `.gitignore`. Use `.env.example` as the committed template.

@@ -66,7 +66,7 @@ export class AccountLinksService {
 				username: user?.username ?? "",
 				email: user?.email ?? "",
 			},
-			methods: (["shellsmash", "google", "forty_two"] as AuthMethod[]).map(
+			methods: (["shellsmash", "forty_two"] as AuthMethod[]).map(
 				(method) => ({
 					method,
 					linked: identities.some((identity) => identity.method === method),
@@ -191,7 +191,7 @@ export class AccountLinksService {
 		if (!existing) {
 			if (await this.findIdentity(canonicalId, identity.method)) {
 				throw new ConflictException(
-					`This account already has a ${identity.method === "forty_two" ? "42" : "Google"} sign-in method.`,
+					"This account already has a 42 sign-in method.",
 				);
 			}
 			await this.identities.save(
@@ -227,12 +227,13 @@ export class AccountLinksService {
 				where: { userId },
 				lock: { mode: "pessimistic_write" },
 			});
-			if (rows.length <= 1) {
+			const activeRows = rows.filter((row) => row.method !== "google");
+			if (activeRows.length <= 1) {
 				throw new BadRequestException(
 					"You must keep at least one authentication method.",
 				);
 			}
-			const target = rows.find((row) => row.method === method);
+			const target = activeRows.find((row) => row.method === method);
 			if (target) await manager.remove(target);
 		});
 	}
@@ -473,9 +474,9 @@ export class AccountLinksService {
 			FROM users u LEFT JOIN profiles p ON p."userId" = u.id WHERE u.id = $1
 		`, [userId]);
 		if (!rows[0]) throw new NotFoundException("Account not found");
-		const methods = (await this.identities.find({ where: { userId } })).map(
-			(row) => row.method,
-		);
+		const methods = (await this.identities.find({ where: { userId } }))
+			.filter((row) => row.method !== "google")
+			.map((row) => row.method);
 		const row = rows[0];
 		return {
 			userId: Number(row.userId),

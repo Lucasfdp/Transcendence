@@ -142,16 +142,18 @@ The Nginx configuration sets the following security headers on all responses:
 ## Authentication Identities And Account Linking
 
 Authentication methods are stored separately from player progress in
-`auth_identities`. Each persistent user may have at most one `shellsmash`, one
-`google`, and one `forty_two` identity. ShellSmash email addresses are
-normalised to lower case and passwords are stored only as salted scrypt hashes.
-Provider subjects, password hashes, and ShellSmash email addresses are never
-included in account previews.
+`auth_identities`. Each persistent user may have at most one `shellsmash` and
+one active `forty_two` identity. ShellSmash email addresses are normalised to
+lower case and passwords are stored only as salted scrypt hashes. Provider
+subjects, password hashes, and ShellSmash email addresses are never included in
+account previews.
 
 The migration `20260716000000-create-auth-identities-account-conflicts` copies
 legacy password, Google, and 42 identifiers into the new table without removing
-the old columns. This permits a rolling deployment and keeps existing JWTs
-valid. Local and WebSocket authentication resolve old user IDs through pending
+the old columns. The retained Google records are historical data only: no
+Google strategy, route, credential, or account-link control is exposed. This
+preserves existing account data while making 42 the only remote provider.
+Local and WebSocket authentication resolve old user IDs through pending
 conflicts and completed merges before authorising application operations.
 
 All account-link mutations require a valid JWT, the double-submit CSRF token,
@@ -159,10 +161,10 @@ and a per-IP rate-limit allowance. Removing the final authentication method is
 rejected. ShellSmash accounts are never linked by an email match: an existing
 account can only be linked after its password has been verified.
 
-Google and 42 authorisation requests carry 256 bits of random `state`. The
-state payload is stored in Redis for ten minutes and consumed atomically with
-`GETDEL` at callback time, which makes it expiring and single-use. A Redis
-failure fails the OAuth flow closed.
+42 authorisation requests carry 256 bits of random `state`. The state payload
+is stored in Redis for ten minutes and consumed atomically with `GETDEL` at
+callback time, which makes it expiring and single-use. A Redis failure fails
+the OAuth flow closed.
 
 Account consolidation locks the conflict, both users, and their identities in
 one database transaction. Duplicate methods must be removed first, and a

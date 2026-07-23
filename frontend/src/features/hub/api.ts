@@ -659,9 +659,6 @@ export const api = {
 	/** URL to redirect to in order to start the 42 OAuth flow. */
 	loginUrl: (): string => `${API_BASE}/auth/42`,
 
-	/** URL to redirect to in order to start the Google OAuth flow. */
-	googleLoginUrl: (): string => `${API_BASE}/auth/google`,
-
 	/** Create a guest session (httpOnly cookie, 2-hour TTL). */
 	guestLogin: (): Promise<{ ok: boolean }> =>
 		apiFetch<{ ok: boolean }>("/auth/guest", { method: "POST" }),

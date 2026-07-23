@@ -3,15 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import { OAuthButtons } from "./OAuthButtons";
 
 describe("OAuthButtons", () => {
-	it("shows only 42 and Google without a provider toggle", () => {
+	it("shows only 42 without a provider toggle", () => {
 		render(<OAuthButtons isSubmitting={false} onOAuthLogin={vi.fn()} />);
 
-		expect(screen.getAllByRole("button")).toHaveLength(2);
+		expect(screen.getAllByRole("button")).toHaveLength(1);
 		expect(
 			screen.getByRole("button", { name: "Continue with 42" }),
-		).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: "Continue with Google" }),
 		).toBeInTheDocument();
 		expect(
 			screen.queryByRole("button", { name: /OAuth providers/i }),
@@ -28,8 +25,8 @@ describe("OAuthButtons", () => {
 		);
 
 		fireEvent.click(
-			screen.getByRole("button", { name: "Continue with Google" }),
+			screen.getByRole("button", { name: "Continue with 42" }),
 		);
-		expect(onOAuthLogin).toHaveBeenCalledWith("/api/auth/google");
+		expect(onOAuthLogin).toHaveBeenCalledWith("/api/auth/42");
 	});
 });

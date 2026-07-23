@@ -6,10 +6,8 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "crypto";
 import * as net from "net";
-import type { AuthMethod } from "./entities/auth-identity.entity";
-
 export interface OAuthStatePayload {
-	provider: Exclude<AuthMethod, "shellsmash">;
+	provider: "forty_two";
 	initiatorUserId: number | null;
 	returnTo: string;
 }
