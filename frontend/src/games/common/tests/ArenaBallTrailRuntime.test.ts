@@ -106,6 +106,36 @@ describe("ArenaBallTrailRuntime", () => {
 		expect(trail).toHaveLength(2);
 	});
 
+	it("resolves a missing trailEffect per player without overriding explicit effects", () => {
+		const runtime = new ArenaBallTrailRuntime();
+		const consulted: number[] = [];
+
+		runtime.recordSet({
+			balls: [
+				{
+					id: "a",
+					player: 0,
+					ball: { x: 0, y: 0, vx: 1, vy: 0, r: 8 },
+				},
+				{
+					id: "b",
+					player: 1,
+					ball: { x: 5, y: 0, vx: 1, vy: 0, r: 8 },
+					trailEffect: "trail_fire",
+				},
+			],
+			isMoving: () => true,
+			trailOptions: { minDistance: 1 },
+			trailEffectByPlayer: (player) => {
+				consulted.push(player);
+				return `p${player}`;
+			},
+		});
+
+		// The resolver fills only the gap; an explicit per-ball effect is kept.
+		expect(consulted).toEqual([0]);
+	});
+
 	it("builds stable trail objects for arena power balls", () => {
 		const objects = buildArenaPowerBallTrailObjects(
 			[
