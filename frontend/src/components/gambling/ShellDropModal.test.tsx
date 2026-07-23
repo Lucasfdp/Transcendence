@@ -103,6 +103,9 @@ describe("ShellDropModal", () => {
 			{
 				clearRect: vi.fn(),
 				fillRect: vi.fn(),
+				// The retained-board renderer blits its prerendered static peg
+				// layer into every frame (see `createDropBoardRenderer`).
+				drawImage: vi.fn(),
 				beginPath: vi.fn(),
 				arc: vi.fn(),
 				createRadialGradient: vi.fn().mockReturnValue({
