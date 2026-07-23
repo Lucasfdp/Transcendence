@@ -121,6 +121,8 @@ export class BambooBashOnlineController {
 	private readonly projectionTimeline = new AuthoritativeProjectionTimeline();
 	private latestPhysicsState: BambooBashPhysicsState | null = null;
 	private rejoinPhysicsTimer: ReturnType<typeof setInterval> | null = null;
+	/** Guards the end screen so a re-delivered terminal frame shows it once. */
+	private endShown = false;
 
 	constructor(scene: Phaser.Scene & BambooBashOnlineScene) {
 		this.scene = scene;
@@ -189,6 +191,16 @@ export class BambooBashOnlineController {
 		return this.latestPhysicsState?.entities.some((entity) => !entity.stopped) ?? false;
 	}
 
+	/**
+	 * True while resuming a match the player was already in (F5, reconnect):
+	 * the round is mid-flight server-side, so the client must NOT replay the
+	 * "3, 2, 1, GO!" intro or reset the clock to a full ROUND_MS — it resumes
+	 * on the server's real remaining time instead.
+	 */
+	get isRejoining(): boolean {
+		return Boolean(this.match?.rejoining);
+	}
+
 	// ── Lifecycle ────────────────────────────────────────────────────────────────
 
 	/** Bind the match from the registry and reset all online state. */
@@ -221,6 +233,7 @@ export class BambooBashOnlineController {
 		this.projectedEntities.clear();
 		this.projectionTimeline.reset();
 		this.latestPhysicsState = null;
+		this.endShown = false;
 	}
 
 	/** Register socket listeners for the live match. */
@@ -229,9 +242,11 @@ export class BambooBashOnlineController {
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
 		socket.off("game:physics-state", this.handlePhysicsState);
+		socket.off("connect", this.handleReconnect);
 		socket.on("game:state", this.handleState);
 		socket.on("game:end", this.handleState);
 		socket.on("game:physics-state", this.handlePhysicsState);
+		socket.on("connect", this.handleReconnect);
 		this.updateStatus("Connected to Bamboo Bash match.");
 		if (this.match?.physicsState) this.applyPhysicsState(this.match.physicsState as BambooBashPhysicsState);
 		const matchId = this.match.matchId;
@@ -248,6 +263,7 @@ export class BambooBashOnlineController {
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
 		socket.off("game:physics-state", this.handlePhysicsState);
+		socket.off("connect", this.handleReconnect);
 		this.statusText?.destroy();
 		this.statusText = null;
 		this.countdownText?.destroy();
@@ -279,6 +295,21 @@ export class BambooBashOnlineController {
 	}
 
 	// ── Socket handlers ──────────────────────────────────────────────────────────
+
+	/**
+	 * After a socket reconnect our new socket id is NOT in the match room, so
+	 * the server's room-scoped game:state / game:end broadcasts — including the
+	 * frame that ends the round — never reach us, stranding the player on the
+	 * finished minigame. `match:rejoin` rebinds the seat and re-emits the
+	 * current authoritative state, which drives the end screen if the round
+	 * ended while we were briefly away.
+	 */
+	private readonly handleReconnect = (): void => {
+		if (!this.match || this.endShown) return;
+		const phase = this.snapshot?.phase;
+		if (phase === "finished" || phase === "abandoned") return;
+		getGameSocket().emit("match:rejoin");
+	};
 
 	private readonly handleState = (snapshot: GameSnapshot): void => {
 		if (isBambooBashSnapshot(snapshot)) this.applyOnlineSnapshot(snapshot);
@@ -460,12 +491,22 @@ export class BambooBashOnlineController {
 		snapshot: BambooBashSnapshot,
 		initial = false,
 	): void {
-		if (
-			!this.match ||
-			snapshot.matchId !== this.match.matchId ||
-			snapshot.seq <= this.lastSeq
-		)
+		if (!this.match || snapshot.matchId !== this.match.matchId) return;
+		if (snapshot.seq <= this.lastSeq) {
+			// A stale/duplicate frame is normally ignored — EXCEPT a terminal one.
+			// The end screen is the only path off a finished minigame, so if a
+			// re-delivered "finished"/"abandoned" frame (e.g. a reconnect replay)
+			// carries a seq we have already seen, still show it once rather than
+			// leave the player stranded on a match that is already over.
+			if (
+				!this.endShown &&
+				(snapshot.phase === "finished" || snapshot.phase === "abandoned")
+			) {
+				this.endShown = true;
+				this.scene.showOnlineEndScreen(snapshot);
+			}
 			return;
+		}
 		this.lastSeq = snapshot.seq;
 		this.match.snapshot = snapshot;
 		const roundChanged = snapshot.roundNumber !== this.roundNumber;
@@ -497,6 +538,7 @@ export class BambooBashOnlineController {
 		this.scene.updateSidePanels();
 
 		if (snapshot.phase === "finished" || snapshot.phase === "abandoned") {
+			this.endShown = true;
 			this.scene.showOnlineEndScreen(snapshot);
 			return;
 		}

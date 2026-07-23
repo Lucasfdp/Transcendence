@@ -131,6 +131,8 @@ export class BellClashOnlineController {
 	private readonly projectionTimeline = new AuthoritativeProjectionTimeline();
 	private latestPhysicsState: BellClashPhysicsState | null = null;
 	private rejoinPhysicsTimer: ReturnType<typeof setInterval> | null = null;
+	/** Guards the end screen so a re-delivered terminal frame shows it once. */
+	private endShown = false;
 
 	constructor(scene: Phaser.Scene & BellClashOnlineScene) {
 		this.scene = scene;
@@ -217,6 +219,7 @@ export class BellClashOnlineController {
 		this.localPhysicsMoving = false;
 		this.projectionTimeline.reset();
 		this.latestPhysicsState = null;
+		this.endShown = false;
 		return this.isActive;
 	}
 
@@ -226,9 +229,11 @@ export class BellClashOnlineController {
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
 		socket.off("game:physics-state", this.handlePhysicsState);
+		socket.off("connect", this.handleReconnect);
 		socket.on("game:state", this.handleState);
 		socket.on("game:end", this.handleState);
 		socket.on("game:physics-state", this.handlePhysicsState);
+		socket.on("connect", this.handleReconnect);
 		this.updateStatus("Connected to Bell Clash match.");
 		if (this.match.physicsState)
 			this.applyPhysicsState(this.match.physicsState as BellClashPhysicsState);
@@ -248,6 +253,7 @@ export class BellClashOnlineController {
 		socket.off("game:state", this.handleState);
 		socket.off("game:end", this.handleState);
 		socket.off("game:physics-state", this.handlePhysicsState);
+		socket.off("connect", this.handleReconnect);
 		this.statusText?.destroy();
 		this.statusText = null;
 		this.stopRejoinPhysicsPolling();
@@ -355,12 +361,22 @@ export class BellClashOnlineController {
 	}
 
 	applySnapshot(snapshot: BellClashSnapshot, initial = false): void {
-		if (
-			!this.match ||
-			snapshot.matchId !== this.match.matchId ||
-			snapshot.seq <= this.lastSeq
-		)
+		if (!this.match || snapshot.matchId !== this.match.matchId) return;
+		if (snapshot.seq <= this.lastSeq) {
+			// A stale/duplicate frame is normally ignored — EXCEPT a terminal one.
+			// The end screen is the only path off a finished minigame, so if a
+			// re-delivered "finished"/"abandoned" frame (e.g. a reconnect replay)
+			// carries a seq we have already seen, still show it once rather than
+			// leave the player stranded on a match that is already over.
+			if (
+				!this.endShown &&
+				(snapshot.phase === "finished" || snapshot.phase === "abandoned")
+			) {
+				this.endShown = true;
+				this.scene.showOnlineEndScreen(snapshot);
+			}
 			return;
+		}
 		this.lastSeq = snapshot.seq;
 		this.match.snapshot = snapshot;
 		this.roundNumber = snapshot.roundNumber;
@@ -388,6 +404,7 @@ export class BellClashOnlineController {
 		this.scene.drawBalls();
 
 		if (snapshot.phase === "finished" || snapshot.phase === "abandoned") {
+			this.endShown = true;
 			this.scene.showOnlineEndScreen(snapshot);
 			return;
 		}
@@ -407,6 +424,21 @@ export class BellClashOnlineController {
 	resetBalls(snapshot: BellClashSnapshot): void {
 		this.syncBalls(snapshot, true);
 	}
+
+	/**
+	 * After a socket reconnect our new socket id is NOT in the match room, so
+	 * the server's room-scoped game:state / game:end broadcasts — including the
+	 * frame that ends the round — never reach us, stranding the player on the
+	 * finished minigame. `match:rejoin` rebinds the seat and re-emits the
+	 * current authoritative state, which drives the end screen if the round
+	 * ended while we were briefly away.
+	 */
+	private readonly handleReconnect = (): void => {
+		if (!this.match || this.endShown) return;
+		const phase = this.snapshot?.phase;
+		if (phase === "finished" || phase === "abandoned") return;
+		getGameSocket().emit("match:rejoin");
+	};
 
 	private readonly handleState = (snapshot: GameSnapshot): void => {
 		if (isBellClashSnapshot(snapshot)) this.applySnapshot(snapshot);
