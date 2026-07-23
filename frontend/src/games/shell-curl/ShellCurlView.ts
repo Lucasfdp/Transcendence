@@ -10,7 +10,7 @@ import { drawPlayerRing, PLAYER_COLOUR_VALUES } from "../../shared/game-ui";
 import { THEME } from "../../shared/theme";
 import { PowerType } from "../../shared/mechanics/power-system";
 import { ALL_POWERS } from "../../shared/mechanics/power-system";
-import { drawIngameShellTexture } from "../../shared/mechanics/player-renderer";
+import { drawIngamePlayerTexture } from "../../shared/mechanics/player-renderer";
 import {
 	resolveObstaclePosition,
 	resolveObstacleRadius,
@@ -29,6 +29,7 @@ import {
 
 const DEPTH_BALLS = 2;
 const DEPTH_HUD = 20;
+const CURLING_PLAYER_RENDER_OPTIONS = { initialRotation: Math.PI / 2 } as const;
 export { BUMPER_FLASH_MS };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -67,12 +68,13 @@ export function drawShellCurlBall(
 	depth = DEPTH_BALLS,
 ): void {
 	if (
-		!drawIngameShellTexture(
+		!drawIngamePlayerTexture(
 			scene,
 			`shell-curl-player-${ball.id}`,
 			ball,
 			depth,
 			playerShellSkins[ball.teamId],
+			CURLING_PLAYER_RENDER_OPTIONS,
 		)
 	) {
 		drawShellCurlShellFallback(gfx, ball, isActive);

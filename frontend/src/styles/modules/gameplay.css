@@ -9,7 +9,7 @@
 			rgba(241, 211, 145, 0.08),
 			transparent 32%
 		),
-		linear-gradient(180deg, rgba(5, 7, 12, 0.1), rgba(3, 4, 7, 0.72)),
+		linear-gradient(180deg, rgba(5, 7, 12, 0.16), rgba(3, 4, 7, 0.84)),
 		var(--game-bg-image), #0d1117;
 	background-position: center;
 	background-size: cover;
@@ -39,7 +39,7 @@
 			rgba(241, 211, 145, 0.08),
 			transparent 32%
 		),
-		linear-gradient(180deg, rgba(5, 7, 12, 0.1), rgba(3, 4, 7, 0.72)),
+		linear-gradient(180deg, rgba(5, 7, 12, 0.16), rgba(3, 4, 7, 0.84)),
 		var(--game-bg-image), #0d1117;
 	background-position: center bottom;
 	background-size: cover;
@@ -115,14 +115,13 @@
 .power-picker-page {
 	@apply grid place-items-center;
 	min-height: 100vh;
-	padding: clamp(0.8rem, 2vw, 1.4rem) clamp(0.8rem, 2vw, 1.4rem)
-		clamp(4.7rem, 8vw, 6rem);
+	padding: clamp(0.8rem, 2vw, 1.4rem);
 	@apply overflow-auto;
 }
 
 .power-picker-page__panel {
 	@apply relative;
-	width: min(74rem, 100%);
+	width: min(86rem, 100%);
 	padding: clamp(1.1rem, 2.1vw, 1.55rem);
 	border: 0;
 	background: transparent;
@@ -151,8 +150,8 @@
 }
 
 .power-picker-page__back {
-	margin: 1.25rem auto 0;
-	width: min(12rem, calc(100% - 2rem));
+	margin: 1rem auto 0;
+	width: min(10.75rem, calc(100% - 2rem));
 	aspect-ratio: 1600 / 430;
 	transform: none;
 	font-size: clamp(0.97rem, calc(1.15vw + 0.1875rem), 1.11rem);
@@ -184,7 +183,7 @@
 }
 
 .power-picker-page__message {
-	margin: 1.2rem auto 0;
+	margin: 1rem auto 0;
 	max-width: 55rem;
 	color: rgba(255, 247, 230, 0.82);
 	font-family: var(--rowdy-font);
@@ -206,24 +205,39 @@
 	color: #ff9f9f;
 }
 
-.power-picker-page__powerups,
-.power-picker-page__mode-card {
-	border: 1px solid rgba(202, 204, 142, 0.42);
-	border-radius: 1.2rem;
-	background:
-		linear-gradient(180deg, rgba(33, 37, 24, 0.76), rgba(8, 11, 15, 0.8)),
-		rgba(7, 10, 16, 0.78);
-	box-shadow:
-		0 36px 100px rgba(0, 0, 0, 0.48),
-		0 0 34px rgba(120, 123, 74, 0.16),
-		inset 0 0 0 1px rgba(202, 204, 142, 0.08);
+.power-picker-page__content {
+	@apply grid items-start;
+	grid-template-columns: minmax(9rem, 0.72fr) minmax(0, 4fr);
+	gap: clamp(1rem, 1.8vw, 1.5rem);
 }
 
 .power-picker-page__powerups {
-	padding: clamp(1.2rem, 2.2vw, 1.65rem);
-	border: 0;
-	background: transparent;
-	box-shadow: none;
+	@apply relative;
+	padding: clamp(0.85rem, 1.35vw, 1.1rem) 0;
+}
+
+.power-picker-page__powerups::after,
+.power-picker-page__mode-card:not(:first-child)::before {
+	content: "";
+	@apply absolute;
+	top: 1rem;
+	bottom: 1rem;
+	width: 1px;
+	background: linear-gradient(
+		180deg,
+		transparent,
+		#e2ba68 16%,
+		#f5e4b8 50%,
+		#e2ba68 84%,
+		transparent
+	);
+	box-shadow: 0 0 8px rgba(218, 174, 83, 0.48);
+	opacity: 0.68;
+	@apply pointer-events-none;
+}
+
+.power-picker-page__powerups::after {
+	right: -0.75rem;
 }
 
 .power-picker-page__powerups h2,
@@ -249,35 +263,41 @@
 	font-family: var(--blowbrush-font);
 }
 
+.power-picker-page__powerups h2::after,
+.power-picker-page__mode-card h2::after {
+	content: "";
+	@apply block;
+	width: 72%;
+	height: 1px;
+	margin: 0.5rem auto 0;
+	background: linear-gradient(
+		90deg,
+		transparent,
+		#e2ba68 18%,
+		#f5e4b8 50%,
+		#e2ba68 82%,
+		transparent
+	);
+	box-shadow: 0 0 8px rgba(218, 174, 83, 0.48);
+}
+
 .power-picker-page__grid {
-	@apply flex justify-center;
-	gap: clamp(0.45rem, 1.2vw, 0.9rem);
-	margin-top: 1.3rem;
-	@apply overflow-x-auto;
-	padding-bottom: 0.2rem;
+	@apply grid justify-center;
+	grid-template-columns: repeat(2, minmax(0, 4.1rem));
+	gap: clamp(0.4rem, 0.8vw, 0.65rem);
+	margin-top: 1rem;
 }
 
 .power-card {
 	@apply relative;
-	flex: 0 0 clamp(4rem, 6.2vw, 5rem);
 	@apply grid;
 	justify-items: center;
 	align-content: center;
-	min-height: clamp(4.25rem, 6.65vw, 5.15rem);
-	padding: 0.5rem;
-	border: 1px solid rgba(241, 211, 145, 0.22);
-	border-radius: 0.8rem;
-	background: linear-gradient(
-		180deg,
-		rgba(17, 18, 23, 0.92),
-		rgba(8, 8, 12, 0.94)
-	);
+	min-height: clamp(3.65rem, 5vw, 4.35rem);
+	padding: 0.2rem;
 	color: var(--text);
 	font-family: var(--rowdy-font);
 	@apply text-center;
-	box-shadow:
-		inset 0 1px 0 rgba(255, 255, 255, 0.05),
-		0 10px 22px rgba(0, 0, 0, 0.3);
 }
 
 .power-card__orb {
@@ -322,7 +342,6 @@ img.power-card__orb {
 	@apply grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
 	gap: clamp(0.85rem, 1.45vw, 1.2rem);
-	margin-top: 1.35rem;
 }
 
 .power-picker-page__danger {
@@ -372,12 +391,16 @@ img.power-card__orb {
 }
 
 .power-picker-page__mode-card {
-	@apply grid;
+	@apply relative grid;
 	justify-items: center;
 	align-content: start;
 	gap: 0.78rem;
 	min-height: clamp(15.4rem, 24vw, 18.2rem);
-	padding: clamp(0.85rem, 1.35vw, 1.1rem);
+	padding: clamp(0.85rem, 1.35vw, 1.1rem) 0;
+}
+
+.power-picker-page__mode-card:not(:first-child)::before {
+	left: -0.6rem;
 }
 
 .power-picker-page__mode-card h2 {
@@ -385,7 +408,6 @@ img.power-card__orb {
 	@apply w-full;
 	height: 4.8rem;
 	padding-bottom: 0.58rem;
-	border-bottom: 1px solid rgba(123, 183, 111, 0.24);
 }
 
 .power-picker-page__mode-card p {
@@ -468,6 +490,14 @@ img.power-card__orb {
 	color: #d9ddc2;
 }
 
+.power-picker-page__mode-picker {
+	margin-bottom: 0;
+}
+
+.power-picker-page__mode-picker .stone-button {
+	font-size: clamp(0.98rem, 1.55vw, 1.25rem);
+}
+
 .power-picker-page__player-picker .stone-button__content {
 	padding-top: 0.5rem;
 }
@@ -525,7 +555,43 @@ img.power-card__orb {
 	transform: translateY(-1px);
 }
 
-@media (max-width: 1180px) {
+@media (min-width: 1360px) {
+	.power-picker-page__powerups,
+	.power-picker-page__mode-card {
+		padding-inline: clamp(0.55rem, 0.75vw, 0.75rem);
+	}
+}
+
+@media (min-width: 981px) and (min-height: 850px) {
+	.power-picker-page,
+	.power-picker-page__panel {
+		padding-bottom: 0;
+	}
+}
+
+@media (max-width: 980px) {
+	.power-picker-page__content {
+		grid-template-columns: 1fr;
+	}
+
+	.power-picker-page__powerups {
+		padding-inline: clamp(0.85rem, 1.35vw, 1.1rem);
+	}
+
+	.power-picker-page__powerups::after,
+	.power-picker-page__mode-card:not(:first-child)::before {
+		content: none;
+	}
+
+	.power-picker-page__mode-card:nth-child(even)::before {
+		content: "";
+		left: -0.6rem;
+	}
+
+	.power-picker-page__grid {
+		grid-template-columns: repeat(4, minmax(0, 4.1rem));
+	}
+
 	.power-picker-page__actions {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
@@ -755,6 +821,10 @@ img.power-card__orb {
 		grid-template-columns: 1fr;
 	}
 
+	.power-picker-page__mode-card:nth-child(even)::before {
+		content: none;
+	}
+
 	.power-picker-page__pin-row {
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
@@ -781,7 +851,7 @@ img.power-card__orb {
 	}
 
 	.power-picker-page__grid {
-		@apply justify-start;
+		grid-template-columns: repeat(2, minmax(0, 4.1rem));
 	}
 }
 

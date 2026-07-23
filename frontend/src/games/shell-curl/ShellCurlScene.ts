@@ -9,10 +9,16 @@
 import Phaser from "phaser";
 import { api } from "../../features/hub/api";
 import { ResponsiveScene } from "../../shared/responsive-scene";
-import { CURL_SHEET } from "../../shared/arenas/curl-sheet";
 import {
-	rectArenaPlayableToScreenInRect,
+	CURL_SHEET_SKIN,
+	layoutCurlSheetSkin,
+	preloadCurlSheetSkin,
+	resolveCurlSheetLayoutInRect,
+	type CurlSheetSkinPixels,
+} from "../../shared/arenas/curl-sheet";
+import {
 	drawIceSheet,
+	drawScoringHouse,
 	isBallInHouse,
 	isBallOutOfBounds,
 	distanceFromBallToHouseButton,
@@ -163,13 +169,12 @@ const DEPTH_HUD = 20;
 const DEPTH_OVERLAY = 100;
 
 /**
- * Gap in canvas px between the ice sheet and the surrounding viewport edge.
- * rectArenaPlayableToScreenInRect fits the sheet edge-to-edge inside whatever
- * rect it's given (it deliberately ignores CURL_SHEET's authored margins), so
- * without this inset the rectangular sheet touches the window border — unlike
- * the other games' round arenas, which never fill their rect that tightly.
+ * Gap in canvas px between the complete stone frame and its content rectangle.
  */
 const ARENA_EDGE_MARGIN = 18;
+
+/** Extra room below the compact panel tabs so they do not cover the frame. */
+const COMPACT_PANEL_TOP_CLEARANCE = 36;
 
 /** Pause in ms between end-of-throw and advancing to next turn. */
 const SETTLING_DELAY_MS = 800;
@@ -280,6 +285,8 @@ export class ShellCurlScene
 
 	// ── Graphics layers ───────────────────────────────────────────────────────
 	private bgGfx!: Phaser.GameObjects.Graphics;
+	private sheetSkin!: Phaser.GameObjects.Image;
+	private sheetSkinLayout!: CurlSheetSkinPixels;
 	private sheetGfx!: Phaser.GameObjects.Graphics;
 	public bumperGfx!: Phaser.GameObjects.Graphics;
 	private pickupGfx!: Phaser.GameObjects.Graphics;
@@ -355,6 +362,7 @@ export class ShellCurlScene
 	preload(): void {
 		preloadIngamePlayerTexture(this);
 		preloadPowerUpAssets(this);
+		preloadCurlSheetSkin(this);
 	}
 
 	// ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -451,7 +459,13 @@ export class ShellCurlScene
 
 		// Graphics layers
 		this.bgGfx = this.add.graphics().setDepth(DEPTH_BG);
-		this.sheetGfx = this.add.graphics().setDepth(DEPTH_SHEET);
+		this.sheetSkin = this.add
+			.image(0, 0, CURL_SHEET_SKIN.key)
+			.setDepth(DEPTH_SHEET)
+			.setVisible(this.textures.exists(CURL_SHEET_SKIN.key));
+		if (this.sheetSkin.visible)
+			layoutCurlSheetSkin(this.sheetSkin, this.sheetSkinLayout);
+		this.sheetGfx = this.add.graphics().setDepth(DEPTH_SHEET + 0.1);
 		this.bumperGfx = this.add.graphics().setDepth(DEPTH_BUMPERS);
 		this.pickupGfx = this.add.graphics().setDepth(DEPTH_BALLS - 0.5);
 		this.recreatePowerPickups();
@@ -464,7 +478,9 @@ export class ShellCurlScene
 			this.scale.width,
 			this.scale.height,
 		);
-		drawIceSheet(this.sheetGfx, this.arena);
+		if (this.sheetSkin.visible)
+			drawScoringHouse(this.sheetGfx, this.arena);
+		else drawIceSheet(this.sheetGfx, this.arena);
 		this.buildBumpers();
 		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 
@@ -1671,7 +1687,12 @@ export class ShellCurlScene
 			this.scale.width,
 			this.scale.height,
 		);
-		drawIceSheet(this.sheetGfx, this.arena);
+		if (this.sheetSkin.visible) {
+			layoutCurlSheetSkin(this.sheetSkin, this.sheetSkinLayout);
+			drawScoringHouse(this.sheetGfx, this.arena);
+		} else {
+			drawIceSheet(this.sheetGfx, this.arena);
+		}
 		this.buildBumpers();
 		drawShellCurlBumpers(this.bumperGfx, this.bumpers, this.arena);
 		this.recreatePowerPickups();
@@ -1734,13 +1755,20 @@ export class ShellCurlScene
 			this.scale.height,
 		);
 		const content = layout.contentRect;
-		return rectArenaPlayableToScreenInRect(
-			CURL_SHEET,
+		const compactTopClearance = layout.leftPanel
+			? 0
+			: COMPACT_PANEL_TOP_CLEARANCE;
+		const resolved = resolveCurlSheetLayoutInRect(
 			content.x + ARENA_EDGE_MARGIN,
-			content.y + ARENA_EDGE_MARGIN,
+			content.y + ARENA_EDGE_MARGIN + compactTopClearance,
 			Math.max(1, content.width - ARENA_EDGE_MARGIN * 2),
-			Math.max(1, content.height - ARENA_EDGE_MARGIN * 2),
+			Math.max(
+				1,
+				content.height - ARENA_EDGE_MARGIN * 2 - compactTopClearance,
+			),
 		);
+		this.sheetSkinLayout = resolved.skin;
+		return resolved.arena;
 	}
 
 	/** Returns the power pool for the team whose turn it currently is. */

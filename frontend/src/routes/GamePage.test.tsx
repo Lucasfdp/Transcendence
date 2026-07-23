@@ -20,7 +20,23 @@ const mocks = vi.hoisted(() => {
 	const createShellSmashGame = vi.fn((..._args: unknown[]) => ({
 		destroy: vi.fn(),
 	}));
-	return { listeners, socket, createShellSmashGame };
+	const user = {
+		id: 1,
+		username: "kame",
+		turtleName: null,
+		shellSkin: "base",
+		trailEffect: "trail_classic",
+		hubBackground: "night_bg",
+		hubBackgroundAlter: null,
+		level: 1,
+		xp: 0,
+		coins: 0,
+		isGuest: false,
+		isDevAccount: false,
+		avatar: null,
+		mostPlayedGame: null,
+	};
+	return { listeners, socket, createShellSmashGame, user };
 });
 
 vi.mock("../services/network/gameSocket", async (importOriginal) => {
@@ -35,25 +51,14 @@ vi.mock("../features/hub/api", async (importOriginal) => {
 		...original,
 		api: {
 			...original.api,
-			getMe: vi.fn().mockResolvedValue({
-				id: 1,
-				username: "kame",
-				turtleName: null,
-				shellSkin: "base",
-				trailEffect: "trail_classic",
-				hubBackground: "night_bg",
-				hubBackgroundAlter: null,
-				level: 1,
-				xp: 0,
-				coins: 0,
-				isGuest: false,
-				isDevAccount: false,
-				avatar: null,
-				mostPlayedGame: null,
-			}),
+			getMe: vi.fn(),
 		},
 	};
 });
+
+vi.mock("../app/session/SessionContext", () => ({
+	useSession: () => ({ user: mocks.user, status: "authenticated" }),
+}));
 
 vi.mock("../lib/createShellSmashGame", () => ({
 	createShellSmashGame: mocks.createShellSmashGame,
@@ -68,6 +73,8 @@ vi.mock("phaser", () => ({ default: { Scene: class {} } }));
 
 // eslint-disable-next-line import/first -- must follow the vi.mock calls above
 import GamePage from "./GamePage";
+// eslint-disable-next-line import/first -- must follow the vi.mock calls above
+import { api } from "../features/hub/api";
 
 function kameKnockSnapshot(): GameSnapshot {
 	return {
@@ -122,6 +129,7 @@ describe("GamePage — tournament minigame direct launch", () => {
 		mocks.socket.off.mockClear();
 		mocks.socket.emit.mockClear();
 		mocks.createShellSmashGame.mockClear();
+		vi.mocked(api.getMe).mockClear();
 	});
 
 	it("launches straight into the arena from the tournament:minigame-start payload, with no round trip", async () => {
@@ -148,6 +156,7 @@ describe("GamePage — tournament minigame direct launch", () => {
 		).not.toBeInTheDocument();
 
 		expect(mocks.createShellSmashGame).toHaveBeenCalledTimes(1);
+		expect(api.getMe).not.toHaveBeenCalled();
 		const launchData = mocks.createShellSmashGame.mock.calls[0]?.[1] as {
 			onlineMatch?: { matchId: string; side: number; tournamentId?: string };
 		};
